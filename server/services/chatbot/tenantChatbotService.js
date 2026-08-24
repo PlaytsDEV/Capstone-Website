@@ -178,7 +178,7 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
     actions.push(
       { label: "View Statement & Pay", url: "/applicant/billing" },
       { label: "Electricity Math", prompt: "How was my submetered electricity share computed this month?" },
-      { label: "Dispute / Admin Help", action: "open_escalate_modal" },
+      { label: "Dispute / Chat with Admin", action: "open_escalate_modal" },
     );
   } else if (widget === "house_rules" || combined.includes("curfew") || combined.includes("rules")) {
     actions.push(
@@ -203,7 +203,7 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
       { label: "View Full Statement", url: "/applicant/billing" },
       { label: "Payment Options", prompt: "What are the accepted payment channels and instructions?" },
       { label: "Electricity Math", prompt: "How was my submetered electricity share computed this month?" },
-      { label: "Dispute / Admin Help", action: "open_escalate_modal" },
+      { label: "Dispute / Chat with Admin", action: "open_escalate_modal" },
     );
   } else if (widget === "lease_timeline" || combined.includes("lease") || combined.includes("contract")) {
     actions.push(

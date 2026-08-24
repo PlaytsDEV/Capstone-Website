@@ -222,19 +222,37 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
   const checkActiveSupportTicket = useCallback(async () => {
     try {
       const res = await chatApi.getMyConversations();
-      const convs = res?.data || [];
+      const convs = Array.isArray(res?.conversations)
+        ? res.conversations
+        : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+        ? res
+        : [];
       const ongoing = convs.find(
         (c) => c.status !== "closed" && c.status !== "resolved"
       );
       if (ongoing) {
-        setActiveTicket(ongoing);
+        const convId = ongoing._id || ongoing.id;
+        setActiveTicket({
+          ...ongoing,
+          _id: convId,
+          id: convId,
+        });
         onUnreadCountChange?.(ongoing.unreadTenantCount || 0);
         try {
-          const msgRes = await chatApi.getTenantMessages(ongoing._id);
-          if (msgRes?.data && Array.isArray(msgRes.data)) {
+          const msgRes = await chatApi.getTenantMessages(convId);
+          const rawMsgs = Array.isArray(msgRes?.messages)
+            ? msgRes.messages
+            : Array.isArray(msgRes?.data)
+            ? msgRes.data
+            : Array.isArray(msgRes)
+            ? msgRes
+            : [];
+          if (rawMsgs.length > 0) {
             setMessages(
-              msgRes.data.map((msg) => ({
-                _id: msg._id,
+              rawMsgs.map((msg) => ({
+                _id: msg._id || msg.id,
                 role: msg.senderRole === "tenant" ? "user" : "admin",
                 senderName: msg.senderName || "Branch Admin",
                 message: msg.message,
@@ -776,6 +794,17 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
       handleSendMessage(action);
       return;
     }
+    if (
+      action.action === "open_escalate_modal" ||
+      action.action === "escalate" ||
+      action.type === "escalate" ||
+      action.label === "Chat with Admin" ||
+      action.label === "Dispute / Chat with Admin" ||
+      action.label === "Dispute / Admin Help"
+    ) {
+      setIsEscalateOpen(true);
+      return;
+    }
     if (action.type === "prompt" || action.prompt) {
       handleSendMessage(action.prompt || action.label);
       return;
@@ -783,10 +812,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     if (action.type === "navigate" || action.url || action.path) {
       onClose();
       navigate(action.url || action.path);
-      return;
-    }
-    if (action.type === "escalate") {
-      setIsEscalateOpen(true);
       return;
     }
     if (action.label) {
@@ -926,10 +951,10 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
                   type="button"
                   onClick={() => setIsEscalateOpen(true)}
                   className="tenant-assistant-escalate-btn"
-                  title="Speak directly with Branch Admin staff"
+                  title="Chat directly with Branch Admin staff"
                 >
                   <Headphones className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                  <span>Admin Help</span>
+                  <span>Chat with Admin</span>
                 </button>
               )}
 
@@ -1463,10 +1488,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
             : ""
         }
         onEscalationSuccess={(res) => {
-          const newConv = res?.data;
-          if (newConv) {
+          const newConv = res?.data || res;
+          if (newConv && (newConv.conversationId || newConv.id || newConv._id)) {
+            const convId = newConv.conversationId || newConv.id || newConv._id;
             setActiveTicket({
-              _id: newConv.conversationId,
+              _id: convId,
+              id: convId,
               ticketId: newConv.ticketId,
               status: newConv.status || "open",
               category: newConv.category,
@@ -1484,6 +1511,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
                 timestamp: new Date().toISOString(),
               },
             ]);
+            checkActiveSupportTicket();
           }
         }}
       />

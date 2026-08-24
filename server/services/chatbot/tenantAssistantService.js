@@ -460,7 +460,7 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
   }
 
   // Escalation action
-  actions.push({ label: "Escalate to Admin", action: "open_escalate_modal" });
+  actions.push({ label: "Chat with Admin", action: "open_escalate_modal" });
 
   // Deduplicate
   const uniqueActions = [];

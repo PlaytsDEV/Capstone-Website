@@ -142,7 +142,7 @@ export default function TenantHumanEscalateModal({
               Escalation Submitted
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-300 max-w-sm">
-              Your concern has been forwarded directly to our Branch Admin team. Our staff will review your message and reach out promptly.
+              Your message has been sent directly to the Branch Admin team. Staff will connect with you in live chat promptly.
             </p>
             <div className="pt-2">
               <button

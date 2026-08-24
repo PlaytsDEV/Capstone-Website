@@ -44,20 +44,21 @@ export async function ensureChatTicketId(conversation) {
   );
 
   // Concurrent readers may both allocate a sequence, but only one can assign
-  // the immutable ID. Preserve the populated/lean object supplied by the
-  // caller and copy the winning persisted value onto it.
+  // the immutable ID. Preserve the populated/lean object or Mongoose document
+  // supplied by the caller and copy the winning persisted value onto it.
   if (result.modifiedCount === 1) {
-    if (typeof conversation.toObject === "function") {
-      return { ...conversation.toObject(), ticketId };
+    if (conversation._doc) {
+      conversation._doc.ticketId = ticketId;
     }
     conversation.ticketId = ticketId;
     return conversation;
   }
   const winner = await ChatConversation.findById(conversation._id).select("ticketId").lean();
-  if (typeof conversation.toObject === "function") {
-    return { ...conversation.toObject(), ticketId: winner?.ticketId || "" };
+  const finalTicketId = winner?.ticketId || "";
+  if (conversation._doc) {
+    conversation._doc.ticketId = finalTicketId;
   }
-  conversation.ticketId = winner?.ticketId || "";
+  conversation.ticketId = finalTicketId;
   return conversation;
 }
 
