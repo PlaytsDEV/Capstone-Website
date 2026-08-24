@@ -120,8 +120,8 @@ describe("extendReservation Controller", () => {
     const req = {
       params: { reservationId: validReservationId },
       body: { newMoveInDate: "2026-08-28" },
-      adminId: "admin123",
       user: { uid: "firebase123" },
+      authUser: { _id: "admin123" },
     };
     const res = {
       status: jest.fn().mockReturnThis(),
@@ -145,8 +145,8 @@ describe("extendReservation Controller", () => {
     const req = {
       params: { reservationId: validReservationId },
       body: { extensionDays: 5 },
-      adminId: "admin123",
       user: { uid: "firebase123" },
+      authUser: { _id: "admin123" },
     };
     const res = {
       status: jest.fn().mockReturnThis(),
@@ -170,8 +170,8 @@ describe("extendReservation Controller", () => {
     const req = {
       params: { reservationId: validReservationId },
       body: { newMoveInDate: "invalid-date-string" },
-      adminId: "admin123",
       user: { uid: "firebase123" },
+      authUser: { _id: "admin123" },
     };
     const res = {
       status: jest.fn().mockReturnThis(),

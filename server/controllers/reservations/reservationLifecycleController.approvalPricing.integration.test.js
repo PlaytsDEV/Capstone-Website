@@ -62,6 +62,10 @@ const { updateReservation } = await import("./reservationLifecycleController.js"
 const { default: Reservation } = await import("../../models/Reservation.js");
 const { default: Room } = await import("../../models/Room.js");
 const { default: BusinessSettings } = await import("../../models/BusinessSettings.js");
+const { default: User } = await import("../../models/User.js");
+const { resolveReservationContractEligibility } = await import(
+  "../../services/reservationContractEligibilityService.js"
+);
 
 const response = () => ({
   statusCode: 200,
@@ -74,8 +78,11 @@ const requestFor = (reservationId, body, overrides = {}) => ({
   id: "approval-idempotency-test",
   params: { reservationId },
   body,
-  adminId: new mongoose.Types.ObjectId(),
+  // Production shape: verifyToken resolves the Firebase UID to the Mongo
+  // User doc and attaches it as req.authUser — the controller must read
+  // req.authUser._id, not a fabricated req.adminId (nothing ever sets that).
   user: { uid: "admin-firebase-uid" },
+  authUser: { _id: new mongoose.Types.ObjectId() },
   branchFilter: undefined,
   ...overrides,
 });
@@ -99,6 +106,7 @@ describe("reservation approval — structured pricing snapshot idempotency", () 
     await Reservation.deleteMany({});
     await Room.deleteMany({});
     await BusinessSettings.deleteMany({});
+    await User.deleteMany({});
     await BusinessSettings.create({
       key: "global",
       quadrupleDiscountPercent: 10,
@@ -245,5 +253,127 @@ describe("reservation approval — structured pricing snapshot idempotency", () 
     expect(updated.pricingSnapshot.finalMonthlyRate).toBe(5400);
     expect(updated.pricingSnapshot.regularMonthlyRate).toBe(6000);
     expect(updated.monthlyRent).not.toBe(1);
+  });
+});
+
+describe("reservation approval — reviewer identity resolution (applicationReviewedBy)", () => {
+  let mongo;
+
+  beforeAll(async () => {
+    process.env.STRUCTURED_INITIAL_PAYMENT_ENABLED = "true";
+    delete process.env.STRUCTURED_INITIAL_PAYMENT_EFFECTIVE_AT;
+    mongo = await MongoMemoryServer.create();
+    await mongoose.connect(mongo.getUri(), { dbName: "approval_reviewer_identity" });
+  }, 120_000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongo.stop();
+  });
+
+  beforeEach(async () => {
+    await Reservation.deleteMany({});
+    await Room.deleteMany({});
+    await BusinessSettings.deleteMany({});
+    await User.deleteMany({});
+    await BusinessSettings.create({
+      key: "global",
+      quadrupleDiscountPercent: 10,
+      isDiscountEnabled: true,
+      longTermLeaseMinMonths: 6,
+    });
+  });
+
+  async function createRoomAndReservation() {
+    const room = await Room.create({
+      name: "Room 301",
+      roomNumber: "301",
+      branch: "gil-puyat",
+      type: "private",
+      capacity: 1,
+      price: 8000,
+    });
+    const reservation = await Reservation.create({
+      userId: new mongoose.Types.ObjectId(),
+      roomId: room._id,
+      status: "pending_application_review",
+      leaseDuration: 12,
+      reservationFeeAmount: 2000,
+      preferredRoomType: "private",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      totalPrice: 8000,
+      moveInDate: new Date("2026-09-01T00:00:00.000Z"),
+    });
+    return { room, reservation };
+  }
+
+  test("successful approval records the real reviewer's Mongo User _id, and the reservation becomes eligible via the explicit-approval path (no bed required for a private room)", async () => {
+    const admin = await User.create({
+      firebaseUid: "reviewer-firebase-uid",
+      username: "reviewer-admin",
+      email: "reviewer@lilycrest.test",
+      firstName: "Reviewer",
+      lastName: "Admin",
+      role: "branch_admin",
+      branch: "gil-puyat",
+    });
+    const { reservation } = await createRoomAndReservation();
+    const req = requestFor(String(reservation._id), { status: "approved_for_payment" }, {
+      user: { uid: "reviewer-firebase-uid" },
+      authUser: { _id: admin._id },
+    });
+    const res = response();
+
+    await updateReservation(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    const updated = await Reservation.findById(reservation._id).lean();
+    expect(updated.applicationReviewedAt).toBeTruthy();
+    expect(updated.applicationReviewedBy).toBeTruthy();
+    expect(String(updated.applicationReviewedBy)).toBe(String(admin._id));
+
+    const eligibility = resolveReservationContractEligibility(updated, {
+      tenantExists: true,
+      roomExists: true,
+    });
+    expect(eligibility.eligible).toBe(true);
+    expect(eligibility.approvalState).toBe("approved");
+  });
+
+  test("missing authentication (no req.authUser) fails the approval safely and does not write reviewer metadata", async () => {
+    const { reservation } = await createRoomAndReservation();
+    const req = requestFor(String(reservation._id), { status: "approved_for_payment" }, {
+      user: undefined,
+      authUser: undefined,
+    });
+    const res = response();
+
+    await updateReservation(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.code).toBe("APPROVAL_ACTOR_UNRESOLVED");
+    const unchanged = await Reservation.findById(reservation._id).lean();
+    expect(unchanged.status).toBe("pending_application_review");
+    expect(unchanged.applicationReviewedAt).toBeFalsy();
+    expect(unchanged.applicationReviewedBy).toBeFalsy();
+  });
+
+  test("authenticated Firebase UID with no resolvable DB User (req.authUser not attached) fails the approval safely", async () => {
+    const { reservation } = await createRoomAndReservation();
+    // Simulates verifyToken being unable to resolve the Firebase UID to a
+    // Mongo User — the same shape as a UID that was never provisioned.
+    const req = requestFor(String(reservation._id), { status: "approved_for_payment" }, {
+      user: { uid: "ghost-firebase-uid" },
+      authUser: undefined,
+    });
+    const res = response();
+
+    await updateReservation(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.code).toBe("APPROVAL_ACTOR_UNRESOLVED");
+    const unchanged = await Reservation.findById(reservation._id).lean();
+    expect(unchanged.applicationReviewedBy).toBeFalsy();
   });
 });

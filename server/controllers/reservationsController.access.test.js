@@ -2044,7 +2044,8 @@ describe("reservationsController.updateReservation access hardening", () => {
       params: { reservationId: "507f1f77bcf86cd799439030" },
       body: { status: "approved_for_payment" },
       branchFilter: "gil-puyat",
-      adminId: "admin-1",
+      user: { uid: "admin-uid" },
+      authUser: { _id: "admin-1" },
     };
     const res = createResponse();
     const next = jest.fn();
@@ -2103,7 +2104,8 @@ describe("reservationsController.updateReservation access hardening", () => {
       params: { reservationId: "507f1f77bcf86cd799439031" },
       body: { status: "approved_for_payment" },
       branchFilter: "gil-puyat",
-      adminId: "admin-1",
+      user: { uid: "admin-uid" },
+      authUser: { _id: "admin-1" },
     };
     const res = createResponse();
     const next = jest.fn();
