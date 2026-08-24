@@ -30,6 +30,8 @@
     "maintenance:branch-repair": "node scripts/repair_maintenance_branches.mjs --write",
     "contracts:audit-prepared-documents": "node scripts/audit_broken_prepared_contracts.mjs",
     "contracts:audit-duplicates": "node scripts/audit_duplicate_contracts.mjs",
+    "contracts:repair-target-movein-drafts": "node scripts/repair_contract_target_movein_drafts.mjs",
+    "contracts:repair-target-movein-drafts:write": "node scripts/repair_contract_target_movein_drafts.mjs --write",
     "seed:analytics-demo": "node scripts/seed_analytics_demo.mjs",
     "seed:service-providers": "node scripts/seed_service_providers.mjs",
     "seed:service-providers:write": "node scripts/seed_service_providers.mjs --write",

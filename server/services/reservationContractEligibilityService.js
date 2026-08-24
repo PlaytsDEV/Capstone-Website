@@ -1,3 +1,5 @@
+import { readMoveInDate } from "../utils/lifecycleNaming.js";
+
 const normalized = (value) => String(value || "").trim().toLowerCase();
 
 const APPROVED_STATUSES = new Set([
@@ -53,7 +55,7 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
     tenantExists: Boolean(context.tenantExists ?? reservation.userId),
     roomAssigned: Boolean(context.roomExists ?? reservation.roomId),
     bedAssigned: hasAssignment(reservation, context),
-    moveInDate: reservation.confirmedMoveInDate || reservation.moveInDate || null,
+    moveInDate: readMoveInDate(reservation),
     paymentStatus: reservation.paymentStatus || null,
     rejected,
     cancelled,

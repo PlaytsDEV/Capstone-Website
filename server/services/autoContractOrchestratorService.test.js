@@ -57,6 +57,9 @@ describe("autoContractOrchestratorService", () => {
       Room: {
         findById: jest.fn(),
       },
+      Stay: {
+        find: jest.fn(),
+      },
     }));
 
     jest.unstable_mockModule("./contractService.js", () => ({
@@ -64,6 +67,7 @@ describe("autoContractOrchestratorService", () => {
       createReplacementContractForTransfer: mockCreateReplacementContractForTransfer,
       createSuccessorContractForRenewal: mockCreateSuccessorContractForRenewal,
       validateContractForGeneration: mockValidateContractForGeneration,
+      getContractValidation: jest.fn(() => ({ valid: true, missingFields: [] })),
       transitionContract: mockTransitionContract,
     }));
 

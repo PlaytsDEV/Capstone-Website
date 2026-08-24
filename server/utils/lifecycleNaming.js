@@ -290,12 +290,23 @@ export const hasUtilityEventType = (eventType, ...expectedEventTypes) => {
  *   3. intendedMoveInDate  — tenant's desired date from Step 1
  *   4. targetMoveInDate    — @deprecated legacy field, kept for old records
  */
-export const readMoveInDate = (value) =>
-  value?.confirmedMoveInDate ??
-  value?.moveInDate ??
-  value?.intendedMoveInDate ??
-  value?.targetMoveInDate ??
-  null;
+const MOVE_IN_DATE_FIELDS = Object.freeze([
+  "confirmedMoveInDate",
+  "moveInDate",
+  "intendedMoveInDate",
+  "targetMoveInDate",
+]);
+
+export const readMoveInDate = (value, { includeSource = false } = {}) => {
+  for (const sourceField of MOVE_IN_DATE_FIELDS) {
+    if (value?.[sourceField] !== null && value?.[sourceField] !== undefined) {
+      return includeSource
+        ? { value: value[sourceField], sourceField }
+        : value[sourceField];
+    }
+  }
+  return includeSource ? { value: null, sourceField: null } : null;
+};
 
 export const readMoveOutDate = (value) => value?.moveOutDate ?? null;
 

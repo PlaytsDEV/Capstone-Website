@@ -54,7 +54,11 @@ describe("reservation deposit settlement → draft Contract automation", () => {
     });
   });
 
-  async function seedTenantRoomReservation({ leaseDuration = 12, status = "approved_for_payment" } = {}) {
+  async function seedTenantRoomReservation({
+    leaseDuration = 12,
+    status = "approved_for_payment",
+    targetMoveInOnly = false,
+  } = {}) {
     const tenant = await User.create({
       firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
       email: `tenant-${new mongoose.Types.ObjectId()}@example.test`,
@@ -81,7 +85,8 @@ describe("reservation deposit settlement → draft Contract automation", () => {
       agreedToPrivacy: true,
       agreedToCertification: true,
       totalPrice: 6300,
-      moveInDate: new Date("2026-09-01T00:00:00.000Z"),
+      moveInDate: targetMoveInOnly ? null : new Date("2026-09-01T00:00:00.000Z"),
+      targetMoveInDate: targetMoveInOnly ? new Date("2026-09-01T00:00:00.000Z") : null,
     });
     return { tenant, room, reservation };
   }
@@ -188,11 +193,50 @@ describe("reservation deposit settlement → draft Contract automation", () => {
 
     const result = await settleFor(reservation);
 
-    expect(result.draftContract).toBeNull(); // recognized as DUPLICATE_CONTRACT, not re-created
+    // The existing canonical draft is returned/reused. DUPLICATE_CONTRACT
+    // still prevents a second record, but no longer turns recovery of the
+    // already-authoritative draft into a permanent no-op.
+    expect(String(result.draftContract._id)).toBe(String(manual._id));
     const contracts = await Contract.find({ reservationId: reservation._id });
     expect(contracts).toHaveLength(1);
     expect(String(contracts[0]._id)).toBe(String(manual._id));
     void room;
+  });
+
+  test("DUPLICATE_CONTRACT reuses and repairs a legacy targetMoveInDate-only draft", async () => {
+    const { reservation, tenant, room } = await seedTenantRoomReservation({ targetMoveInOnly: true });
+    room.type = "private";
+    room.capacity = 1;
+    await room.save();
+    reservation.applicationReviewedAt = new Date("2026-08-20T00:00:00.000Z");
+    reservation.applicationReviewedBy = tenant._id;
+    reservation.approvedForPaymentAt = new Date("2026-08-20T00:00:00.000Z");
+    reservation.preferredRoomType = "private";
+    reservation.selectedBed = undefined;
+    await reservation.save();
+    const legacyDraft = await createDraftContract({
+      reservationId: reservation._id,
+      actorId: tenant._id,
+    });
+    await Contract.collection.updateOne(
+      { _id: legacyDraft._id },
+      {
+        $set: {
+          leaseStartDate: null,
+          leaseEndDate: null,
+          advanceCoverageStart: null,
+          advanceCoverageEnd: null,
+        },
+      },
+    );
+
+    const result = await settleFor(reservation);
+
+    expect(String(result.draftContract._id)).toBe(String(legacyDraft._id));
+    const contracts = await Contract.find({ reservationId: reservation._id });
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0].leaseStartDate.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+    expect(contracts[0].leaseEndDate.toISOString()).toBe("2027-09-01T00:00:00.000Z");
   });
 
   test("settlement still succeeds and the reservation is not left partially inconsistent even if Contract creation is impossible", async () => {
