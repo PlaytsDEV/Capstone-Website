@@ -12,7 +12,9 @@ function getGenAIClient() {
 function getSystemPrompt(contextSnapshot) {
   const branchName = contextSnapshot?.branch || "Lilycrest Residence";
   const currentTime = new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" });
-  const isApplicant = contextSnapshot?.isApplicant || (!contextSnapshot?.contract && Boolean(contextSnapshot?.reservation || contextSnapshot?.userRole === "applicant"));
+  const isApplicant = contextSnapshot?.isApplicant !== undefined
+    ? Boolean(contextSnapshot.isApplicant)
+    : Boolean(contextSnapshot?.userRole === "applicant" && !contextSnapshot?.tenancy?.isCurrentResident);
 
   if (isApplicant) {
     const res = contextSnapshot?.reservation;
@@ -76,11 +78,9 @@ ${JSON.stringify(contextSnapshot, null, 2)}
 
 export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
   // If the user is an applicant, they do not have active billing statements, submeter shares, or active room maintenance tickets
-  const isApplicant = Boolean(
-    contextSnapshot?.isApplicant ||
-    contextSnapshot?.userRole === "applicant" ||
-    (!contextSnapshot?.contract && (contextSnapshot?.reservation || contextSnapshot?.userRole === "applicant"))
-  );
+  const isApplicant = contextSnapshot?.isApplicant !== undefined
+    ? Boolean(contextSnapshot.isApplicant)
+    : Boolean(contextSnapshot?.userRole === "applicant" && !contextSnapshot?.tenancy?.isCurrentResident);
 
   if (isApplicant) {
     return null;
@@ -157,11 +157,9 @@ export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
 }
 
 export function determineTenantSuggestedActions(message = "", botReply = "", contextSnapshot = null) {
-  const isApplicant = Boolean(
-    contextSnapshot?.isApplicant ||
-    contextSnapshot?.userRole === "applicant" ||
-    (!contextSnapshot?.contract && (contextSnapshot?.reservation || contextSnapshot?.userRole === "applicant"))
-  );
+  const isApplicant = contextSnapshot?.isApplicant !== undefined
+    ? Boolean(contextSnapshot.isApplicant)
+    : Boolean(contextSnapshot?.userRole === "applicant" && !contextSnapshot?.tenancy?.isCurrentResident);
 
   if (isApplicant) {
     return [

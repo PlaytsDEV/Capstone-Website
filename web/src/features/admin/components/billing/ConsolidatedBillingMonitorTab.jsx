@@ -188,7 +188,12 @@ export default function ConsolidatedBillingMonitorTab({
               max="2099-12"
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
-              className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:border-slate-400 focus:outline-none"
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker?.();
+                } catch {}
+              }}
+              className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:border-slate-400 focus:outline-none cursor-pointer"
             />
           </div>
 

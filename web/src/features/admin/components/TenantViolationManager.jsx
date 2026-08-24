@@ -107,12 +107,14 @@ export default function TenantViolationManager({ branch }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const fetchIdRef = React.useRef(0);
 
   // Modals
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [selectedViolation, setSelectedViolation] = useState(null);
 
-  const fetchViolations = async () => {
+  const fetchViolations = React.useCallback(async () => {
+    const currentFetchId = ++fetchIdRef.current;
     try {
       setLoading(true);
       const params = {};
@@ -121,6 +123,8 @@ export default function TenantViolationManager({ branch }) {
       if (categoryFilter !== "all") params.category = categoryFilter;
 
       const res = await billingApi.getViolations(params);
+      if (currentFetchId !== fetchIdRef.current) return;
+
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setViolations(list);
       if (res?.stats) {
@@ -134,15 +138,19 @@ export default function TenantViolationManager({ branch }) {
         });
       }
     } catch (err) {
-      console.error("Violations fetch error:", err);
+      if (currentFetchId === fetchIdRef.current) {
+        console.error("Violations fetch error:", err);
+      }
     } finally {
-      setLoading(false);
+      if (currentFetchId === fetchIdRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [branch, statusFilter, categoryFilter]);
 
   useEffect(() => {
     fetchViolations();
-  }, [branch, statusFilter, categoryFilter]);
+  }, [fetchViolations]);
 
   const filteredViolations = useMemo(() => {
     if (!searchQuery.trim()) return violations;

@@ -274,6 +274,76 @@ describe("canonical Lily tenant context", () => {
     expect(db.collection).not.toHaveBeenCalledWith("announcements");
   });
 
+  test("moved-in tenant with moveIn reservation and null Stay is correctly identified as active tenant", async () => {
+    const tenantId = new mongoose.Types.ObjectId();
+    const user = {
+      _id: tenantId,
+      user_id: "tenant-moved-in",
+      role: "tenant",
+      tenantStatus: "active",
+      branch: "gil-puyat",
+      firstName: "Maria",
+      lastName: "Santos",
+    };
+    const reservation = {
+      userId: tenantId,
+      status: "moveIn",
+      branch: "gil-puyat",
+      roomNumber: "GP-301",
+      selectedBed: { position: "Bed A" },
+      confirmedMoveInDate: new Date("2026-08-01T00:00:00Z"),
+    };
+
+    userFindOne.mockReturnValue(queryResult(user));
+    stayFindOne.mockReturnValue(queryResult(null));
+    reservationFindOne.mockReturnValue(queryResult(reservation));
+    billFind.mockReturnValue(queryResult([]));
+    buildAnnouncementTenantContext.mockResolvedValue({ authenticated: true, mongoId: tenantId, branch: "gil-puyat" });
+
+    const context = await resolveTenantAIContext(tenantId, user, { db: null });
+
+    expect(context.isApplicant).toBe(false);
+    expect(context.userRole).toBe("tenant");
+    expect(context.tenancy.isCurrentResident).toBe(true);
+    expect(context.tenancy.status).toBe("active");
+    expect(context.roomNumber).toBe("GP-301");
+    expect(context.bedPosition).toBe("Bed A");
+    expect(context.branch).toBe("Gil Puyat");
+  });
+
+  test("applicant with reserved status and no active stay is correctly identified as applicant", async () => {
+    const applicantId = new mongoose.Types.ObjectId();
+    const user = {
+      _id: applicantId,
+      user_id: "applicant-1",
+      role: "applicant",
+      tenantStatus: "applicant",
+      firstName: "John",
+      lastName: "Doe",
+    };
+    const reservation = {
+      userId: applicantId,
+      status: "reserved",
+      branch: "gil-puyat",
+      roomNumber: "GP-102",
+      selectedBed: { position: "Bed B" },
+      moveInDate: new Date("2026-09-01T00:00:00Z"),
+    };
+
+    userFindOne.mockReturnValue(queryResult(user));
+    stayFindOne.mockReturnValue(queryResult(null));
+    reservationFindOne.mockReturnValue(queryResult(reservation));
+    billFind.mockReturnValue(queryResult([]));
+    buildAnnouncementTenantContext.mockResolvedValue({ authenticated: true, mongoId: applicantId });
+
+    const context = await resolveTenantAIContext(applicantId, user, { db: null });
+
+    expect(context.isApplicant).toBe(true);
+    expect(context.userRole).toBe("applicant");
+    expect(context.tenancy.isCurrentResident).toBe(false);
+    expect(context.tenancy.status).toBe("reserved");
+  });
+
   test("neutral fallback never fabricates a branch, room, bed, bill, or move-in date", () => {
     expect(buildNeutralContext({ firstName: "Ava" })).toMatchObject({
       tenantName: "Ava",

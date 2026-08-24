@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   BellRing,
   ShieldAlert,
@@ -34,11 +34,13 @@ export default function OverdueEscalationTab({ branch }) {
     terminationCasesCount: 0,
   });
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const fetchIdRef = useRef(0);
 
   // Cross-view handoff state for opening a termination case from Notice 3
   const [prefilledCaseData, setPrefilledCaseData] = useState(null);
 
   const fetchSummaryCounts = useCallback(async () => {
+    const currentFetchId = ++fetchIdRef.current;
     try {
       setLoadingSummary(true);
       const params = {};
@@ -48,6 +50,8 @@ export default function OverdueEscalationTab({ branch }) {
         billingApi.getOverdueNotices(params),
         billingApi.getTerminationCases(params),
       ]);
+
+      if (currentFetchId !== fetchIdRef.current) return;
 
       const noticesData = noticesRes.status === "fulfilled" ? noticesRes.value : null;
       const casesData = casesRes.status === "fulfilled" ? casesRes.value : null;
@@ -66,9 +70,13 @@ export default function OverdueEscalationTab({ branch }) {
         terminationCasesCount: casesList.length,
       });
     } catch (err) {
-      console.error("[OverdueEscalationTab] Failed to fetch summary counts:", err);
+      if (currentFetchId === fetchIdRef.current) {
+        console.error("[OverdueEscalationTab] Failed to fetch summary counts:", err);
+      }
     } finally {
-      setLoadingSummary(false);
+      if (currentFetchId === fetchIdRef.current) {
+        setLoadingSummary(false);
+      }
     }
   }, [branch]);
 

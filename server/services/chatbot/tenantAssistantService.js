@@ -129,8 +129,8 @@ export async function getTenantStayContext(userId) {
         default: return `${d}th`;
       }
     };
-    const leaseCycleText = leaseDay ? `${ordinalSuffix(leaseDay)} of each month` : "Monthly lease start date";
-    const isApplicant = !contract && Boolean(reservation || user.role === "applicant");
+    const isExplicitTenant = user?.role === "tenant" || user?.tenantStatus === "active" || reservation?.status === "moveIn";
+    const isApplicant = !isExplicitTenant && !contract && (Boolean(reservation) || user?.role === "applicant");
 
     return {
       user: {
@@ -320,7 +320,9 @@ export function buildTenantSystemPrompt(context) {
   const bill = context?.bill;
   const maintenance = context?.maintenance || [];
   const reservation = context?.reservation;
-  const isApplicant = context?.isApplicant || (!contract && Boolean(reservation || user?.role === "applicant"));
+  const isApplicant = context?.isApplicant !== undefined
+    ? Boolean(context.isApplicant)
+    : Boolean(user?.role === "applicant" && !contract && reservation?.status !== "moveIn");
 
   if (isApplicant) {
     return `
@@ -420,7 +422,9 @@ STRICT BEHAVIOR RULES:
 export function determineTenantSuggestedActions(message = "", botReply = "", context = null) {
   const actions = [];
   const text = `${message} ${botReply}`.toLowerCase();
-  const isApplicant = context?.isApplicant || (!context?.contract && Boolean(context?.reservation || context?.user?.role === "applicant"));
+  const isApplicant = context?.isApplicant !== undefined
+    ? Boolean(context.isApplicant)
+    : Boolean(context?.user?.role === "applicant" && !context?.contract && context?.reservation?.status !== "moveIn");
 
   if (isApplicant) {
     actions.push({ label: "Application Status", prompt: "What is my current reservation status?" });

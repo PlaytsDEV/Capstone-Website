@@ -36,8 +36,13 @@ import { logBillingAudit } from "../../utils/billingAudit.js";
 export const getRentBills = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const rawBranch = req.query.branch;
+    const requestedBranch =
+      rawBranch && rawBranch !== "all" && rawBranch !== "undefined" && rawBranch !== "null"
+        ? rawBranch
+        : null;
     const branch =
-      req.branchFilter || (admin.isOwner && req.query.branch ? req.query.branch : null);
+      req.branchFilter || (admin.isOwner && requestedBranch ? requestedBranch : null);
     const filter = {
       isArchived: false,
       "charges.rent": { $gt: 0 },
@@ -60,8 +65,13 @@ export const getRentBills = async (req, res, next) => {
 export const getRentBillableTenants = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const rawBranch = req.query.branch;
+    const requestedBranch =
+      rawBranch && rawBranch !== "all" && rawBranch !== "undefined" && rawBranch !== "null"
+        ? rawBranch
+        : null;
     const branch =
-      req.branchFilter || (admin.isOwner && req.query.branch ? req.query.branch : null);
+      req.branchFilter || (admin.isOwner && requestedBranch ? requestedBranch : null);
     if (!branch && !admin.isOwner) {
       return res.status(403).json({ error: "Invalid branch" });
     }

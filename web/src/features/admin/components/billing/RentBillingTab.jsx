@@ -370,9 +370,11 @@ export default function RentBillingTab({
   const [preview, setPreview] = useState(null);
   const [previewTenant, setPreviewTenant] = useState(null);
 
-  const branchParam = branch || undefined;
+  const branchParam = branch && branch !== "all" ? branch : undefined;
   const canLoad = isOwner || Boolean(branch);
   const activeMonthParam = timeframeMode === "all" ? "all" : month;
+
+  const fetchIdRef = useRef(0);
 
   // Keep cron countdown fresh
   useEffect(() => {
@@ -382,8 +384,16 @@ export default function RentBillingTab({
     return () => clearInterval(interval);
   }, []);
 
+  // Clear preview modal on branch switch
+  useEffect(() => {
+    setPreview(null);
+    setPreviewTenant(null);
+  }, [branchParam]);
+
   const loadData = useCallback(async () => {
     if (!canLoad || !isActive) return;
+    const currentFetchId = ++fetchIdRef.current;
+
     if (!hasLoadedOnceRef.current) {
       setInitialLoading(true);
     } else {
@@ -394,14 +404,21 @@ export default function RentBillingTab({
         billingApi.getRentBillableTenants({ branch: branchParam, month: activeMonthParam }),
         billingApi.getRentBills({ branch: branchParam, month: activeMonthParam, limit: 1000 }),
       ]);
-      setTenants(tenantData?.tenants || []);
-      setBills(billData?.bills || []);
-      hasLoadedOnceRef.current = true;
+      // Commit only if this is still the most recent request
+      if (currentFetchId === fetchIdRef.current) {
+        setTenants(tenantData?.tenants || []);
+        setBills(billData?.bills || []);
+        hasLoadedOnceRef.current = true;
+      }
     } catch (error) {
-      showNotification(error?.message || "Failed to load rent billing.", "error");
+      if (currentFetchId === fetchIdRef.current) {
+        showNotification(error?.message || "Failed to load rent billing.", "error");
+      }
     } finally {
-      setInitialLoading(false);
-      setLoading(false);
+      if (currentFetchId === fetchIdRef.current) {
+        setInitialLoading(false);
+        setLoading(false);
+      }
     }
   }, [branchParam, canLoad, isActive, activeMonthParam]);
 
@@ -770,7 +787,12 @@ export default function RentBillingTab({
                 max="2099-12"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {}
+                }}
+                className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 cursor-pointer"
                 title="Select billing month"
                 aria-label="Select billing month"
               />
