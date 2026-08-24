@@ -176,7 +176,7 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
   // untouched either way — contractPdfService.js only supersedes it after
   // a new one is successfully stored) becomes visible again immediately,
   // instead of being hidden until someone notices and manually retries.
-  let demotedGeneratedContractId = null;
+  let demotedGeneratedContractSnapshot = null;
   try {
     const reservation = await Reservation.findById(reservationId).lean();
     if (!reservation) {
@@ -198,8 +198,6 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
         allowedBranch: null,
       });
     }
-
-    contract = await recoverExistingDraftDates({ contract, actorId });
 
     // Realign / adjust lease dates if actualMoveInDate is provided and contract is not finalized
     const moveInResolution = actualMoveInDate
@@ -234,12 +232,57 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
         // Contract stuck invisible with its still-valid prior Draft intact
         // but unreachable.
         if (contract.status === "generated" || contract.status === "awaiting_signatures") {
-          if (contract.status === "generated") demotedGeneratedContractId = contract._id;
+          if (contract.status === "generated") {
+            demotedGeneratedContractSnapshot = {
+              _id: contract._id,
+              leaseStartDate: contract.leaseStartDate,
+              leaseEndDate: contract.leaseEndDate,
+              leaseDurationMonths: contract.leaseDurationMonths,
+              advanceCoverageStart: contract.advanceCoverageStart || null,
+              advanceCoverageEnd: contract.advanceCoverageEnd || null,
+            };
+          }
           updateFields.status = "ready_for_generation";
         }
 
-        await Contract.updateOne({ _id: contract._id }, { $set: updateFields });
+        // The legal date fields are schema-immutable after Contract creation.
+        // This lifecycle transition is the deliberate exception: an admin's
+        // actual move-in confirmation must realign a non-final Contract. A
+        // model-level update silently strips immutable paths, so use the raw
+        // collection with strict lifecycle guards and verify the persisted
+        // dates immediately afterward.
+        const dateUpdate = await Contract.collection.updateOne(
+          {
+            _id: contract._id,
+            isCurrent: true,
+            status: contract.status,
+            archivedAt: null,
+            finalDocument: null,
+          },
+          {
+            $set: {
+              ...updateFields,
+              updatedAt: new Date(),
+            },
+          },
+        );
+        if (dateUpdate.matchedCount !== 1) {
+          throw Object.assign(
+            new Error("Contract changed or became final before move-in dates could be realigned."),
+            { code: "CONTRACT_MOVEIN_REALIGNMENT_STALE", statusCode: 409 },
+          );
+        }
         contract = await Contract.findById(contract._id);
+        if (
+          !contract ||
+          contract.leaseStartDate?.getTime() !== leaseDates.leaseStartDate.getTime() ||
+          contract.leaseEndDate?.getTime() !== leaseDates.leaseEndDate.getTime()
+        ) {
+          throw Object.assign(
+            new Error("Contract move-in dates were not persisted."),
+            { code: "CONTRACT_MOVEIN_REALIGNMENT_NOT_PERSISTED", statusCode: 500 },
+          );
+        }
       }
     }
 
@@ -360,15 +403,37 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
     return { success: true, contractId: String(contract._id), status: contract.status };
   } catch (error) {
     logger.error({ err: error, reservationId }, "[AutoContract] Failed to auto-generate Move-In contract");
-    if (demotedGeneratedContractId) {
+    if (demotedGeneratedContractSnapshot) {
       try {
-        await Contract.updateOne({ _id: demotedGeneratedContractId, status: "ready_for_generation" }, { $set: { status: "generated" } });
+        const rollback = await Contract.collection.updateOne(
+          {
+            _id: demotedGeneratedContractSnapshot._id,
+            status: "ready_for_generation",
+          },
+          {
+            $set: {
+              status: "generated",
+              leaseStartDate: demotedGeneratedContractSnapshot.leaseStartDate,
+              leaseEndDate: demotedGeneratedContractSnapshot.leaseEndDate,
+              leaseDurationMonths: demotedGeneratedContractSnapshot.leaseDurationMonths,
+              advanceCoverageStart: demotedGeneratedContractSnapshot.advanceCoverageStart,
+              advanceCoverageEnd: demotedGeneratedContractSnapshot.advanceCoverageEnd,
+              updatedAt: new Date(),
+            },
+          },
+        );
+        if (rollback.matchedCount !== 1) {
+          throw new Error("Generated Contract changed before move-in realignment could be rolled back.");
+        }
         logger.warn(
-          { contractId: demotedGeneratedContractId },
+          { contractId: demotedGeneratedContractSnapshot._id },
           "[AutoContract] Regeneration failed — reverted Contract status to 'generated' so the prior valid Draft remains visible",
         );
       } catch (revertErr) {
-        logger.error({ err: revertErr, contractId: demotedGeneratedContractId }, "[AutoContract] Failed to revert Contract status after failed regeneration");
+        logger.error(
+          { err: revertErr, contractId: demotedGeneratedContractSnapshot._id },
+          "[AutoContract] Failed to revert Contract status and dates after failed regeneration",
+        );
       }
     }
     try {
