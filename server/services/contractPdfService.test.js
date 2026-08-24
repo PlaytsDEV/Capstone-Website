@@ -395,6 +395,21 @@ describe("prepared Contract PDF overlay", () => {
     expect(normalizeContractBedDisplay("LOWER")).toBe("Lower");
   });
 
+  test("a compact bed identifier (roomNumber-bunkBlock-position) is reduced to its position word for the legal PDF", () => {
+    // Real production shape from controllers/reservations/_helpers.js's
+    // targetBed.code assignment — too long to fit the field, but the
+    // trailing -U/-L/-S always encodes the position the field is meant to show.
+    expect(normalizeContractBedDisplay("GD-106-A-L")).toBe("Lower");
+    expect(normalizeContractBedDisplay("GP-6010-A-U")).toBe("Upper");
+    expect(normalizeContractBedDisplay("gp-711-a-u")).toBe("Upper");
+    expect(normalizeContractBedDisplay("GD-106-A-S")).toBe("");
+  });
+
+  test("an unrecognized bed label format is passed through unchanged, not silently altered", () => {
+    expect(normalizeContractBedDisplay("Bed A")).toBe("Bed A");
+    expect(normalizeContractBedDisplay("")).toBe("");
+  });
+
   test("production ignores the development debug overlay flag", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousDebug = process.env.CONTRACT_PDF_DEBUG_OVERLAY;
