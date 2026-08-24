@@ -10,6 +10,7 @@ import {
   normalizeContractRoomType,
   validateBranchRoomType,
 } from "../config/contractConfig.js";
+import { BUSINESS } from "../config/constants.js";
 
 const templateError = (message, code, details = undefined, statusCode = 400) =>
   Object.assign(new Error(message), { code, details, statusCode });
@@ -42,6 +43,13 @@ export const validateLeaseDuration = ({
   leaseStartDate,
   leaseEndDate,
   leaseDurationMonths,
+  // Must agree with the same configurable BusinessSettings threshold
+  // resolveContractLeasePricing() uses to actually price the lease
+  // (contractPricingResolver.js) — a hardcoded "6" here rejected
+  // legitimately short-term-priced 6-9 month leases whenever the
+  // business had configured a longer threshold (confirmed in production:
+  // longTermLeaseMinMonths = 10, not the code default of 6).
+  longTermLeaseMinMonths = BUSINESS.LONG_TERM_LEASE_MIN_MONTHS,
 }) => {
   if (!leaseStartDate || !leaseEndDate) {
     throw templateError("Approved lease start and end dates are required.", "LEASE_DATES_REQUIRED");
@@ -71,7 +79,8 @@ export const validateLeaseDuration = ({
     );
   }
   const canonicalLeaseType = normalizeLeaseType(leaseType);
-  const expectedLeaseType = roundedMonths < 6 ? "short-term" : "long-term";
+  const threshold = Number(longTermLeaseMinMonths) || BUSINESS.LONG_TERM_LEASE_MIN_MONTHS;
+  const expectedLeaseType = roundedMonths >= threshold ? "long-term" : "short-term";
   if (canonicalLeaseType !== expectedLeaseType) {
     throw templateError(
       "Lease type does not match the approved duration.",
@@ -101,10 +110,11 @@ export const resolveContractTemplate = ({
   leaseDurationMonths,
   requestedTemplateId = null,
   registry = OFFICIAL_CONTRACT_TEMPLATE_REGISTRY,
+  longTermLeaseMinMonths = BUSINESS.LONG_TERM_LEASE_MIN_MONTHS,
 }) => {
   const canonicalRoomType = validateBranchRoomType(branch, roomType);
   const duration = validateLeaseDuration({
-    leaseType, leaseStartDate, leaseEndDate, leaseDurationMonths,
+    leaseType, leaseStartDate, leaseEndDate, leaseDurationMonths, longTermLeaseMinMonths,
   });
   const templateId = `${canonicalRoomType}-${duration.leaseType}`;
   if (requestedTemplateId && requestedTemplateId !== templateId) {
