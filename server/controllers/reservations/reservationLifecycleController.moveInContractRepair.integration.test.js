@@ -77,8 +77,11 @@ const requestFor = (reservationId, body, overrides = {}) => ({
   id: "movein-contract-repair-test",
   params: { reservationId },
   body,
-  adminId: new mongoose.Types.ObjectId(),
+  // Production shape: verifyToken resolves the Firebase UID to the Mongo
+  // User doc and attaches it as req.authUser — the controller must read
+  // req.authUser._id, not a fabricated req.adminId (nothing ever sets that).
   user: { uid: "admin-firebase-uid" },
+  authUser: { _id: new mongoose.Types.ObjectId() },
   branchFilter: undefined,
   ...overrides,
 });

@@ -118,6 +118,11 @@ export const updateReservation = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    // req.authUser is the canonical Mongo User doc resolved from the
+    // Firebase UID by verifyToken/verifyAdmin — this is the only actor id
+    // that should ever be written to reviewer/approver audit fields.
+    const actorId = req.authUser?._id || null;
+
     const dedicatedSettlementFields = [
       "paymentStatus",
       "paymentDate",
@@ -298,8 +303,15 @@ export const updateReservation = async (req, res, next) => {
         req.body.isOutOfTownApproved = true;
       }
 
+      if (!actorId) {
+        return res.status(401).json({
+          error: "Unable to resolve the authenticated admin's account for this approval. Sign in again and retry.",
+          code: "APPROVAL_ACTOR_UNRESOLVED",
+        });
+      }
+
       req.body.applicationReviewedAt = new Date();
-      req.body.applicationReviewedBy = req.adminId || null;
+      req.body.applicationReviewedBy = actorId;
       req.body.approvedForPaymentAt = new Date();
       req.body.paymentExpiresAt = dayjs().add(15, "minute").toDate();
       req.body.applicationReviewReason = null;
@@ -315,7 +327,7 @@ export const updateReservation = async (req, res, next) => {
           pricingSnapshot = buildStructuredPricingSnapshot({
             reservation: existingReservation,
             room: existingReservation.roomId,
-            approvedBy: req.adminId || null,
+            approvedBy: actorId,
             approvedAt,
             businessSettings,
           });
@@ -332,7 +344,7 @@ export const updateReservation = async (req, res, next) => {
           financialWorkflowVersion: STRUCTURED_INITIAL_PAYMENT_WORKFLOW,
           pricingSnapshot,
           pricingApprovedAt: approvedAt,
-          pricingApprovedBy: req.adminId || null,
+          pricingApprovedBy: actorId,
           pricingSnapshotVersion: 1,
           reservationFeePaymentStatus: "pending",
           initialPaymentStatus: "not_created",
@@ -349,8 +361,15 @@ export const updateReservation = async (req, res, next) => {
           code: "APPLICATION_REVIEW_REASON_REQUIRED",
         });
       }
+      if (!actorId) {
+        return res.status(401).json({
+          error: "Unable to resolve the authenticated admin's account for this review. Sign in again and retry.",
+          code: "APPROVAL_ACTOR_UNRESOLVED",
+        });
+      }
+
       req.body.applicationReviewedAt = new Date();
-      req.body.applicationReviewedBy = req.adminId || null;
+      req.body.applicationReviewedBy = actorId;
       req.body.approvedForPaymentAt = null;
       req.body.applicationReviewReason = normalizedApplicationReviewReason;
     }
@@ -364,7 +383,7 @@ export const updateReservation = async (req, res, next) => {
             req.body.moveInException?.active === true
               ? {
                   ...req.body.moveInException,
-                  approvedBy: req.adminId || null,
+                  approvedBy: actorId,
                 }
               : null,
         },
@@ -543,7 +562,7 @@ export const updateReservation = async (req, res, next) => {
 
     if (req.body.houseRulesPrepared === true && !req.body.houseRulesPreparedAt) {
       req.body.houseRulesPreparedAt = new Date();
-      req.body.houseRulesPreparedBy = req.adminId || null;
+      req.body.houseRulesPreparedBy = actorId;
     }
     if (req.body.moveInException?.active === true) {
       req.body.moveInException = {
@@ -551,7 +570,7 @@ export const updateReservation = async (req, res, next) => {
         reason: String(req.body.moveInException.reason || "").trim(),
         expiresAt: req.body.moveInException.expiresAt || null,
         approvedAt: new Date(),
-        approvedBy: req.adminId || null,
+        approvedBy: actorId,
       };
     }
 
@@ -570,7 +589,7 @@ export const updateReservation = async (req, res, next) => {
       !existingReservation.scheduleRejected
     ) {
       reservation.scheduleRejectedAt = new Date();
-      reservation.scheduleRejectedBy = req.adminId || null;
+      reservation.scheduleRejectedBy = actorId;
       reservation.visitApproved = false;
       if (hasReservationStatus(existingReservation.status, LEGACY_VISIT_STATUSES, "pending")) {
         reservation.status = "visit_pending";
@@ -589,7 +608,7 @@ export const updateReservation = async (req, res, next) => {
             existingReservation.visitScheduledAt ||
             existingReservation.createdAt,
           rejectedAt: new Date(),
-          rejectedBy: req.adminId || null,
+          rejectedBy: actorId,
           attemptNumber,
         });
       }
@@ -712,10 +731,7 @@ export const updateReservation = async (req, res, next) => {
         const roomId =
           updatedReservation.roomId?._id || updatedReservation.roomId;
         const roomDoc = await Room.findById(roomId).lean();
-        const adminUser = await User.findOne({
-          firebaseUid: req.user.uid,
-        }).lean();
-        const recordedBy = req.adminId || adminUser?._id;
+        const recordedBy = actorId;
         const meterValue = Number(req.body.meterReading);
         const moveInDate = new Date(
           readMoveInDate(updatedReservation) || new Date(),
@@ -828,7 +844,7 @@ export const updateReservation = async (req, res, next) => {
         const rentBillResult = await ensureCurrentCycleRentBill({
           reservation: updatedReservation,
           tenantId,
-          actorId: req.adminId || null,
+          actorId,
         });
 
         if (rentBillResult?.bill) {
@@ -865,7 +881,7 @@ export const updateReservation = async (req, res, next) => {
             updatedReservation.moveInDate ||
             new Date(),
           actorId:
-            req.adminId ||
+            actorId ||
             updatedReservation.userId?._id ||
             updatedReservation.userId,
         });
