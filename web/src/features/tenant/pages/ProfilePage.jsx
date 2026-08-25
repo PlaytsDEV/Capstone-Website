@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "../../../shared/styles/notification.css";
 import "../styles/profile-page.css";
 import "../styles/profile-dark-overrides.css";
@@ -35,6 +35,7 @@ const ProfilePage = () => {
  const navigate = useNavigate();
  const location = useLocation();
  const queryClient = useQueryClient();
+ const recoveredMoveInSessionsRef = useRef(new Set());
  const canViewAnnouncements = authUser?.role === "tenant";
 
  const [activeTab, setActiveTab] = useState(
@@ -209,6 +210,7 @@ const ProfilePage = () => {
 
       if (sessionId) {
         try {
+          recoveredMoveInSessionsRef.current.add(sessionId);
           const result = await billingApi.checkPaymentStatus(sessionId);
           try {
             sessionStorage.removeItem("lilycrest_movein_session_id");
@@ -255,6 +257,83 @@ const ProfilePage = () => {
     verifyPayment();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
+
+  // Webhook-independent recovery: a tenant may close the PayMongo tab, lose
+  // redirect query parameters, or return after a delayed provider update. The
+  // Reservation stores the authoritative Checkout Session ID, so opening the
+  // profile automatically retries provider verification for any unsettled
+  // move-in payment. The server-side operation is idempotent.
+  useEffect(() => {
+    const reservations = Array.isArray(reservationsData) ? reservationsData : [];
+    const pendingReservation = reservations.find((reservation) => {
+      const initialStatus = reservation.initialPaymentStatus;
+      const fullyPaid =
+        initialStatus === "paid" || reservation.paymentStatus === "paid_in_full";
+      return !fullyPaid && Boolean(reservation.initialPaymentSessionId);
+    });
+
+    let storedSessionId = null;
+    try {
+      storedSessionId =
+        sessionStorage.getItem("lilycrest_movein_session_id") ||
+        localStorage.getItem("lilycrest_movein_session_id");
+    } catch {}
+
+    const sessionId = storedSessionId || pendingReservation?.initialPaymentSessionId;
+    if (
+      !sessionId ||
+      !String(sessionId).startsWith("cs_") ||
+      recoveredMoveInSessionsRef.current.has(sessionId)
+    ) {
+      return undefined;
+    }
+
+    recoveredMoveInSessionsRef.current.add(sessionId);
+    let cancelled = false;
+    const wait = (milliseconds) =>
+      new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+    const recoverPayment = async () => {
+      for (let attempt = 1; attempt <= 5 && !cancelled; attempt += 1) {
+        try {
+          const result = await billingApi.checkPaymentStatus(sessionId);
+          if (cancelled) return;
+
+          if (result?.status === "paid" || result?.requiresReview) {
+            try {
+              sessionStorage.removeItem("lilycrest_movein_session_id");
+              localStorage.removeItem("lilycrest_movein_session_id");
+            } catch {}
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+              queryClient.invalidateQueries({ queryKey: ["bills"] }),
+              queryClient.invalidateQueries({ queryKey: ["tenant-contracts"] }),
+            ]);
+            await refetchReservations();
+            if (!cancelled && result?.status === "paid") {
+              showNotification(
+                "Move-in payment confirmed and your balance has been updated.",
+                "success",
+                5000,
+              );
+            }
+            return;
+          }
+        } catch (error) {
+          if (attempt === 5) {
+            console.warn("Move-in payment background recovery deferred:", error);
+          }
+        }
+
+        if (attempt < 5 && !cancelled) await wait(2000);
+      }
+    };
+
+    void recoverPayment();
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient, refetchReservations, reservationsData]);
 
  const reservations = useMemo(() => reservationsData || [], [reservationsData]);
 

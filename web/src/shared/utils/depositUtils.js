@@ -65,19 +65,16 @@ export function resolveReservationFinancials(reservation = {}, profileData = nul
 
   // 1. Determine authoritative monthly rent based on chosen room & snapshots
   let monthlyRent = 0;
-  const candidates = [
+  const snapshotCandidates = [
     reservation.pricingSnapshot?.finalMonthlyRate,
     reservation.contract?.approvedMonthlyRate,
     reservation.pricingDisplay?.finalMonthlyRate,
     profileData?.financialSummary?.monthlyRate,
-    isShortTerm ? (room.shortTermRate || room.price) : (room.monthlyPrice || room.price),
-    room.price,
-    room.rent,
     reservation.monthlyRent,
     reservation.totalPrice,
   ];
 
-  for (const candidate of candidates) {
+  for (const candidate of snapshotCandidates) {
     const num = Number(candidate);
     if (Number.isFinite(num) && num > 0) {
       monthlyRent = num;
@@ -85,21 +82,37 @@ export function resolveReservationFinancials(reservation = {}, profileData = nul
     }
   }
 
-  // Self-heal room-type rate anomalies (e.g. private room having stale 5400/quadruple default):
+  // Self-heal room-type rate anomalies & align with lease duration tiers
   if (isPrivate) {
-    if (monthlyRent <= 0 || monthlyRent < 10000) {
-      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 14000) : (room.monthlyPrice || room.price || 13500));
-      if (monthlyRent < 10000) monthlyRent = isShortTerm ? 14400 : 13500;
+    const isCustomSnapshot = Boolean(
+      reservation.pricingSnapshot?.finalMonthlyRate ||
+      reservation.contract?.approvedMonthlyRate,
+    );
+    if (!isCustomSnapshot) {
+      if (monthlyRent <= 0 || monthlyRent < 10000 || (!isShortTerm && monthlyRent === 14400)) {
+        monthlyRent = isShortTerm
+          ? Number(room.shortTermRate || 14400)
+          : Number(room.monthlyPrice || (room.price && room.price <= 13500 ? room.price : 13500));
+      }
     }
   } else if (isDouble) {
-    if (monthlyRent <= 0 || monthlyRent < 7000) {
-      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 8000) : (room.monthlyPrice || room.price || 7200));
-      if (monthlyRent < 7000) monthlyRent = isShortTerm ? 8000 : 7200;
+    const isCustomSnapshot = Boolean(
+      reservation.pricingSnapshot?.finalMonthlyRate ||
+      reservation.contract?.approvedMonthlyRate,
+    );
+    if (!isCustomSnapshot) {
+      if (monthlyRent <= 0 || monthlyRent < 7000 || (!isShortTerm && monthlyRent === 8000)) {
+        monthlyRent = isShortTerm
+          ? Number(room.shortTermRate || 8000)
+          : Number(room.monthlyPrice || (room.price && room.price <= 7200 ? room.price : 7200));
+      }
     }
   } else {
     // Quadruple or general sharing
     if (monthlyRent <= 0) {
-      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 6300) : (room.monthlyPrice || room.price || 5400));
+      monthlyRent = isShortTerm
+        ? Number(room.shortTermRate || 6300)
+        : Number(room.monthlyPrice || (room.price && room.price <= 5400 ? room.price : 5400));
     }
   }
 

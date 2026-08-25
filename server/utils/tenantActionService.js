@@ -60,7 +60,7 @@ const parseDateTime = (dateInput, timeInput = "") => {
   return base;
 };
 
-const getMonthlyRent = (reservation) =>
+export const getMonthlyRent = (reservation) =>
   Number(reservation?.monthlyRent ?? reservation?.roomId?.monthlyPrice ?? reservation?.roomId?.price ?? 0);
 
 async function ensureActiveStay(reservation, actorId = null, session = null) {

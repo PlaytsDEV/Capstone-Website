@@ -602,13 +602,15 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     advanceRent,
     securityDeposit,
     grossTotal,
+    reservationFeeAmount,
+    remainingDue: calculatedRemainingDue,
   } = resolveReservationFinancials(reservation, profile);
 
   const totalSettlementAmount = Number(
     bill?.paidAmount ||
       bill?.totalAmount ||
-      (advanceRent + securityDeposit) ||
-      grossTotal,
+      calculatedRemainingDue ||
+      Math.max(0, advanceRent + securityDeposit - reservationFeeAmount),
   );
 
   const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
@@ -694,6 +696,14 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
       unitPrice: securityDeposit,
       amount: securityDeposit,
     },
+    {
+      title: "Less: Slot Reservation Fee Credit",
+      subtext: "Online reservation fee previously settled — credited directly against move-in requirements.",
+      qty: 1,
+      unitPrice: reservationFeeAmount,
+      amount: reservationFeeAmount,
+      isCredit: true,
+    },
   ];
 
   y = drawItemizedTable(doc, y, tableItems, "ADVANCE RENT & SECURITY DEPOSIT SETTLEMENT");
@@ -702,6 +712,7 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
   const subtotal = advanceRent + securityDeposit;
   const totals = [
     { label: "Subtotal Charges:", amount: subtotal },
+    { label: "Less: Slot Reservation Credit:", amount: reservationFeeAmount, isCredit: true },
     { label: "VAT / Tax (Exempt):", amount: 0 },
   ];
   totals.mainTotal = totalSettlementAmount;
