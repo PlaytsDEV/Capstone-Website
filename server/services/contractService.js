@@ -15,7 +15,10 @@ import {
 } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
 import { roomRequiresIndividualBed } from "./reservationContractEligibilityService.js";
-import { resolveTenantCanonicalContract } from "./tenantContractSelectionService.js";
+import {
+  resolveTenantCanonicalContract,
+  resolveCurrentStayForReservation,
+} from "./tenantContractSelectionService.js";
 import {
   resolveContractLeasePricing,
   resolveAuthoritativeLeasePricing,
@@ -131,7 +134,7 @@ export const createDraftContract = async ({
     Room.findById(reservation.roomId).lean(),
     stayId ? Stay.findById(stayId).lean() : reservation.currentStayId
       ? Stay.findById(reservation.currentStayId).lean()
-      : Stay.findOne({ reservationId: reservation._id, status: { $in: ["active", "ending_soon"] } }).lean(),
+      : resolveCurrentStayForReservation(reservation._id).lean(),
   ]);
   if (!tenant) throw serviceError("Reservation tenant not found.", "TENANT_NOT_FOUND", 404);
   if (!room) throw serviceError("Reservation room not found.", "ROOM_NOT_FOUND", 404);

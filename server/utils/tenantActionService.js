@@ -29,6 +29,11 @@ import {
   resolveRoomTransferSuccessor,
 } from "../services/contractRoomTransferActivationService.js";
 import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
+import {
+  CURRENT_STAY_STATUSES,
+  resolveCurrentStayForReservation,
+  resolveAuthoritativeCurrentContract,
+} from "../services/tenantContractSelectionService.js";
 import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
 import {
   resolveApplicablePrepaidRentForTransfer,
@@ -59,10 +64,7 @@ const getMonthlyRent = (reservation) =>
   Number(reservation?.monthlyRent ?? reservation?.roomId?.monthlyPrice ?? reservation?.roomId?.price ?? 0);
 
 async function ensureActiveStay(reservation, actorId = null, session = null) {
-  const existingStay = await Stay.findOne({
-    reservationId: reservation._id,
-    status: "active",
-  }).session(session);
+  const existingStay = await resolveCurrentStayForReservation(reservation._id, { session });
   if (existingStay) return existingStay;
 
   const moveInDate = readMoveInDate(reservation);
@@ -131,7 +133,7 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
       (bed) => String(room.id) !== String(stay?.roomId) || String(bed.id) !== String(stay?.bedId),
     ),
   );
-  const activeStay = Boolean(stay && stay.status === "active");
+  const activeStay = Boolean(stay && CURRENT_STAY_STATUSES.includes(stay.status));
   const tenantIsInactive = ["inactive", "moved_out"].includes(String(tenant?.tenantStatus || ""));
   const renewalExists = stay
     ? await Stay.exists({
@@ -184,10 +186,7 @@ export async function getTenantActionContext(reservationId) {
   if (!reservation) return null;
 
   const activeStay =
-    (await Stay.findOne({
-      reservationId,
-      status: "active",
-    }).lean()) || reservation;
+    (await resolveCurrentStayForReservation(reservationId).lean()) || reservation;
 
   const stayLike = activeStay._id && activeStay.leaseStartDate
     ? activeStay
@@ -309,7 +308,7 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
       }
 
       const activeStay = await ensureActiveStay(reservation, actorId, session);
-      if (!activeStay || activeStay.status !== "active") {
+      if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for renewal."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }
       if (["inactive", "moved_out"].includes(String(reservation.userId?.tenantStatus || ""))) {
@@ -420,10 +419,10 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
   // createSuccessorContractForRenewal's comment (contractService.js).
   if (result) {
     try {
-      const oldContract = await Contract.findOne({
+      const oldContract = await resolveAuthoritativeCurrentContract({
         reservationId: result.reservation._id,
-        isCurrent: true,
-      }).sort({ version: -1, createdAt: -1 });
+        tenantId: result.reservation.userId?._id || result.reservation.userId,
+      });
       if (oldContract) {
         const { autoGenerateRenewalContract } = await import("../services/autoContractOrchestratorService.js");
         autoGenerateRenewalContract({
@@ -492,7 +491,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 
       const activeStay = await ensureActiveStay(reservation, actorId, session);
       const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
-      if (!activeStay || activeStay.status !== "active") {
+      if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }
 
@@ -527,10 +526,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // exact destination room; see contractRoomTransferActivationService.js
       // for the canonical resolver/activator this reuses (no duplicated
       // Contract transition logic here).
-      const predecessorContract = await Contract.findOne({
+      const predecessorContract = await resolveAuthoritativeCurrentContract({
         reservationId: reservation._id,
-        isCurrent: true,
-      }).session(session).sort({ version: -1, createdAt: -1 });
+        tenantId: reservation.userId?._id || reservation.userId,
+        session,
+      });
       if (!predecessorContract || predecessorContract.status !== "active") {
         throw Object.assign(
           new Error("The tenant's current Contract is not active — room transfer cannot proceed."),
@@ -1072,7 +1072,7 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       }
 
       const activeStay = await ensureActiveStay(reservation, actorId, session);
-      if (!activeStay || activeStay.status !== "active") {
+      if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for move-out."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }
 
