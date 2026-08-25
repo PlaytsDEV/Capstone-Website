@@ -1057,4 +1057,285 @@ describe("paymentController", () => {
     );
     expect(next).not.toHaveBeenCalled();
   });
+
+  test("createMoveInCheckout settles an already-paid move-in session instead of issuing a fresh one", async () => {
+    const bill = {
+      _id: "bill_movein_paid",
+      userId: "tenant_1",
+      status: "pending",
+      paymongoSessionId: "cs_movein_paid",
+      grossAmount: 25000,
+      totalAmount: 25000,
+      remainingAmount: 25000,
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    const reservation = {
+      _id: "res_movein_paid",
+      userId: "tenant_1",
+      roomId: {
+        _id: "room_1",
+        name: "Private Room 101",
+        branch: "gil-puyat",
+        type: "private",
+        price: 13500,
+        monthlyPrice: 13500,
+        capacity: 1,
+      },
+      initialPaymentBillId: "bill_movein_paid",
+      reservationFeeAmount: 2000,
+      initialPaymentStatus: "pending",
+      paymentStatus: "pending",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    billFindById.mockResolvedValue(bill);
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        payments: [{ id: "pay_movein_1", attributes: { status: "paid", amount: 2500000, currency: "PHP" } }],
+      },
+    });
+    settlePaymongoBill.mockResolvedValue({ applied: true, appliedAmount: 25000 });
+
+    const req = { params: { resId: "res_movein_paid" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createMoveInCheckout(req, res, next);
+
+    expect(settlePaymongoBill).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bill,
+        paymentReference: "pay_movein_1",
+        settledAmount: 25000,
+      }),
+    );
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("ALREADY_PAID");
+  });
+
+  test("createDepositCheckout settles an already-paid reservation-fee session instead of issuing a fresh one", async () => {
+    const reservation = {
+      _id: "res_deposit_paid",
+      userId: "tenant_1",
+      roomId: { name: "GD-201", branch: "guadalupe" },
+      status: "payment_pending",
+      paymentStatus: "pending",
+      applicationSubmittedAt: new Date(),
+      reservationFeeAmount: 2000,
+      paymongoSessionId: "cs_deposit_paid",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        payments: [{ id: "pay_deposit_1", attributes: { status: "paid", amount: 200000, currency: "PHP" } }],
+      },
+    });
+    settleReservationDeposit.mockResolvedValue({ settled: true, reservation });
+
+    const req = { params: { resId: "res_deposit_paid" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(settleReservationDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservationId: "res_deposit_paid",
+        source: "paymongo",
+        externalPaymentId: "pay_deposit_1",
+        paymentReference: "pay_deposit_1",
+        idempotencyKey: "paymongo:pay_deposit_1",
+      }),
+    );
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("ALREADY_PAID");
+  });
+
+  test("createMoveInCheckout reuses an existing active unpaid session unchanged", async () => {
+    const bill = {
+      _id: "bill_movein_reuse",
+      userId: "tenant_1",
+      status: "pending",
+      paymongoSessionId: "cs_movein_reuse",
+      grossAmount: 25000,
+      totalAmount: 25000,
+      remainingAmount: 25000,
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+    const reservation = {
+      _id: "res_movein_reuse",
+      userId: "tenant_1",
+      roomId: {
+        _id: "room_1",
+        name: "Private Room 101",
+        branch: "gil-puyat",
+        type: "private",
+        price: 13500,
+        monthlyPrice: 13500,
+        capacity: 1,
+      },
+      initialPaymentBillId: "bill_movein_reuse",
+      reservationFeeAmount: 2000,
+      initialPaymentStatus: "pending",
+      paymentStatus: "pending",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    billFindById.mockResolvedValue(bill);
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        checkout_url: "https://checkout.test/cs_movein_reuse",
+        payments: [],
+        line_items: [{ amount: 2500000 }],
+        metadata: { amountDue: "25000" },
+      },
+    });
+
+    const req = { params: { resId: "res_movein_reuse" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createMoveInCheckout(req, res, next);
+
+    expect(settlePaymongoBill).not.toHaveBeenCalled();
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        checkoutUrl: "https://checkout.test/cs_movein_reuse",
+        sessionId: "cs_movein_reuse",
+        reused: true,
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createMoveInCheckout rejects immediately, with no PayMongo call, once the reservation is already fully settled", async () => {
+    const reservation = {
+      _id: "res_movein_settled",
+      userId: "tenant_1",
+      roomId: { _id: "room_1", name: "Private Room 101", branch: "gil-puyat" },
+      initialPaymentStatus: "paid",
+      paymentStatus: "paid_in_full",
+      save: jest.fn(),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+
+    const req = { params: { resId: "res_movein_settled" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createMoveInCheckout(req, res, next);
+
+    expect(getCheckoutSession).not.toHaveBeenCalled();
+    expect(settlePaymongoBill).not.toHaveBeenCalled();
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("ALREADY_PAID");
+  });
+
+  test("createDepositCheckout reuses an existing active unpaid session unchanged", async () => {
+    const reservation = {
+      _id: "res_deposit_reuse",
+      userId: "tenant_1",
+      roomId: { name: "GD-201", branch: "guadalupe" },
+      status: "payment_pending",
+      paymentStatus: "pending",
+      applicationSubmittedAt: new Date(),
+      reservationFeeAmount: 2000,
+      paymongoSessionId: "cs_deposit_reuse",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        checkout_url: "https://checkout.test/cs_deposit_reuse",
+        payments: [],
+        line_items: [{ amount: 200000 }],
+        metadata: { amountDue: "2000" },
+      },
+    });
+
+    const req = { params: { resId: "res_deposit_reuse" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(settleReservationDeposit).not.toHaveBeenCalled();
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        checkoutUrl: "https://checkout.test/cs_deposit_reuse",
+        sessionId: "cs_deposit_reuse",
+        reused: true,
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createDepositCheckout rejects immediately, with no PayMongo call, once the deposit is already settled", async () => {
+    const reservation = {
+      _id: "res_deposit_settled",
+      userId: "tenant_1",
+      roomId: { name: "GD-201", branch: "guadalupe" },
+      status: "reserved",
+      paymentStatus: "paid",
+      save: jest.fn(),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+
+    const req = { params: { resId: "res_deposit_settled" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(getCheckoutSession).not.toHaveBeenCalled();
+    expect(settleReservationDeposit).not.toHaveBeenCalled();
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("ALREADY_PAID");
+  });
 });

@@ -404,9 +404,43 @@ export const createDepositCheckout = async (req, res, next) => {
         const existing = await getCheckoutSession(reservation.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
+        const existingPaidPayments = readPaidPayments(existing);
         const existingAmountCents =
           existing?.attributes?.line_items?.[0]?.amount ??
           Math.round(Number(existing?.attributes?.metadata?.amountDue || 0) * 100);
+
+        if (existingPaidPayments.length > 0) {
+          // The session was already paid — settle it instead of silently
+          // issuing a fresh checkout that would ask the tenant to pay again
+          // while the original payment sits unreconciled at PayMongo.
+          logger.info(
+            { reservationId: String(reservation._id), sessionId: reservation.paymongoSessionId },
+            "createDepositCheckout: existing session already paid — settling",
+          );
+          const paymentReference = existingPaidPayments[0]?.id || reservation.paymongoSessionId;
+          const payObj = existingPaidPayments[0]?.attributes || existingPaidPayments[0] || {};
+          const paidAmount = Number(payObj.amount || 0) / 100;
+          const { paymentMethod: resolvedMethod, rawPaymentType } = readPaymentMethod(
+            existing,
+            existingPaidPayments,
+          );
+          await settleReservationDeposit({
+            reservationId: String(reservation._id),
+            source: "paymongo",
+            paidAmount: paidAmount > 0 ? paidAmount : amount,
+            externalPaymentId: paymentReference,
+            externalSessionId: reservation.paymongoSessionId,
+            paymentReference,
+            idempotencyKey: `paymongo:${paymentReference}`,
+            evidence: {
+              paymentMethod: rawPaymentType || resolvedMethod || "paymongo",
+              currency: String(payObj.currency || "PHP").toUpperCase(),
+            },
+            paidAt: new Date(),
+            fallbackFeeResolver: getReservationFeeAmount,
+          });
+          throw new AppError("Deposit is already paid", 400, "ALREADY_PAID");
+        }
 
         if (
           existingUrl &&
@@ -424,8 +458,13 @@ export const createDepositCheckout = async (req, res, next) => {
             reused: true,
           });
         }
-      } catch {
+      } catch (error) {
+        if (error?.code === "ALREADY_PAID") throw error;
         // Expired, invalid, or price-mismatch session: create a fresh one below.
+        logger.warn(
+          { err: error?.message, sessionId: reservation.paymongoSessionId },
+          "Deposit checkout session could not be reused — creating fresh checkout",
+        );
       }
     }
 
@@ -582,9 +621,40 @@ export const createMoveInCheckout = async (req, res, next) => {
         const existing = await getCheckoutSession(bill.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
+        const existingPaidPayments = readPaidPayments(existing);
         const existingAmountCents =
           existing?.attributes?.line_items?.[0]?.amount ??
           Math.round(Number(existing?.attributes?.metadata?.amountDue || 0) * 100);
+
+        if (existingPaidPayments.length > 0) {
+          // The session was already paid — settle it instead of silently
+          // issuing a fresh checkout that would ask the tenant to pay again
+          // while the original payment sits unreconciled at PayMongo.
+          logger.info(
+            { billId: String(bill._id), sessionId: bill.paymongoSessionId },
+            "createMoveInCheckout: existing session already paid — settling",
+          );
+          const paymentReference = existingPaidPayments[0]?.id || bill.paymongoSessionId;
+          const paidAmount = Number(existingPaidPayments[0]?.attributes?.amount || 0) / 100;
+          const settledAmount = paidAmount > 0
+            ? paidAmount
+            : Number(existing?.attributes?.metadata?.amountDue || 0);
+          await settlePaymongoBill({
+            bill,
+            paymentReference,
+            settledAmount,
+            source: "paymongo-polling",
+            metadata: {
+              sessionId: bill.paymongoSessionId,
+              sessionType: "bill",
+              reconciliationSource: "movein_checkout_retry",
+              currency: String(
+                existingPaidPayments[0]?.attributes?.currency || "PHP",
+              ).toUpperCase(),
+            },
+          });
+          throw new AppError("Move-in balance is already settled", 400, "ALREADY_PAID");
+        }
 
         if (
           existingUrl &&
@@ -597,8 +667,13 @@ export const createMoveInCheckout = async (req, res, next) => {
             reused: true,
           });
         }
-      } catch {
+      } catch (error) {
+        if (error?.code === "ALREADY_PAID") throw error;
         // Expired, invalid, or price-mismatch session: create fresh one below
+        logger.warn(
+          { err: error?.message, sessionId: bill.paymongoSessionId },
+          "Move-in checkout session could not be reused — creating fresh checkout",
+        );
       }
     }
 
