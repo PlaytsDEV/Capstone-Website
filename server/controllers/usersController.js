@@ -31,7 +31,8 @@ import {
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import { normalizeAddress } from "../utils/addressUtils.js";
 import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
-import { archiveContractForCancelledReservation } from "../services/contractArchiveService.js";
+import { archiveContractForCancelledReservation, archiveContractsForReservationHardDelete } from "../services/contractArchiveService.js";
+import { EARLY_STAGE_STATUSES } from "../services/tenantContractSelectionService.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import { sendPasswordResetLinkEmail } from "../config/email.js";
 import { buildCustomPasswordResetLink } from "../services/passwordResetService.js";
@@ -1296,6 +1297,44 @@ export const deleteUser = async (req, res, next) => {
       });
     }
 
+    // ── Safety guard: block deletion if this user has a Contract that has
+    // progressed past early-stage (draft/incomplete/ready_for_generation) and
+    // is not already archived. Below this point the Reservation itself is
+    // only ARCHIVED, never deleted — so unlike reservationCrudController's
+    // hard-delete (which cascades because the Reservation vanishes entirely),
+    // the actual risk here is narrower: the Contract's tenantId would point
+    // at a User that no longer exists while its reservationId still resolves.
+    // A "generated"+ Contract can carry a real prepared/signed lease
+    // document, so this must never be silently allowed through — require an
+    // admin to explicitly archive the Contract first (default), or, under
+    // owner force-delete, actively archive eligible Contracts as part of the
+    // cascade below rather than merely logging a warning about them.
+    const userReservations = await Reservation.find({
+      userId: user._id,
+      isArchived: { $ne: true },
+    }).select("_id").lean();
+    const userReservationIds = userReservations.map((r) => r._id);
+    const progressedContracts = userReservationIds.length
+      ? await Contract.find({
+          reservationId: { $in: userReservationIds },
+          archivedAt: null,
+          status: { $nin: [...EARLY_STAGE_STATUSES] },
+        }).select("_id contractNumber status reservationId").lean()
+      : [];
+
+    if (progressedContracts.length && !isForceDelete) {
+      return res.status(409).json({
+        error:
+          `Cannot delete this account — ${progressedContracts.length} Contract(s) have progressed beyond draft/incomplete and are not archived. ` +
+          "Archive or resolve those Contracts first, or use owner force-delete to have them archived automatically.",
+        code: "PROGRESSED_CONTRACT_BLOCK",
+        progressedContracts: progressedContracts.map((c) => ({
+          contractId: c._id, contractNumber: c.contractNumber, status: c.status,
+        })),
+        safeguards,
+      });
+    }
+
     // ── Transactional cleanup: archive reservations → release beds → delete user ──
     // Done inside a MongoDB session to ensure atomicity. If any step throws,
     // the user document is NOT deleted and beds remain correctly assigned.
@@ -1372,15 +1411,15 @@ export const deleteUser = async (req, res, next) => {
     }
     await releaseOrphanedBeds([user._id], []);
 
-    // ── Post-transaction: cascade-archive early-stage Contracts, and flag
-    // any progressed one for manual review ──────────────────────────────
+    // ── Post-transaction: cascade-archive early-stage Contracts; under
+    // force-delete, also archive progressed ones (the pre-check above
+    // already blocked non-force deletion when any existed) ──────────────
     // The archived Reservations above are preserved (not deleted), so a
     // Contract referencing them by reservationId is not orphaned in the
     // same fatal way a hard-deleted Reservation orphans its Contract — but
-    // its tenantId now points at a User that no longer exists. Mirrors the
-    // same non-blocking cascade already used when a Reservation is
-    // soft-deleted (reservationCrudController.js) rather than introducing a
-    // new hard block into this already-complex, force-delete-aware flow.
+    // its tenantId now points at a User that no longer exists, which is
+    // exactly what the PROGRESSED_CONTRACT_BLOCK guard above exists to
+    // prevent by default.
     for (const archivedReservationId of archivedReservationIds) {
       await archiveContractForCancelledReservation({
         reservationId: archivedReservationId,
@@ -1388,13 +1427,34 @@ export const deleteUser = async (req, res, next) => {
       }).catch((err) =>
         logger.warn({ err, archivedReservationId }, "Account delete: early-stage Contract archive failed (non-fatal)")
       );
-      const progressedContracts = await Contract.find({
+      const remainingProgressedContracts = await Contract.find({
         reservationId: archivedReservationId,
         archivedAt: null,
       }).select("_id contractNumber status").lean();
-      if (progressedContracts.length) {
+      if (!remainingProgressedContracts.length) continue;
+
+      if (isForceDelete) {
+        // Reached this deletion specifically because force-delete signals
+        // "archive these for me," not "silently leave them dangling."
+        // Reuses the same blocker-checked archival as a Reservation
+        // hard-delete — a Contract with real signed/final/billing evidence
+        // is never silently archived, even under force-delete; it's left
+        // for manual review instead.
+        await archiveContractsForReservationHardDelete({
+          reservationId: archivedReservationId,
+          actorId: actor?._id || null,
+        }).catch((err) =>
+          logger.warn(
+            { err, archivedReservationId, contracts: remainingProgressedContracts },
+            "Account delete (force): progressed Contract(s) could not be auto-archived — needs manual review",
+          )
+        );
+      } else {
+        // Only reachable if a progressed Contract appeared after the
+        // pre-check ran (a race) — log for manual review rather than
+        // silently leaving it dangling.
         logger.warn(
-          { archivedReservationId, contracts: progressedContracts },
+          { archivedReservationId, contracts: remainingProgressedContracts },
           "Account delete: Contract(s) beyond early-stage still reference a reservation whose tenant User was just deleted — needs manual review",
         );
       }
