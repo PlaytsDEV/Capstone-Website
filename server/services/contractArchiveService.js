@@ -269,6 +269,89 @@ export const archiveContractForCancelledReservation = async ({
   return archivedContracts;
 };
 
+// Cascade cleanup for hard-deleting a Reservation. Unlike
+// archiveContractForCancelledReservation above (which only touches
+// EARLY_STAGE_STATUSES because a cancelled-but-not-deleted Reservation might
+// still get a fresh Contract later), a hard delete permanently removes the
+// Reservation — any Contract still referencing it, at ANY lifecycle stage,
+// becomes an unrecoverable orphan the instant the delete commits. This was
+// the actual root cause behind a production orphan audit finding a
+// "generated"/tenant-visible Contract (with a real prepared PDF) whose
+// parent Reservation and tenant User no longer existed.
+//
+// A Contract with real signed/notarized/final documents, or billing/payment
+// activity, must NOT be silently archived here — that would hide evidence a
+// human needs to see. Those block the hard delete entirely instead (the
+// caller must resolve the Contract manually first, e.g. via archiveContract
+// with an explicit replacement, or leave the Reservation soft-archived).
+export const findReservationHardDeleteBlockers = async ({ reservationId, adapters = {} }) => {
+  const ContractModel = adapters.ContractModel || Contract;
+  const BillModel = adapters.BillModel || Bill;
+  const PaymentModel = adapters.PaymentModel || Payment;
+  const contracts = await ContractModel.find({ reservationId, archivedAt: null });
+  const blockers = [];
+  for (const contract of contracts) {
+    const [billings, payments] = await Promise.all([
+      BillModel.countDocuments({ contractId: contract._id }),
+      PaymentModel.countDocuments({ contractId: contract._id }),
+    ]);
+    const reasons = [];
+    if ((contract.signedDocuments || []).length > 0) reasons.push("signedDocuments");
+    if ((contract.notarizedDocuments || []).length > 0) reasons.push("notarizedDocuments");
+    if (contract.finalDocument || contract.finalStorageKey) reasons.push("finalDocument");
+    if (contract.printedAt || contract.printedBy) reasons.push("printedIssuance");
+    if (billings > 0) reasons.push("billings");
+    if (payments > 0) reasons.push("payments");
+    if (reasons.length) {
+      blockers.push({ contractId: contract._id, contractNumber: contract.contractNumber, reasons });
+    }
+  }
+  return { contracts, blockers };
+};
+
+export const archiveContractsForReservationHardDelete = async ({
+  reservationId, actorId = null, adapters = {},
+}) => {
+  const ContractModel = adapters.ContractModel || Contract;
+  const { contracts, blockers } = await findReservationHardDeleteBlockers({ reservationId, adapters });
+  if (blockers.length) {
+    throw Object.assign(
+      new Error("This reservation has Contract(s) with signed documents, final documents, or billing/payment activity — resolve them before permanently deleting the reservation."),
+      { statusCode: 409, code: "RESERVATION_HARD_DELETE_BLOCKED_BY_CONTRACT", blockers },
+    );
+  }
+  const archivedContracts = [];
+  for (const contract of contracts) {
+    const now = new Date();
+    const previousStatus = contract.status;
+    const reason = "Parent reservation was permanently deleted by an admin hard-delete.";
+    const archived = await ContractModel.findOneAndUpdate(
+      { _id: contract._id, archivedAt: null },
+      {
+        $set: {
+          status: "voided",
+          isCurrent: false,
+          isCanonical: false,
+          publicationStatus: "withdrawn",
+          tenantVisible: false,
+          archivedAt: now,
+          archivedBy: actorId,
+          archiveReason: reason,
+          archivedPreviousStatus: previousStatus,
+          voidedAt: now,
+          voidedBy: actorId,
+          voidReason: reason,
+          updatedBy: actorId,
+        },
+        $push: { statusHistory: { status: "voided", changedAt: now, changedBy: actorId, reason } },
+      },
+      { new: true },
+    );
+    if (archived) archivedContracts.push(archived);
+  }
+  return archivedContracts;
+};
+
 export const restoreArchivedContract = async ({ contractId, actorId, reason, adapters = {} }) => {
   const ContractModel = adapters.ContractModel || Contract;
   const contract = await ContractModel.findById(contractId);
