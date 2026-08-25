@@ -78,9 +78,12 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityReading: utilityReadingModel,
   MaintenanceRequest: maintenanceRequestModel,
   Contract: contractModel,
+  Stay: { findOne: jest.fn() },
 }));
+const archiveContractsForReservationHardDelete = jest.fn().mockResolvedValue([]);
 await jest.unstable_mockModule("../services/contractArchiveService.js", () => ({
   archiveContractForCancelledReservation,
+  archiveContractsForReservationHardDelete,
 }));
 
 await jest.unstable_mockModule("dayjs", () => ({ default: jest.fn() }));
@@ -1068,14 +1071,19 @@ describe("usersController", () => {
     maintenanceRequestModel.countDocuments.mockResolvedValue(1);
     roomModel.countDocuments.mockResolvedValue(1);
 
-    // reservations to archive in transaction
+    // reservations to archive in transaction — also used, unsessioned, by
+    // the pre-check for progressed Contracts (`await ...lean()`, no
+    // `.session()`), so the lean() result must double as both a plain
+    // array (for the pre-check's `.map()`) and carry `.session()` (for the
+    // in-transaction query).
+    const reservationLeanResult = [{ _id: "reservation-1" }];
+    reservationLeanResult.session = jest.fn().mockResolvedValue([{ _id: "reservation-1" }]);
     reservationModel.find.mockReturnValue({
       select: jest.fn().mockReturnValue({
-        lean: jest.fn().mockReturnValue({
-          session: jest.fn().mockResolvedValue([{ _id: "reservation-1" }]),
-        }),
+        lean: jest.fn().mockReturnValue(reservationLeanResult),
       }),
     });
+    contractModel.find.mockReturnValue(createFindChain([])); // no progressed Contracts
     reservationModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
     userModel.findByIdAndDelete.mockReturnValue({
       session: jest.fn().mockResolvedValue({ _id: "507f1f77bcf86cd799439011" }),
@@ -1115,6 +1123,122 @@ describe("usersController", () => {
       }),
     );
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("deleteUser blocks non-force deletion when a progressed Contract still references the user's reservation", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-tenant-1",
+      role: "tenant",
+      isArchived: false,
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011", firebaseUid: "firebase-tenant-1" }),
+    });
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "owner-1" }) }),
+    });
+    reservationModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "reservation-1" }) }),
+    });
+    reservationModel.countDocuments
+      .mockResolvedValueOnce(0)  // safeguards.reservations — no significant history, no force needed
+      .mockResolvedValueOnce(0)  // safeguards.activeReservations
+      .mockResolvedValueOnce(0); // activeOccupancyCount
+    billModel.countDocuments.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+    utilityReadingModel.countDocuments.mockResolvedValue(0);
+    maintenanceRequestModel.countDocuments.mockResolvedValue(0);
+    roomModel.countDocuments.mockResolvedValue(0);
+
+    // Call order: 1st = activeOccupancyReservations (must be empty so that
+    // check passes through), 2nd = the new progressed-Contract pre-check's
+    // userReservations lookup.
+    reservationModel.find
+      .mockReturnValueOnce({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) })
+      .mockReturnValueOnce({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: "reservation-1" }]) }) });
+    contractModel.find.mockReturnValue(createFindChain([
+      { _id: "contract-1", contractNumber: "LIL-GP-2026-00099", status: "generated", reservationId: "reservation-1" },
+    ]));
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      query: { hardDelete: "true" }, // no force
+      body: {},
+      user: { uid: "firebase-owner-1" },
+      branchFilter: null,
+      isOwner: true,
+      isAdmin: true,
+    };
+    const res = createResponse();
+    await deleteUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("PROGRESSED_CONTRACT_BLOCK");
+    expect(res.body.progressedContracts).toEqual([
+      expect.objectContaining({ contractId: "contract-1", contractNumber: "LIL-GP-2026-00099", status: "generated" }),
+    ]);
+    expect(userModel.findByIdAndDelete).not.toHaveBeenCalled();
+    expect(deleteUserFromAuth).not.toHaveBeenCalled();
+  });
+
+  test("deleteUser force delete archives a progressed Contract instead of leaving it orphaned", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-tenant-1",
+      role: "tenant",
+      isArchived: false,
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011", firebaseUid: "firebase-tenant-1" }),
+    });
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "owner-1" }) }),
+    });
+    reservationModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "reservation-1" }) }),
+    });
+    reservationModel.countDocuments
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+    billModel.countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    utilityReadingModel.countDocuments.mockResolvedValue(3);
+    maintenanceRequestModel.countDocuments.mockResolvedValue(1);
+    roomModel.countDocuments.mockResolvedValue(1);
+
+    const reservationLeanResult = [{ _id: "reservation-1" }];
+    reservationLeanResult.session = jest.fn().mockResolvedValue([{ _id: "reservation-1" }]);
+    reservationModel.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue(reservationLeanResult) }),
+    });
+    userModel.findByIdAndDelete.mockReturnValue({
+      session: jest.fn().mockResolvedValue({ _id: "507f1f77bcf86cd799439011" }),
+    });
+    reservationModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+
+    // Pre-check (Contract.find(...).select().lean()) AND the post-transaction
+    // re-check both see the same still-progressed Contract.
+    contractModel.find.mockReturnValue(createFindChain([
+      { _id: "contract-1", contractNumber: "LIL-GP-2026-00099", status: "generated", reservationId: "reservation-1" },
+    ]));
+    archiveContractsForReservationHardDelete.mockClear().mockResolvedValue([
+      { _id: "contract-1", status: "voided" },
+    ]);
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      query: { hardDelete: "true", force: "true" },
+      body: { confirmationText: "DELETE" },
+      user: { uid: "firebase-owner-1" },
+      branchFilter: null,
+      isOwner: true,
+      isAdmin: true,
+    };
+    const res = createResponse();
+    await deleteUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(userModel.findByIdAndDelete).toHaveBeenCalledWith("507f1f77bcf86cd799439011");
+    // The progressed Contract was actively archived, not merely warned about.
+    expect(archiveContractsForReservationHardDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationId: "reservation-1" }),
+    );
   });
 
   test.each([
