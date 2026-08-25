@@ -38,7 +38,12 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 
-import { Contract, Reservation, User, Bill, Payment } from "../models/index.js";
+import {
+  Contract, Reservation, User, Bill, Payment,
+  UtilityReading, BedHistory, TenantViolation, LeaseRenewal,
+  MoveOutClearance, TerminationReview, BillingDispute,
+  WaterBillingRecord, OverdueNotice, MaintenanceRequest,
+} from "../models/index.js";
 import { archiveContractsForReservationHardDelete } from "../services/contractArchiveService.js";
 
 dotenv.config();
@@ -70,15 +75,55 @@ async function countOtherCollectionReferences(reservationId, contractId) {
   return hits;
 }
 
-async function classifyOrphan(contract) {
+// Curated, not a blind scan: these are exactly the collections that record
+// real tenancy-lifecycle history keyed by tenantId/userId — utility bills,
+// bed-occupancy history, rent/deposit payments, disciplinary records,
+// renewal/move-out/termination/billing-dispute records, and maintenance
+// requests. Deliberately excludes purely operational/ephemeral collections
+// that also happen to have a userId/tenantId field but carry no lease
+// history evidence (Notification, AcknowledgmentAccount, BedCheckoutLock,
+// ChatConversation, AuditLog — "who did this" is not "what happened to
+// this tenancy"). A Contract found only via the reservationId/contractId
+// scan above (e.g. an orphaned Stay) was already being caught before this
+// change; this specifically closes the gap where the ONLY surviving
+// evidence is linked by tenantId/userId once the Reservation itself is
+// gone (e.g. utilityreadings, keyed by tenantId, found in the 2026-08-25
+// audit for LIL-GP-2026-00005/00008).
+const TENANT_LIFECYCLE_REFERENCE_CHECKS = [
+  { model: UtilityReading, field: "tenantId", label: "utilityReadings" },
+  { model: BedHistory, field: "tenantId", label: "bedHistory" },
+  { model: Payment, field: "tenantId", label: "payments(byTenant)" },
+  { model: TenantViolation, field: "tenantId", label: "tenantViolations" },
+  { model: LeaseRenewal, field: "tenantId", label: "leaseRenewals" },
+  { model: MoveOutClearance, field: "tenantId", label: "moveOutClearances" },
+  { model: TerminationReview, field: "tenantId", label: "terminationReviews" },
+  { model: BillingDispute, field: "tenantId", label: "billingDisputes" },
+  { model: WaterBillingRecord, field: "tenantId", label: "waterBillingRecords" },
+  { model: OverdueNotice, field: "tenantId", label: "overdueNotices" },
+  { model: Bill, field: "userId", label: "bills(byUser)" },
+  { model: MaintenanceRequest, field: "userId", label: "maintenanceRequests" },
+];
+
+export async function countTenantLifecycleReferences(tenantId) {
+  if (!tenantId) return [];
+  const hits = [];
+  for (const { model, field, label } of TENANT_LIFECYCLE_REFERENCE_CHECKS) {
+    const count = await model.countDocuments({ [field]: tenantId });
+    if (count > 0) hits.push(`${label}(${count})`);
+  }
+  return hits;
+}
+
+export async function classifyOrphan(contract) {
   if (contract.isCurrent !== true && TERMINAL_STATUSES.has(contract.status)) {
     return { classification: "ALREADY_INERT_NO_ACTION", reasons: [] };
   }
 
-  const [billings, payments, otherCollections] = await Promise.all([
+  const [billings, payments, otherCollections, tenantLifecycleRefs] = await Promise.all([
     Bill.countDocuments({ contractId: contract._id }),
     Payment.countDocuments({ contractId: contract._id }),
     countOtherCollectionReferences(contract.reservationId, contract._id),
+    countTenantLifecycleReferences(contract.tenantId),
   ]);
 
   const reasons = [];
@@ -89,6 +134,7 @@ async function classifyOrphan(contract) {
   if (billings > 0) reasons.push(`billings(${billings})`);
   if (payments > 0) reasons.push(`payments(${payments})`);
   if (otherCollections.length) reasons.push(`otherCollections(${otherCollections.join(",")})`);
+  if (tenantLifecycleRefs.length) reasons.push(`tenantLifecycle(${tenantLifecycleRefs.join(",")})`);
 
   if (reasons.length) {
     return { classification: "AMBIGUOUS_MANUAL_REVIEW", reasons };
@@ -96,7 +142,7 @@ async function classifyOrphan(contract) {
   return { classification: "DETERMINISTIC_ARCHIVABLE", reasons: [] };
 }
 
-async function main() {
+export async function main() {
   console.log(line());
   console.log(`  ORPHAN CONTRACT REPAIR${APPLY ? " [APPLY MODE]" : " [DRY-RUN]"}`);
   console.log(line());
@@ -175,7 +221,13 @@ async function main() {
   await mongoose.disconnect();
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Only run when executed directly (`node scripts/repairOrphanContracts.mjs`),
+// never when imported — e.g. by regression tests exercising classifyOrphan
+// / countTenantLifecycleReferences in isolation against a test database.
+const isDirectRun = process.argv[1] && process.argv[1].replaceAll("\\", "/").endsWith("scripts/repairOrphanContracts.mjs");
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}
