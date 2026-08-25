@@ -46,6 +46,7 @@ import {
 } from "./_helpers.js";
 import { getBusinessSettings } from "../../utils/businessSettings.js";
 import { resolveAuthoritativeLeasePricing } from "../../services/contractPricingResolver.js";
+import { resolveCurrentStayForReservation } from "../../services/tenantContractSelectionService.js";
 
 export const archiveReservation = async (req, res, next) => {
   try {
@@ -239,12 +240,8 @@ export const renewContract = async (req, res, next) => {
     );
     if (denied) return;
 
-    const { Stay } = await import("../../models/index.js");
     const actor = await findDbUser(req.user.uid);
-    const previousStaySnapshot = await Stay.findOne({
-      reservationId,
-      status: "active",
-    }).lean();
+    const previousStaySnapshot = await resolveCurrentStayForReservation(reservationId).lean();
     const result = await renewStayWorkflow({
       reservationId,
       payload: req.body,
@@ -660,8 +657,7 @@ export const respondToRenewalOffer = async (req, res, next) => {
 
     const offer = claimed.renewalOffers.find((o) => o.offerId === offerId);
 
-    const { Stay } = await import("../../models/index.js");
-    const activeStay = await Stay.findOne({ reservationId: claimed._id, status: "active" });
+    const activeStay = await resolveCurrentStayForReservation(claimed._id);
 
     let currentEndDate = activeStay?.leaseEndDate || computeLeaseEndDate(claimed) || new Date();
     const newStartDate = dayjs(currentEndDate).add(1, "day").toDate();
@@ -982,7 +978,7 @@ export const prepareRoomTransferContract = async (req, res, next) => {
       return res.status(400).json({ error: "Target room and bed are required.", code: "MISSING_TRANSFER_FIELDS" });
     }
 
-    const { Room, Stay } = await import("../../models/index.js");
+    const { Room } = await import("../../models/index.js");
     const targetRoomDoc = await Room.findById(targetRoomId).lean();
     if (!targetRoomDoc) {
       return res.status(404).json({ error: "Target room not found.", code: "TARGET_ROOM_NOT_FOUND" });
@@ -1000,7 +996,7 @@ export const prepareRoomTransferContract = async (req, res, next) => {
       return res.status(404).json({ error: "Target bed not found.", code: "TARGET_BED_NOT_FOUND" });
     }
 
-    const activeStay = await Stay.findOne({ reservationId: reservation._id, status: "active" });
+    const activeStay = await resolveCurrentStayForReservation(reservation._id);
     if (!activeStay) {
       return res.status(400).json({ error: "No active stay found for this reservation.", code: "NO_ACTIVE_STAY" });
     }

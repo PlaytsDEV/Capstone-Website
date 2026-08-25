@@ -1,5 +1,29 @@
 import { Contract, Stay } from "../models/index.js";
 
+// Single source of truth for "is this Stay currently in effect" — i.e. the
+// tenant's authoritative current lease. Historically this was defined
+// three different ways across the codebase: this selector (active +
+// ending_soon), and several call sites in tenantActionService.js /
+// tenancyActionsController.js that matched only the exact "active" status.
+// That divergence meant a Stay flipping active -> ending_soon (which is a
+// normal, expected transition, not an anomaly) would still be "current" for
+// this selector's ranking purposes but silently stop being "current" for
+// ensureActiveStay/renewal/transfer, which would then fall through to
+// creating a second Stay for the same reservation. Every current-lease
+// lookup in the codebase should resolve through resolveCurrentStayFor* below
+// instead of querying Stay directly with its own status list.
+export const CURRENT_STAY_STATUSES = Object.freeze(["active", "ending_soon"]);
+
+export const resolveCurrentStayForReservation = (reservationId, { session = null } = {}) =>
+  Stay.findOne({ reservationId, status: { $in: CURRENT_STAY_STATUSES } })
+    .sort({ leaseStartDate: -1 })
+    .session(session);
+
+export const resolveCurrentStayForTenant = (tenantId, { session = null } = {}) =>
+  Stay.findOne({ tenantId, status: { $in: CURRENT_STAY_STATUSES } })
+    .sort({ leaseStartDate: -1 })
+    .session(session);
+
 const PRIMARY_VISIBLE_STATUSES = new Set([
   "generated",
   "awaiting_signatures",
@@ -154,16 +178,49 @@ export const selectCanonicalTenantContract = ({
 
 export const resolveTenantCanonicalContract = async (tenantId, { includeEarlyStages = false } = {}) => {
   const [activeStay, contracts] = await Promise.all([
-    Stay.findOne({
-      tenantId,
-      status: { $in: ["active", "ending_soon"] },
-    }).sort({ leaseStartDate: -1 }).lean(),
+    resolveCurrentStayForTenant(tenantId).lean(),
     // Ownership is unconditional (tenantId scoping only) — includeEarlyStages
     // only widens which *statuses* of the tenant's own Contracts are
     // eligible, never whose Contracts are considered.
     Contract.find({ tenantId }).sort({ createdAt: -1 }),
   ]);
   return selectCanonicalTenantContract({ contracts, activeStay, includeEarlyStages });
+};
+
+// Renewal/transfer entry points (tenantActionService.js) need "the tenant's
+// current authoritative Contract for THIS reservation" — previously each
+// implemented its own ad-hoc `Contract.findOne({reservationId, isCurrent:
+// true}).sort({version:-1})`, which (a) used a different definition of
+// "current" than the tenant-facing selector above (no ranking/tie-break,
+// just "newest version"), and (b) could silently pick a wrong/stale record
+// on the exact data shape (two isCurrent:true Contracts for one
+// reservation) that makes the tenant-facing selector throw
+// MULTIPLE_CANONICAL_CONTRACTS — same underlying anomaly, two different
+// behaviors depending on which code path ran first. Renewal, transfer, and
+// contract generation must all resolve "the current lease" through this one
+// function so they can never disagree with each other or with what the
+// tenant sees on /contracts/current.
+export const resolveAuthoritativeCurrentContract = async ({
+  reservationId = null,
+  tenantId = null,
+  includeEarlyStages = false,
+  now = new Date(),
+  session = null,
+} = {}) => {
+  if (!reservationId && !tenantId) {
+    throw new Error("resolveAuthoritativeCurrentContract requires a reservationId or tenantId");
+  }
+
+  const activeStay = reservationId
+    ? await resolveCurrentStayForReservation(reservationId, { session })
+    : await resolveCurrentStayForTenant(tenantId, { session });
+
+  const scopeTenantId = tenantId || activeStay?.tenantId || null;
+  const contracts = scopeTenantId
+    ? await Contract.find({ tenantId: scopeTenantId }).session(session).sort({ createdAt: -1 })
+    : await Contract.find({ reservationId }).session(session).sort({ createdAt: -1 });
+
+  return selectCanonicalTenantContract({ contracts, activeStay, includeEarlyStages, now });
 };
 
 export const resolveTenantContractHistory = async (tenantId) => {
