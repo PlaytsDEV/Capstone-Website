@@ -20,9 +20,22 @@ const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 // nothing below this file requires the field.
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+let socketModulePromise = null;
+function getSocketModule() {
+  if (process.env.NODE_ENV === "test") {
+    return Promise.resolve(null);
+  }
+  if (!socketModulePromise) {
+    socketModulePromise = import('../../utils/socket.js').catch(() => null);
+  }
+  return socketModulePromise;
+}
+
 async function emitMaintenanceUpdatedToAdmins(request, extra = {}) {
   try {
-    const { emitToAdmins, emitToUser } = await import('../../utils/socket.js');
+    const socketModule = await getSocketModule();
+    if (!socketModule) return;
+    const { emitToAdmins } = socketModule;
     const payload = {
       requestId: String(request?._id || request?.id || request?.request_id || ''),
       request_id: request?.request_id,
@@ -32,9 +45,11 @@ async function emitMaintenanceUpdatedToAdmins(request, extra = {}) {
       isArchived: Boolean(request?.isArchived),
       ...extra,
     };
-    emitToAdmins('ticket:updated', payload);
-    if (extra?.message) {
-      emitToAdmins('ticket:message', payload);
+    if (typeof emitToAdmins === 'function') {
+      emitToAdmins('ticket:updated', payload);
+      if (extra?.message) {
+        emitToAdmins('ticket:message', payload);
+      }
     }
   } catch {
     // non-fatal
@@ -692,8 +707,10 @@ function stripTenantRequestFields(request) {
   clean.ticketNumber = clean.ticketNumber || `MNT-${new Date(clean.created_at || Date.now()).getFullYear()}-${String(clean.request_id || clean.id || '0000').slice(-4).toUpperCase()}`;
   clean.ticket_number = clean.ticketNumber;
   clean.reopenCount = typeof clean.reopenCount === 'number' ? clean.reopenCount : (Array.isArray(clean.reopen_history) ? clean.reopen_history.length : 0);
-  clean.reopen_count = clean.reopenCount;
-  clean.tenant_confirmed_resolved = Boolean(clean.tenant_confirmed_resolved || clean.resolutionConfirmation?.confirmedAt);
+  clean.tenant_confirmed_resolved = Boolean(
+    clean.tenant_confirmed_resolved ||
+      (clean.resolutionConfirmation?.confirmedAt && clean.resolutionConfirmation?.action !== "rejected_back_to_in_progress")
+  );
 
   return clean;
 }

@@ -1606,6 +1606,11 @@ export function MaintenanceDetailModal({
       )
     : [];
 
+  const latestReworkEvent = (request?.statusHistory || [])
+    .slice()
+    .reverse()
+    .find((entry) => entry.event === "tenant_rejected_resolution");
+
   const assignedProviderName =
     request?.assignedProviderName ||
     request?.assigned_to ||
@@ -2275,6 +2280,24 @@ export function MaintenanceDetailModal({
                           </button>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Tenant Rework Feedback Callout */}
+                  {latestReworkEvent && ["pending", "viewed", "reviewed", "in_progress", "scheduled", "provider_assigned", "waiting_tenant"].includes(status) && (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3.5 space-y-1.5">
+                      <div className="flex items-center justify-between flex-wrap gap-1">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
+                          <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>Tenant Reported Issue Unresolved (Rework Required)</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {fmtDateTime(latestReworkEvent.timestamp)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 italic">
+                        &ldquo;{latestReworkEvent.note || "Tenant indicated the repair did not completely resolve the issue."}&rdquo;
+                      </p>
                     </div>
                   )}
 
@@ -3325,7 +3348,10 @@ export function MaintenanceDetailModal({
                       request?.resolution_note ||
                       request?.resolutionNote ||
                       null;
-                    const hasTenantConfirmed = Boolean(request?.resolutionConfirmation?.confirmedAt);
+                    const hasTenantConfirmed = Boolean(
+                      request?.resolutionConfirmation?.confirmedAt &&
+                        request?.resolutionConfirmation?.action !== "rejected_back_to_in_progress"
+                    );
                     const totalLabor = Number(request?.costBreakdown?.laborCost || 0);
                     const totalMaterials = Number(request?.costBreakdown?.materialsCost || 0);
                     const totalCost = totalLabor + totalMaterials;

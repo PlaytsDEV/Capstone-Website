@@ -285,16 +285,28 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     request.work_started_at = eventTimestamp;
   }
 
-  if (statusChanged && ["resolved", "completed", "closed"].includes(nextStatus)) {
+  if (statusChanged && nextStatus === "resolved") {
+    const actor = buildActorSnapshot(adminUser);
+    request.resolved_at = eventTimestamp;
+    request.resolvedBy = actor.actor_id || null;
+    request.resolvedByName = actor.actor_name || null;
+    request.resolution_note =
+      nextNotes ?? request.resolution_note ?? request.notes ?? null;
+    request.closed_at = null;
+    request.resolutionConfirmation = {
+      confirmedAt: null,
+      tenantFeedback: null,
+      rating: null,
+      action: null,
+    };
+  } else if (statusChanged && ["completed", "closed"].includes(nextStatus)) {
     const actor = buildActorSnapshot(adminUser);
     request.resolved_at = request.resolved_at || eventTimestamp;
     request.resolvedBy = request.resolvedBy || actor.actor_id || null;
     request.resolvedByName = request.resolvedByName || actor.actor_name || null;
     request.resolution_note =
       nextNotes ?? request.resolution_note ?? request.notes ?? null;
-    if (nextStatus === "closed" || nextStatus === "completed") {
-      request.closed_at = request.closed_at || eventTimestamp;
-    }
+    request.closed_at = request.closed_at || eventTimestamp;
   }
 
   if (statusChanged && nextStatus === "reviewed") {
@@ -310,6 +322,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     if (!["resolved", "completed"].includes(nextStatus)) {
       request.resolved_at = null;
       request.resolution_note = null;
+      request.resolutionConfirmation = {
+        confirmedAt: null,
+        tenantFeedback: null,
+        rating: null,
+        action: null,
+      };
     }
   }
 
@@ -2047,9 +2065,13 @@ export const saveResolutionProof = async (req, res, next) => {
       request.status = targetStatus;
       request.resolved_at = eventTimestamp;
       request.resolution_note = note || request.resolution_note || "Resolution proof uploaded.";
-      if (targetStatus === "completed") {
-        request.closed_at = eventTimestamp;
-      }
+      request.closed_at = targetStatus === "completed" ? eventTimestamp : null;
+      request.resolutionConfirmation = {
+        confirmedAt: null,
+        tenantFeedback: null,
+        rating: null,
+        action: null,
+      };
       
       appendStatusHistory(request, {
         event: "resolution_proof_uploaded",
@@ -2168,6 +2190,12 @@ export const reopenAdminMaintenanceRequest = async (req, res, next) => {
     request.resolved_at = null;
     request.closed_at = null;
     request.resolution_note = null;
+    request.resolutionConfirmation = {
+      confirmedAt: null,
+      tenantFeedback: null,
+      rating: null,
+      action: null,
+    };
     if (targetStatus === "in_progress" && !request.work_started_at) {
       request.work_started_at = reopenedAt;
     }

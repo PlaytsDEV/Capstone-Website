@@ -250,7 +250,8 @@ export const getMyBills = async (req, res, next) => {
       status: { $ne: "draft" },
       isArchived: false,
     })
-      .populate("roomId", "name branch type")
+      .populate("roomId", "name branch type price monthlyPrice")
+      .populate("reservationId", "pricingSnapshot reservationFeeAmount monthlyRent rentAmount advanceRent securityDeposit financialWorkflowVersion initialPaymentBreakdown")
       .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
       .lean();
 
@@ -267,7 +268,94 @@ export const getMyBills = async (req, res, next) => {
             await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "water" });
         }
 
-        const visible = getVisibleBillSnapshot(b);
+        const isInitialPayment = b.billType === "initial_payment";
+        let resolvedInitialBreakdown = null;
+
+        if (isInitialPayment) {
+          const embedded = b.initialPaymentBreakdown || {};
+          const resObj = b.reservationId || {};
+          const snapshot = resObj.pricingSnapshot || {};
+          const roomPrice = Number(b.roomId?.monthlyPrice || b.roomId?.price || 0);
+
+          const rawAdvance = Number(
+            embedded.advanceRent ||
+              snapshot.advanceRentAmount ||
+              snapshot.finalMonthlyRate ||
+              resObj.advanceRent ||
+              resObj.monthlyRent ||
+              roomPrice ||
+              0,
+          );
+
+          const rawDeposit = Number(
+            embedded.securityDeposit ||
+              snapshot.securityDepositAmount ||
+              snapshot.finalMonthlyRate ||
+              resObj.securityDeposit ||
+              resObj.monthlyRent ||
+              roomPrice ||
+              0,
+          );
+
+          const rawInitialCharges = Number(
+            embedded.approvedInitialCharges ||
+              snapshot.approvedInitialCharges ||
+              0,
+          );
+
+          const rawCredit = Number(
+            embedded.reservationFeeCredit ||
+              b.reservationCreditApplied ||
+              snapshot.reservationFeeAmount ||
+              resObj.reservationFeeAmount ||
+              0,
+          );
+
+          const grossInitial = Number(
+            embedded.grossInitialAmount ||
+              b.grossAmount ||
+              (rawAdvance + rawDeposit + rawInitialCharges) ||
+              0,
+          );
+
+          const initialTotal = Number(
+            embedded.initialPaymentTotal ||
+              b.totalAmount ||
+              Math.max(grossInitial - rawCredit, 0) ||
+              0,
+          );
+
+          resolvedInitialBreakdown = {
+            advanceRent: rawAdvance,
+            securityDeposit: rawDeposit,
+            approvedInitialCharges: rawInitialCharges,
+            reservationFeeCredit: rawCredit,
+            grossInitialAmount: grossInitial,
+            initialPaymentTotal: initialTotal,
+          };
+        }
+
+        const visible = getVisibleBillSnapshot({
+          ...b,
+          initialPaymentBreakdown: resolvedInitialBreakdown || b.initialPaymentBreakdown,
+        });
+
+        const totalAmount = isInitialPayment
+          ? Number(visible.totalAmount || resolvedInitialBreakdown?.initialPaymentTotal || b.totalAmount || 0)
+          : visible.totalAmount;
+
+        const grossAmount = isInitialPayment
+          ? Number(visible.grossAmount || resolvedInitialBreakdown?.grossInitialAmount || b.grossAmount || 0)
+          : visible.grossAmount;
+
+        const paidAmount = isInitialPayment && b.status === "paid" && !b.paidAmount
+          ? totalAmount
+          : (b.paidAmount || 0);
+
+        const reservationCreditApplied = isInitialPayment
+          ? Number(b.reservationCreditApplied || resolvedInitialBreakdown?.reservationFeeCredit || 0)
+          : (b.reservationCreditApplied || 0);
+
         return {
           id: b._id,
           billReference: formatBillReference(b),
@@ -282,10 +370,10 @@ export const getMyBills = async (req, res, next) => {
           utilityPeriodId: null,
           additionalCharges: b.additionalCharges || [],
           charges: visible.charges,
-          totalAmount: visible.totalAmount,
-          grossAmount: visible.grossAmount,
-          reservationCreditApplied: b.reservationCreditApplied || 0,
-          paidAmount: b.paidAmount || 0,
+          totalAmount,
+          grossAmount,
+          reservationCreditApplied,
+          paidAmount,
           remainingAmount: visible.remainingAmount,
           status: visible.status,
           proRataDays: b.proRataDays,
@@ -293,7 +381,7 @@ export const getMyBills = async (req, res, next) => {
           billType: b.billType || "monthly",
           structuredWorkflowVersion: b.structuredWorkflowVersion || null,
           pricingSnapshotVersion: b.pricingSnapshotVersion || null,
-          initialPaymentBreakdown: b.initialPaymentBreakdown || null,
+          initialPaymentBreakdown: resolvedInitialBreakdown || b.initialPaymentBreakdown || null,
           room: b.roomId?.name || "N/A",
           branch: b.branch,
           paymentProof: b.paymentProof || { verificationStatus: "none" },

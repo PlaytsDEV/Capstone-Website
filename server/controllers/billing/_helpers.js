@@ -1103,18 +1103,95 @@ export function formatRentBillPreview({ reservation, bill, duplicate = null, cyc
   };
 }
 
+export async function resolveInitialPaymentBreakdownFallback(bill, reservation, room) {
+  if (bill?.billType !== "initial_payment") return null;
+  const embedded = bill.initialPaymentBreakdown || {};
+  const resObj = reservation || {};
+  const snapshot = resObj.pricingSnapshot || {};
+  const roomObj = room || resObj.roomId || bill.roomId || {};
+  const roomPrice = Number(roomObj.monthlyPrice || roomObj.price || 0);
+
+  const rawAdvance = Number(
+    embedded.advanceRent ||
+      snapshot.advanceRentAmount ||
+      snapshot.finalMonthlyRate ||
+      resObj.advanceRent ||
+      resObj.monthlyRent ||
+      roomPrice ||
+      0,
+  );
+
+  const rawDeposit = Number(
+    embedded.securityDeposit ||
+      snapshot.securityDepositAmount ||
+      snapshot.finalMonthlyRate ||
+      resObj.securityDeposit ||
+      resObj.monthlyRent ||
+      roomPrice ||
+      0,
+  );
+
+  const rawInitialCharges = Number(
+    embedded.approvedInitialCharges ||
+      snapshot.approvedInitialCharges ||
+      0,
+  );
+
+  const rawCredit = Number(
+    embedded.reservationFeeCredit ||
+      bill.reservationCreditApplied ||
+      snapshot.reservationFeeAmount ||
+      resObj.reservationFeeAmount ||
+      0,
+  );
+
+  const grossInitial = Number(
+    embedded.grossInitialAmount ||
+      bill.grossAmount ||
+      (rawAdvance + rawDeposit + rawInitialCharges) ||
+      0,
+  );
+
+  const initialTotal = Number(
+    embedded.initialPaymentTotal ||
+      bill.totalAmount ||
+      Math.max(grossInitial - rawCredit, 0) ||
+      0,
+  );
+
+  return {
+    advanceRent: rawAdvance,
+    securityDeposit: rawDeposit,
+    approvedInitialCharges: rawInitialCharges,
+    reservationFeeCredit: rawCredit,
+    grossInitialAmount: grossInitial,
+    initialPaymentTotal: initialTotal,
+  };
+}
+
 export async function generateRentBillPdf({ bill, reservation }) {
-  const room = reservation.roomId || bill.roomId;
-  const tenant = reservation.userId || bill.userId;
-  const visible = getVisibleBillSnapshot(bill);
+  const room = reservation?.roomId || bill.roomId;
+  const tenant = reservation?.userId || bill.userId;
+  const isInitial = bill.billType === "initial_payment";
+  const initialBreakdown = isInitial
+    ? await resolveInitialPaymentBreakdownFallback(bill, reservation, room)
+    : null;
+
+  const visible = getVisibleBillSnapshot({
+    ...(bill.toObject ? bill.toObject() : bill),
+    initialPaymentBreakdown: initialBreakdown || bill.initialPaymentBreakdown,
+  });
+
   const billPayload = {
     ...(bill.toObject ? bill.toObject() : bill),
     billReference: formatBillReference(bill),
     charges: visible.charges,
     totalAmount: visible.totalAmount,
+    grossAmount: visible.grossAmount,
     remainingAmount: visible.remainingAmount,
     dueDate: visible.dueDate,
     issuedAt: visible.issuedAt,
+    initialPaymentBreakdown: initialBreakdown || bill.initialPaymentBreakdown || null,
   };
   const electricityBreakdown = Number(billPayload.charges?.electricity || 0) > 0
     ? await buildTenantUtilityBreakdown({ dbUser: { _id: bill.userId?._id || bill.userId }, bill, utilityType: "electricity" })
@@ -1155,15 +1232,27 @@ export async function generateCanonicalBillReceiptPdf({ bill, tenant, room = nul
     || !fs.existsSync(absolutePath)
     || isBillReceiptStale(bill, sourceVersion)
   ) {
-    const visible = getVisibleBillSnapshot(bill);
+    const isInitial = bill.billType === "initial_payment";
+    const initialBreakdown = isInitial
+      ? await resolveInitialPaymentBreakdownFallback(bill, bill.reservationId, room)
+      : null;
+
+    const visible = getVisibleBillSnapshot({
+      ...(bill.toObject ? bill.toObject() : bill),
+      initialPaymentBreakdown: initialBreakdown || bill.initialPaymentBreakdown,
+    });
+
     const receiptPath = await generateBillReceiptPdf({
-      bill: bill.toObject ? bill.toObject() : bill,
+      bill: {
+        ...(bill.toObject ? bill.toObject() : bill),
+        initialPaymentBreakdown: initialBreakdown || bill.initialPaymentBreakdown || null,
+      },
       tenant,
       room,
       billReference: formatBillReference(bill),
       payments,
       legacyPayment: payments.length === 0 ? {
-        amount: Number(bill.paidAmount || visible.totalAmount || 0),
+        amount: Number(bill.paidAmount || visible.totalAmount || initialBreakdown?.initialPaymentTotal || 0),
         method: bill.paymentMethod || null,
         settledAt: bill.paymentDate || null,
         reference: formatDisplayReference(bill.paymentReference || bill.paymongoPaymentId) || null,

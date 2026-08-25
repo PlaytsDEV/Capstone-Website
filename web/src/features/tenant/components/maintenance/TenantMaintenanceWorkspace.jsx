@@ -188,7 +188,7 @@ function MaintenanceStepTracker({
   onSelectStage,
 }) {
   const isReopenedRequest = isReopened === true;
-  const currentIndex = isReopenedRequest ? 0 : getStepIndex(status);
+  const currentIndex = getStepIndex(status);
   const selectedIdx = typeof inspectedStageIndex === "number" ? inspectedStageIndex : currentIndex;
 
   return (
@@ -196,7 +196,7 @@ function MaintenanceStepTracker({
       {isReopenedRequest ? (
         <div className="step-tracker-reopened-badge">
           <AlertTriangle size={14} />
-          <span>Reopened Request (Iteration #{reopenCount || 1}) - Under Active Review</span>
+          <span>Reopened Request (Iteration #{reopenCount || 1}) - Under Active Service</span>
         </div>
       ) : null}
       <div className="step-tracker-track">
@@ -205,7 +205,7 @@ function MaintenanceStepTracker({
             idx < currentIndex ||
             (idx === CANONICAL_STEPS.length - 1 && currentIndex === CANONICAL_STEPS.length - 1);
           const isCurrent =
-            idx === currentIndex && currentIndex !== CANONICAL_STEPS.length - 1 && !isReopenedRequest;
+            idx === currentIndex && currentIndex !== CANONICAL_STEPS.length - 1;
           const isClickable = isCompleted || isCurrent;
           const isInspected = idx === selectedIdx;
 
@@ -245,12 +245,12 @@ function MaintenanceStageCardWindow({
   hideActions = false,
 }) {
   const isReopenedRequest = request.isReopened === true;
-  const currentIndex = isReopenedRequest ? 0 : getStepIndex(request.status);
+  const currentIndex = getStepIndex(request.status);
   const selectedIdx = typeof inspectedStageIndex === "number" ? inspectedStageIndex : currentIndex;
   const inspectedStep = CANONICAL_STEPS[selectedIdx] || CANONICAL_STEPS[currentIndex] || CANONICAL_STEPS[0];
   const inspectedKey = inspectedStep.key;
 
-  const isInspectingCurrent = selectedIdx === currentIndex && !isReopenedRequest;
+  const isInspectingCurrent = selectedIdx === currentIndex;
   const isInspectingCompleted =
     selectedIdx < currentIndex ||
     (selectedIdx === CANONICAL_STEPS.length - 1 && currentIndex === CANONICAL_STEPS.length - 1);
@@ -265,7 +265,11 @@ function MaintenanceStageCardWindow({
     "";
   const scheduledDate = request.schedule?.scheduledDate;
   const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
-  const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
+  const isConfirmed = Boolean(
+    request.resolutionConfirmation?.confirmedAt &&
+      request.resolutionConfirmation?.action !== "rejected_back_to_in_progress" &&
+      ["completed", "closed"].includes(request.status)
+  );
 
   let milestoneTime = "";
   let milestoneActor = "";
@@ -1471,7 +1475,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
   const getInspectedStageIndex = (request) => {
     const id = request.request_id || request._id;
-    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    const activeIdx = getStepIndex(request.status);
     if (typeof inspectedStageMap[id] === "number") {
       const savedIdx = inspectedStageMap[id];
       if (savedIdx <= activeIdx) {
@@ -1482,7 +1486,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   };
 
   const handleSelectStage = (request, stageIdx) => {
-    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    const activeIdx = getStepIndex(request.status);
     if (stageIdx > activeIdx) return;
     const id = request.request_id || request._id;
     setInspectedStageMap((prev) => ({ ...prev, [id]: stageIdx }));
@@ -1490,7 +1494,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
   const handleResetActiveStage = (request) => {
     const id = request.request_id || request._id;
-    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    const activeIdx = getStepIndex(request.status);
     setInspectedStageMap((prev) => ({ ...prev, [id]: activeIdx }));
   };
 
@@ -2082,8 +2086,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 const StatusIcon = getStatusIcon(request.status);
                 const isPending = ["pending", "pending_review", "reviewed"].includes(request.status);
                 const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
-                const isCompleted = ["completed", "resolved"].includes(request.status);
-                const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
+                const isConfirmed = Boolean(
+                  request.resolutionConfirmation?.confirmedAt &&
+                    request.resolutionConfirmation?.action !== "rejected_back_to_in_progress" &&
+                    ["completed", "closed"].includes(request.status)
+                );
                 const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
                 const providerLabel = request.tenantVisibleProviderLabel || request.providerDetails?.tenantVisibleLabel || request.assigned_to;
                 const scheduledDate = request.schedule?.scheduledDate ? new Date(request.schedule.scheduledDate) : null;
@@ -2900,12 +2907,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         inspectedStageIndex={
                           typeof modalInspectedStageIndex === "number"
                             ? modalInspectedStageIndex
-                            : selectedRequest.isReopened === true
-                              ? 0
-                              : getStepIndex(selectedRequest.status)
+                            : getStepIndex(selectedRequest.status)
                         }
                         onSelectStage={(idx) => {
-                          const activeIdx = selectedRequest.isReopened === true ? 0 : getStepIndex(selectedRequest.status);
+                          const activeIdx = getStepIndex(selectedRequest.status);
                           if (idx <= activeIdx) setModalInspectedStageIndex(idx);
                         }}
                       />
@@ -2915,13 +2920,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         inspectedStageIndex={
                           typeof modalInspectedStageIndex === "number"
                             ? modalInspectedStageIndex
-                            : selectedRequest.isReopened === true
-                              ? 0
-                              : getStepIndex(selectedRequest.status)
+                            : getStepIndex(selectedRequest.status)
                         }
                         onResetActiveStage={() => {
-                          const activeIdx =
-                            selectedRequest.isReopened === true ? 0 : getStepIndex(selectedRequest.status);
+                          const activeIdx = getStepIndex(selectedRequest.status);
                           setModalInspectedStageIndex(activeIdx);
                         }}
                         onReschedule={() => {
@@ -2995,7 +2997,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         </div>
                       ) : null}
 
-                      {selectedRequest.resolutionConfirmation?.confirmedAt ? (
+                      {selectedRequest.resolutionConfirmation?.confirmedAt &&
+                      selectedRequest.resolutionConfirmation?.action !== "rejected_back_to_in_progress" &&
+                      ["completed", "closed"].includes(selectedRequest.status) ? (
                         <div
                           style={{
                             marginTop: 14,

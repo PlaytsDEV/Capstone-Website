@@ -1019,9 +1019,16 @@ export const serializeMaintenanceRequest = (
         confirmedAt: request.resolutionConfirmation.confirmedAt,
         tenantFeedback: request.resolutionConfirmation.tenantFeedback || null,
         rating: request.resolutionConfirmation.rating || null,
-        action: request.resolutionConfirmation.action || null,
+        action: request.resolutionConfirmation.action || "confirm",
       }
-    : null;
+    : request.resolutionConfirmation?.action === "rejected_back_to_in_progress"
+      ? {
+          confirmedAt: null,
+          tenantFeedback: request.resolutionConfirmation.tenantFeedback || null,
+          rating: null,
+          action: "rejected_back_to_in_progress",
+        }
+      : null;
   const lastAdminReadTime = request.lastAdminReadAt ? new Date(request.lastAdminReadAt).getTime() : 0;
   const isNewForAdmin = !request.lastAdminReadAt && ["pending", "pending_review", "viewed"].includes(request.status);
   
