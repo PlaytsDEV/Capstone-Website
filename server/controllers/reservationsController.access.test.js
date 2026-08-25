@@ -77,6 +77,7 @@ await jest.unstable_mockModule("../utils/tenantActionService.js", () => ({
   executeDirectRoomSwapWorkflow: jest.fn(),
   executeAbandonmentProtocolWorkflow: jest.fn(),
   validateContractExtensionWorkflow: jest.fn(),
+  getMonthlyRent: jest.fn(),
 }));
 await jest.unstable_mockModule("../utils/rentGenerator.js", () => ({
   ensureCurrentCycleRentBill,

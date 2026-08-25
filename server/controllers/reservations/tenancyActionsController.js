@@ -34,7 +34,9 @@ import {
   executeDirectRoomSwapWorkflow,
   executeAbandonmentProtocolWorkflow,
   validateContractExtensionWorkflow,
+  getMonthlyRent,
 } from "../../utils/tenantActionService.js";
+import { computeLeaseEndDate } from "../../utils/tenantWorkspace.js";
 import { resolveArchivedRestoreStatus } from "../../utils/reservationArchive.js";
 import {
   POPULATE_USER,
@@ -417,18 +419,39 @@ export const createRenewalOffer = async (req, res, next) => {
           createdBy: actor?._id || null,
         };
 
-    if (!reservation.renewalOffers) reservation.renewalOffers = [];
-    reservation.renewalOffers.push(newOffer);
-    await reservation.save();
+    // Atomic, authoritative guard: only push the new offer if no pending
+    // offer exists at the moment MongoDB applies this single-document
+    // update. This closes the race where two concurrent creates both read
+    // hasPending=false from separately-fetched documents above (that read
+    // is kept only as a cheap early-exit before the pricing resolution
+    // work) and both would otherwise push a pending offer.
+    const withOffer = await Reservation.findOneAndUpdate(
+      {
+        _id: reservationId,
+        renewalOffers: { $not: { $elemMatch: { status: "pending" } } },
+      },
+      { $push: { renewalOffers: newOffer } },
+      { new: true },
+    )
+      .populate("roomId", "name roomNumber branch type")
+      .populate("userId", "firstName lastName email phone");
+
+    if (!withOffer) {
+      const stillExists = await Reservation.exists({ _id: reservationId });
+      if (!stillExists) {
+        return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+      }
+      return res.status(409).json({ error: "A pending renewal offer already exists for this tenant.", code: "PENDING_OFFER_EXISTS" });
+    }
 
     const { notify } = await import("../../utils/notificationService.js");
-    const tenantId = reservation.userId?._id || reservation.userId;
+    const tenantId = withOffer.userId?._id || withOffer.userId;
     if (tenantId) {
       await notify.general(
         tenantId,
         "Lease Renewal Offer",
-        `You received a ${months}-month lease renewal offer for ${reservation.roomId?.name || "your room"}. Please respond before ${dayjs(newOffer.expiresAt).format("MMM D, YYYY")}.`,
-        { entityType: "reservation", entityId: reservation._id, action: "renewal_offer" }
+        `You received a ${months}-month lease renewal offer for ${withOffer.roomId?.name || "your room"}. Please respond before ${dayjs(newOffer.expiresAt).format("MMM D, YYYY")}.`,
+        { entityType: "reservation", entityId: withOffer._id, action: "renewal_offer" }
       );
     }
 
@@ -444,7 +467,7 @@ export const createRenewalOffer = async (req, res, next) => {
     res.status(201).json({
       message: "Renewal offer sent to tenant successfully",
       offer: newOffer,
-      reservation: serializeReservation(reservation),
+      reservation: serializeReservation(withOffer),
     });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Create renewal offer error");
@@ -513,35 +536,90 @@ export const respondToRenewalOffer = async (req, res, next) => {
       return res.status(400).json({ error: "Action must be 'accept' or 'decline'", code: "INVALID_ACTION" });
     }
 
-    const reservation = await Reservation.findById(reservationId)
-      .populate("roomId", "name roomNumber branch monthlyPrice price")
-      .populate("userId", "firstName lastName email");
-    if (!reservation) {
+    const populateReservation = (query) =>
+      query
+        .populate("roomId", "name roomNumber branch monthlyPrice price")
+        .populate("userId", "firstName lastName email");
+
+    // Read-only pre-check purely for a fast, cheap 404/400 before touching
+    // the offer array. The authoritative state transition happens below via
+    // an atomic, conditional findOneAndUpdate — this pre-check is NOT relied
+    // on for correctness, since a concurrent request could change offer
+    // status between this read and the write.
+    const precheck = await populateReservation(Reservation.findById(reservationId));
+    if (!precheck) {
       return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
     }
-
-    const offer = (reservation.renewalOffers || []).find((o) => o.offerId === offerId);
-    if (!offer) {
+    if (!(precheck.renewalOffers || []).some((o) => o.offerId === offerId)) {
       return res.status(404).json({ error: "Renewal offer not found", code: "OFFER_NOT_FOUND" });
-    }
-    if (offer.status !== "pending") {
-      return res.status(400).json({ error: `Offer is no longer pending (current status: ${offer.status})`, code: "OFFER_EXPIRED_OR_RESOLVED" });
     }
 
     const actor = await findDbUser(req.user.uid);
 
+    // Resolves what to tell the caller when the atomic CAS below finds the
+    // offer already left the "pending" state — either because a concurrent
+    // request just won the race (idempotent success) or because it was
+    // already resolved earlier (a real client error).
+    const respondNotPending = async () => {
+      const current = await populateReservation(Reservation.findById(reservationId));
+      if (!current) {
+        return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+      }
+      const existingOffer = (current.renewalOffers || []).find((o) => o.offerId === offerId);
+      if (!existingOffer) {
+        return res.status(404).json({ error: "Renewal offer not found", code: "OFFER_NOT_FOUND" });
+      }
+      if (action === "accept" && existingOffer.status === "accepted") {
+        // Another concurrent/duplicate request (double-click, retry,
+        // duplicate mobile request) already accepted this exact offer and
+        // extended the lease. Treat this as a safe no-op success instead of
+        // erroring or extending the lease a second time.
+        const { Stay } = await import("../../models/index.js");
+        const currentStay = await Stay.findOne({ reservationId, status: "active" }).sort({ createdAt: -1 });
+        return res.status(200).json({
+          message: "Renewal offer already accepted",
+          alreadyProcessed: true,
+          reservation: serializeReservation(current),
+          stay: currentStay,
+        });
+      }
+      if (action === "decline" && existingOffer.status === "declined") {
+        return res.status(200).json({
+          message: "Renewal offer already declined",
+          alreadyProcessed: true,
+          reservation: serializeReservation(current),
+        });
+      }
+      return res.status(400).json({ error: `Offer is no longer pending (current status: ${existingOffer.status})`, code: "OFFER_EXPIRED_OR_RESOLVED" });
+    };
+
     if (action === "decline") {
-      offer.status = "declined";
-      offer.respondedAt = new Date();
-      offer.tenantResponseReason = String(tenantResponseReason || "").trim();
-      await reservation.save();
+      // Atomic, authoritative transition: pending -> declined only if the
+      // offer is still pending at write time. Replaces the prior
+      // read-then-save pattern, which could let two concurrent requests
+      // both pass a status check performed on separately-fetched documents.
+      const declined = await populateReservation(
+        Reservation.findOneAndUpdate(
+          { _id: reservationId, renewalOffers: { $elemMatch: { offerId, status: "pending" } } },
+          {
+            $set: {
+              "renewalOffers.$[offer].status": "declined",
+              "renewalOffers.$[offer].respondedAt": new Date(),
+              "renewalOffers.$[offer].tenantResponseReason": String(tenantResponseReason || "").trim(),
+            },
+          },
+          { arrayFilters: [{ "offer.offerId": offerId }], new: true },
+        ),
+      );
+
+      if (!declined) return respondNotPending();
 
       const { notify } = await import("../../utils/notificationService.js");
       await notify.general(
-        reservation.userId?._id || reservation.userId,
+        declined.userId?._id || declined.userId,
         "Renewal Declined",
-        `You declined the lease renewal offer for ${reservation.roomId?.name || "your room"}.`,
-        { entityType: "reservation", entityId: reservation._id }
+        `You declined the lease renewal offer for ${declined.roomId?.name || "your room"}.`,
+        { entityType: "reservation", entityId: declined._id }
       );
 
       await auditLogger.logModification(
@@ -555,14 +633,37 @@ export const respondToRenewalOffer = async (req, res, next) => {
 
       return res.json({
         message: "Renewal offer declined",
-        reservation: serializeReservation(reservation),
+        reservation: serializeReservation(declined),
       });
     }
 
-    const { Stay } = await import("../../models/index.js");
-    const activeStay = await Stay.findOne({ reservationId: reservation._id, status: "active" });
+    // Accept path. Step 1: atomically CLAIM the pending -> accepted
+    // transition. This is the concurrency boundary — MongoDB guarantees
+    // only one concurrent findOneAndUpdate can match a given document's
+    // "still pending" condition and apply the $set; every other concurrent
+    // request gets null back and must NOT proceed to extend the lease.
+    const claimed = await populateReservation(
+      Reservation.findOneAndUpdate(
+        { _id: reservationId, renewalOffers: { $elemMatch: { offerId, status: "pending" } } },
+        {
+          $set: {
+            "renewalOffers.$[offer].status": "accepted",
+            "renewalOffers.$[offer].respondedAt": new Date(),
+            "renewalOffers.$[offer].tenantResponseReason": String(tenantResponseReason || "").trim(),
+          },
+        },
+        { arrayFilters: [{ "offer.offerId": offerId }], new: true },
+      ),
+    );
 
-    let currentEndDate = activeStay?.leaseEndDate || computeLeaseEndDate(reservation) || new Date();
+    if (!claimed) return respondNotPending();
+
+    const offer = claimed.renewalOffers.find((o) => o.offerId === offerId);
+
+    const { Stay } = await import("../../models/index.js");
+    const activeStay = await Stay.findOne({ reservationId: claimed._id, status: "active" });
+
+    let currentEndDate = activeStay?.leaseEndDate || computeLeaseEndDate(claimed) || new Date();
     const newStartDate = dayjs(currentEndDate).add(1, "day").toDate();
     const newEndDate = dayjs(newStartDate).add(offer.months, "month").subtract(1, "day").toDate();
 
@@ -570,27 +671,46 @@ export const respondToRenewalOffer = async (req, res, next) => {
       confirm: true,
       newLeaseStartDate: newStartDate,
       newLeaseEndDate: newEndDate,
-      monthlyRent: offer.proposedRent || getMonthlyRent(reservation),
+      monthlyRent: offer.proposedRent || getMonthlyRent(claimed),
       renewalOfferId: offer.offerId,
       notes: `Accepted Renewal Offer (${offer.months} months). ${offer.notes || ""}`.trim(),
     };
 
-    const result = await renewStayWorkflow({
-      reservationId,
-      payload: renewPayload,
-      actorId: actor?._id || null,
-    });
+    let result;
+    try {
+      result = await renewStayWorkflow({
+        reservationId,
+        payload: renewPayload,
+        actorId: actor?._id || null,
+      });
+    } catch (workflowErr) {
+      // Compensate: this request won the claim above but the actual lease
+      // extension failed (validation error, overlap, etc). Release the
+      // claim back to "pending" so the tenant/admin can legitimately retry,
+      // but only if the offer is still in the exact state we just set —
+      // never clobber a newer legitimate transition.
+      await Reservation.updateOne(
+        { _id: reservationId, renewalOffers: { $elemMatch: { offerId, status: "accepted" } } },
+        {
+          $set: {
+            "renewalOffers.$[offer].status": "pending",
+            "renewalOffers.$[offer].respondedAt": null,
+            "renewalOffers.$[offer].tenantResponseReason": "",
+          },
+        },
+        { arrayFilters: [{ "offer.offerId": offerId }] },
+      );
+      throw workflowErr;
+    }
 
-    offer.status = "accepted";
-    offer.respondedAt = new Date();
-    offer.tenantResponseReason = String(tenantResponseReason || "").trim();
-    await reservation.save();
+    // Offer status was already transitioned atomically above (step 1) —
+    // no further write to the offer is needed or performed here.
 
     const { notify } = await import("../../utils/notificationService.js");
-    const roomName = reservation.roomId?.name || "your room";
+    const roomName = claimed.roomId?.name || "your room";
 
     await notify.general(
-      reservation.userId?._id || reservation.userId,
+      claimed.userId?._id || claimed.userId,
       "Lease Renewed!",
       `Your lease renewal for ${roomName} has been processed! Extended by ${offer.months} months through ${dayjs(newEndDate).format("MMM D, YYYY")}.`,
       { entityType: "stay" }
