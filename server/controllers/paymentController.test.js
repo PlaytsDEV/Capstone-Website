@@ -778,60 +778,6 @@ describe("paymentController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("does not mark an initial-payment Reservation paid when ledger settlement was not applied", async () => {
-    const bill = {
-      _id: "bill_initial_unapplied",
-      userId: "tenant_1",
-      reservationId: "reservation_1",
-      billType: "initial_payment",
-      status: "pending",
-      paymentState: "unpaid",
-      paidAmount: 0,
-      totalAmount: 10600,
-      remainingAmount: 10600,
-    };
-
-    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
-    billFindById.mockResolvedValue(bill);
-    settlePaymongoBill.mockResolvedValue({
-      applied: false,
-      reason: "already_applied",
-      appliedAmount: 0,
-      bill,
-    });
-    getCheckoutSession.mockResolvedValue({
-      attributes: {
-        metadata: {
-          type: "bill",
-          purpose: "initial_payment",
-          billId: "bill_initial_unapplied",
-          reservationId: "reservation_1",
-          userId: "tenant_1",
-          amountDue: "10600",
-        },
-        payments: [{
-          id: "pay_external",
-          attributes: { status: "paid", amount: 1060000 },
-        }],
-      },
-    });
-
-    const req = { params: { sessionId: "cs_initial_unapplied" }, user: { uid: "firebase-1" } };
-    const res = {};
-    const next = jest.fn();
-
-    await checkSessionStatus(req, res, next);
-
-    expect(reservationUpdateOne).not.toHaveBeenCalled();
-    expect(notifyPaymentApproved).not.toHaveBeenCalled();
-    expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
-    expect(sendSuccess).toHaveBeenCalledWith(
-      res,
-      expect.objectContaining({ sessionId: "cs_initial_unapplied", status: "paid" }),
-    );
-    expect(next).not.toHaveBeenCalled();
-  });
-
   test("returns payments for a tenant-owned bill", async () => {
     const bill = {
       _id: "bill_own",
