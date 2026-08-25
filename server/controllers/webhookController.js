@@ -94,6 +94,11 @@ async function notifyAdminsOfDepositReview(reservation, paymentReference) {
 }
 
 /* ─── handlers ───────────────────────────────────── */
+// handleDepositPayment / handleBillPayment / handleMultiBillPayment are also
+// reused directly by paymongoReconciliationService.js so the scheduled
+// provider-poll safety net settles a session through the exact same
+// idempotent path as a live webhook delivery, instead of a second
+// implementation that could drift out of sync.
 
 /**
  * Handle a deposit payment — auto-reserve the room.
@@ -105,7 +110,7 @@ async function notifyAdminsOfDepositReview(reservation, paymentReference) {
  *   4. Lock the bed via occupancy manager
  *   5. Notify tenant + send confirmation email
  */
-async function handleDepositPayment(metadata, eventData, context = {}) {
+export async function handleDepositPayment(metadata, eventData, context = {}) {
   const { reservationId } = metadata;
 
   const paymentId = extractPaymentId(eventData);
@@ -274,7 +279,7 @@ async function finishWebhookEvent(record, processingStatus, error = null) {
  *   3. Mark as paid + update payment details
  *   4. Notify tenant + send confirmation email
  */
-async function handleBillPayment(metadata, eventData, context = {}) {
+export async function handleBillPayment(metadata, eventData, context = {}) {
   const { billId } = metadata;
 
   const bill = await Bill.findById(billId);
@@ -435,7 +440,7 @@ async function handleBillPayment(metadata, eventData, context = {}) {
 /**
  * Handle a consolidated multi-bill payment — mark all included bills as paid.
  */
-async function handleMultiBillPayment(metadata, eventData, context = {}) {
+export async function handleMultiBillPayment(metadata, eventData, context = {}) {
   let billIds = [];
   try {
     billIds = Array.isArray(metadata.billIds)
