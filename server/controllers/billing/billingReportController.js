@@ -395,7 +395,8 @@ export const downloadBillReceipt = async (req, res, next) => {
     // never be used to bypass tenant ownership or admin branch scope.
     const bill = await Bill.findOne({ _id: billId, isArchived: false })
       .populate("userId", "firstName lastName email")
-      .populate("roomId", "name roomNumber branch");
+      .populate("roomId", "name roomNumber branch type price monthlyPrice")
+      .populate("reservationId", "pricingSnapshot reservationFeeAmount monthlyRent rentAmount advanceRent securityDeposit");
     if (!bill) return res.status(404).json({ error: "Bill not found" });
 
     const isAdmin = isAdminRole(requester.role);

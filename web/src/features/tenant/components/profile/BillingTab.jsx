@@ -117,8 +117,24 @@ const sortBillsOldestFirst = (left, right) =>
 const getBillChargeSummary = (bill = {}) => {
   const charges = bill?.charges || {};
   const isInitialPayment = bill?.billType === "initial_payment";
+  const initial = bill?.initialPaymentBreakdown || {};
+  const initialGross = Number(
+    initial.grossInitialAmount ||
+      bill?.grossAmount ||
+      (Number(initial.advanceRent || 0) + Number(initial.securityDeposit || 0) + Number(initial.approvedInitialCharges || 0)) ||
+      0,
+  );
+  const initialCredit = Number(initial.reservationFeeCredit || bill?.reservationCreditApplied || 0);
+  const initialTotal = Number(
+    initial.initialPaymentTotal ||
+      bill?.totalAmount ||
+      bill?.paidAmount ||
+      Math.max(initialGross - initialCredit, 0) ||
+      0,
+  );
+
   const rentAndFeesTotal = isInitialPayment
-    ? roundMoney(Number(bill?.totalAmount || 0))
+    ? roundMoney(initialTotal || Number(bill?.totalAmount || bill?.paidAmount || 0))
     : roundMoney(
         Math.max(
           Number(charges.rent || 0) +
@@ -836,11 +852,58 @@ const StatementLedgerCard = ({
   const presentation = getStatementPresentation(bill);
   const isInitialPayment = bill.billType === "initial_payment";
   const initial = bill.initialPaymentBreakdown || {};
+
+  const resolvedAdvanceRent = Number(
+    initial.advanceRent ||
+      bill.advanceRent ||
+      bill.monthlyRent ||
+      bill.rentAmount ||
+      charges.rent ||
+      (isInitialPayment && bill.grossAmount ? bill.grossAmount / 2 : 0) ||
+      0,
+  );
+
+  const resolvedSecurityDeposit = Number(
+    initial.securityDeposit ||
+      bill.securityDeposit ||
+      bill.monthlyRent ||
+      bill.rentAmount ||
+      (isInitialPayment && bill.grossAmount ? bill.grossAmount / 2 : 0) ||
+      0,
+  );
+
+  const resolvedApprovedCharges = Number(
+    initial.approvedInitialCharges ||
+      bill.approvedInitialCharges ||
+      0,
+  );
+
+  const resolvedReservationCredit = Number(
+    initial.reservationFeeCredit ||
+      bill.reservationCreditApplied ||
+      0,
+  );
+
+  const resolvedGrossAmount = Number(
+    initial.grossInitialAmount ||
+      bill.grossAmount ||
+      (resolvedAdvanceRent + resolvedSecurityDeposit + resolvedApprovedCharges) ||
+      0,
+  );
+
+  const resolvedInitialTotal = Number(
+    initial.initialPaymentTotal ||
+      bill.totalAmount ||
+      bill.paidAmount ||
+      Math.max(resolvedGrossAmount - resolvedReservationCredit, 0) ||
+      0,
+  );
+
   const isPaid = isPaidBill(bill);
   const remaining = getOutstandingAmount(bill);
   const totalDisplayAmount = isPaid
-    ? Number(bill.totalAmount || bill.paidAmount || summary.statementTotal || 0)
-    : remaining;
+    ? Number(bill.paidAmount || bill.totalAmount || (isInitialPayment ? resolvedInitialTotal : summary.statementTotal) || 0)
+    : (remaining || (isInitialPayment ? resolvedInitialTotal : 0));
 
   // Hook for utility breakdown if electricity or water is present
   const { data: elecData, isLoading: elecLoading } = useMyUtilityBreakdownByBillId(
@@ -1042,22 +1105,30 @@ const StatementLedgerCard = ({
                 </div>
                 {isInitialPayment ? (
                   <>
-                    {[
-                      ["Advance Rent", initial.advanceRent],
-                      ["Security Deposit", initial.securityDeposit],
-                      ["Approved Initial Charges", initial.approvedInitialCharges],
-                    ].map(([label, amount]) => (
-                      <div className="statement-breakdown-row" key={label}>
-                        <span className="statement-breakdown-label">{label}</span>
+                    <div className="statement-breakdown-row">
+                      <span className="statement-breakdown-label">Advance Rent</span>
+                      <span className="statement-breakdown-value">
+                        {fmt(resolvedAdvanceRent)}
+                      </span>
+                    </div>
+                    <div className="statement-breakdown-row">
+                      <span className="statement-breakdown-label">Security Deposit</span>
+                      <span className="statement-breakdown-value">
+                        {fmt(resolvedSecurityDeposit)}
+                      </span>
+                    </div>
+                    {resolvedApprovedCharges > 0 && (
+                      <div className="statement-breakdown-row">
+                        <span className="statement-breakdown-label">Approved Initial Charges</span>
                         <span className="statement-breakdown-value">
-                          {fmt(amount)}
+                          {fmt(resolvedApprovedCharges)}
                         </span>
                       </div>
-                    ))}
+                    )}
                     <div className="statement-breakdown-row">
                       <span className="statement-breakdown-label">Less: Reservation Fee Credit</span>
                       <span className="statement-breakdown-value" style={{ color: "#059669" }}>
-                        -{fmt(initial.reservationFeeCredit)}
+                        -{fmt(resolvedReservationCredit)}
                       </span>
                     </div>
                   </>
@@ -1162,8 +1233,8 @@ const StatementLedgerCard = ({
                 )}
               </div>
               <div className="statement-breakdown-footer">
-                <span>Rental Statement Total</span>
-                <span>{fmt(summary.rentAndFeesTotal)}</span>
+                <span>{isInitialPayment ? "Total Move-In Settlement" : "Rental Statement Total"}</span>
+                <span>{fmt(isInitialPayment ? (isPaid ? (bill.paidAmount || resolvedInitialTotal) : resolvedInitialTotal) : summary.rentAndFeesTotal)}</span>
               </div>
             </div>
           )}

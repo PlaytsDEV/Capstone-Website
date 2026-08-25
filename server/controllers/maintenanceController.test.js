@@ -3253,6 +3253,7 @@ describe("maintenanceController", () => {
     expect(requestDoc.resolved_at).toBeNull();
     expect(requestDoc.resolutionConfirmation).toEqual(
       expect.objectContaining({
+        confirmedAt: null,
         action: "rejected_back_to_in_progress",
         tenantFeedback: "no show naman",
       }),
@@ -3263,6 +3264,68 @@ describe("maintenanceController", () => {
           event: "tenant_rejected_resolution",
           status: "in_progress",
           note: expect.stringContaining("no show naman"),
+        }),
+      ]),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: confirms resolution on second repair attempt after previous rejection", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "resolved",
+      resolved_at: new Date("2026-08-20T00:00:00.000Z"),
+      resolutionConfirmation: {
+        confirmedAt: null,
+        action: null,
+        tenantFeedback: null,
+        rating: null,
+      },
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "confirm",
+        confirmed: true,
+        feedback: "Second repair was completely successful! Fixed properly.",
+        rating: 5,
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await confirmResolution(req, res, next);
+
+    expect(requestDoc.status).toBe("completed");
+    expect(requestDoc.resolutionConfirmation).toEqual(
+      expect.objectContaining({
+        action: "confirm",
+        tenantFeedback: "Second repair was completely successful! Fixed properly.",
+        rating: 5,
+      }),
+    );
+    expect(requestDoc.resolutionConfirmation.confirmedAt).toBeInstanceOf(Date);
+    expect(requestDoc.statusHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "tenant_confirmed_resolved",
+          status: "completed",
         }),
       ]),
     );

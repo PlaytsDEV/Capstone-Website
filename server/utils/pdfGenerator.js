@@ -526,20 +526,41 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
   }
 
   // ── CHARGES SUMMARY ───────────────────────────────────────────────────────
-  sectionHeading(doc, "Charges Summary");
+  const isInitialPayment = bill.billType === "initial_payment";
+  const initial = bill.initialPaymentBreakdown || {};
 
-  const baseSubtotal = (rent || 0) + (electricity || 0) + (water || 0) + (applianceFees || 0) + (corkageFees || 0);
+  sectionHeading(doc, isInitialPayment ? "Initial Move-In Settlement Breakdown" : "Charges Summary");
+
   const chargeRows = [];
-  if (rent > 0)          chargeRows.push(["Monthly Rent",           formatPeso(rent)]);
-  if (electricity > 0)   chargeRows.push(["Electricity",            formatPeso(electricity)]);
-  if (water > 0)         chargeRows.push(["Water",                  formatPeso(water)]);
-  if (applianceFees > 0) chargeRows.push(["Appliance Fees",         formatPeso(applianceFees)]);
-  if (corkageFees > 0)   chargeRows.push(["Corkage Fees",           formatPeso(corkageFees)]);
-  chargeRows.push(["Subtotal (Base Charges)", formatPeso(baseSubtotal)]);
-  if (penalty > 0)       chargeRows.push(["Late Payment Penalty",   formatPeso(penalty)]);
-  if (discount > 0)      chargeRows.push(["Discount",               `-${formatPeso(discount)}`]);
-  if (reservationCreditApplied > 0) {
-    chargeRows.push(["Reservation Credit Applied", `-${formatPeso(reservationCreditApplied)}`]);
+  if (isInitialPayment) {
+    const adv = Number(initial.advanceRent || 0);
+    const dep = Number(initial.securityDeposit || 0);
+    const app = Number(initial.approvedInitialCharges || 0);
+    const gross = Number(initial.grossInitialAmount || (adv + dep + app));
+    const cred = Number(initial.reservationFeeCredit || reservationCreditApplied || 0);
+
+    chargeRows.push(["Advance Rent", formatPeso(adv)]);
+    chargeRows.push(["Security Deposit", formatPeso(dep)]);
+    if (app > 0) {
+      chargeRows.push(["Approved Initial Charges", formatPeso(app)]);
+    }
+    chargeRows.push(["Subtotal (Gross Initial Amount)", formatPeso(gross)]);
+    if (cred > 0) {
+      chargeRows.push(["Less: Reservation Fee Credit", `-${formatPeso(cred)}`]);
+    }
+  } else {
+    const baseSubtotal = (rent || 0) + (electricity || 0) + (water || 0) + (applianceFees || 0) + (corkageFees || 0);
+    if (rent > 0)          chargeRows.push(["Monthly Rent",           formatPeso(rent)]);
+    if (electricity > 0)   chargeRows.push(["Electricity",            formatPeso(electricity)]);
+    if (water > 0)         chargeRows.push(["Water",                  formatPeso(water)]);
+    if (applianceFees > 0) chargeRows.push(["Appliance Fees",         formatPeso(applianceFees)]);
+    if (corkageFees > 0)   chargeRows.push(["Corkage Fees",           formatPeso(corkageFees)]);
+    chargeRows.push(["Subtotal (Base Charges)", formatPeso(baseSubtotal)]);
+    if (penalty > 0)       chargeRows.push(["Late Payment Penalty",   formatPeso(penalty)]);
+    if (discount > 0)      chargeRows.push(["Discount",               `-${formatPeso(discount)}`]);
+    if (reservationCreditApplied > 0) {
+      chargeRows.push(["Reservation Credit Applied", `-${formatPeso(reservationCreditApplied)}`]);
+    }
   }
 
   drawTable(doc, {
@@ -558,7 +579,7 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
     .fontSize(11)
     .font("Helvetica-Bold")
     .text(
-      `TOTAL DUE:  ${formatPeso(bill.totalAmount ?? 0)}`,
+      `${isInitialPayment ? "TOTAL SETTLEMENT:" : "TOTAL DUE:"}  ${formatPeso(bill.totalAmount ?? 0)}`,
       L + 10,
       totalBoxY + 7,
       { width: contentWidth - 20, align: "right" },
@@ -904,19 +925,36 @@ export async function generateBillReceiptPdf({
   if (room?.name || room?.roomNumber) row("Room", room.name || room.roomNumber);
   if (billingPeriod) row("Billing Period", billingPeriod);
 
-  const ch = bill.charges || {};
-  const rentAmt = Number(ch.rent || 0);
-  const elecAmt = Number(ch.electricity || 0);
-  const waterAmt = Number(ch.water || 0);
-  const applianceAmt = Number(ch.applianceFees || 0);
-  const corkageAmt = Number(ch.corkageFees || 0);
-  const baseSubtotal = rentAmt + elecAmt + waterAmt + applianceAmt + corkageAmt;
-  const penaltyAmt = Number(ch.penalty || 0);
+  const isInitialPayment = bill.billType === "initial_payment";
+  const initial = bill.initialPaymentBreakdown || {};
 
-  if (baseSubtotal > 0 || penaltyAmt > 0) {
-    row("Base Subtotal Charges", formatPeso(baseSubtotal));
-    if (penaltyAmt > 0) {
-      row("Late Payment Penalty", formatPeso(penaltyAmt));
+  if (isInitialPayment) {
+    const adv = Number(initial.advanceRent || 0);
+    const dep = Number(initial.securityDeposit || 0);
+    const app = Number(initial.approvedInitialCharges || 0);
+    const gross = Number(initial.grossInitialAmount || (adv + dep + app));
+    const cred = Number(initial.reservationFeeCredit || bill.reservationCreditApplied || 0);
+
+    row("Advance Rent", formatPeso(adv));
+    row("Security Deposit", formatPeso(dep));
+    if (app > 0) row("Approved Initial Charges", formatPeso(app));
+    row("Gross Initial Settlement", formatPeso(gross));
+    if (cred > 0) row("Less: Reservation Fee Credit", `-${formatPeso(cred)}`);
+  } else {
+    const ch = bill.charges || {};
+    const rentAmt = Number(ch.rent || 0);
+    const elecAmt = Number(ch.electricity || 0);
+    const waterAmt = Number(ch.water || 0);
+    const applianceAmt = Number(ch.applianceFees || 0);
+    const corkageAmt = Number(ch.corkageFees || 0);
+    const baseSubtotal = rentAmt + elecAmt + waterAmt + applianceAmt + corkageAmt;
+    const penaltyAmt = Number(ch.penalty || 0);
+
+    if (baseSubtotal > 0 || penaltyAmt > 0) {
+      row("Base Subtotal Charges", formatPeso(baseSubtotal));
+      if (penaltyAmt > 0) {
+        row("Late Payment Penalty", formatPeso(penaltyAmt));
+      }
     }
   }
 

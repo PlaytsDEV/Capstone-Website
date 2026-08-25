@@ -488,8 +488,15 @@ export const reopenMyRequest = async (req, res, next) => {
     ];
     request.status = "pending";
     request.resolved_at = null;
+    request.closed_at = null;
     request.work_started_at = null;
     request.resolution_note = null;
+    request.resolutionConfirmation = {
+      confirmedAt: null,
+      tenantFeedback: null,
+      rating: null,
+      action: null,
+    };
     appendStatusHistory(request, {
       event: "reopened",
       status: "pending",
@@ -615,8 +622,9 @@ export const confirmResolution = async (req, res, next) => {
 
       request.status = "in_progress";
       request.resolved_at = null;
+      request.closed_at = null;
       request.resolutionConfirmation = {
-        confirmedAt: rejectedAt,
+        confirmedAt: null,
         tenantFeedback: feedback,
         action: "rejected_back_to_in_progress",
       };
