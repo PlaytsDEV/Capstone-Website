@@ -55,7 +55,6 @@ import {
   getLifecyclePolicySettings,
 } from "./businessSettings.js";
 import { computePenalty, fetchPenaltySettings } from "./penaltyCalculator.js";
-import { reconcilePendingPaymongoSessions } from "../services/paymongoReconciliationService.js";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -1280,9 +1279,6 @@ export function startScheduler(options = {}) {
       void markOverdueBills();
       void detectConsecutiveOverdueMonths();
       void runAutoCloseInactiveChats();
-      if (process.env.PAYMONGO_SECRET_KEY) {
-        void reconcilePendingPaymongoSessions();
-      }
     });
   }
 
@@ -1487,23 +1483,6 @@ export function startScheduler(options = {}) {
     }),
   );
 
-  // Job 20: PayMongo provider reconciliation - every 5 minutes.
-  // Webhooks are the primary path; this provider poll is the durable safety
-  // net for disabled/misrouted webhooks and interrupted browser redirects.
-  if (process.env.PAYMONGO_SECRET_KEY) {
-    scheduledJobs.push(
-      cron.schedule("*/5 * * * *", () =>
-        retryJobOperation(reconcilePendingPaymongoSessions, {
-          label: "Job 20: PayMongo provider reconciliation",
-        }),
-      {
-        scheduled: true,
-        timezone: process.env.APP_TIMEZONE || "Asia/Manila",
-        name: "paymongo-provider-reconciliation",
-      }),
-    );
-  }
-
   return scheduledJobs.length;
 }
 
@@ -1534,7 +1513,6 @@ export {
   autoCompleteResolvedTickets,
   runAutoCloseInactiveChats,
   reconcileMissingContractGeneration,
-  reconcilePendingPaymongoSessions,
 };
 
 export default { startScheduler, stopScheduler };
