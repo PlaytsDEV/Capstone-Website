@@ -19,7 +19,10 @@ import {
   syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
-import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
+import {
+  archiveContractForCancelledReservation,
+  archiveContractsForReservationHardDelete,
+} from "../../services/contractArchiveService.js";
 import { emitToAdmins } from "../../utils/socket.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
@@ -569,6 +572,18 @@ export const deleteReservation = async (req, res) => {
         });
       }
 
+      // Archive any Contract still referencing this reservation BEFORE
+      // deleting it — otherwise the Contract becomes a permanent orphan the
+      // instant the reservation is gone (this is the exact defect a
+      // production audit found: a tenant-visible, "generated" Contract with
+      // a real prepared PDF, orphaned because a hard-delete never cascaded).
+      // Throws and aborts the whole delete if any Contract has real
+      // signed/final/billing evidence a human needs to review first.
+      await archiveContractsForReservationHardDelete({
+        reservationId,
+        actorId: dbUser._id,
+      });
+
       // Release the bed BEFORE deleting the reservation document so we still have
       // the reservation ID to reference in Room.beds[].occupiedBy.reservationId
       await releaseOrphanedBeds([], [reservationId]).catch((err) =>
@@ -650,6 +665,13 @@ export const deleteReservation = async (req, res) => {
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Delete reservation error");
     await auditLogger.logError(req, error, "Failed to delete reservation");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code || "DELETE_RESERVATION_ERROR",
+        ...(error.blockers ? { blockers: error.blockers } : {}),
+      });
+    }
     handleReservationError(res, error, "delete");
   }
 };

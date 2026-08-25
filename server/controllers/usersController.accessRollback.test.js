@@ -53,7 +53,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UserSession: { findValidSession: jest.fn() },
   Reservation: { findOne: jest.fn(noStay) },
   Room: { find: jest.fn() },
-  Bill: {}, UtilityReading: {}, MaintenanceRequest: {},
+  Bill: {}, UtilityReading: {}, MaintenanceRequest: {}, Contract: {},
+}));
+await jest.unstable_mockModule("../services/contractArchiveService.js", () => ({
+  archiveContractForCancelledReservation: jest.fn().mockResolvedValue([]),
 }));
 await jest.unstable_mockModule("dayjs", () => ({ default: jest.fn() }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth }));

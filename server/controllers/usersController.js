@@ -5,7 +5,7 @@
 
 import mongoose from "mongoose";
 import dayjs from "dayjs";
-import { User, Reservation, Room, Bill, UtilityReading, MaintenanceRequest } from "../models/index.js";
+import { User, Reservation, Room, Bill, UtilityReading, MaintenanceRequest, Contract } from "../models/index.js";
 import { ROOM_BRANCHES } from "../config/branches.js";
 import { getAuth } from "../config/firebase.js";
 import logger from "../middleware/logger.js";
@@ -31,6 +31,7 @@ import {
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import { normalizeAddress } from "../utils/addressUtils.js";
 import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
+import { archiveContractForCancelledReservation } from "../services/contractArchiveService.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import { sendPasswordResetLinkEmail } from "../config/email.js";
 import { buildCustomPasswordResetLink } from "../services/passwordResetService.js";
@@ -1370,6 +1371,34 @@ export const deleteUser = async (req, res, next) => {
       await releaseOrphanedBeds([], archivedReservationIds);
     }
     await releaseOrphanedBeds([user._id], []);
+
+    // ── Post-transaction: cascade-archive early-stage Contracts, and flag
+    // any progressed one for manual review ──────────────────────────────
+    // The archived Reservations above are preserved (not deleted), so a
+    // Contract referencing them by reservationId is not orphaned in the
+    // same fatal way a hard-deleted Reservation orphans its Contract — but
+    // its tenantId now points at a User that no longer exists. Mirrors the
+    // same non-blocking cascade already used when a Reservation is
+    // soft-deleted (reservationCrudController.js) rather than introducing a
+    // new hard block into this already-complex, force-delete-aware flow.
+    for (const archivedReservationId of archivedReservationIds) {
+      await archiveContractForCancelledReservation({
+        reservationId: archivedReservationId,
+        actorId: actor?._id || null,
+      }).catch((err) =>
+        logger.warn({ err, archivedReservationId }, "Account delete: early-stage Contract archive failed (non-fatal)")
+      );
+      const progressedContracts = await Contract.find({
+        reservationId: archivedReservationId,
+        archivedAt: null,
+      }).select("_id contractNumber status").lean();
+      if (progressedContracts.length) {
+        logger.warn(
+          { archivedReservationId, contracts: progressedContracts },
+          "Account delete: Contract(s) beyond early-stage still reference a reservation whose tenant User was just deleted — needs manual review",
+        );
+      }
+    }
 
     // ── Post-transaction: recompute occupancy for rooms affected by force-deleted
     // active reservations (ensures immediate accuracy, not waiting for nightly job) ──

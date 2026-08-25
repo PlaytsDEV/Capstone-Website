@@ -45,6 +45,10 @@ const utilityReadingModel = {
 const maintenanceRequestModel = {
   countDocuments: jest.fn(),
 };
+const contractModel = {
+  find: jest.fn(() => createFindChain([])),
+};
+const archiveContractForCancelledReservation = jest.fn().mockResolvedValue([]);
 const setCustomUserClaims = jest.fn();
 const deleteUserFromAuth = jest.fn();
 const getAuth = jest.fn(() => ({
@@ -73,6 +77,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Bill: billModel,
   UtilityReading: utilityReadingModel,
   MaintenanceRequest: maintenanceRequestModel,
+  Contract: contractModel,
+}));
+await jest.unstable_mockModule("../services/contractArchiveService.js", () => ({
+  archiveContractForCancelledReservation,
 }));
 
 await jest.unstable_mockModule("dayjs", () => ({ default: jest.fn() }));
