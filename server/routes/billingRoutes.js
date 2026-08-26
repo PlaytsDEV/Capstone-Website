@@ -17,7 +17,7 @@ import * as billingController from "../controllers/billingController.js";
 import { requirePermission } from "../middleware/permissions.js";
 import { apiLimiter } from "../middleware/rateLimiter.js";
 import { validateRequest } from "../middleware/validateRequest.js";
-import { createViolationSchema } from "../validation/zodSchemas.js";
+import { createViolationSchema, updateViolationSchema } from "../validation/zodSchemas.js";
 
 const router = express.Router();
 
@@ -488,6 +488,31 @@ router.patch(
   requirePermission("manageBilling"),
   filterByBranch,
   billingController.updateViolationDecision,
+);
+
+/**
+ * PUT /api/billing/violations/:id
+ * Admin updates violation details during in-office review.
+ */
+router.put(
+  "/violations/:id",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  validateRequest({ body: updateViolationSchema }),
+  billingController.updateViolation,
+);
+
+/**
+ * DELETE /api/billing/violations/:id
+ * Admin archives a violation record.
+ */
+router.delete(
+  "/violations/:id",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.archiveViolation,
 );
 
 // ============================================================================

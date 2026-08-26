@@ -7,6 +7,7 @@ import {
   isNewReservation,
   mapReservationAdminRow,
   mapVisitScheduleRows,
+  sortReservationsWithPriority,
 } from "./reservationRows.js";
 
 const basePhysicalReservation = {
@@ -318,4 +319,61 @@ test("mapReservationAdminRow identifies resubmitted application awaiting review 
 
   assert.equal(row.isNew, true);
   assert.equal(row.isResubmitted, true);
+});
+
+test("sortReservationsWithPriority pins isNew: true reservations to the top before isNew: false rows", () => {
+  const olderCreationDate = new Date("2026-08-10T00:00:00.000Z").toISOString();
+  const newerCreationDate = new Date("2026-08-26T00:00:00.000Z").toISOString();
+  const todaySubmissionDate = new Date("2026-08-26T18:00:00.000Z").toISOString();
+
+  const normalRow = {
+    id: "res-normal",
+    isNew: false,
+    createdAt: newerCreationDate,
+    customer: "Normal Tenant",
+  };
+
+  const newSubmittedRow = {
+    id: "res-new",
+    isNew: true,
+    createdAt: olderCreationDate,
+    applicationSubmittedAt: todaySubmissionDate,
+    customer: "New Applicant",
+  };
+
+  const sorted = sortReservationsWithPriority([normalRow, newSubmittedRow], { key: "createdAt", dir: "desc" });
+
+  assert.equal(sorted[0].id, "res-new");
+  assert.equal(sorted[1].id, "res-normal");
+});
+
+test("sortReservationsWithPriority sorts multiple isNew reservations by latest submission date first", () => {
+  const newRowEarlier = {
+    id: "res-new-earlier",
+    isNew: true,
+    createdAt: "2026-08-10T00:00:00.000Z",
+    applicationSubmittedAt: "2026-08-26T10:00:00.000Z",
+  };
+
+  const newRowLater = {
+    id: "res-new-later",
+    isNew: true,
+    createdAt: "2026-08-05T00:00:00.000Z",
+    applicationSubmittedAt: "2026-08-26T14:00:00.000Z",
+  };
+
+  const normalRow = {
+    id: "res-normal",
+    isNew: false,
+    createdAt: "2026-08-26T12:00:00.000Z",
+  };
+
+  const sorted = sortReservationsWithPriority(
+    [newRowEarlier, normalRow, newRowLater],
+    { key: "createdAt", dir: "desc" }
+  );
+
+  assert.equal(sorted[0].id, "res-new-later");
+  assert.equal(sorted[1].id, "res-new-earlier");
+  assert.equal(sorted[2].id, "res-normal");
 });

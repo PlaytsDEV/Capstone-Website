@@ -38,3 +38,5 @@ server/scripts/render_contract_mask_debug.mjs
 # Editor / tool state
 .claude/
 .vscode/
+.superpowers/
+

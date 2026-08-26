@@ -12,11 +12,11 @@ import {
   ChevronUp,
   ArrowRight,
 } from "lucide-react";
+import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import { billingApi } from "../../../../shared/api/billingApi";
 import { showNotification } from "../../../../shared/utils/notification";
 import {
   generateMoveInStatementPDF,
-  generateMoveInReceipt,
   viewMoveInReceipt,
 } from "../../../../shared/utils/receiptGenerator";
 import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
@@ -31,9 +31,9 @@ export default function MoveInSettlementCard({
 }) {
   const navigate = useNavigate();
   const [payingOnline, setPayingOnline] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState(false);
-  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   if (!reservation) return null;
@@ -50,8 +50,18 @@ export default function MoveInSettlementCard({
     isSettled,
   } = resolveReservationFinancials(reservation, profileData);
 
-  const handlePayOnline = async (e) => {
+  const handleOpenPayModal = (e) => {
     if (e) e.stopPropagation();
+    setIsReviewModalOpen(true);
+  };
+
+  const handleClosePayModal = () => {
+    if (!payingOnline) {
+      setIsReviewModalOpen(false);
+    }
+  };
+
+  const handleProceedToCheckout = async () => {
     if (payingOnline) return;
     setPayingOnline(true);
     try {
@@ -90,21 +100,6 @@ export default function MoveInSettlementCard({
       showNotification("Failed to open receipt preview.", "error", 4000);
     } finally {
       setViewingReceipt(false);
-    }
-  };
-
-  const handleDownloadReceipt = async (e) => {
-    if (e) e.stopPropagation();
-    if (downloadingReceipt) return;
-    setDownloadingReceipt(true);
-    try {
-      await generateMoveInReceipt(reservation, profileData);
-      showNotification("Official Receipt downloaded successfully!", "success", 3000);
-    } catch (err) {
-      console.error("Download move-in receipt error:", err);
-      showNotification("Failed to download official receipt.", "error", 4000);
-    } finally {
-      setDownloadingReceipt(false);
     }
   };
 
@@ -246,72 +241,38 @@ export default function MoveInSettlementCard({
           {/* Quick Action in Header (only shown when collapsed to prevent redundancy with expanded actions) */}
           {!isExpanded && (
             isSettled ? (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate("/applicant/contracts");
-                  }}
-                  title="Review Lease Contract"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    padding: "4px 10px",
-                    background: "var(--surface-card, #FFFFFF)",
-                    color: "var(--color-success, #059669)",
-                    border: "1px solid #059669",
-                    borderRadius: 6,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#ECFDF5";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
-                  }}
-                >
-                  <FileText size={13} />
-                  <span>Review Contract</span>
-                </button>
-                <button
-                  onClick={handleViewReceipt}
-                  disabled={viewingReceipt}
-                  title="View Official Receipt"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    padding: "4px 10px",
-                    background: "var(--color-success, #059669)",
-                    color: "#ffffff",
-                    border: "1px solid #047857",
-                    borderRadius: 6,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: viewingReceipt ? "not-allowed" : "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "background-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!viewingReceipt) e.currentTarget.style.background = "#047857";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--color-success, #059669)";
-                  }}
-                >
-                  <FileText size={13} />
-                  <span>{viewingReceipt ? "Opening..." : "View Receipt"}</span>
-                </button>
-              </div>
+              <button
+                onClick={handleViewReceipt}
+                disabled={viewingReceipt}
+                title="View Official Receipt"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  background: "var(--color-success, #059669)",
+                  color: "#ffffff",
+                  border: "1px solid #047857",
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: viewingReceipt ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "background-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!viewingReceipt) e.currentTarget.style.background = "#047857";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--color-success, #059669)";
+                }}
+              >
+                <FileText size={13} />
+                <span>{viewingReceipt ? "Opening..." : "View Receipt"}</span>
+              </button>
             ) : (
               <button
-                onClick={handlePayOnline}
+                onClick={handleOpenPayModal}
                 disabled={payingOnline}
                 title={`Pay ${fmt(remainingDue)} Online`}
                 style={{
@@ -337,7 +298,7 @@ export default function MoveInSettlementCard({
                 }}
               >
                 <CreditCard size={13} />
-                <span>{payingOnline ? "Connecting..." : `Pay ${fmt(remainingDue)}`}</span>
+                <span>Pay {fmt(remainingDue)}</span>
               </button>
             )
           )}
@@ -546,7 +507,7 @@ export default function MoveInSettlementCard({
             {!isSettled ? (
               <>
                 <button
-                  onClick={handlePayOnline}
+                  onClick={handleOpenPayModal}
                   disabled={payingOnline}
                   style={{
                     display: "inline-flex",
@@ -571,7 +532,7 @@ export default function MoveInSettlementCard({
                   }}
                 >
                   <CreditCard size={14} />
-                  {payingOnline ? "Connecting..." : `Pay ${fmt(remainingDue)} Online`}
+                  <span>Pay {fmt(remainingDue)} Online</span>
                 </button>
 
                 <button
@@ -603,214 +564,52 @@ export default function MoveInSettlementCard({
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => navigate("/applicant/contracts")}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 16px",
-                    background: "var(--color-success, #059669)",
-                    color: "#ffffff",
-                    border: "1px solid #047857",
-                    borderRadius: 6,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 1px 2px rgba(5, 150, 105, 0.2)",
-                    transition: "background-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#047857";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--color-success, #059669)";
-                  }}
-                >
-                  <FileText size={14} />
-                  <span>Review Lease Contract</span>
-                </button>
-
-                <button
-                  onClick={handleViewReceipt}
-                  disabled={viewingReceipt}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 16px",
-                    background: "var(--surface-card, #FFFFFF)",
-                    color: "var(--color-success, #059669)",
-                    border: "1px solid #059669",
-                    borderRadius: 6,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: viewingReceipt ? "not-allowed" : "pointer",
-                    transition: "background-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!viewingReceipt) e.currentTarget.style.background = "#ECFDF5";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
-                  }}
-                >
-                  <FileText size={14} />
-                  {viewingReceipt ? "Opening..." : "View Official Receipt"}
-                </button>
-
-                <button
-                  onClick={handleDownloadReceipt}
-                  disabled={downloadingReceipt}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    background: "var(--surface-card, #FFFFFF)",
-                    color: "var(--text-heading, #0F172A)",
-                    border: "1px solid var(--border-card, #CBD5E1)",
-                    borderRadius: 6,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: downloadingReceipt ? "not-allowed" : "pointer",
-                    transition: "background-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!downloadingReceipt) e.currentTarget.style.background = "var(--surface-muted, #F8FAFC)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
-                  }}
-                >
-                  <Download size={13} />
-                  {downloadingReceipt ? "Preparing..." : "Download Official Receipt"}
-                </button>
-
-                <button
-                  onClick={handleDownloadStatement}
-                  disabled={downloading}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    background: "var(--surface-card, #FFFFFF)",
-                    color: "var(--text-secondary, #475569)",
-                    border: "1px solid var(--border-card, #CBD5E1)",
-                    borderRadius: 6,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: downloading ? "not-allowed" : "pointer",
-                    transition: "background-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!downloading) e.currentTarget.style.background = "var(--surface-muted, #F8FAFC)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
-                  }}
-                >
-                  <Download size={13} />
-                  {downloading ? "Preparing..." : "Download Statement"}
-                </button>
-              </>
+              <button
+                onClick={handleViewReceipt}
+                disabled={viewingReceipt}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 16px",
+                  background: "var(--color-success, #059669)",
+                  color: "#ffffff",
+                  border: "1px solid #047857",
+                  borderRadius: 6,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: viewingReceipt ? "not-allowed" : "pointer",
+                  boxShadow: "0 1px 2px rgba(5, 150, 105, 0.2)",
+                  transition: "background-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!viewingReceipt) e.currentTarget.style.background = "#047857";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--color-success, #059669)";
+                }}
+              >
+                <FileText size={14} />
+                <span>{viewingReceipt ? "Opening..." : "View Official Receipt"}</span>
+              </button>
             )}
           </div>
         </div>
       )}
 
-      {/* PayMongo Gateway Transition Overlay */}
-      {payingOnline && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(15, 23, 42, 0.65)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              background: "var(--surface-card, #FFFFFF)",
-              border: "1px solid var(--border-card, #E2E8F0)",
-              borderRadius: 14,
-              padding: "24px 28px",
-              maxWidth: 400,
-              width: "100%",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              textAlign: "center",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <div
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: "50%",
-                background: "rgba(5, 150, 105, 0.1)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--color-success, #059669)",
-              }}
-            >
-              <Loader2 size={26} style={{ animation: "spin 1s linear infinite" }} />
-            </div>
-
-            <div>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 17,
-                  fontWeight: 700,
-                  color: "var(--text-heading, #0F172A)",
-                }}
-              >
-                Redirecting to PayMongo
-              </h3>
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: 13,
-                  color: "var(--text-secondary, #64748B)",
-                  lineHeight: 1.5,
-                }}
-              >
-                Opening PayMongo secure checkout for <strong>{fmt(remainingDue)}</strong>.
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--text-muted, #94A3B8)",
-                background: "var(--surface-muted, #F8FAFC)",
-                padding: "5px 10px",
-                borderRadius: 20,
-                border: "1px solid var(--border-card, #E2E8F0)",
-              }}
-            >
-              <ShieldCheck size={14} color="#059669" />
-              <span>256-Bit SSL Encrypted Payment Gateway</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Move-In Payment Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={isReviewModalOpen}
+        onClose={handleClosePayModal}
+        onConfirm={handleProceedToCheckout}
+        title="Proceed to Online Payment?"
+        message={`Are you sure you want to proceed with paying ${fmt(remainingDue)}? You will be redirected to PayMongo to complete your payment.`}
+        confirmText="Proceed to PayMongo"
+        loadingText="Connecting..."
+        cancelText="Cancel"
+        variant="success"
+        loading={payingOnline}
+      />
     </div>
   );
 }

@@ -167,12 +167,27 @@ const ProfilePage = () => {
         : null;
 
     if (paymentStatus === "cancelled") {
-      showNotification(
-        "Move-in checkout was cancelled. You can complete payment anytime before move-in.",
-        "warning",
-        5000,
-      );
+      showNotification("Payment was cancelled.", "info", 3000);
       return;
+    }
+
+    if (paymentStatus === "success") {
+      // Optimistically update React Query cache so MoveInSettlementCard immediately displays "Settled"
+      queryClient.setQueriesData({ queryKey: ["reservations"] }, (oldData) => {
+        if (!Array.isArray(oldData)) return oldData;
+        return oldData.map((res) => {
+          if (res.status !== "cancelled") {
+            return {
+              ...res,
+              initialPaymentStatus: "paid",
+              initialPaymentPaidAt: res.initialPaymentPaidAt || new Date().toISOString(),
+              initialPaymentSettledAt: res.initialPaymentSettledAt || new Date().toISOString(),
+              isMoveInSettled: true,
+            };
+          }
+          return res;
+        });
+      });
     }
 
     const verifyPayment = async () => {

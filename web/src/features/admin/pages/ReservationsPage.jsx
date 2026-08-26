@@ -77,6 +77,7 @@ import {
   applyMoveInFilter,
   applyAppDateFilter,
   getReservationDocumentWarnings,
+  sortReservationsWithPriority,
 } from "../utils/reservationRows";
 import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
 import ActiveFilterTags from "../components/ActiveFilterTags";
@@ -558,40 +559,15 @@ function ReservationsPage() {
   }, [isOwner, user?.branch]);
 
 
-  const sortedReservations = useMemo(() => {
-    const { key, dir } = sortState;
-    if (statusFilter === "cancellation_requested") {
-      return [...filteredReservations].sort(
-        (left, right) =>
-          new Date(right.cancellationRequestedAt || 0) -
-          new Date(left.cancellationRequestedAt || 0),
-      );
-    }
-
-    if (!key) return filteredReservations;
-
-    return [...filteredReservations].sort((left, right) => {
-      const leftValue = left[key];
-      const rightValue = right[key];
-
-      if (leftValue == null) return 1;
-      if (rightValue == null) return -1;
-
-      let comparison = 0;
-      if (key === "createdAt") {
-        comparison = new Date(leftValue) - new Date(rightValue);
-      } else if (key === "moveInDate") {
-        comparison =
-          new Date(readMoveInDate(left)) - new Date(readMoveInDate(right));
-      } else if (typeof leftValue === "string") {
-        comparison = leftValue.localeCompare(rightValue);
-      } else {
-        comparison = leftValue - rightValue;
-      }
-
-      return dir === "asc" ? comparison : -comparison;
-    });
-  }, [filteredReservations, sortState, statusFilter]);
+  const sortedReservations = useMemo(
+    () =>
+      sortReservationsWithPriority(
+        filteredReservations,
+        sortState,
+        statusFilter,
+      ),
+    [filteredReservations, sortState, statusFilter],
+  );
 
   const totalFiltered = sortedReservations.length;
   const isArchivedView = statusFilter === "archived";

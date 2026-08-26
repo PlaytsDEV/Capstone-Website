@@ -177,6 +177,8 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getViolationById: noop,
   createViolation: noop,
   updateViolationDecision: noop,
+  updateViolation: noop,
+  archiveViolation: noop,
   getTerminationCases: noop,
   createTerminationCase: noop,
   getOverdueNoticesAction: noop,

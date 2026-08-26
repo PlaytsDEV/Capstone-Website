@@ -132,11 +132,42 @@ const isNotYetEffectiveSuccessor = (contract, now) => {
   return new Date(contract.leaseStartDate).getTime() > now.getTime();
 };
 
+export const computeDocumentReadinessScore = (contract) => {
+  if (!contract) return 0;
+  let score = 0;
+  if (Array.isArray(contract.notarizedDocuments) && contract.notarizedDocuments.length > 0) {
+    score += 4;
+  }
+  if (Array.isArray(contract.signedDocuments) && contract.signedDocuments.length > 0) {
+    score += 2;
+  }
+  if (
+    (Array.isArray(contract.preparedDocuments) && contract.preparedDocuments.length > 0) ||
+    contract.status === "generated"
+  ) {
+    score += 1;
+  }
+  return score;
+};
+
+const getCandidateTimestamp = (contract) => {
+  const raw = contract?.updatedAt || contract?.createdAt;
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+};
+
+const getCandidateVersion = (contract) => {
+  const v = Number(contract?.version);
+  return Number.isNaN(v) ? 0 : v;
+};
+
 export const selectCanonicalTenantContract = ({
   contracts = [],
   activeStay = null,
   includeEarlyStages = false,
   now = new Date(),
+  strictIntegrityCheck = false,
 }) => {
   const eligibleIds = new Set(
     contracts
@@ -163,9 +194,14 @@ export const selectCanonicalTenantContract = ({
   const tiered = candidates.filter(({ tier }) => tier === highestTier);
   const highestRank = Math.max(...tiered.map(({ rank }) => rank));
   const highest = tiered.filter(({ rank }) => rank === highestRank);
-  if (highest.length !== 1) {
+
+  if (highest.length === 1) {
+    return highest[0].contract;
+  }
+
+  if (strictIntegrityCheck) {
     throw Object.assign(
-      new Error("Multiple resident-visible canonical Contracts were found."),
+      new Error("Multiple tenant-visible canonical Contracts were found."),
       {
         code: "MULTIPLE_CANONICAL_CONTRACTS",
         statusCode: 409,
@@ -173,10 +209,42 @@ export const selectCanonicalTenantContract = ({
       },
     );
   }
-  return highest[0].contract;
+
+  // Secondary tie-breaker: document readiness score first
+  const withScores = highest.map((item) => ({
+    ...item,
+    docScore: computeDocumentReadinessScore(item.contract),
+  }));
+
+  const maxDocScore = Math.max(...withScores.map((item) => item.docScore));
+  const scoredCandidates = withScores.filter((item) => item.docScore === maxDocScore);
+
+  if (scoredCandidates.length === 1) {
+    return scoredCandidates[0].contract;
+  }
+
+  // Tertiary tie-breaker: most recent updatedAt / createdAt timestamp, then version
+  const sorted = [...scoredCandidates].sort((a, b) => {
+    const timeA = getCandidateTimestamp(a.contract);
+    const timeB = getCandidateTimestamp(b.contract);
+    if (timeA !== timeB) {
+      return timeB - timeA;
+    }
+    const verA = getCandidateVersion(a.contract);
+    const verB = getCandidateVersion(b.contract);
+    if (verA !== verB) {
+      return verB - verA;
+    }
+    return 0;
+  });
+
+  return sorted[0].contract;
 };
 
-export const resolveTenantCanonicalContract = async (tenantId, { includeEarlyStages = false } = {}) => {
+export const resolveTenantCanonicalContract = async (
+  tenantId,
+  { includeEarlyStages = false, strictIntegrityCheck = false } = {},
+) => {
   const [activeStay, contracts] = await Promise.all([
     resolveCurrentStayForTenant(tenantId).lean(),
     // Ownership is unconditional (tenantId scoping only) — includeEarlyStages
@@ -184,7 +252,12 @@ export const resolveTenantCanonicalContract = async (tenantId, { includeEarlySta
     // eligible, never whose Contracts are considered.
     Contract.find({ tenantId }).sort({ createdAt: -1 }),
   ]);
-  return selectCanonicalTenantContract({ contracts, activeStay, includeEarlyStages });
+  return selectCanonicalTenantContract({
+    contracts,
+    activeStay,
+    includeEarlyStages,
+    strictIntegrityCheck,
+  });
 };
 
 // Renewal/transfer entry points (tenantActionService.js) need "the tenant's
@@ -205,6 +278,7 @@ export const resolveAuthoritativeCurrentContract = async ({
   tenantId = null,
   includeEarlyStages = false,
   now = new Date(),
+  strictIntegrityCheck = false,
   session = null,
 } = {}) => {
   if (!reservationId && !tenantId) {
@@ -220,7 +294,13 @@ export const resolveAuthoritativeCurrentContract = async ({
     ? await Contract.find({ tenantId: scopeTenantId }).session(session).sort({ createdAt: -1 })
     : await Contract.find({ reservationId }).session(session).sort({ createdAt: -1 });
 
-  return selectCanonicalTenantContract({ contracts, activeStay, includeEarlyStages, now });
+  return selectCanonicalTenantContract({
+    contracts,
+    activeStay,
+    includeEarlyStages,
+    now,
+    strictIntegrityCheck,
+  });
 };
 
 export const resolveTenantContractHistory = async (tenantId) => {

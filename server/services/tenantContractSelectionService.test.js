@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 import {
+  computeDocumentReadinessScore,
   isResidentContractEligible,
   selectCanonicalTenantContract,
 } from "./tenantContractSelectionService.js";
@@ -58,14 +59,129 @@ describe("resident canonical Contract selection", () => {
     expect(isResidentContractEligible(contract(overrides))).toBe(false);
   });
 
-  test("returns a safe integrity conflict for multiple canonical candidates", () => {
+  test("returns a safe integrity conflict for multiple canonical candidates when strictIntegrityCheck is enabled", () => {
     expect(() => selectCanonicalTenantContract({
       contracts: [contract({ _id: "one" }), contract({ _id: "two" })],
       activeStay,
-    })).toThrow(expect.objectContaining({
-      code: "MULTIPLE_CANONICAL_CONTRACTS",
-      statusCode: 409,
-    }));
+      strictIntegrityCheck: true,
+    })).toThrow("Multiple tenant-visible canonical Contracts were found.");
+  });
+
+  test("gracefully tie-breaks multiple canonical contracts by default without throwing", () => {
+    const selected = selectCanonicalTenantContract({
+      contracts: [contract({ _id: "one" }), contract({ _id: "two" })],
+      activeStay,
+    });
+    expect(selected?._id).toBe("one");
+  });
+
+  test("computeDocumentReadinessScore calculates points accurately based on document readiness", () => {
+    expect(computeDocumentReadinessScore(null)).toBe(0);
+    expect(computeDocumentReadinessScore({})).toBe(0);
+    expect(computeDocumentReadinessScore({ status: "draft" })).toBe(0);
+    expect(computeDocumentReadinessScore({ status: "generated" })).toBe(1);
+    expect(computeDocumentReadinessScore({ preparedDocuments: [{ version: 1 }] })).toBe(1);
+    expect(computeDocumentReadinessScore({ signedDocuments: [{ version: 1 }] })).toBe(2);
+    expect(computeDocumentReadinessScore({ status: "generated", signedDocuments: [{ version: 1 }] })).toBe(3);
+    expect(computeDocumentReadinessScore({ notarizedDocuments: [{ version: 1 }] })).toBe(4);
+    expect(computeDocumentReadinessScore({
+      status: "generated",
+      preparedDocuments: [{ version: 1 }],
+      signedDocuments: [{ version: 1 }],
+      notarizedDocuments: [{ version: 1 }],
+    })).toBe(7);
+  });
+
+  test("gracefully tie-breaks multiple canonical contracts by document readiness score", () => {
+    const preparedOnly = contract({
+      _id: "prepared-contract",
+      status: "generated",
+      preparedDocuments: [{ version: 1 }],
+      signedDocuments: [],
+      notarizedDocuments: [],
+    });
+    const signedContract = contract({
+      _id: "signed-contract",
+      status: "signed",
+      preparedDocuments: [{ version: 1 }],
+      signedDocuments: [{ version: 1 }],
+      notarizedDocuments: [],
+    });
+    const notarizedContract = contract({
+      _id: "notarized-contract",
+      status: "notarized",
+      preparedDocuments: [{ version: 1 }],
+      signedDocuments: [{ version: 1 }],
+      notarizedDocuments: [{ version: 1 }],
+    });
+
+    // Notarized (+4 +2 +1 = 7) beats Signed (+2 +1 = 3) and Prepared (+1 = 1)
+    const selected1 = selectCanonicalTenantContract({
+      contracts: [preparedOnly, signedContract, notarizedContract],
+      activeStay,
+    });
+    expect(selected1._id).toBe("notarized-contract");
+
+    // Signed (+2 +1 = 3) beats Prepared (+1 = 1)
+    const selected2 = selectCanonicalTenantContract({
+      contracts: [preparedOnly, signedContract],
+      activeStay,
+    });
+    expect(selected2._id).toBe("signed-contract");
+  });
+
+  test("gracefully tie-breaks identical multiple canonical contracts by newest creation date", () => {
+    const older = contract({
+      _id: "older-contract",
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    const newer = contract({
+      _id: "newer-contract",
+      createdAt: new Date("2026-08-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-20T00:00:00.000Z"),
+    });
+    const selected = selectCanonicalTenantContract({
+      contracts: [older, newer],
+      activeStay,
+    });
+    expect(selected._id).toBe("newer-contract");
+  });
+
+  test("gracefully tie-breaks multiple canonical contracts by newest update date over older creation date", () => {
+    const updatedContract = contract({
+      _id: "updated-contract",
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-25T00:00:00.000Z"),
+    });
+    const olderUpdatedContract = contract({
+      _id: "older-updated-contract",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-15T00:00:00.000Z"),
+    });
+    const selected = selectCanonicalTenantContract({
+      contracts: [olderUpdatedContract, updatedContract],
+      activeStay,
+    });
+    expect(selected._id).toBe("updated-contract");
+  });
+
+  test("gracefully tie-breaks multiple canonical contracts by version when timestamps match", () => {
+    const v1Contract = contract({
+      _id: "v1-contract",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      version: 1,
+    });
+    const v2Contract = contract({
+      _id: "v2-contract",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      version: 2,
+    });
+    const selected = selectCanonicalTenantContract({
+      contracts: [v1Contract, v2Contract],
+      activeStay,
+    });
+    expect(selected._id).toBe("v2-contract");
   });
 
   test("prefers the Contract linked to the active stay over an older stay", () => {
@@ -296,7 +412,7 @@ describe("resident canonical Contract selection", () => {
   // MULTIPLE_CANONICAL_CONTRACTS for Admin PDF download, Tenant Web
   // /api/contracts/my, and Mobile alike (confirmed against the live
   // "LIL-GP-2026-00021 / LIL-GP-2026-00022" tenant record).
-  test("an orphaned draft from a cancelled Reservation collides with the tenant's real draft until archived", () => {
+  test("an orphaned draft from a cancelled Reservation collides with the tenant's real draft until archived (in strict integrity mode)", () => {
     const cancelledReservationOrphan = contract({
       _id: "orphan-from-cancelled-reservation",
       reservationId: "reservation-cancelled",
@@ -314,6 +430,7 @@ describe("resident canonical Contract selection", () => {
       contracts: [cancelledReservationOrphan, currentDraft],
       activeStay: null,
       includeEarlyStages: true,
+      strictIntegrityCheck: true,
     })).toThrow(expect.objectContaining({ code: "MULTIPLE_CANONICAL_CONTRACTS" }));
 
     const selected = selectCanonicalTenantContract({

@@ -13,7 +13,6 @@ import {
   Download,
 } from "lucide-react";
 import { getReservationConfirmationState } from "../../utils/reservationConfirmationState";
-import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
 import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 
 const REDIRECT_SECONDS = 15;
@@ -122,9 +121,9 @@ const ReservationConfirmationStep = ({
   };
 
   return (
-    <div ref={receiptRef} className="w-full max-w-6xl mx-auto space-y-6 rf-confirmation-wrapper">
+    <div ref={receiptRef} className="w-full max-w-6xl mx-auto p-6 sm:p-8 lg:p-10 space-y-7 rf-confirmation-wrapper">
       {/* Header Badge & Title */}
-      <div className="space-y-3 border-b border-slate-200 dark:border-slate-800 pb-5">
+      <div className="pt-1 sm:pt-2 space-y-3.5 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="inline-flex items-center px-3 py-1 bg-transparent border border-slate-200 dark:border-slate-700 rounded-full">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
@@ -155,9 +154,9 @@ const ReservationConfirmationStep = ({
       </div>
 
       {/* Main 2-Column Responsive Bento Layout (12 Columns) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-7 items-start">
         {/* Left Column: Status Hero, Official Code Card & Summary Cards */}
-        <div className="lg:col-span-7 flex flex-col gap-5 justify-between">
+        <div className="lg:col-span-7 flex flex-col gap-5 justify-start">
           {/* Celebration Banner */}
           <div className="rf-celebration-banner m-0">
             <div className="rf-check-circle">
@@ -243,7 +242,7 @@ const ReservationConfirmationStep = ({
                   <CheckCircle size={14} /> ₱{reservationFeeAmount.toLocaleString("en-PH")} (Paid)
                 </div>
                 <div className="rf-summary-meta">
-                  Remaining Move-In Balance: ₱{Math.max(0, (Number(getResolvedMonthlyRate(reservationData?.pricingDisplay) || room?.price || 0) * 2) - reservationFeeAmount).toLocaleString("en-PH")}
+                  Slot successfully locked · Non-refundable deposit
                 </div>
               </div>
             )}
@@ -251,13 +250,13 @@ const ReservationConfirmationStep = ({
         </div>
 
         {/* Right Column: What Happens Next & Actions Card */}
-        <div className="lg:col-span-5 flex flex-col gap-5 justify-between">
+        <div className="lg:col-span-5 flex flex-col gap-5 justify-start">
           {/* What happens next */}
-          <div className="rf-next-steps-card m-0 flex-1 flex flex-col">
+          <div className="rf-next-steps-card m-0">
             <div className="rf-next-steps-title">
               <span>What happens next</span>
             </div>
-            <div className="rf-steps-list flex-1 justify-around">
+            <div className="rf-steps-list">
               {confirmationState.nextSteps.map(({ step, detail }, idx) => (
                 <div key={idx} className="rf-next-step">
                   <div className="rf-step-number">{idx + 1}</div>

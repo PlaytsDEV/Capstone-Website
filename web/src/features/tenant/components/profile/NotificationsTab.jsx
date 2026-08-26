@@ -321,8 +321,29 @@ const NotificationsTab = () => {
 		}
 		if (notification.type === "announcement") {
 			navigate("/applicant/announcements");
+		} else if (
+			notification.type === "contract_document_ready" ||
+			notification.type === "renewal_effective" ||
+			notification.entityType === "contract"
+		) {
+			navigate("/applicant/contracts");
 		} else if (notification.actionUrl) {
-			navigate(notification.actionUrl);
+			const rawUrl = notification.actionUrl;
+			if (rawUrl === "/tenant/documents" || rawUrl === "/tenant/contracts" || rawUrl === "/documents" || rawUrl === "/contracts") {
+				navigate("/applicant/contracts");
+			} else if (rawUrl.startsWith("/tenant/reservation")) {
+				navigate(rawUrl.replace(/^\/tenant\/reservation/, "/applicant/reservation"));
+			} else if (rawUrl.startsWith("/tenant/billing") || rawUrl.startsWith("/bill-details")) {
+				navigate("/applicant/billing");
+			} else if (rawUrl.startsWith("/tenant/maintenance")) {
+				navigate(rawUrl.replace(/^\/tenant\/maintenance/, "/applicant/maintenance"));
+			} else if (rawUrl.startsWith("/tenant/announcements")) {
+				navigate(rawUrl.replace(/^\/tenant\/announcements/, "/applicant/announcements"));
+			} else if (rawUrl.startsWith("/tenant/account") || rawUrl.startsWith("/tenant/profile")) {
+				navigate("/applicant/profile");
+			} else {
+				navigate(rawUrl);
+			}
 		}
 	};
 

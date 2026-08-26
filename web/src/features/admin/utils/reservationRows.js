@@ -544,3 +544,68 @@ export function getReservationDocumentWarnings(reservation) {
 
   return warnings;
 }
+
+export function sortReservationsWithPriority(
+  reservations = [],
+  sortState = { key: "createdAt", dir: "desc" },
+  statusFilter = "all",
+) {
+  if (!Array.isArray(reservations)) return [];
+  const { key = "createdAt", dir = "desc" } = sortState || {};
+
+  if (statusFilter === "cancellation_requested") {
+    return [...reservations].sort(
+      (left, right) =>
+        new Date(right.cancellationRequestedAt || 0) -
+        new Date(left.cancellationRequestedAt || 0),
+    );
+  }
+
+  const getSortTimestamp = (row) => {
+    const time =
+      row?.applicationResubmittedAt ||
+      row?.applicationSubmittedAt ||
+      row?.createdAt;
+    return time ? new Date(time).getTime() : 0;
+  };
+
+  return [...reservations].sort((left, right) => {
+    // Tier 1: NEW unreviewed reservations always pinned to top
+    if (left?.isNew && !right?.isNew) return -1;
+    if (!left?.isNew && right?.isNew) return 1;
+
+    // Tier 2: Column sort within each tier
+    if (key === "createdAt") {
+      const leftTime = getSortTimestamp(left);
+      const rightTime = getSortTimestamp(right);
+      return dir === "asc" ? leftTime - rightTime : rightTime - leftTime;
+    }
+
+    if (key === "moveInDate") {
+      const leftMoveIn = new Date(readMoveInDate(left) || 0).getTime();
+      const rightMoveIn = new Date(readMoveInDate(right) || 0).getTime();
+      return dir === "asc" ? leftMoveIn - rightMoveIn : rightMoveIn - leftMoveIn;
+    }
+
+    const leftValue = left?.[key];
+    const rightValue = right?.[key];
+
+    if (leftValue == null && rightValue == null) return 0;
+    if (leftValue == null) return 1;
+    if (rightValue == null) return -1;
+
+    let comparison = 0;
+    if (typeof leftValue === "string") {
+      comparison = leftValue.localeCompare(rightValue);
+    } else {
+      comparison = leftValue - rightValue;
+    }
+
+    if (comparison !== 0) {
+      return dir === "asc" ? comparison : -comparison;
+    }
+
+    // Tie-breaker: latest activity time descending
+    return getSortTimestamp(right) - getSortTimestamp(left);
+  });
+}

@@ -168,7 +168,29 @@ const terminationReviewSchema = new mongoose.Schema(
       default: null,
     },
 
-    // --- Internal Review Notes ---
+    // --- Internal Review Notes & Recommendation ---
+    recommendation: {
+      type: String,
+      enum: [
+        "pending",
+        "recommend_probation",
+        "recommend_payment_plan",
+        "recommend_pre_termination",
+        "recommend_dismissal",
+      ],
+      default: "pending",
+    },
+    recommendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    recommendationNotes: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 3000,
+    },
     reviewNotes: {
       type: String,
       default: "",

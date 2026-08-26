@@ -181,6 +181,7 @@ export function buildContractOwnershipReconciliationPlan({
         contracts: postRebindContracts,
         activeStay: newestActiveStay(postRebindStays),
         includeEarlyStages: true,
+        strictIntegrityCheck: true,
         now,
       });
     } catch (error) {

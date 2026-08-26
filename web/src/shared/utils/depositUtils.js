@@ -180,7 +180,9 @@ export function resolveReservationFinancials(reservation = {}, profileData = nul
   const isSettled =
     ["paid", "paid_in_full", "settled", "completed"].includes(initialStatus) ||
     paymentStatus === "paid_in_full" ||
-    Boolean(reservation.initialPaymentSettledAt);
+    Boolean(reservation.initialPaymentSettledAt) ||
+    Boolean(reservation.initialPaymentPaidAt) ||
+    Boolean(reservation.isMoveInSettled);
 
   return {
     monthlyRent,

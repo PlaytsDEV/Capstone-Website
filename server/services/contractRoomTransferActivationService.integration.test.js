@@ -153,6 +153,44 @@ describe("contractRoomTransferActivationService.activateRoomTransferSuccessor", 
     expect(reloadedBedHistory.status).toBe("active");
   });
 
+  test("activates a successor when the predecessor has published status (final wet-signed contract)", async () => {
+    const { tenant, roomA, reservation, stay, bedHistory } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+    const oldContract = await createContract({
+      tenant, room: roomA, reservation, stay, actorId,
+      overrides: {
+        status: "published",
+        isCurrent: true,
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+    const successor = await createContract({
+      tenant, room: roomA, reservation, stay, actorId,
+      overrides: {
+        contractPurpose: "replacement",
+        replacesContractId: oldContract._id,
+        parentContractId: oldContract._id,
+        status: "published",
+        isCurrent: false,
+        approvedMonthlyRate: 14400,
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    const result = await activateRoomTransferSuccessor({ successorContractId: successor._id, actorId });
+    expect(result.activated).toBe(true);
+
+    const [reloadedOld, reloadedSuccessor] = await Promise.all([
+      Contract.findById(oldContract._id),
+      Contract.findById(successor._id),
+    ]);
+
+    expect(reloadedSuccessor.status).toBe("active");
+    expect(reloadedSuccessor.isCurrent).toBe(true);
+    expect(reloadedOld.status).toBe("replaced");
+    expect(reloadedOld.isCurrent).toBe(false);
+  });
+
   test("is idempotent — re-running on an already-active successor is a safe no-op", async () => {
     const { tenant, roomA, reservation, stay } = await seedTenantRoomReservation();
     const actorId = new mongoose.Types.ObjectId();

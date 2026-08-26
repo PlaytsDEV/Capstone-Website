@@ -15,17 +15,12 @@ import {
   ChevronRight,
   Check,
   Home,
-  X,
   Calendar,
-  AlertCircle,
-  CheckCircle2,
   ArrowLeft,
   Edit3,
   Loader2,
-  Sparkles,
 } from "lucide-react";
 import { getAvailableLeaseOptions } from "./applicationFormConstants";
-import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
 import { showNotification } from "../../../../shared/utils/notification";
 
 const formatCurrency = (amount) =>
@@ -83,10 +78,6 @@ const ReservationPaymentStep = ({
   const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
     ? Number(reservationData.reservationFeeAmount)
     : 2000;
-
-  const pricingDisplay = reservationData?.pricingDisplay;
-  const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
-  const monthlyRent = getResolvedMonthlyRate(pricingDisplay) || Number(reservationData?.monthlyRent || room?.price || 0);
 
   const minMonths = room?.longTermLeaseMinMonths ?? 6;
   const leaseOptions = React.useMemo(() => getAvailableLeaseOptions(minMonths), [minMonths]);
@@ -324,44 +315,6 @@ const ReservationPaymentStep = ({
                 </div>
               )}
 
-              {/* Move-In Requirements Summary Preview */}
-              {monthlyRent > 0 && (
-                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-200 dark:border-slate-700/80 my-2">
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                    <span>Move-In Balance Preview</span>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-                    <div className="flex justify-between">
-                      <span>1 Month Advance Rent:</span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
-                        {formatCurrency(monthlyRent)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>1 Month Security Deposit:</span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
-                        {formatCurrency(monthlyRent)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200">
-                      <span>Total Move-In Requirements:</span>
-                      <span>{formatCurrency(monthlyRent * 2)}</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5 leading-relaxed">
-                      Paying the {formatCurrency(reservationFeeAmount)} reservation fee below will be credited towards your move-in requirements.
-                    </div>
-                    <div className="flex justify-between pt-1.5 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-xs">
-                      <span>Estimated Balance (Due Before Move-In):</span>
-                      <span className="text-slate-900 dark:text-slate-100 font-bold">
-                        {formatCurrency(Math.max(0, monthlyRent * 2 - reservationFeeAmount))}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="rf-uc-summary-row rf-uc-total-row">
                 <div className="rf-uc-row-left">
                   <span className="rf-uc-total-label">Reservation Fee (Due Now)</span>
@@ -401,6 +354,15 @@ const ReservationPaymentStep = ({
                     className={`rf-fee-policy-check rf-policy-ack-box ${agreedToFeePolicy ? "is-checked" : ""} ${
                       isLoading || payingOnline ? "is-disabled" : ""
                     }`}
+                    role="checkbox"
+                    aria-checked={Boolean(agreedToFeePolicy)}
+                    tabIndex={isLoading || payingOnline ? -1 : 0}
+                    onKeyDown={(e) => {
+                      if ((e.key === " " || e.key === "Enter") && !isLoading && !payingOnline) {
+                        e.preventDefault();
+                        setAgreedToFeePolicy(!agreedToFeePolicy);
+                      }
+                    }}
                     onClick={() => {
                       if (!isLoading && !payingOnline) {
                         setAgreedToFeePolicy(!agreedToFeePolicy);
@@ -414,6 +376,7 @@ const ReservationPaymentStep = ({
                         checked={Boolean(agreedToFeePolicy)}
                         onChange={(e) => setAgreedToFeePolicy(e.target.checked)}
                         disabled={isLoading || payingOnline}
+                        tabIndex={-1}
                         className="rf-policy-checkbox"
                       />
                       <div className="rf-policy-custom-check" aria-hidden="true">

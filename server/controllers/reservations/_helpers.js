@@ -160,6 +160,7 @@ export const ADMIN_LIST_FIELDS = [
   "currentLocation",
   "visitHistory",
   "applicationSubmittedAt",
+  "applicationResubmittedAt",
   "applicationReviewReason",
   "applicationReviewedAt",
   "approvedForPaymentAt",

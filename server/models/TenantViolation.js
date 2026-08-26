@@ -264,7 +264,9 @@ export { VIOLATION_TYPES };
 
 // Fast queries for admin dashboard
 tenantViolationSchema.index({ branch: 1, status: 1, createdAt: -1 });
+tenantViolationSchema.index({ branch: 1, isArchived: 1, createdAt: -1 });
 tenantViolationSchema.index({ tenantId: 1, status: 1 });
+tenantViolationSchema.index({ tenantId: 1, isArchived: 1 });
 tenantViolationSchema.index({ reservationId: 1 });
 
 // ============================================================================

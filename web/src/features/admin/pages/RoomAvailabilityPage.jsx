@@ -540,11 +540,10 @@ function RoomAvailabilityPage() {
       setEditingRoom(null);
     } catch (err) {
       console.error("[RoomAvailabilityPage] Save room failed:", err);
-      showNotification(
-        "Unable to save room details. Please check the entered information and try again.",
-        "error",
-        5000
-      );
+      const errorMessage =
+        err?.message ||
+        "Unable to save room details. Please check the entered information and try again.";
+      showNotification(errorMessage, "error", 5000);
       throw err;
     }
   };

@@ -509,6 +509,8 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
       paymentPlan,
       preTerminationNotice,
       reviewNotes,
+      recommendation,
+      recommendationNotes
     } = req.body;
 
     const VALID_OUTCOMES = [
@@ -519,15 +521,28 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
       "case_dismissed",
     ];
 
-    if (!outcome || !VALID_OUTCOMES.includes(outcome)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid outcome. Must be one of: ${VALID_OUTCOMES.join(", ")}`,
-      });
+    if (outcome) {
+      if (!VALID_OUTCOMES.includes(outcome)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid outcome. Must be one of: ${VALID_OUTCOMES.join(", ")}`,
+        });
+      }
+
+      // Owner-Exclusive Eviction Authority Lock
+      if (["pre_termination_notice", "termination_approved"].includes(outcome)) {
+        const isOwner = admin.isOwner || req.user.role === "owner";
+        if (!isOwner) {
+          return res.status(403).json({
+            success: false,
+            error: "Only Dorm Owners are authorized to issue formal eviction notices or approve lease terminations."
+          });
+        }
+      }
     }
 
     const trimmedOutcomeDetail = (outcomeDetail || "").trim();
-    if (trimmedOutcomeDetail.length < 10) {
+    if (outcome && trimmedOutcomeDetail.length < 10) {
       return res.status(400).json({
         success: false,
         error: "A formal rationale (outcomeDetail) must be at least 10 characters.",
@@ -560,15 +575,25 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
     }
 
     // Update Decision Block
-    review.decision = {
-      outcome,
-      outcomeDetail: trimmedOutcomeDetail,
-      decidedBy: adminUserId,
-      decidedAt: new Date(),
-    };
+    if (outcome) {
+      review.decision = {
+        outcome,
+        outcomeDetail: trimmedOutcomeDetail,
+        decidedBy: adminUserId,
+        decidedAt: new Date(),
+      };
+      review.status = targetStatus || (outcome === "case_dismissed" ? "closed" : "resolved");
+      review.resolvedAt = new Date();
+    } else if (targetStatus) {
+      review.status = targetStatus;
+    }
 
-    review.status = targetStatus || (outcome === "case_dismissed" ? "closed" : "resolved");
-    review.resolvedAt = new Date();
+    if (recommendation) {
+      review.recommendation = recommendation;
+    }
+    if (recommendationNotes) {
+      review.recommendationNotes = recommendationNotes;
+    }
 
     if (trimmedReviewNotes) {
       review.reviewNotes = trimmedReviewNotes;
