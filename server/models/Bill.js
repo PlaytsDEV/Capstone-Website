@@ -382,6 +382,12 @@ const billSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    violationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TenantViolation",
+      default: null,
+      index: true,
+    },
     isManuallyAdjusted: {
       type: Boolean,
       default: false,
@@ -544,7 +550,7 @@ const billSchema = new mongoose.Schema(
     // Distinguishes regular monthly rent bills from special lifecycle event bills.
     billType: {
       type: String,
-      enum: ["monthly", "initial_payment", "transfer_settlement"],
+      enum: ["monthly", "initial_payment", "transfer_settlement", "penalty"],
       default: "monthly",
     },
 
@@ -614,6 +620,7 @@ const billSchema = new mongoose.Schema(
 billSchema.index({ branch: 1, billingMonth: -1 });
 billSchema.index({ branch: 1, status: 1 });
 billSchema.index({ branch: 1, userId: 1, billingMonth: -1 });
+billSchema.index({ violationId: 1, isArchived: 1, status: 1 });
 billSchema.index({
   userId: 1,
   reservationId: 1,

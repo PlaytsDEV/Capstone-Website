@@ -115,7 +115,7 @@ describe("notify.utilityChargeAvailable — push + billId (bill-release notifica
   test("still creates the DB notification even with no billId (no regression — falls back to the tab, not a crash)", async () => {
     await notify.utilityChargeAvailable("user-123", "electricity", "August 2026", 1760, 1760, "August 23, 2026");
     expect(NotificationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ entityId: null, actionUrl: "/tenant/account?tab=billing" }),
+      expect.objectContaining({ entityId: null, actionUrl: "/applicant/billing" }),
     );
   });
 });

@@ -752,9 +752,21 @@ export function TransferTenantModal({
   }, []);
 
   // ── Derived room / bed data ───────────────────────────────────────────────
+  const currentRoomType =
+    detail?.roomInfo?.type ||
+    detail?.roomInfo?.roomType ||
+    detail?.basicInfo?.roomType ||
+    tenant?.roomType ||
+    tenant?.roomId?.type ||
+    "";
   const targetRooms = useMemo(
-    () => rooms.filter((r) => String(r._id || r.id) !== String(tenant?.roomId)),
-    [rooms, tenant?.roomId],
+    () =>
+      rooms.filter(
+        (r) =>
+          String(r._id || r.id) !== String(tenant?.roomId) &&
+          (!currentRoomType || (r.type || r.roomType) === currentRoomType),
+      ),
+    [rooms, tenant?.roomId, currentRoomType],
   );
   const selectedRoom = targetRooms.find(
     (r) => String(r._id || r.id) === String(roomId),
@@ -1010,7 +1022,7 @@ export function TransferTenantModal({
       {step === 1 && (
         <>
           <div className="twm-callout twm-callout--info">
-            Transfers are limited to the same branch. The current bed will automatically enter turnover status.
+            Transfers are restricted to available same-branch rooms of the same room type{currentRoomType ? ` (${currentRoomType.replace(/-/g, " ")})` : ""}. To change room types, a contract termination and new lease booking is required.
           </div>
 
           {hasOutstanding && (

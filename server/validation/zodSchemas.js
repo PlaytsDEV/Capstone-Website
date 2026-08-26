@@ -4,6 +4,7 @@ import {
   ANNOUNCEMENT_TARGET_BRANCHES,
   ANNOUNCEMENT_VISIBILITY,
 } from "../config/announcements.js";
+import { VIOLATION_TYPES } from "../models/TenantViolation.js";
 
 export const setRoleSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
@@ -77,25 +78,150 @@ export const updateUserSchema = z.object({
   branch: z.enum(["gil-puyat", "guadalupe", ""]).optional().nullable(),
 });
 
-export const createRoomSchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  roomNumber: z.string().trim().min(1, "Room number is required"),
-  branch: z.enum(["gil-puyat", "guadalupe"]),
-  type: z.enum(["private", "double-sharing", "quadruple-sharing"]),
-  capacity: z.number().int().min(1).max(20),
-  baseRate: z.number().min(0).optional(),
-  floor: z.union([z.number(), z.string()]).optional(),
+export const bedSchema = z.object({
+  id: z.string().optional(),
+  position: z.enum(["upper", "lower", "single"]).optional(),
+  bunkBlock: z.string().optional(),
+  code: z.string().optional().nullable(),
+  status: z.enum(["available", "maintenance"]).optional(),
 });
 
-export const updateRoomSchema = createRoomSchema.partial();
+export const createRoomSchema = z
+  .object({
+    name: z.string().trim().min(1, "Room name is required"),
+    roomNumber: z.string().trim().min(1, "Room number is required"),
+    branch: z.enum(["gil-puyat", "guadalupe"]),
+    type: z.enum(["private", "double-sharing", "quadruple-sharing"]),
+    capacity: z.number().int().min(1).max(20),
+    price: z.number().min(0, "Price must be a positive number").optional(),
+    baseRate: z.number().min(0, "Base rate must be a positive number").optional(),
+    floor: z.union([z.number(), z.string()]).optional().default(1),
+    description: z.string().max(500).optional().default(""),
+    monthlyPrice: z.number().optional().nullable(),
+    amenities: z.array(z.string().trim()).optional().default([]),
+    policies: z.array(z.string().trim()).optional().default([]),
+    intendedTenant: z.string().optional().default(""),
+    images: z.array(z.string().trim()).optional().default([]),
+    isPopular: z.boolean().optional().default(false),
+    beds: z.array(bedSchema).optional(),
+  })
+  .refine((data) => data.price !== undefined || data.baseRate !== undefined, {
+    message: "Room price is required",
+    path: ["price"],
+  })
+  .transform((data) => ({
+    ...data,
+    price: data.price !== undefined ? data.price : data.baseRate,
+  }));
 
-export const createViolationSchema = z.object({
-  tenantId: z.string().min(1, "Tenant is required"),
-  violationType: z.string().min(1, "Violation category/type is required"),
-  dateOfIncident: z.union([z.string(), z.date()]).optional(),
-  location: z.string().optional(),
-  description: z.string().trim().min(5, "Description must be at least 5 characters"),
-  severity: z.enum(["minor", "moderate", "severe", "critical"]).optional().default("minor"),
-  penaltyAmount: z.number().min(0).optional().default(0),
-});
+export const updateRoomSchema = z
+  .object({
+    name: z.string().trim().min(1, "Room name is required").optional(),
+    roomNumber: z.string().trim().min(1, "Room number is required").optional(),
+    branch: z.enum(["gil-puyat", "guadalupe"]).optional(),
+    type: z.enum(["private", "double-sharing", "quadruple-sharing"]).optional(),
+    capacity: z.number().int().min(1).max(20).optional(),
+    price: z.number().min(0, "Price must be a positive number").optional(),
+    baseRate: z.number().min(0, "Base rate must be a positive number").optional(),
+    floor: z.union([z.number(), z.string()]).optional(),
+    description: z.string().max(500).optional(),
+    monthlyPrice: z.number().optional().nullable(),
+    amenities: z.array(z.string().trim()).optional(),
+    policies: z.array(z.string().trim()).optional(),
+    intendedTenant: z.string().optional(),
+    images: z.array(z.string().trim()).optional(),
+    isPopular: z.boolean().optional(),
+  })
+  .transform((data) => {
+    if (data.price === undefined && data.baseRate !== undefined) {
+      return {
+        ...data,
+        price: data.baseRate,
+      };
+    }
+    return data;
+  });
+
+export const createViolationSchema = z
+  .object({
+    tenantId: z.string().min(1, "Tenant is required"),
+    reservationId: z.string().optional().nullable(),
+    branch: z.enum(["gil-puyat", "guadalupe"]).optional().nullable(),
+    roomId: z.string().optional().nullable(),
+    roomName: z.string().optional().nullable(),
+    violationType: z.string().min(1, "Violation category/type is required"),
+    customViolationDescription: z.string().optional().nullable(),
+    dateOfIncident: z.union([z.string(), z.date()]).optional(),
+    timeOfIncident: z.string().optional().nullable(),
+    location: z.string().optional().nullable(),
+    locationOfIncident: z.string().optional().nullable(),
+    description: z.string().trim().optional(),
+    evidenceNotes: z.string().trim().optional(),
+    severity: z.enum(["minor", "moderate", "severe", "critical"]).optional().default("minor"),
+    penaltyAmount: z.union([z.number(), z.string()]).optional().default(0),
+    penaltyApplied: z.union([z.number(), z.string()]).optional().default(0),
+    penaltyReason: z.string().optional().nullable(),
+    chargeToBill: z.boolean().optional(),
+    evidenceUrl: z.string().optional().nullable(),
+    evidenceUrls: z.array(z.string()).optional().default([]),
+  })
+  .passthrough()
+  .refine(
+    (data) => {
+      const text = (data.evidenceNotes || data.description || "").trim();
+      return text.length >= 5;
+    },
+    {
+      message: "Incident notes / description must be at least 5 characters",
+      path: ["evidenceNotes"],
+    },
+  )
+  .transform((data) => {
+    const desc = (data.evidenceNotes || data.description || "").trim();
+    const loc = data.locationOfIncident || data.location || "";
+    const penalty =
+      Number(data.penaltyApplied !== undefined ? data.penaltyApplied : data.penaltyAmount) || 0;
+    return {
+      ...data,
+      description: desc,
+      evidenceNotes: desc,
+      location: loc,
+      locationOfIncident: loc,
+      penaltyAmount: penalty,
+      penaltyApplied: penalty,
+    };
+  });
+
+export const updateViolationSchema = z
+  .object({
+    violationType: z.enum(VIOLATION_TYPES).optional(),
+    customViolationDescription: z.string().trim().max(500).optional().nullable(),
+    dateOfIncident: z.string().trim().optional(),
+    timeOfIncident: z.string().trim().optional().nullable(),
+    locationOfIncident: z.string().trim().max(200).optional().nullable(),
+    evidenceNotes: z.string().trim().max(3000).optional().nullable(),
+    evidenceUrls: z.array(z.string().trim()).optional(),
+    penaltyApplied: z.coerce.number().min(0).optional().nullable(),
+    penaltyReason: z.string().trim().max(1000).optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    const penalty = Number(data.penaltyApplied || 0);
+    if (penalty > 0 && (!data.penaltyReason || data.penaltyReason.trim().length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A clear penalty reason is required whenever a penalty fee is applied.",
+        path: ["penaltyReason"],
+      });
+    }
+    if (
+      data.violationType === "custom" &&
+      (!data.customViolationDescription || data.customViolationDescription.trim().length === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Custom violation description is required when violation type is set to custom.",
+        path: ["customViolationDescription"],
+      });
+    }
+  });
 

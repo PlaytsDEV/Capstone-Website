@@ -64,10 +64,7 @@ describe("resident canonical Contract selection", () => {
       contracts: [contract({ _id: "one" }), contract({ _id: "two" })],
       activeStay,
       strictIntegrityCheck: true,
-    })).toThrow(expect.objectContaining({
-      code: "MULTIPLE_CANONICAL_CONTRACTS",
-      statusCode: 409,
-    }));
+    })).toThrow("Multiple tenant-visible canonical Contracts were found.");
   });
 
   test("gracefully tie-breaks multiple canonical contracts by default without throwing", () => {

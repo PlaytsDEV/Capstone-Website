@@ -480,7 +480,7 @@ export default function ContractsPage() {
             {notice.message}
           </p>
           <Link
-            to="/tenant/reservation"
+            to="/applicant/reservation"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white transition-all shadow-xs"
           >
             <span>View My Reservation</span>

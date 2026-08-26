@@ -147,7 +147,37 @@ function getNotificationActionUrl(notification) {
     )}&tab=visits`;
   }
 
-  return notification?.actionUrl || null;
+  if (
+    notification?.type === "contract_document_ready" ||
+    notification?.type === "renewal_effective" ||
+    notification?.entityType === "contract"
+  ) {
+    return "/applicant/contracts";
+  }
+
+  const rawUrl = notification?.actionUrl;
+  if (!rawUrl) return null;
+
+  if (rawUrl === "/tenant/documents" || rawUrl === "/tenant/contracts" || rawUrl === "/documents" || rawUrl === "/contracts") {
+    return "/applicant/contracts";
+  }
+  if (rawUrl.startsWith("/tenant/reservation")) {
+    return rawUrl.replace(/^\/tenant\/reservation/, "/applicant/reservation");
+  }
+  if (rawUrl.startsWith("/tenant/billing") || rawUrl.startsWith("/bill-details")) {
+    return "/applicant/billing";
+  }
+  if (rawUrl.startsWith("/tenant/maintenance")) {
+    return rawUrl.replace(/^\/tenant\/maintenance/, "/applicant/maintenance");
+  }
+  if (rawUrl.startsWith("/tenant/announcements")) {
+    return rawUrl.replace(/^\/tenant\/announcements/, "/applicant/announcements");
+  }
+  if (rawUrl.startsWith("/tenant/account") || rawUrl.startsWith("/tenant/profile")) {
+    return "/applicant/profile";
+  }
+
+  return rawUrl;
 }
 
 export default function NotificationBell() {

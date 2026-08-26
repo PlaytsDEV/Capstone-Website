@@ -452,6 +452,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     }
 
     setSaving(true);
+    let onSaveCalled = false;
     try {
       const storageRoomId = room?._id ? String(room._id) : `new-${Date.now()}`;
       const uploadedImages = await Promise.all(
@@ -477,14 +478,16 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         payload.beds = generateBeds(payload.type, payload.capacity);
       }
 
+      onSaveCalled = true;
       await onSave(payload, room?._id);
     } catch (err) {
       console.error("[RoomFormModal] Save room failed:", err);
-      showNotification(
-        "Unable to save room details. Please check the entered information and try again.",
-        "error",
-        5000
-      );
+      if (!onSaveCalled) {
+        const errorMessage =
+          err?.message ||
+          "Unable to save room details. Please check the entered information and try again.";
+        showNotification(errorMessage, "error", 5000);
+      }
     } finally {
       setSaving(false);
     }

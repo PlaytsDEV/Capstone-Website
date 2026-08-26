@@ -116,7 +116,7 @@ export const getReservations = async (req, res) => {
       .populate(
         ...(isAdminListView ? ["roomId", "name branch type"] : POPULATE_ROOM),
       )
-      .sort({ createdAt: -1 });
+      .sort({ isViewedByAdmin: 1, applicationSubmittedAt: -1, createdAt: -1 });
 
     if (isAdminListView) {
       reservationsQuery = reservationsQuery

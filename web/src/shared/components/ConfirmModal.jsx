@@ -146,7 +146,9 @@ export default function ConfirmModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(15, 23, 42, 0.3)",
+        background: "rgba(15, 23, 42, 0.6)",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
         animation: "cmFadeIn 0.15s ease",
       }}
       onClick={(e) => {
@@ -176,7 +178,7 @@ export default function ConfirmModal({
           background: "var(--surface-card, #fff)",
           borderRadius: 12,
           boxShadow:
-            "0 4px 24px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06)",
+            "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
           width: "100%",
           maxWidth: 400,
           margin: "0 16px",

@@ -33,6 +33,194 @@ const formatCategoryLabel = (type) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+// Helper to escape regex special characters to prevent ReDoS
+export const escapeRegex = (str) => {
+  if (typeof str !== "string") return "";
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// Helper to sanitize HTML tags and trim text strings to prevent stored XSS
+export const sanitizeText = (str) => {
+  if (typeof str !== "string") return str;
+  return str
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<[^>]*>?/gm, "")
+    .trim();
+};
+
+/**
+ * Synchronize violation penalty fee to open monthly rent bills or standalone penalty bills.
+ * Handles penalty addition, delta updates on in-office modification, and complete reversals.
+ *
+ * @param {Object} options
+ * @param {Object} options.violation - The TenantViolation document.
+ * @param {number} [options.previousPenalty=0] - Previous penalty amount before edit.
+ * @param {number} [options.newPenalty=0] - New penalty amount after edit.
+ * @param {"sync"|"reverse"} [options.action="sync"] - "sync" to update/add, "reverse" to cancel.
+ * @returns {Promise<{ attachedBillId: string|null, status: string }>}
+ */
+export const syncViolationPenaltyToBill = async ({
+  violation,
+  previousPenalty = 0,
+  newPenalty = 0,
+  action = "sync",
+}) => {
+  if (!violation) return { attachedBillId: null, status: "none" };
+
+  const violationShortId = violation._id.toString().slice(-6);
+  const violationCategory = formatCategoryLabel(violation.violationType);
+  const lineItemName = `Violation Penalty: ${violationCategory} (${violationShortId})`;
+
+  // 1. REVERSE ACTION: Remove from monthly bill and void standalone bills
+  if (action === "reverse" || newPenalty === 0) {
+    // Reverse from monthly bill if attached
+    if (violation.reservationId) {
+      try {
+        const openBill = await Bill.findOne({
+          reservationId: violation.reservationId,
+          userId: violation.tenantId,
+          status: { $in: ["draft", "pending", "overdue"] },
+          isArchived: { $ne: true },
+        }).sort({ billingMonth: -1 });
+
+        if (openBill && Array.isArray(openBill.additionalCharges)) {
+          const initialCount = openBill.additionalCharges.length;
+          const removedCharge = openBill.additionalCharges.find(
+            (c) => c.name?.includes(violationShortId),
+          );
+          const penaltyToRemove = removedCharge ? Number(removedCharge.amount) || previousPenalty : previousPenalty;
+
+          openBill.additionalCharges = openBill.additionalCharges.filter(
+            (c) => !c.name?.includes(violationShortId),
+          );
+
+          if (openBill.additionalCharges.length < initialCount) {
+            openBill.charges = openBill.charges || {};
+            openBill.charges.penalty = Math.max(0, (Number(openBill.charges.penalty) || 0) - penaltyToRemove);
+            openBill.totalAmount = Math.max(0, (Number(openBill.totalAmount) || 0) - penaltyToRemove);
+            openBill.remainingAmount = Math.max(0, (Number(openBill.remainingAmount) || 0) - penaltyToRemove);
+            await openBill.save();
+            logger.info(`[TenantViolation] Reversed penalty fee ₱${penaltyToRemove} from Bill ${openBill._id}.`);
+          }
+        }
+      } catch (revErr) {
+        logger.warn("[TenantViolation] Failed to reverse bill penalty from monthly bill:", revErr);
+      }
+    }
+
+    // Void standalone penalty bills
+    try {
+      await Bill.updateMany(
+        {
+          violationId: violation._id,
+          status: { $in: ["draft", "pending", "overdue"] },
+          isArchived: { $ne: true },
+        },
+        {
+          $set: {
+            status: "voided",
+            remainingAmount: 0,
+          },
+        },
+      );
+    } catch (stErr) {
+      logger.warn("[TenantViolation] Failed to void standalone penalty bill:", stErr);
+    }
+
+    return { attachedBillId: null, status: "reversed" };
+  }
+
+  // 2. SYNC ACTION (newPenalty > 0)
+  const penaltyDelta = Number(newPenalty) - Number(previousPenalty);
+
+  // Check if open monthly rent bill exists
+  let openBill = null;
+  if (violation.reservationId) {
+    try {
+      openBill = await Bill.findOne({
+        reservationId: violation.reservationId,
+        userId: violation.tenantId,
+        status: { $in: ["draft", "pending", "overdue"] },
+        isArchived: { $ne: true },
+      }).sort({ billingMonth: -1 });
+    } catch (findErr) {
+      logger.warn("[TenantViolation] Failed to find open monthly bill for penalty sync:", findErr);
+    }
+  }
+
+  if (openBill) {
+    openBill.additionalCharges = openBill.additionalCharges || [];
+    const existingIndex = openBill.additionalCharges.findIndex(
+      (c) => c.name?.includes(violationShortId),
+    );
+
+    if (existingIndex >= 0) {
+      // Update existing line item
+      openBill.additionalCharges[existingIndex].amount = newPenalty;
+      openBill.charges = openBill.charges || {};
+      openBill.charges.penalty = Math.max(0, (Number(openBill.charges.penalty) || 0) + penaltyDelta);
+      openBill.totalAmount = Math.max(0, (Number(openBill.totalAmount) || 0) + penaltyDelta);
+      openBill.remainingAmount = Math.max(0, (Number(openBill.remainingAmount) || 0) + penaltyDelta);
+    } else {
+      // Add new line item
+      openBill.additionalCharges.push({
+        name: lineItemName,
+        amount: newPenalty,
+      });
+      openBill.charges = openBill.charges || {};
+      openBill.charges.penalty = (Number(openBill.charges.penalty) || 0) + newPenalty;
+      openBill.totalAmount = (Number(openBill.totalAmount) || 0) + newPenalty;
+      openBill.remainingAmount = (Number(openBill.remainingAmount) || 0) + newPenalty;
+    }
+
+    await openBill.save();
+    logger.info(`[TenantViolation] Synchronized penalty fee ₱${newPenalty} on Bill ${openBill._id}.`);
+    return { attachedBillId: openBill._id, status: "synced_monthly" };
+  }
+
+  // If no open monthly bill, manage standalone penalty bill
+  try {
+    let standaloneBill = await Bill.findOne({
+      violationId: violation._id,
+      status: { $in: ["draft", "pending", "overdue"] },
+      isArchived: { $ne: true },
+    });
+
+    if (standaloneBill) {
+      standaloneBill.charges = standaloneBill.charges || {};
+      standaloneBill.charges.penalty = newPenalty;
+      standaloneBill.totalAmount = newPenalty;
+      standaloneBill.remainingAmount = newPenalty;
+      if (Array.isArray(standaloneBill.additionalCharges) && standaloneBill.additionalCharges.length > 0) {
+        standaloneBill.additionalCharges[0].amount = newPenalty;
+      }
+      await standaloneBill.save();
+      return { attachedBillId: standaloneBill._id, status: "synced_standalone" };
+    } else {
+      const newStandalone = new Bill({
+        billType: "penalty",
+        userId: violation.tenantId,
+        reservationId: violation.reservationId || null,
+        branch: violation.branch,
+        status: "pending",
+        totalAmount: newPenalty,
+        remainingAmount: newPenalty,
+        charges: { penalty: newPenalty },
+        dueDate: dayjs().add(7, "day").toDate(),
+        violationId: violation._id,
+        billingMonth: dayjs().format("YYYY-MM"),
+      });
+      await newStandalone.save();
+      return { attachedBillId: newStandalone._id, status: "created_standalone" };
+    }
+  } catch (stErr) {
+    logger.warn("[TenantViolation] Failed to update/create standalone bill:", stErr);
+  }
+
+  return { attachedBillId: null, status: "pending" };
+};
+
 /**
  * GET /api/billing/violations
  * List tenant violation records with filtering, search, and summary metrics.
@@ -62,7 +250,7 @@ export const getViolations = async (req, res, next) => {
 
     let tenantIdsFromSearch = null;
     if (search && search.trim()) {
-      const q = search.trim();
+      const q = escapeRegex(search.trim());
       const matchingUsers = await User.find({
         $or: [
           { firstName: { $regex: q, $options: "i" } },
@@ -80,7 +268,13 @@ export const getViolations = async (req, res, next) => {
       ];
     }
 
-    const violations = await TenantViolation.find(filter)
+    const hasPagination = req.query.page !== undefined || req.query.limit !== undefined;
+    const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+
+    const totalCount = await TenantViolation.countDocuments(filter);
+
+    let query = TenantViolation.find(filter)
       .populate("tenantId", "firstName lastName email phone avatar profileImage photoURL")
       .populate({
         path: "reservationId",
@@ -91,8 +285,13 @@ export const getViolations = async (req, res, next) => {
       .populate("decidedBy", "firstName lastName email")
       .populate("resolvedBy", "firstName lastName email")
       .populate("escalatedToReviewId", "caseNumber status triggerType")
-      .sort({ createdAt: -1 })
-      .lean();
+      .sort({ createdAt: -1 });
+
+    if (hasPagination) {
+      query = query.skip((pageNum - 1) * limitNum).limit(limitNum);
+    }
+
+    const violations = await query.lean();
 
     // Compute summary KPI metrics for the branch
     const baseFilter = { isArchived: false, ...(branch ? { branch } : {}) };
@@ -132,11 +331,22 @@ export const getViolations = async (req, res, next) => {
       };
     });
 
-    res.json({
+    const responsePayload = {
       success: true,
       data: formattedData,
       stats,
-    });
+    };
+
+    if (hasPagination) {
+      responsePayload.pagination = {
+        total: totalCount,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(totalCount / limitNum) || 1,
+      };
+    }
+
+    res.json(responsePayload);
   } catch (error) {
     logger.error("[TenantViolation] getViolations error:", error);
     next(error);
@@ -273,7 +483,12 @@ export const getActiveTenantsForViolations = async (req, res, next) => {
  */
 export const getViolationById = async (req, res, next) => {
   try {
-    const violation = await TenantViolation.findById(req.params.id)
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid violation ID format." });
+    }
+
+    const violation = await TenantViolation.findById(id)
       .populate("tenantId", "firstName lastName email phone avatar profileImage")
       .populate({
         path: "reservationId",
@@ -455,39 +670,55 @@ export const createViolation = async (req, res, next) => {
 
     await violation.save();
 
-    // If penalty is applied, automatically append to resident's active/open rent bill with dedicated line item
-    let attachedBillId = null;
-    if (chargeToBill !== false && penaltyNum > 0 && reservation?._id) {
-      try {
-        const openBill = await Bill.findOne({
-          reservationId: reservation._id,
-          userId: tenantId,
-          status: { $in: ["draft", "pending", "overdue"] },
-          isArchived: { $ne: true },
-        }).sort({ billingMonth: -1 });
+    // 3rd-Strike Auto-Escalation
+    if (nextWarningNumber >= 3) {
+      const existingReview = await TerminationReview.findOne({
+        tenantId,
+        status: { $in: ["open", "in_progress", "under_review"] },
+      });
+      if (!existingReview) {
+        const review = new TerminationReview({
+          reservationId: reservation?._id || null,
+          tenantId,
+          branch,
+          triggerType: "violation_escalation",
+          triggeredByViolationId: violation._id,
+          triggerReason: `Auto-Escalation: 3rd Strike Reached (${formatCategoryLabel(violationType)})`,
+          openedBy: adminUserId,
+          openedAt: new Date(),
+          status: "open",
+        });
+        await review.save();
+        violation.status = "escalated";
+        violation.escalatedToReviewId = review._id;
+        violation.escalatedAt = new Date();
+        await violation.save();
 
-        if (openBill) {
-          const categoryLabel = formatCategoryLabel(violationType);
-          const lineItemLabel = `Violation Penalty: ${categoryLabel} (${violation._id.toString().slice(-6)})`;
-
-          openBill.additionalCharges = openBill.additionalCharges || [];
-          openBill.additionalCharges.push({
-            name: lineItemLabel,
-            amount: penaltyNum,
-          });
-
-          openBill.charges = openBill.charges || {};
-          openBill.charges.penalty = (Number(openBill.charges.penalty) || 0) + penaltyNum;
-          openBill.totalAmount = (Number(openBill.totalAmount) || 0) + penaltyNum;
-          openBill.remainingAmount = (Number(openBill.remainingAmount) || 0) + penaltyNum;
-
-          await openBill.save();
-          attachedBillId = openBill._id;
-
-          logger.info(
-            `[TenantViolation] Attached penalty ₱${penaltyNum} to Bill ${openBill._id} for tenant ${tenantId}`,
+        try {
+          await createNotification(
+            null, // notify owners/admins
+            "termination_review_opened",
+            "Termination Review Board Escalation",
+            `Tenant ${tenantUser?.firstName || ""} has reached their 3rd strike and was escalated to the review board.`,
+            { entityType: "termination_review", entityId: review._id, branch }
           );
+        } catch (e) {
+          logger.warn("Failed to notify owner of escalation:", e);
         }
+      }
+    }
+
+    // If penalty is applied, automatically append to tenant's active/open rent bill or create standalone bill
+    let attachedBillId = null;
+    if (chargeToBill !== false && penaltyNum > 0) {
+      try {
+        const syncResult = await syncViolationPenaltyToBill({
+          violation,
+          previousPenalty: 0,
+          newPenalty: penaltyNum,
+          action: "sync",
+        });
+        attachedBillId = syncResult.attachedBillId;
       } catch (billError) {
         logger.error("[TenantViolation] Failed to auto-attach penalty to bill:", billError);
       }
@@ -543,6 +774,9 @@ export const updateViolationDecision = async (req, res, next) => {
     const admin = await getAdminInfo(req);
     const adminUserId = await resolveAdminUserId(req, admin);
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid violation ID format." });
+    }
     const {
       decision,
       decisionReason,
@@ -587,6 +821,15 @@ export const updateViolationDecision = async (req, res, next) => {
       violation.resolution = resolution ? resolution.trim() : "Infraction dismissed upon administrative review.";
       violation.resolvedBy = adminUserId;
       violation.resolvedAt = new Date();
+
+      // If a penalty was previously attached to a bill, automatically reverse it
+      if (violation.penaltyApplied > 0) {
+        await syncViolationPenaltyToBill({
+          violation,
+          previousPenalty: violation.penaltyApplied,
+          action: "reverse",
+        });
+      }
     } else {
       // Confirmed
       if (targetStatus && ["warning_issued", "penalty_issued", "resolved", "escalated"].includes(targetStatus)) {
@@ -630,31 +873,41 @@ export const updateViolationDecision = async (req, res, next) => {
         );
       }
 
-      // Handle optional bill line-item attachment
-      if (chargeToBill && violation.penaltyApplied > 0 && violation.reservationId) {
-        const openBill = await Bill.findOne({
-          reservationId: violation.reservationId,
-          userId: violation.tenantId,
-          status: { $in: ["draft", "pending", "overdue"] },
-          isArchived: { $ne: true },
-        }).sort({ billingMonth: -1 });
+      // Handle optional bill line-item attachment (with duplicate guard)
+      if (chargeToBill && violation.penaltyApplied > 0) {
+        let openBill = null;
+        if (violation.reservationId) {
+          openBill = await Bill.findOne({
+            reservationId: violation.reservationId,
+            userId: violation.tenantId,
+            status: { $in: ["draft", "pending", "overdue"] },
+            isArchived: { $ne: true },
+          }).sort({ billingMonth: -1 });
+        }
 
         if (openBill) {
           const categoryLabel = formatCategoryLabel(violation.violationType);
-          const lineItemLabel = `Violation Penalty: ${categoryLabel} (${violation._id.toString().slice(-6)})`;
+          const violationShortId = violation._id.toString().slice(-6);
+          const lineItemLabel = `Violation Penalty: ${categoryLabel} (${violationShortId})`;
 
           openBill.additionalCharges = openBill.additionalCharges || [];
-          openBill.additionalCharges.push({
-            name: lineItemLabel,
-            amount: violation.penaltyApplied,
-          });
+          const alreadyAttached = openBill.additionalCharges.some(
+            (c) => c.name && c.name.includes(violationShortId),
+          );
 
-          openBill.charges = openBill.charges || {};
-          openBill.charges.penalty = (Number(openBill.charges.penalty) || 0) + violation.penaltyApplied;
-          openBill.totalAmount = (Number(openBill.totalAmount) || 0) + violation.penaltyApplied;
-          openBill.remainingAmount = (Number(openBill.remainingAmount) || 0) + violation.penaltyApplied;
+          if (!alreadyAttached) {
+            openBill.additionalCharges.push({
+              name: lineItemLabel,
+              amount: violation.penaltyApplied,
+            });
 
-          await openBill.save();
+            openBill.charges = openBill.charges || {};
+            openBill.charges.penalty = (Number(openBill.charges.penalty) || 0) + violation.penaltyApplied;
+            openBill.totalAmount = (Number(openBill.totalAmount) || 0) + violation.penaltyApplied;
+            openBill.remainingAmount = (Number(openBill.remainingAmount) || 0) + violation.penaltyApplied;
+
+            await openBill.save();
+          }
         }
       }
     }
@@ -795,3 +1048,180 @@ export const createTerminationCase = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * PUT /api/billing/violations/:id
+ * Admin updates violation details during in-office review.
+ */
+export const updateViolation = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid violation ID format." });
+    }
+
+    const violation = await TenantViolation.findById(id);
+    if (!violation || violation.isArchived) {
+      return res.status(404).json({ success: false, error: "Violation record not found." });
+    }
+
+    if (!admin.isOwner && admin.branch && violation.branch !== admin.branch) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Violation belongs to a different branch.",
+      });
+    }
+
+    const {
+      violationType,
+      customViolationDescription,
+      dateOfIncident,
+      timeOfIncident,
+      locationOfIncident,
+      evidenceNotes,
+      evidenceUrls,
+      penaltyApplied,
+      penaltyReason,
+    } = req.body;
+
+    const oldPenalty = Number(violation.penaltyApplied || 0);
+    const newPenalty = penaltyApplied === null ? 0 : Number(penaltyApplied !== undefined ? penaltyApplied : oldPenalty);
+
+    if (violationType) violation.violationType = violationType;
+    if (customViolationDescription !== undefined) violation.customViolationDescription = sanitizeText(customViolationDescription);
+    if (dateOfIncident) violation.dateOfIncident = new Date(dateOfIncident);
+    if (timeOfIncident !== undefined) violation.timeOfIncident = sanitizeText(timeOfIncident);
+    if (locationOfIncident !== undefined) violation.locationOfIncident = sanitizeText(locationOfIncident);
+    if (evidenceNotes !== undefined) violation.evidenceNotes = sanitizeText(evidenceNotes);
+    if (Array.isArray(evidenceUrls)) violation.evidenceUrls = evidenceUrls;
+    if (penaltyApplied !== undefined) violation.penaltyApplied = penaltyApplied === null ? null : Number(penaltyApplied);
+    if (penaltyReason !== undefined) violation.penaltyReason = sanitizeText(penaltyReason);
+
+    await violation.save();
+
+    // Synchronize penalty fee changes to attached bill or standalone bill
+    if (penaltyApplied !== undefined && newPenalty !== oldPenalty) {
+      try {
+        await syncViolationPenaltyToBill({
+          violation,
+          previousPenalty: oldPenalty,
+          newPenalty,
+          action: newPenalty > 0 ? "sync" : "reverse",
+        });
+      } catch (syncErr) {
+        logger.warn("[TenantViolation] Failed to sync penalty delta to bill on update:", syncErr);
+      }
+    }
+
+    // Log billing audit
+    try {
+      const adminUserId = await resolveAdminUserId(req, admin);
+      await logBillingAudit({
+        action: "violation_updated",
+        entityType: "violation",
+        entityId: violation._id,
+        actorId: adminUserId,
+        branch: violation.branch,
+        notes: "Violation details modified during in-office administrative review.",
+      });
+    } catch (auditErr) {
+      logger.warn("[TenantViolation] Failed to log violation update audit:", auditErr);
+    }
+
+    // Notify tenant
+    try {
+      if (violation.tenantId) {
+        await createNotification(
+          violation.tenantId,
+          "violation_updated",
+          "Violation Record Updated",
+          "Your violation record details have been updated following in-office administrative review.",
+          { entityType: "violation", entityId: violation._id },
+        );
+      }
+    } catch (notifErr) {
+      logger.warn("[TenantViolation] Failed to notify tenant on update:", notifErr);
+    }
+
+    res.json({
+      success: true,
+      message: "Violation record updated successfully.",
+      data: violation,
+    });
+  } catch (error) {
+    logger.error("[TenantViolation] updateViolation error:", error);
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/billing/violations/:id
+ * Admin archives a violation record.
+ */
+export const archiveViolation = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid violation ID format." });
+    }
+
+    const violation = await TenantViolation.findById(id);
+    if (!violation) {
+      return res.status(404).json({ success: false, error: "Violation record not found." });
+    }
+
+    if (!admin.isOwner && admin.branch && violation.branch !== admin.branch) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Violation belongs to a different branch.",
+      });
+    }
+
+    const adminUserId = await resolveAdminUserId(req, admin);
+    violation.isArchived = true;
+    violation.archivedAt = new Date();
+    violation.archivedBy = adminUserId;
+    await violation.save();
+
+    // Reverse any attached penalties from monthly bills and void unpaid standalone penalty bills
+    if (violation.penaltyApplied > 0) {
+      try {
+        await syncViolationPenaltyToBill({
+          violation,
+          previousPenalty: violation.penaltyApplied,
+          action: "reverse",
+        });
+      } catch (stErr) {
+        logger.warn("[TenantViolation] Failed to reverse penalty bills on archival:", stErr);
+      }
+    }
+
+    // Log audit
+    try {
+      await logBillingAudit({
+        action: "violation_archived",
+        entityType: "violation",
+        entityId: violation._id,
+        actorId: adminUserId,
+        branch: violation.branch,
+        notes: "Violation record archived by administrator.",
+      });
+    } catch (auditErr) {
+      logger.warn("[TenantViolation] Failed to log violation archive audit:", auditErr);
+    }
+
+    res.json({
+      success: true,
+      message: "Violation record archived successfully.",
+    });
+  } catch (error) {
+    logger.error("[TenantViolation] archiveViolation error:", error);
+    next(error);
+  }
+};
+
+

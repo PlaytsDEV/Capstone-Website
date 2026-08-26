@@ -1,13 +1,13 @@
 import React from "react";
 import { Navigate, Route, useLocation } from "react-router-dom";
 
-function LegacyBillingRedirect() {
+function LegacyRedirect({ to }) {
   const location = useLocation();
 
   return (
     <Navigate
       to={{
-        pathname: "/applicant/billing",
+        pathname: to,
         search: location.search,
         hash: location.hash,
       }}
@@ -20,7 +20,18 @@ export function LegacyRoutes() {
   return (
     <>
       <Route path="/admin/login" element={<Navigate to="/signin" replace />} />
-      <Route path="/billing" element={<LegacyBillingRedirect />} />
+      <Route path="/billing" element={<LegacyRedirect to="/applicant/billing" />} />
+      <Route path="/bill-details" element={<LegacyRedirect to="/applicant/billing" />} />
+      <Route path="/tenant/documents" element={<LegacyRedirect to="/applicant/contracts" />} />
+      <Route path="/tenant/contracts" element={<LegacyRedirect to="/applicant/contracts" />} />
+      <Route path="/documents" element={<LegacyRedirect to="/applicant/contracts" />} />
+      <Route path="/contracts" element={<LegacyRedirect to="/applicant/contracts" />} />
+      <Route path="/tenant/reservation" element={<LegacyRedirect to="/applicant/reservation" />} />
+      <Route path="/tenant/billing" element={<LegacyRedirect to="/applicant/billing" />} />
+      <Route path="/tenant/maintenance" element={<LegacyRedirect to="/applicant/maintenance" />} />
+      <Route path="/tenant/announcements" element={<LegacyRedirect to="/applicant/announcements" />} />
+      <Route path="/tenant/profile" element={<LegacyRedirect to="/applicant/profile" />} />
+      <Route path="/tenant/account" element={<LegacyRedirect to="/applicant/profile" />} />
       <Route
         path="/tenant/forgot-password"
         element={<Navigate to="/forgot-password" replace />}

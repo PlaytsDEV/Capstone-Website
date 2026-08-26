@@ -115,7 +115,8 @@ async function runRoomTransferActivation({ successorContractId, actorId, session
     );
   }
   const predecessor = await Contract.findById(successor.replacesContractId).session(session);
-  if (!predecessor || predecessor.status !== "active" || predecessor.isCurrent !== true) {
+  const validPredecessorStatuses = ["active", "published", "expiring_soon"];
+  if (!predecessor || !validPredecessorStatuses.includes(predecessor.status) || predecessor.isCurrent !== true) {
     throw error(
       "The predecessor Contract is not active/current — the relationship is ambiguous or " +
       "was already superseded by something else. Admin review required.",

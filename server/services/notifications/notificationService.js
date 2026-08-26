@@ -490,7 +490,7 @@ const notify = {
       {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
-        actionUrl: billId ? `/bill-details?billId=${String(billId)}` : "/tenant/account?tab=billing",
+        actionUrl: billId ? `/billing?billId=${String(billId)}` : "/applicant/billing",
         dedupeKey: buildEventDedupeKey(
           "utility_charge_available",
           billId,
@@ -558,7 +558,7 @@ const notify = {
       {
         entityType: "contract",
         entityId: normalizedContractId,
-        actionUrl: "/tenant/documents",
+        actionUrl: "/applicant/contracts",
         dedupeKey,
       },
       (_notification, pushIdentity) =>
@@ -593,7 +593,7 @@ const notify = {
       {
         entityType: "contract",
         entityId: normalizedContractId,
-        actionUrl: "/tenant/documents",
+        actionUrl: "/applicant/contracts",
         dedupeKey: `renewal_effective:${normalizedContractId}`,
       },
       (_notification, pushIdentity) =>

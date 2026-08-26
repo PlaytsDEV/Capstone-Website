@@ -131,6 +131,10 @@ await jest.unstable_mockModule("../../services/notifications/notificationService
   };
 });
 
+await jest.unstable_mockModule("./_helpers.js", () => ({
+  getAdminInfo: jest.fn().mockResolvedValue({ isOwner: true, branch: "gil-puyat", _id: new mongoose.Types.ObjectId() }),
+  resolveAdminUserId: jest.fn().mockImplementation((req, admin) => admin?._id || req?.user?._id || new mongoose.Types.ObjectId()),
+}));
 
 const {
   getOverdueNoticesAction,
@@ -423,6 +427,47 @@ describe("OverdueNoticeController Tests", () => {
       expect(response.success).toBe(true);
       expect(reviewDoc.decision.outcome).toBe("payment_plan_approved");
       expect(reviewDoc.paymentPlan.installments).toHaveLength(3);
+    });
+    test("blocks non-owner from issuing termination/eviction notice", async () => {
+      req.params.id = new mongoose.Types.ObjectId();
+      req.body = { outcome: "pre_termination_notice", outcomeDetail: "Violated multiple rules" };
+      req.user.role = "branch_admin";
+
+      const { getAdminInfo } = await import("./_helpers.js");
+      getAdminInfo.mockResolvedValueOnce({ isOwner: false, branch: "gil-puyat", _id: new mongoose.Types.ObjectId() });
+
+      await updateTerminationDecisionAction(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining("Only Dorm Owners") })
+      );
+    });
+
+    test("allows owner to issue termination/eviction notice", async () => {
+      const reviewId = new mongoose.Types.ObjectId();
+      req.params.id = reviewId;
+      req.body = { outcome: "termination_approved", outcomeDetail: "Decision is final." };
+      req.user.role = "owner";
+
+      const { getAdminInfo } = await import("./_helpers.js");
+      getAdminInfo.mockResolvedValueOnce({ isOwner: true, branch: "gil-puyat", _id: new mongoose.Types.ObjectId() });
+
+      const reviewDoc = {
+        _id: reviewId,
+        branch: "gil-puyat",
+        tenantId: new mongoose.Types.ObjectId(),
+        status: "open",
+        save: mockReviewSave.mockResolvedValue(true),
+      };
+      mockFindByIdReview.mockResolvedValue(reviewDoc);
+
+      await updateTerminationDecisionAction(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.success).toBe(true);
+      expect(reviewDoc.decision.outcome).toBe("termination_approved");
     });
   });
 });

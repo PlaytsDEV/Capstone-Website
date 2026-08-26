@@ -106,7 +106,7 @@ async function getAvailableRoomsForStay(stay, excludeCurrent = false) {
     isArchived: { $ne: true },
     available: true,
   })
-    .select("name roomNumber branch beds")
+    .select("name roomNumber branch type beds")
     .lean();
 
   return rooms
@@ -114,6 +114,7 @@ async function getAvailableRoomsForStay(stay, excludeCurrent = false) {
       id: String(room._id),
       name: room.name || room.roomNumber,
       branch: room.branch,
+      type: room.type || "",
       beds: (room.beds || [])
         .filter((bed) => bed.status === "available")
         .map((bed) => ({
@@ -180,7 +181,7 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
 
 export async function getTenantActionContext(reservationId) {
   const reservation = await Reservation.findById(reservationId)
-    .populate("roomId", "name roomNumber branch beds monthlyPrice price")
+    .populate("roomId", "name roomNumber branch beds monthlyPrice price type")
     .populate("userId", "firstName lastName email phone tenantStatus")
     .lean();
   if (!reservation) return null;
@@ -531,9 +532,10 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         tenantId: reservation.userId?._id || reservation.userId,
         session,
       });
-      if (!predecessorContract || predecessorContract.status !== "active") {
+      const validPredecessorStatuses = ["active", "published", "expiring_soon"];
+      if (!predecessorContract || !validPredecessorStatuses.includes(predecessorContract.status)) {
         throw Object.assign(
-          new Error("The tenant's current Contract is not active — room transfer cannot proceed."),
+          new Error("The tenant's current Contract is not active or published — room transfer cannot proceed."),
           { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
         );
       }

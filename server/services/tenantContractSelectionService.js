@@ -201,7 +201,7 @@ export const selectCanonicalTenantContract = ({
 
   if (strictIntegrityCheck) {
     throw Object.assign(
-      new Error("Multiple resident-visible canonical Contracts were found."),
+      new Error("Multiple tenant-visible canonical Contracts were found."),
       {
         code: "MULTIPLE_CANONICAL_CONTRACTS",
         statusCode: 409,
