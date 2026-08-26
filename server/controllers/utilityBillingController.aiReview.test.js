@@ -28,6 +28,7 @@ const makeQueryChain = (result) => {
     select: jest.fn(() => chain),
     populate: jest.fn(() => chain),
     lean: jest.fn(() => Promise.resolve(result)),
+    then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
   };
   return chain;
 };
@@ -606,5 +607,141 @@ describe("utility cycle root deletion safety", () => {
     expect(readingRes.status).toHaveBeenCalledWith(403);
     expect(utilityPeriodFindByIdAndDelete).not.toHaveBeenCalled();
     expect(utilityReadingDeleteMany).not.toHaveBeenCalled();
+  });
+
+  test("allows deleting an already-sent cycle if all associated bills are unpaid", async () => {
+    const period = {
+      _id: "period-sent-1",
+      branch: "gil-puyat",
+      roomId: "room-1",
+      status: "closed",
+      tenantSummaries: [
+        {
+          tenantId: "tenant-1",
+          billId: "bill-unpaid-1",
+        },
+      ],
+    };
+    const sentUnpaidBill = {
+      _id: "bill-unpaid-1",
+      charges: { rent: 0, electricity: 600, water: 0, penalty: 0 },
+      utilityDispatch: { electricity: { state: "sent" } },
+      status: "pending",
+      paidAmount: 0,
+      save: jest.fn(),
+    };
+    utilityPeriodFindById.mockResolvedValue(period);
+    billFind.mockReturnValue(makeQueryChain([sentUnpaidBill]));
+    billFindById.mockResolvedValue(sentUnpaidBill);
+    billFindByIdAndDelete.mockResolvedValue(sentUnpaidBill);
+
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteUtilityPeriod(
+      { params: { utilityType: "electricity", id: "period-sent-1" } },
+      res,
+      next,
+    );
+
+    expect(billFindByIdAndDelete).toHaveBeenCalledWith("bill-unpaid-1");
+    expect(utilityPeriodFindByIdAndDelete).toHaveBeenCalledWith("period-sent-1");
+    expect(res.payload).toEqual({
+      success: true,
+      message: "Billing cycle deleted successfully",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("blocks deletion of a cycle if a tenant has already made a payment on the bill", async () => {
+    const period = {
+      _id: "period-paid-1",
+      branch: "gil-puyat",
+      roomId: "room-1",
+      status: "closed",
+      tenantSummaries: [
+        {
+          tenantId: "tenant-1",
+          tenantName: "Juan Dela Cruz",
+          billId: "bill-paid-1",
+        },
+      ],
+    };
+    const paidBill = {
+      _id: "bill-paid-1",
+      charges: { rent: 0, electricity: 600, water: 0, penalty: 0 },
+      utilityDispatch: { electricity: { state: "sent" } },
+      status: "paid",
+      paidAmount: 600,
+      userId: { firstName: "Juan", lastName: "Dela Cruz" },
+      save: jest.fn(),
+    };
+    utilityPeriodFindById.mockResolvedValue(period);
+    billFind.mockReturnValue(makeQueryChain([paidBill]));
+    billFindById.mockResolvedValue(paidBill);
+
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteUtilityPeriod(
+      { params: { utilityType: "electricity", id: "period-paid-1" } },
+      res,
+      next,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.payload.error).toMatch(/already made a payment/i);
+    expect(utilityPeriodFindByIdAndDelete).not.toHaveBeenCalled();
+    expect(billFindByIdAndDelete).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows force-deleting a cycle with paid bills when force override is enabled", async () => {
+    const period = {
+      _id: "period-paid-force-1",
+      branch: "gil-puyat",
+      roomId: "room-1",
+      status: "closed",
+      tenantSummaries: [
+        {
+          tenantId: "tenant-1",
+          tenantName: "Juan Dela Cruz",
+          billId: "bill-paid-force-1",
+        },
+      ],
+    };
+    const paidBill = {
+      _id: "bill-paid-force-1",
+      charges: { rent: 0, electricity: 600, water: 0, penalty: 0 },
+      utilityDispatch: { electricity: { state: "sent" } },
+      status: "paid",
+      paidAmount: 600,
+      userId: { firstName: "Juan", lastName: "Dela Cruz" },
+      save: jest.fn(),
+    };
+    utilityPeriodFindById.mockResolvedValue(period);
+    billFind.mockReturnValue(makeQueryChain([paidBill]));
+    billFindById.mockResolvedValue(paidBill);
+    billFindByIdAndDelete.mockResolvedValue(paidBill);
+
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteUtilityPeriod(
+      {
+        params: { utilityType: "electricity", id: "period-paid-force-1" },
+        query: { force: "true" },
+      },
+      res,
+      next,
+    );
+
+    expect(billFindByIdAndDelete).toHaveBeenCalledWith("bill-paid-force-1");
+    expect(utilityPeriodFindByIdAndDelete).toHaveBeenCalledWith("period-paid-force-1");
+    expect(res.payload).toEqual({
+      success: true,
+      message: "Billing cycle deleted successfully",
+    });
+    expect(next).not.toHaveBeenCalled();
   });
 });

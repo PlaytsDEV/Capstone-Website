@@ -97,9 +97,9 @@ export const syncViolationPenaltyToBill = async ({
 
           if (openBill.additionalCharges.length < initialCount) {
             openBill.charges = openBill.charges || {};
-            openBill.charges.penalty = Math.max(0, (Number(openBill.charges.penalty) || 0) - penaltyToRemove);
-            openBill.totalAmount = Math.max(0, (Number(openBill.totalAmount) || 0) - penaltyToRemove);
-            openBill.remainingAmount = Math.max(0, (Number(openBill.remainingAmount) || 0) - penaltyToRemove);
+            openBill.charges.penalty = Math.max(0, Math.round(((Number(openBill.charges.penalty) || 0) - penaltyToRemove) * 100) / 100);
+            openBill.totalAmount = Math.max(0, Math.round(((Number(openBill.totalAmount) || 0) - penaltyToRemove) * 100) / 100);
+            openBill.remainingAmount = Math.max(0, Math.round(((Number(openBill.remainingAmount) || 0) - penaltyToRemove) * 100) / 100);
             await openBill.save();
             logger.info(`[TenantViolation] Reversed penalty fee ₱${penaltyToRemove} from Bill ${openBill._id}.`);
           }
@@ -159,9 +159,9 @@ export const syncViolationPenaltyToBill = async ({
       // Update existing line item
       openBill.additionalCharges[existingIndex].amount = newPenalty;
       openBill.charges = openBill.charges || {};
-      openBill.charges.penalty = Math.max(0, (Number(openBill.charges.penalty) || 0) + penaltyDelta);
-      openBill.totalAmount = Math.max(0, (Number(openBill.totalAmount) || 0) + penaltyDelta);
-      openBill.remainingAmount = Math.max(0, (Number(openBill.remainingAmount) || 0) + penaltyDelta);
+      openBill.charges.penalty = Math.max(0, Math.round(((Number(openBill.charges.penalty) || 0) + penaltyDelta) * 100) / 100);
+      openBill.totalAmount = Math.max(0, Math.round(((Number(openBill.totalAmount) || 0) + penaltyDelta) * 100) / 100);
+      openBill.remainingAmount = Math.max(0, Math.round(((Number(openBill.remainingAmount) || 0) + penaltyDelta) * 100) / 100);
     } else {
       // Add new line item
       openBill.additionalCharges.push({
@@ -169,9 +169,9 @@ export const syncViolationPenaltyToBill = async ({
         amount: newPenalty,
       });
       openBill.charges = openBill.charges || {};
-      openBill.charges.penalty = (Number(openBill.charges.penalty) || 0) + newPenalty;
-      openBill.totalAmount = (Number(openBill.totalAmount) || 0) + newPenalty;
-      openBill.remainingAmount = (Number(openBill.remainingAmount) || 0) + newPenalty;
+      openBill.charges.penalty = Math.round(((Number(openBill.charges.penalty) || 0) + newPenalty) * 100) / 100;
+      openBill.totalAmount = Math.round(((Number(openBill.totalAmount) || 0) + newPenalty) * 100) / 100;
+      openBill.remainingAmount = Math.round(((Number(openBill.remainingAmount) || 0) + newPenalty) * 100) / 100;
     }
 
     await openBill.save();

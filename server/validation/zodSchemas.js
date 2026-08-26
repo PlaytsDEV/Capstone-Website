@@ -223,5 +223,25 @@ export const updateViolationSchema = z
         path: ["customViolationDescription"],
       });
     }
+    if (data.dateOfIncident) {
+      const d = new Date(data.dateOfIncident);
+      if (isNaN(d.getTime())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Invalid incident date format.",
+          path: ["dateOfIncident"],
+        });
+      } else {
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        if (d > todayEnd) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Incident date cannot be in the future.",
+            path: ["dateOfIncident"],
+          });
+        }
+      }
+    }
   });
 

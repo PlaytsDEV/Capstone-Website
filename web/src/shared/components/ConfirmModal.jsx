@@ -16,6 +16,8 @@ import useBodyScrollLock from "../../shared/hooks/useBodyScrollLock";
  * cancelText – string (default "Cancel")
  * variant – "danger" | "warning" | "info" | "success"
  * loading – boolean (shows spinner on confirm button)
+ * confirmDisabled – boolean
+ * children – ReactNode
  */
 export default function ConfirmModal({
  isOpen,
@@ -28,6 +30,8 @@ export default function ConfirmModal({
  cancelText = "Cancel",
  variant = "info",
  loading = false,
+ confirmDisabled = false,
+ children,
 }) {
  // Close on Escape key
  useEffect(() => {
@@ -176,29 +180,39 @@ export default function ConfirmModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface-card, #fff)",
-          borderRadius: 12,
+          borderRadius: 16,
           boxShadow:
             "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
           width: "100%",
-          maxWidth: 400,
+          maxWidth: 440,
           margin: "0 16px",
           animation: "cmSlideIn 0.2s ease",
           overflow: "hidden",
+          border: "1px solid var(--border-subtle, #e2e8f0)",
         }}
       >
         {/* Content */}
-        <div style={{ padding: "24px 24px 16px" }}>
+        <div style={{ padding: "22px 22px 18px" }}>
           {/* Icon + Title row */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              marginBottom: message ? 10 : 0,
+              gap: 12,
+              marginBottom: message || children ? 10 : 0,
             }}
           >
             <div
               style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background:
+                  variant === "danger"
+                    ? "rgba(239, 68, 68, 0.08)"
+                    : variant === "warning"
+                    ? "rgba(217, 119, 6, 0.08)"
+                    : "rgba(100, 116, 139, 0.08)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -211,10 +225,10 @@ export default function ConfirmModal({
               id="confirm-modal-title"
               style={{
                 margin: 0,
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: 600,
                 color: "var(--text-heading, #0f172a)",
-                lineHeight: 1.4,
+                lineHeight: 1.35,
               }}
             >
               {title}
@@ -225,44 +239,50 @@ export default function ConfirmModal({
           {message && (
             <p
               style={{
-                margin: 0,
-                fontSize: 13,
+                margin: "8px 0 0 0",
+                fontSize: 13.5,
                 color: "var(--text-muted, #64748b)",
-                lineHeight: 1.5,
-                paddingLeft: 46,
+                lineHeight: 1.55,
               }}
             >
               {message}
             </p>
           )}
+
+          {/* Optional Custom Content (e.g. Checkboxes, Form inputs) */}
+          {children && (
+            <div style={{ marginTop: 14 }}>
+              {children}
+            </div>
+          )}
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: "var(--border-subtle, #f1f5f9)", margin: "0 24px" }} />
+        <div style={{ height: 1, background: "var(--border-subtle, #f1f5f9)", margin: "0 22px" }} />
 
         {/* Actions */}
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: 10,
             justifyContent: "flex-end",
-            padding: "14px 24px",
+            padding: "14px 22px",
           }}
         >
           <button
             onClick={onClose}
             disabled={loading}
             style={{
-              padding: "8px 18px",
+              padding: "8px 16px",
               border: "1px solid var(--border-card, #e2e8f0)",
-              borderRadius: 9999,
+              borderRadius: 8,
               background: "var(--surface-card, #fff)",
               fontSize: 13,
               fontWeight: 500,
               color: "var(--text-secondary, #475569)",
               cursor: loading ? "not-allowed" : "pointer",
               opacity: loading ? 0.6 : 1,
-              transition: "background 0.15s",
+              transition: "all 0.15s ease",
             }}
             onMouseEnter={(e) => {
               if (!loading) e.target.style.background = "var(--surface-muted, #f8fafc)";
@@ -275,18 +295,18 @@ export default function ConfirmModal({
           </button>
           <button
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             style={{
               padding: "8px 18px",
               border: "none",
-              borderRadius: 9999,
-              background: c.btn,
+              borderRadius: 8,
+              background: confirmDisabled ? "var(--surface-muted, #94a3b8)" : c.btn,
               fontSize: 13,
               fontWeight: 600,
               color: "#fff",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.85 : 1,
-              transition: "background 0.15s",
+              cursor: loading || confirmDisabled ? "not-allowed" : "pointer",
+              opacity: loading || confirmDisabled ? 0.5 : 1,
+              transition: "all 0.15s ease",
               minWidth: 80,
               display: "inline-flex",
               alignItems: "center",
@@ -294,10 +314,10 @@ export default function ConfirmModal({
               gap: 8,
             }}
             onMouseEnter={(e) => {
-              if (!loading) e.target.style.background = c.btnHover;
+              if (!loading && !confirmDisabled) e.target.style.background = c.btnHover;
             }}
             onMouseLeave={(e) => {
-              if (!loading) e.target.style.background = c.btn;
+              if (!loading && !confirmDisabled) e.target.style.background = c.btn;
             }}
           >
             {loading ? (

@@ -62,10 +62,12 @@ export const utilityApi = {
       authFetch(`/utilities/${utilityType}/periods/${periodId}`, { method: "PATCH", body: JSON.stringify(data) }),
     ),
 
-  deletePeriod: (utilityType, periodId) =>
-    withLifecycleNormalization(
-      authFetch(`/utilities/${utilityType}/periods/${periodId}`, { method: "DELETE" }),
-    ),
+  deletePeriod: (utilityType, periodId, options = {}) => {
+    const forceQuery = options?.force ? "?force=true" : "";
+    return withLifecycleNormalization(
+      authFetch(`/utilities/${utilityType}/periods/${periodId}${forceQuery}`, { method: "DELETE" }),
+    );
+  },
 
   // ── Results ──
   getResult: (utilityType, periodId) =>

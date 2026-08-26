@@ -13,11 +13,15 @@ import {
   Eye,
   SlidersHorizontal,
   ChevronRight,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { billingApi } from "../../../shared/api/billingApi.js";
+import { showNotification } from "../../../shared/utils/notification.js";
 import RecordViolationModal from "./billing/RecordViolationModal.jsx";
 import ViolationDetailModal from "./billing/ViolationDetailModal.jsx";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar.jsx";
+import ConfirmModal from "../../../shared/components/ConfirmModal.jsx";
 
 const STATUS_FILTERS = [
   { id: "all", label: "All Infractions" },
@@ -112,6 +116,25 @@ export default function TenantViolationManager({ branch }) {
   // Modals
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [selectedViolation, setSelectedViolation] = useState(null);
+  const [violationToDelete, setViolationToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteViolation = async () => {
+    if (!violationToDelete) return;
+    try {
+      setDeleting(true);
+      await billingApi.deleteViolation(violationToDelete._id);
+      showNotification("Violation record deleted successfully.", "success");
+      setViolationToDelete(null);
+      fetchViolations();
+    } catch (err) {
+      console.error("Delete violation error:", err);
+      const errText = err.message || "Failed to delete violation record.";
+      showNotification(errText, "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchViolations = React.useCallback(async () => {
     const currentFetchId = ++fetchIdRef.current;
@@ -490,13 +513,25 @@ export default function TenantViolationManager({ branch }) {
                           ₱{Number(v.penaltyApplied || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedViolation(v)}
-                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground shadow-xs hover:bg-muted transition"
-                          >
-                            <Eye size={12} /> Details
-                          </button>
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedViolation(v)}
+                              aria-label={`View details for infraction #${String(v._id).slice(-6).toUpperCase()}`}
+                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground shadow-xs hover:bg-muted transition cursor-pointer"
+                            >
+                              <Eye size={12} /> Details
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setViolationToDelete(v)}
+                              aria-label={`Delete infraction #${String(v._id).slice(-6).toUpperCase()}`}
+                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400 shadow-xs hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
+                              title="Delete violation record"
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -507,6 +542,34 @@ export default function TenantViolationManager({ branch }) {
           </div>
         </div>
       </div>
+
+      {/* Standardized Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(violationToDelete)}
+        onClose={() => setViolationToDelete(null)}
+        onConfirm={handleDeleteViolation}
+        title="Delete Violation Record"
+        message={
+          violationToDelete
+            ? `Are you sure you want to permanently delete this rule infraction record for ${violationToDelete.tenantName}?`
+            : ""
+        }
+        variant="danger"
+        confirmText="Delete Record"
+        cancelText="Cancel"
+        loading={deleting}
+        loadingText="Deleting..."
+      >
+        {violationToDelete && Number(violationToDelete.penaltyApplied) > 0 && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 text-xs text-slate-600 dark:text-slate-300">
+            Associated penalty fee of{" "}
+            <strong className="text-rose-600 dark:text-rose-400 font-bold">
+              ₱{Number(violationToDelete.penaltyApplied).toFixed(2)}
+            </strong>{" "}
+            will be removed from the tenant's bill.
+          </div>
+        )}
+      </ConfirmModal>
 
       {/* Record Violation Modal */}
       <RecordViolationModal

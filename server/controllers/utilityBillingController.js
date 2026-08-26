@@ -288,7 +288,6 @@ async function syncElectricityBoundaryReadings({
 
 function getUtilitySummaryBillIds(period) {
   return (period?.tenantSummaries || [])
-    .filter((summary) => Number(summary.billAmount || 0) > 0)
     .map((summary) => summary.billId)
     .filter(Boolean);
 }
@@ -796,6 +795,11 @@ export const deleteUtilityPeriod = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const { utilityType, id } = req.params;
+    const isForce =
+      String(req.query?.force || req.body?.force || "").toLowerCase() ===
+        "true" ||
+      req.query?.force === true ||
+      req.body?.force === true;
 
     const period = await UtilityPeriod.findById(id);
     if (!period)
@@ -813,31 +817,65 @@ export const deleteUtilityPeriod = async (req, res, next) => {
       });
     }
 
-    await assertUtilityPeriodNotSent(period, utilityType);
+    // Check if any associated tenant bills have already been paid (partially or in full)
+    const billIds = getUtilitySummaryBillIds(period);
+    if (billIds.length > 0) {
+      const linkedBills = await Bill.find({ _id: { $in: billIds } }).populate(
+        "userId",
+        "firstName lastName email",
+      );
 
-    // Root-level deletion of draft bills associated with this period
-    if (period.tenantSummaries && period.tenantSummaries.length > 0) {
+      const paidBill = linkedBills.find((b) => {
+        return (
+          b.status === "paid" ||
+          b.status === "partially-paid" ||
+          Number(b.paidAmount || 0) > 0
+        );
+      });
+
+      if (paidBill && !isForce) {
+        const tenantName = paidBill.userId
+          ? `${paidBill.userId.firstName || ""} ${paidBill.userId.lastName || ""}`.trim()
+          : "a tenant";
+        return res.status(409).json({
+          error: `Cannot delete this ${utilityType} period because ${tenantName || "a tenant"} has already made a payment for this bill. Please void or refund the payment before deleting.`,
+          code: "UTILITY_PERIOD_HAS_PAID_BILLS",
+        });
+      }
+
       const chargeField = utilityType === "water" ? "water" : "electricity";
       const otherUtilityField = utilityType === "water" ? "electricity" : "water";
+      const summariesWithBills = (period.tenantSummaries || []).filter((s) => s.billId);
 
-      for (const summary of period.tenantSummaries) {
-        if (summary.billId) {
+      await Promise.all(
+        summariesWithBills.map(async (summary) => {
           const bill = await Bill.findById(summary.billId);
           if (bill) {
+            bill.charges = bill.charges || {};
             bill.charges[chargeField] = 0;
             if (bill.utilityDispatch) {
               delete bill.utilityDispatch[utilityType];
             }
-            const remainingRent = Number(bill.charges.rent || 0);
-            const remainingOtherUtility = Number(bill.charges[otherUtilityField] || 0);
-            const remainingPenalty = Number(bill.charges.penalty || 0);
+            const remainingRent = Number(bill.charges?.rent || 0);
+            const remainingOtherUtility = Number(bill.charges?.[otherUtilityField] || 0);
+            const remainingPenalty = Number(bill.charges?.penalty || 0);
+            const remainingAppliance = Number(bill.charges?.applianceFees || 0);
+            const remainingCorkage = Number(bill.charges?.corkageFees || 0);
+            const remainingChargesTotal =
+              remainingRent +
+              remainingOtherUtility +
+              remainingPenalty +
+              remainingAppliance +
+              remainingCorkage;
 
-            // If the draft bill only existed for this utility cycle, remove it at its root
+            // If the bill was generated solely for this utility cycle, remove it at its root
             if (
-              remainingRent === 0 &&
-              remainingOtherUtility === 0 &&
-              remainingPenalty === 0 &&
-              (bill.status === "draft" || bill.isArchived)
+              remainingChargesTotal === 0 &&
+              (bill.status === "draft" ||
+                bill.status === "pending" ||
+                bill.status === "overdue" ||
+                bill.isArchived ||
+                isForce)
             ) {
               await Bill.findByIdAndDelete(bill._id);
             } else {
@@ -845,8 +883,8 @@ export const deleteUtilityPeriod = async (req, res, next) => {
               await bill.save();
             }
           }
-        }
-      }
+        })
+      );
     }
 
     // Keep tenant lifecycle readings (move-in/move-out) detached from deleted periods
@@ -877,17 +915,20 @@ export const deleteUtilityPeriod = async (req, res, next) => {
     const room = await Room.findById(period.roomId);
     await logBillingAudit(req, {
       admin,
-      action: "utility_period_deleted",
-      severity: "high",
+      action: isForce ? "utility_period_force_deleted" : "utility_period_deleted",
+      severity: isForce ? "critical" : "high",
       entityId: period._id,
       branch: period.branch,
-      details: `Deleted ${utilityType} billing cycle for room ${getRoomLabel(room || {})}.`,
+      details: isForce
+        ? `Administrative force deletion of ${utilityType} billing cycle with payment lock override for room ${getRoomLabel(room || {})}.`
+        : `Deleted ${utilityType} billing cycle for room ${getRoomLabel(room || {})}.`,
       metadata: {
         utilityType,
         roomId: period.roomId,
         periodId: period._id,
         startDate: period.startDate,
         endDate: period.endDate,
+        ...(isForce ? { isForce: true } : {}),
       },
     });
 

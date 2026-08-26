@@ -349,6 +349,12 @@ export const billingApi = {
       body: JSON.stringify(payload),
     }),
 
+  updateViolation: (id, payload) =>
+    authFetch(`/billing/violations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
   updateViolationDecision: (id, payload) =>
     authFetch(`/billing/violations/${id}/decision`, {
       method: "PATCH",
@@ -359,6 +365,16 @@ export const billingApi = {
     authFetch(`/billing/violations/${id}/decision`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+
+  deleteViolation: (id) =>
+    authFetch(`/billing/violations/${id}`, {
+      method: "DELETE",
+    }),
+
+  archiveViolation: (id) =>
+    authFetch(`/billing/violations/${id}`, {
+      method: "DELETE",
     }),
 
   // ── Consolidated Billing & Payments Monitor ──

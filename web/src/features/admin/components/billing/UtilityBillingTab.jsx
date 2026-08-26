@@ -818,31 +818,63 @@ const UtilityBillingTab = ({
   };
 
   const handleDeletePeriod = (periodId) => {
-    const targetPeriod = periodList.find((p) => p.id === periodId);
+    const targetPeriod = periodList.find((p) => (p.id || p._id) === periodId);
     const isOpen = targetPeriod?.status === "open";
+    const isSent = targetPeriod?.status === "sent" || targetPeriod?.billingState === "sent";
+    const roomName = getRoomLabel(selectedRoom || {}, "Room");
+    const cycleLabel = getCycleLabel(targetPeriod);
+    const tenantCount = targetPeriod?.tenantSummaries?.length || 0;
+    const totalCharge = targetPeriod?.computedTotalCost ?? targetPeriod?.totalAmount ?? 0;
+
+    let title = "Delete Billing Cycle";
+    let message = `Are you sure you want to permanently delete this billing cycle for ${roomName}?`;
+
+    if (isOpen) {
+      title = "Delete Open Cycle";
+      message = `Permanently delete this open cycle for ${roomName}? This will remove the unfinalized billing period and its initial meter reading.`;
+    } else if (isSent || tenantCount > 0) {
+      title = "Delete & Rollback Billing Cycle";
+      message = `Permanently delete this billing cycle for ${roomName}? The closing meter reading will be removed and utility charges will be retracted from tenant records.`;
+    }
 
     setConfirmModal({
       open: true,
-      title: isOpen ? "Delete Open Cycle" : "Delete Billing Cycle",
-      message: isOpen
-        ? "Permanently delete this open cycle? This will remove the open billing period and its initial meter reading from the root database."
-        : "Permanently delete this billing cycle? This will remove the cycle, its boundary meter readings, and associated draft charges from the root database records. This action cannot be undone.",
+      periodId,
+      roomName,
+      cycleLabel,
+      totalCharge,
+      tenantCount,
+      title,
+      message,
       variant: "danger",
       confirmText: "Delete Cycle",
-      onConfirm: async () => {
-        setConfirmModal((prev) => ({ ...prev, open: false }));
-        try {
-          if (selectedPeriodId === periodId) {
-            setSelectedPeriodId(null);
-          }
-          await deletePeriod.mutateAsync(periodId);
-          notify.success("Billing cycle deleted successfully.");
-          await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
-        } catch (err) {
-          notify.error(err, "Failed to delete billing cycle.");
-        }
-      },
+      loadingText: "Deleting...",
+      loading: false,
+      hasPayments: !isOpen && (isSent || tenantCount > 0),
+      overrideChecked: false,
     });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmModal.periodId) return;
+    const { periodId, roomName, overrideChecked } = confirmModal;
+    setConfirmModal((prev) => ({ ...prev, loading: true }));
+    try {
+      if (selectedPeriodId === periodId) {
+        setSelectedPeriodId(null);
+      }
+      await deletePeriod.mutateAsync({ periodId, force: Boolean(overrideChecked) });
+      notify.success(
+        overrideChecked
+          ? `Billing cycle force-deleted and charges retracted with administrative override for ${roomName || "room"}.`
+          : `Billing cycle deleted and charges retracted for ${roomName || "room"}.`
+      );
+      setConfirmModal((prev) => ({ ...prev, open: false, loading: false, overrideChecked: false, periodId: null }));
+      await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
+    } catch (err) {
+      setConfirmModal((prev) => ({ ...prev, loading: false }));
+      notify.error(err, "Failed to delete billing cycle.");
+    }
   };
 
   // Export handlers
@@ -1270,13 +1302,70 @@ const UtilityBillingTab = ({
 
       <ConfirmModal
         isOpen={confirmModal.open}
-        onClose={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
-        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, open: false, overrideChecked: false, periodId: null }))}
+        onConfirm={handleConfirmDelete}
         title={confirmModal.title}
         message={confirmModal.message}
         variant={confirmModal.variant || "primary"}
-        confirmText={confirmModal.confirmText || "Confirm"}
-      />
+        confirmText={confirmModal.overrideChecked ? "Force Delete Cycle" : (confirmModal.confirmText || "Confirm")}
+        loading={confirmModal.loading || false}
+        loadingText={confirmModal.overrideChecked ? "Force Deleting..." : (confirmModal.loadingText || "Processing...")}
+      >
+        {/* Structured Impact Summary Grid */}
+        {confirmModal.periodId && (
+          <div className="mt-3.5 p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-2.5 text-slate-600 dark:text-slate-300">
+              <div>
+                <span className="text-[10.5px] font-medium text-slate-400 dark:text-slate-500 block uppercase tracking-wider">Room</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">{confirmModal.roomName || "Selected Room"}</span>
+              </div>
+              <div>
+                <span className="text-[10.5px] font-medium text-slate-400 dark:text-slate-500 block uppercase tracking-wider">Billing Cycle</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">{confirmModal.cycleLabel || "Current Cycle"}</span>
+              </div>
+              <div>
+                <span className="text-[10.5px] font-medium text-slate-400 dark:text-slate-500 block uppercase tracking-wider">Total Charges</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">₱{Number(confirmModal.totalCharge || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-[10.5px] font-medium text-slate-400 dark:text-slate-500 block uppercase tracking-wider">Affected Bills</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                  {confirmModal.tenantCount > 0 ? `${confirmModal.tenantCount} tenant bill${confirmModal.tenantCount === 1 ? "" : "s"}` : "None / Unassigned"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Administrative Override Option */}
+        {confirmModal.hasPayments && (
+          <div className="mt-2.5 p-3 bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+            <label htmlFor="override-payment-locks" className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                id="override-payment-locks"
+                type="checkbox"
+                checked={confirmModal.overrideChecked || false}
+                onChange={(e) => {
+                  const isChecked = e.target.checked;
+                  setConfirmModal((prev) => ({
+                    ...prev,
+                    overrideChecked: isChecked,
+                  }));
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-rose-600 focus:ring-rose-500 cursor-pointer transition-colors"
+              />
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Override active payment locks and force cycle deletion
+                </span>
+                <span className="block mt-0.5 text-slate-500 dark:text-slate-400 leading-normal font-normal">
+                  Administrative Override: Retracts utility charges and recalculates tenant balances even if payments were recorded.
+                </span>
+              </div>
+            </label>
+          </div>
+        )}
+      </ConfirmModal>
 
       <BatchSendReadyModal
         isOpen={isBatchSendModalOpen}

@@ -217,8 +217,13 @@ export function useUpdateUtilityReading(utilityType) {
 export function useDeleteUtilityPeriod(utilityType) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (periodId) => utilityApi.deletePeriod(utilityType, periodId),
-    onSuccess: (_, periodId) => {
+    mutationFn: (args) => {
+      const periodId = typeof args === "object" ? args?.periodId : args;
+      const options = typeof args === "object" ? { force: Boolean(args?.force) } : {};
+      return utilityApi.deletePeriod(utilityType, periodId, options);
+    },
+    onSuccess: (_, args) => {
+      const periodId = typeof args === "object" ? args?.periodId : args;
       if (periodId) {
         qc.removeQueries({ queryKey: utilityKeys.result(utilityType, periodId) });
       }

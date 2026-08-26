@@ -496,6 +496,7 @@ router.patch(
  */
 router.put(
   "/violations/:id",
+  apiLimiter,
   verifyAdmin,
   requirePermission("manageBilling"),
   filterByBranch,
@@ -509,6 +510,7 @@ router.put(
  */
 router.delete(
   "/violations/:id",
+  apiLimiter,
   verifyAdmin,
   requirePermission("manageBilling"),
   filterByBranch,
