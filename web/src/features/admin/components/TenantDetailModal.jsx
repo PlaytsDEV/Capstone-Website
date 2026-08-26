@@ -1034,10 +1034,8 @@ export default function TenantDetailModal({
                       selectedContract={selectedContractOverride}
                       onSelectContract={setSelectedContractOverride}
                       stayReference={
-                        (selectedContractOverride || dedicatedContract || allTenantContracts[0])?.contractNumber ||
-                        (dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" && allTenantContracts.length === 0
-                          ? "Conflicting records"
-                          : tenant.reservationCode || "LIL-RES-RECORD")
+                        selectedContractOverride?.contractNumber ||
+                        (dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" ? "Conflicting records" : (dedicatedContract || allTenantContracts[0])?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD")
                       }
                       downloadingProof={downloadingProof}
                       onOpenDigitalContract={handleOpenDigitalContract}
