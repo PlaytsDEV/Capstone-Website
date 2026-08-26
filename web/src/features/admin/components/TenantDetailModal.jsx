@@ -73,6 +73,7 @@ export default function TenantDetailModal({
   const [dedicatedContractError, setDedicatedContractError] = useState(null);
   const [contractLookupDone, setContractLookupDone] = useState(false);
   const [allTenantContracts, setAllTenantContracts] = useState([]);
+  const [selectedContractOverride, setSelectedContractOverride] = useState(null);
   const [activeTab, setActiveTab] = useState(initialTab || "overview");
 
   const reservationId =
@@ -262,6 +263,7 @@ export default function TenantDetailModal({
     setDigitalContractData(null);
     setDigitalContractError("");
     setActiveDigitalContract(null);
+    setSelectedContractOverride(null);
     setLoadingDigitalContract(false);
   }, [reservationId]);
 
@@ -297,8 +299,14 @@ export default function TenantDetailModal({
   }, [fetchTenantViolations]);
 
   const handleDownloadStayProof = async (contractOverride = null) => {
-    const targetContract = contractOverride || activeDigitalContract || dedicatedContract;
-    if (!targetContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS") {
+    const targetContract =
+      contractOverride ||
+      selectedContractOverride ||
+      activeDigitalContract ||
+      dedicatedContract ||
+      (allTenantContracts.length > 0 ? allTenantContracts[0] : null);
+
+    if (!targetContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" && allTenantContracts.length === 0) {
       showNotification(
         "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before downloading the lease contract.",
         "error",
@@ -324,9 +332,10 @@ export default function TenantDetailModal({
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       const code = err?.response?.data?.code;
-      const message = code === "MULTIPLE_CANONICAL_CONTRACTS"
-        ? "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before downloading the lease contract."
-        : err?.response?.data?.error || "Failed to generate Lease Contract PDF";
+      const message =
+        code === "MULTIPLE_CANONICAL_CONTRACTS" && !targetContract
+          ? "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before downloading the lease contract."
+          : err?.response?.data?.error || "Failed to generate Lease Contract PDF";
       showNotification(message, "error");
     } finally {
       setDownloadingProof(false);
@@ -337,8 +346,18 @@ export default function TenantDetailModal({
     const selectedContract =
       (specificContract && typeof specificContract === "object")
         ? specificContract
-        : dedicatedContract;
-    if (!selectedContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS") {
+        : (typeof specificContract === "string"
+            ? allTenantContracts.find(
+                (c) =>
+                  String(c._id || c.id) === specificContract ||
+                  String(c.contractNumber) === specificContract,
+              )
+            : null) ||
+          selectedContractOverride ||
+          dedicatedContract ||
+          (allTenantContracts.length > 0 ? allTenantContracts[0] : null);
+
+    if (!selectedContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" && allTenantContracts.length === 0) {
       setDigitalContractData(null);
       setDigitalContractError(
         "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before viewing the digital contract.",
@@ -362,6 +381,9 @@ export default function TenantDetailModal({
           : specificContract?._id ||
             specificContract?.id ||
             specificContract?.contractNumber) ||
+        selectedContract?._id ||
+        selectedContract?.id ||
+        selectedContract?.contractNumber ||
         dedicatedContract?._id ||
         dedicatedContract?.id ||
         dedicatedContract?.contractNumber ||
@@ -1008,11 +1030,22 @@ export default function TenantDetailModal({
                       tenant={tenant}
                       dedicatedContract={dedicatedContract}
                       dedicatedContractError={dedicatedContractError}
-                      stayReference={dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" ? "Conflicting records" : (dedicatedContract?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD")}
+                      allTenantContracts={allTenantContracts}
+                      selectedContract={selectedContractOverride}
+                      onSelectContract={setSelectedContractOverride}
+                      stayReference={
+                        (selectedContractOverride || dedicatedContract || allTenantContracts[0])?.contractNumber ||
+                        (dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" && allTenantContracts.length === 0
+                          ? "Conflicting records"
+                          : tenant.reservationCode || "LIL-RES-RECORD")
+                      }
                       downloadingProof={downloadingProof}
                       onOpenDigitalContract={handleOpenDigitalContract}
                       onDownloadStayProof={handleDownloadStayProof}
-                      onContractUpdated={(updated) => setDedicatedContract(updated)}
+                      onContractUpdated={(updated) => {
+                        setDedicatedContract(updated);
+                        setSelectedContractOverride(updated);
+                      }}
                     />
                     <TenantOverviewTab
                       tenant={tenant}
@@ -1389,7 +1422,14 @@ export default function TenantDetailModal({
                 <p className="text-xs text-red-600 dark:text-red-400 max-w-sm mx-auto">{digitalContractError}</p>
                 <button
                   type="button"
-                  onClick={() => handleOpenDigitalContract(activeDigitalContract || dedicatedContract)}
+                  onClick={() =>
+                    handleOpenDigitalContract(
+                      activeDigitalContract ||
+                        selectedContractOverride ||
+                        dedicatedContract ||
+                        (allTenantContracts.length > 0 ? allTenantContracts[0] : null),
+                    )
+                  }
                   className="text-xs font-medium text-primary hover:underline cursor-pointer"
                 >
                   Try again
@@ -1398,8 +1438,20 @@ export default function TenantDetailModal({
             ) : (
               <DigitalContractPaper
                 stayData={digitalContractData}
-                contract={activeDigitalContract || dedicatedContract}
-                onDownloadPdf={() => handleDownloadStayProof(activeDigitalContract || dedicatedContract)}
+                contract={
+                  activeDigitalContract ||
+                  selectedContractOverride ||
+                  dedicatedContract ||
+                  (allTenantContracts.length > 0 ? allTenantContracts[0] : null)
+                }
+                onDownloadPdf={() =>
+                  handleDownloadStayProof(
+                    activeDigitalContract ||
+                      selectedContractOverride ||
+                      dedicatedContract ||
+                      (allTenantContracts.length > 0 ? allTenantContracts[0] : null),
+                  )
+                }
                 isDownloading={downloadingProof}
                 fetchDocumentPdf={(c) => (c?.finalDocument
                   ? contractApi.getFinalContractFile(c._id || c.id, false)
