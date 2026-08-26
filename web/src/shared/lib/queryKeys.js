@@ -113,6 +113,13 @@ export const queryKeys = {
     business: ["settings", "business"],
   },
 
+  backups: {
+    all: ["backups"],
+    config: () => ["backups", "config"],
+    history: (page, limit) => ["backups", "history", { page, limit }],
+    list: (params) => ["backups", "list", params || {}],
+  },
+
   financial: {
     overview: (branch) => ["financial", "overview", branch || "all"],
   },

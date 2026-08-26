@@ -25,8 +25,16 @@ export const backupApi = {
   triggerBackup: () =>
     authFetch("/backups/trigger", { method: "POST" }),
 
+  /** Alias for triggerBackup */
+  createBackup: () =>
+    authFetch("/backups/trigger", { method: "POST" }),
+
   /** Get paginated backup history. */
   getHistory: (page = 1, limit = 20) =>
+    authFetch(`/backups/history?page=${page}&limit=${limit}`),
+
+  /** Alias for getHistory */
+  getBackups: (page = 1, limit = 20) =>
     authFetch(`/backups/history?page=${page}&limit=${limit}`),
 
   /** Delete a backup record and its file. */

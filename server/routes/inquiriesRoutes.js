@@ -26,8 +26,8 @@ import { verifyToken, verifyAdmin, verifyOwner, optionalAuth } from "../middlewa
 import { filterByBranch } from "../middleware/branchAccess.js";
 import { requirePermission, requireAnyPermission } from "../middleware/permissions.js";
 import { inquiryLimiter } from "../middleware/rateLimiter.js";
-import { validate } from "../validation/validate.js";
-import { createInquirySchema } from "../validation/schemas.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { createInquirySchema } from "../validation/zodSchemas.js";
 import {
   getInquiryStats,
   getKanbanBoard,
@@ -157,7 +157,7 @@ router.get("/:id", verifyToken, verifyAdmin, filterByBranch, requireAnyPermissio
  *
  * Access: Public (optional authentication supported)
  */
-router.post("/", inquiryLimiter, optionalAuth, validate(createInquirySchema), createInquiry);
+router.post("/", inquiryLimiter, optionalAuth, validateRequest({ body: createInquirySchema }), createInquiry);
 
 // ============================================================================
 // UPDATE INQUIRY

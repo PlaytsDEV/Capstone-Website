@@ -91,12 +91,25 @@ export function isPendingAdminApproval(reservation) {
     return false;
   }
 
-  // If already viewed by admin, it is no longer unread / "NEW"
-  if (reservation.isViewedByAdmin) {
+  const hasSubmission = Boolean(
+    reservation.applicationSubmittedAt || reservation.applicationResubmittedAt,
+  );
+  const latestSubmissionTime = hasSubmission
+    ? new Date(
+        reservation.applicationResubmittedAt || reservation.applicationSubmittedAt,
+      ).getTime()
+    : 0;
+  const lastAdminViewTime = reservation.lastAdminViewedAt
+    ? new Date(reservation.lastAdminViewedAt).getTime()
+    : 0;
+  const isSubmissionFresh = hasSubmission && latestSubmissionTime > lastAdminViewTime;
+
+  // If viewed and no fresh submission, it is no longer unread / "NEW"
+  if (reservation.isViewedByAdmin && !isSubmissionFresh) {
     return false;
   }
 
-  // 1. Pending application review (new unviewed submission requiring admin review)
+  // 2. Pending application review (new or fresh unviewed submission requiring admin review)
   if (
     status === "pending" ||
     status === "pending_application_review" ||
@@ -160,12 +173,41 @@ export function getCancelledByName(cancelledBy, cancellationSource, customerName
 export function mapReservationAdminRow(reservation, seenIds = null) {
   const branchCode = reservation.roomId?.branch || "";
   const idStr = String(reservation._id || reservation.id || "");
-  const isSeenInSession = Boolean(
-    seenIds && (seenIds.has(idStr) || seenIds.has(reservation._id) || seenIds.has(reservation.id)),
+
+  const hasSubmission = Boolean(
+    reservation.applicationSubmittedAt || reservation.applicationResubmittedAt,
   );
-  const isViewedByAdmin = Boolean(reservation.isViewedByAdmin || isSeenInSession);
+  const latestSubmissionTime = hasSubmission
+    ? new Date(
+        reservation.applicationResubmittedAt || reservation.applicationSubmittedAt,
+      ).getTime()
+    : 0;
+  const lastAdminViewTime = reservation.lastAdminViewedAt
+    ? new Date(reservation.lastAdminViewedAt).getTime()
+    : 0;
+  const isSubmissionFresh = hasSubmission && latestSubmissionTime > lastAdminViewTime;
+
+  const isSeenInSession = Boolean(
+    seenIds &&
+      (seenIds.has(idStr) || seenIds.has(reservation._id) || seenIds.has(reservation.id)) &&
+      !isSubmissionFresh,
+  );
+  const isViewedByAdmin = isSubmissionFresh
+    ? false
+    : Boolean(reservation.isViewedByAdmin || isSeenInSession);
+
+  const isResubmitted = Boolean(
+    reservation.applicationResubmittedAt &&
+      new Date(reservation.applicationResubmittedAt).getTime() >
+        new Date(reservation.applicationSubmittedAt || 0).getTime(),
+  );
+
   const isPendingCancellation = hasPendingCancellationRequest(reservation);
-  const isNew = isPendingAdminApproval({ ...reservation, isViewedByAdmin });
+  const isNew = isPendingAdminApproval({
+    ...reservation,
+    isViewedByAdmin,
+    lastAdminViewedAt: reservation.lastAdminViewedAt,
+  });
   const customer =
     `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
     "Unknown";
@@ -186,6 +228,7 @@ export function mapReservationAdminRow(reservation, seenIds = null) {
     status: reservation.status || "pending",
     isViewedByAdmin,
     isNew,
+    isResubmitted,
     totalPrice: reservation.totalPrice,
     paymentStatus: reservation.paymentStatus,
     viewingPreference: reservation.viewingPreference,
@@ -204,6 +247,9 @@ export function mapReservationAdminRow(reservation, seenIds = null) {
     scheduleRejected: Boolean(reservation.scheduleRejected),
     scheduleRejectedAt: reservation.scheduleRejectedAt || null,
     scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+    applicationSubmittedAt: reservation.applicationSubmittedAt || null,
+    applicationResubmittedAt: reservation.applicationResubmittedAt || null,
+    lastAdminViewedAt: reservation.lastAdminViewedAt || null,
     cancelledAt: reservation.cancelledAt || null,
     cancelledBy: reservation.cancelledBy || null,
     cancelledByName: reservation.cancelledByName || getCancelledByName(reservation.cancelledBy, reservation.cancellationSource, customer),

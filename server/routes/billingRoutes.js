@@ -16,6 +16,8 @@ import { filterByBranch } from "../middleware/branchAccess.js";
 import * as billingController from "../controllers/billingController.js";
 import { requirePermission } from "../middleware/permissions.js";
 import { apiLimiter } from "../middleware/rateLimiter.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { createViolationSchema } from "../validation/zodSchemas.js";
 
 const router = express.Router();
 
@@ -472,6 +474,7 @@ router.post(
   verifyAdmin,
   requirePermission("manageBilling"),
   filterByBranch,
+  validateRequest({ body: createViolationSchema }),
   billingController.createViolation,
 );
 

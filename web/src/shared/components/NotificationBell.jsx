@@ -35,6 +35,7 @@ function NotificationBellIcon({ type }) {
   const iconProps = { size: 15, strokeWidth: 2 };
   switch (type) {
     case "reservation_created":
+    case "application_submitted":
     case "bill_generated":
     case "contract_document_ready":
       return <FileText {...iconProps} style={{ color: "#2563EB" }} />;

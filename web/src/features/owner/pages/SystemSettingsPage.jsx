@@ -24,6 +24,11 @@ import {
 import "../styles/owner-dashboard.css";
 import "../styles/owner-settings.css";
 import { settingsApi } from "../../../shared/api/apiClient";
+import {
+  useSystemSettings,
+  useUpdateSystemSettingsMutation,
+  useUpdateBranchSettingsMutation,
+} from "../../../shared/hooks/queries/useSystemSettingsQuery";
 import { showNotification } from "../../../shared/utils/notification";
 import { AdminPoliciesSettingsSkeleton } from "../../admin/components/AdminContentSkeletons";
 import SystemBackupPage from "../../admin/pages/SystemBackupPage";
@@ -479,40 +484,28 @@ export default function SystemSettingsPage() {
   const validTabs = ["policies", "backups"];
   const activeTab = validTabs.includes(rawTab) ? rawTab : "policies";
 
+  const { data: serverSettings, isLoading: loading } = useSystemSettings();
+  const updateSettingsMutation = useUpdateSystemSettingsMutation();
+  const updateBranchMutation = useUpdateBranchSettingsMutation();
+
   const [serverBaseline, setServerBaseline] = useState(DEFAULT_FORM);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [touched, setTouched] = useState({});
   const [errors, setErrors] = useState({});
 
-  const [loading, setLoading] = useState(true);
-  const [savingPolicies, setSavingPolicies] = useState(false);
   const [savingBranch, setSavingBranch] = useState("");
+  const savingPolicies = updateSettingsMutation.isPending;
 
   const [pendingTab, setPendingTab] = useState(null);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        const data = await settingsApi.getBusinessSettings();
-        if (!mounted) return;
-        const normalized = normalizeSettingsPayload(data);
-        setServerBaseline(normalized);
-        setForm(normalized);
-      } catch (error) {
-        showNotification("Failed to load business policies.", "error");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    if (serverSettings) {
+      const normalized = normalizeSettingsPayload(serverSettings);
+      setServerBaseline(normalized);
+      setForm((curr) => (curr === DEFAULT_FORM ? normalized : curr));
+    }
+  }, [serverSettings]);
 
   // Compute dirty policy fields
   const dirtyPolicyKeys = useMemo(() => {
@@ -724,13 +717,12 @@ export default function SystemSettingsPage() {
     }
 
     try {
-      setSavingPolicies(true);
       const payload = POLICY_KEYS.reduce((acc, key) => {
         acc[key] = Number(form[key]);
         return acc;
       }, {});
       payload.isDiscountEnabled = Boolean(form.isDiscountEnabled);
-      const data = await settingsApi.updateBusinessSettings(payload);
+      const data = await updateSettingsMutation.mutateAsync(payload);
       applyServerSettings(data);
       showNotification(
         "Operational policies and billing defaults updated successfully.",
@@ -741,8 +733,6 @@ export default function SystemSettingsPage() {
         error.message || "Failed to update business policies.",
         "error",
       );
-    } finally {
-      setSavingPolicies(false);
     }
   };
 
@@ -751,7 +741,8 @@ export default function SystemSettingsPage() {
       setSavingBranch(branch);
       const branchSettings =
         form.branchOverrides?.[branch] || DEFAULT_BRANCH_OVERRIDES[branch];
-      const data = await settingsApi.updateBranchSettings(branch, {
+      const data = await updateBranchMutation.mutateAsync({
+        branch,
         isApplianceFeeEnabled: Boolean(branchSettings.isApplianceFeeEnabled),
         applianceFeeAmountPerUnit: Number(
           branchSettings.applianceFeeAmountPerUnit || 0,

@@ -20,44 +20,39 @@ import { getUserBranchInfo } from "../middleware/branchAccess.js";
 import { getBranchOccupancyStats } from "../utils/occupancyManager.js";
 import { ACTIVE_OCCUPANCY_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 import { generateAnalyticsInsight } from "../services/analyticsInsightsService.js";
+import { BoundedLruCache } from "../utils/BoundedLruCache.js";
 
 // ─── In-process dashboard analytics cache ────────────────────────────────────
-// Keyed by "branch:rangeKey" → { data, expiresAt }. Entries last 30 seconds.
+// Keyed by "branch:rangeKey" → data. Entries expire after 30 seconds and capacity is bounded.
 // This eliminates re-running 13+ aggregations on every navigate-away-and-back
-// without requiring Redis or any external caching infrastructure.
-const _dashboardCache = new Map();
-const DASHBOARD_CACHE_TTL_MS = 30_000;
+// without requiring Redis or risking unbounded memory growth.
+const _dashboardCache = new BoundedLruCache({ maxEntries: 50, defaultTtlMs: 30_000 });
 
 const _getDashboardCacheKey = (branch, rangeKey) => `${branch}:${rangeKey}`;
 
 const _getDashboardCacheHit = (branch, rangeKey) => {
   const key = _getDashboardCacheKey(branch, rangeKey);
-  const entry = _dashboardCache.get(key);
-  if (entry && entry.expiresAt > Date.now()) return entry.data;
-  return null;
+  return _dashboardCache.get(key);
 };
 
 const _setDashboardCache = (branch, rangeKey, data) => {
   const key = _getDashboardCacheKey(branch, rangeKey);
-  _dashboardCache.set(key, { data, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
+  _dashboardCache.set(key, data);
 };
 
 // ─── In-process audit analytics cache ───────────────────────────────────────
-const _auditCache = new Map();
-const AUDIT_CACHE_TTL_MS = 30_000;
+const _auditCache = new BoundedLruCache({ maxEntries: 50, defaultTtlMs: 30_000 });
 
 const _getAuditCacheKey = (branch, rangeKey) => `${branch}:${rangeKey}`;
 
 const _getAuditCacheHit = (branch, rangeKey) => {
   const key = _getAuditCacheKey(branch, rangeKey);
-  const entry = _auditCache.get(key);
-  if (entry && entry.expiresAt > Date.now()) return entry.data;
-  return null;
+  return _auditCache.get(key);
 };
 
 const _setAuditCache = (branch, rangeKey, data) => {
   const key = _getAuditCacheKey(branch, rangeKey);
-  _auditCache.set(key, { data, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
+  _auditCache.set(key, data);
 };
 // ─────────────────────────────────────────────────────────────────────────────
 

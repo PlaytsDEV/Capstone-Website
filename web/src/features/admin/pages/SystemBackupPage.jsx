@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Database,
   Settings,
@@ -35,6 +35,15 @@ import {
   Upload,
 } from "lucide-react";
 import { backupApi } from "../../../shared/api/backupApi";
+import {
+  useBackupConfig,
+  useBackupHistory,
+  useUpdateBackupConfigMutation,
+  useTriggerBackupMutation,
+  useDeleteBackupMutation,
+  useRestoreBackupMutation,
+  useUploadAndRestoreMutation,
+} from "../../../shared/hooks/queries/useSystemBackup";
 import { showNotification } from "../../../shared/utils/notification";
 import { AdminSystemBackupSkeleton } from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
@@ -292,91 +301,68 @@ function TypeBadge({ type }) {
 
 export default function SystemBackupPage({ isEmbedded = false }) {
   /* State */
-  const [config, setConfig] = useState(null);
-  const [configLoading, setConfigLoading] = useState(true);
-  const [configSaving, setConfigSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  const { data: config, isLoading: configLoading } = useBackupConfig();
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    refetch: refetchHistory,
+  } = useBackupHistory(page, pageSize, {
+    refetchInterval: (query) =>
+      query.state.data?.records?.some((r) => r.status === "in_progress") ? 3000 : false,
+  });
+
+  const updateConfigMutation = useUpdateBackupConfigMutation();
+  const triggerBackupMutation = useTriggerBackupMutation();
+  const deleteBackupMutation = useDeleteBackupMutation();
+  const restoreBackupMutation = useRestoreBackupMutation();
+  const uploadAndRestoreMutation = useUploadAndRestoreMutation();
 
   const [localAutoEnabled, setLocalAutoEnabled] = useState(false);
   const [localInterval, setLocalInterval] = useState(7);
 
-  const [records, setRecords] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [pageSize, setPageSize] = useState(5);
-
-  const [triggerLoading, setTriggerLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [restoreModal, setRestoreModal] = useState(null);
-  const [restoreLoading, setRestoreLoading] = useState(false);
   const [uploadModal, setUploadModal] = useState(false);
-  const [uploadLoading, setUploadLoading] = useState(false);
 
-  /* ── Load config ──────────────────────────────────────────────────────── */
-
-  const loadConfig = useCallback(async () => {
-    try {
-      setConfigLoading(true);
-      const data = await backupApi.getConfig();
-      setConfig(data);
-      setLocalAutoEnabled(data.autoBackupEnabled);
-      setLocalInterval(data.intervalDays);
-    } catch (err) {
-      console.error("Failed to load backup config:", err);
-    } finally {
-      setConfigLoading(false);
-    }
-  }, []);
-
-  /* ── Load history ─────────────────────────────────────────────────────── */
-
-  const loadHistory = useCallback(async (page = 1, limit = pageSize) => {
-    try {
-      setHistoryLoading(true);
-      const data = await backupApi.getHistory(page, limit);
-      setRecords(data.records || []);
-      setPagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
-    } catch (err) {
-      console.error("Failed to load backup history:", err);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [pageSize]);
-
+  /* Sync local config form with server baseline */
   useEffect(() => {
-    loadConfig();
-    loadHistory();
-  }, [loadConfig, loadHistory]);
+    if (config) {
+      setLocalAutoEnabled(Boolean(config.autoBackupEnabled));
+      setLocalInterval(config.intervalDays || 7);
+    }
+  }, [config]);
 
-  /* ── Auto-refresh when a backup is in progress ────────────────────────── */
+  const records = historyData?.records || [];
+  const pagination = historyData?.pagination || { page: 1, totalPages: 1, total: 0 };
 
-  useEffect(() => {
-    const hasInProgress = records.some((r) => r.status === "in_progress");
-    if (!hasInProgress) return;
-
-    const interval = setInterval(() => loadHistory(pagination.page, pageSize), 3000);
-    return () => clearInterval(interval);
-  }, [records, pagination.page, loadHistory]);
+  const isBackupRunning = records.some((r) => r.status === "in_progress");
+  const triggerLoading = triggerBackupMutation.isPending;
+  const restoreLoading = restoreBackupMutation.isPending;
+  const uploadLoading = uploadAndRestoreMutation.isPending;
+  const configSaving = updateConfigMutation.isPending;
+  const isAnyOperationRunning = isBackupRunning || triggerLoading || restoreLoading || uploadLoading;
 
   /* ── Save config ──────────────────────────────────────────────────────── */
 
   const handleSaveConfig = async () => {
     try {
-      setConfigSaving(true);
-      const data = await backupApi.updateConfig({
+      await updateConfigMutation.mutateAsync({
         autoBackupEnabled: localAutoEnabled,
         intervalDays: localInterval,
       });
-      setConfig(data);
+      showNotification("Backup configuration updated successfully.", "success");
     } catch (err) {
       console.error("Failed to save backup config:", err);
-    } finally {
-      setConfigSaving(false);
+      showNotification(err?.message || "Failed to save backup configuration.", "error");
     }
   };
 
   const configDirty =
     config &&
-    (localAutoEnabled !== config.autoBackupEnabled || localInterval !== config.intervalDays);
+    (localAutoEnabled !== Boolean(config.autoBackupEnabled) || localInterval !== config.intervalDays);
 
   /* ── Trigger manual backup ────────────────────────────────────────────── */
 
@@ -390,13 +376,12 @@ export default function SystemBackupPage({ isEmbedded = false }) {
       onConfirm: async () => {
         setConfirmModal(null);
         try {
-          setTriggerLoading(true);
-          await backupApi.triggerBackup();
-          await loadHistory(1);
+          await triggerBackupMutation.mutateAsync();
+          setPage(1);
+          showNotification("Manual backup initiated successfully.", "success");
         } catch (err) {
           console.error("Failed to trigger backup:", err);
-        } finally {
-          setTriggerLoading(false);
+          showNotification(err?.message || "Failed to trigger backup.", "error");
         }
       },
     });
@@ -433,10 +418,11 @@ export default function SystemBackupPage({ isEmbedded = false }) {
       onConfirm: async () => {
         setConfirmModal(null);
         try {
-          await backupApi.deleteBackup(record.id);
-          await loadHistory(pagination.page);
+          await deleteBackupMutation.mutateAsync(record.id);
+          showNotification("Backup deleted successfully.", "success");
         } catch (err) {
           console.error("Failed to delete backup:", err);
+          showNotification(err?.message || "Failed to delete backup.", "error");
         }
       },
     });
@@ -453,13 +439,12 @@ export default function SystemBackupPage({ isEmbedded = false }) {
     const recordId = restoreModal.id;
     setRestoreModal(null);
     try {
-      setRestoreLoading(true);
-      await backupApi.restoreBackup(recordId);
-      await loadHistory(1);
+      await restoreBackupMutation.mutateAsync(recordId);
+      setPage(1);
+      showNotification("Database restored successfully.", "success");
     } catch (err) {
       console.error("Failed to restore backup:", err);
-    } finally {
-      setRestoreLoading(false);
+      showNotification(err?.message || "Failed to restore backup.", "error");
     }
   };
 
@@ -468,20 +453,16 @@ export default function SystemBackupPage({ isEmbedded = false }) {
   const handleUploadRestore = async (file) => {
     setUploadModal(false);
     try {
-      setUploadLoading(true);
-      await backupApi.uploadAndRestore(file);
-      await loadHistory(1);
+      await uploadAndRestoreMutation.mutateAsync(file);
+      setPage(1);
+      showNotification("Backup uploaded and restored successfully.", "success");
     } catch (err) {
       console.error("Failed to upload and restore:", err);
-    } finally {
-      setUploadLoading(false);
+      showNotification(err?.message || "Failed to upload and restore backup.", "error");
     }
   };
 
   /* ── Render ───────────────────────────────────────────────────────────── */
-
-  const isBackupRunning = records.some((r) => r.status === "in_progress");
-  const isAnyOperationRunning = isBackupRunning || restoreLoading || uploadLoading;
 
   if (configLoading && historyLoading && records.length === 0) {
     return <AdminSystemBackupSkeleton />;
@@ -630,7 +611,7 @@ export default function SystemBackupPage({ isEmbedded = false }) {
           <button
             type="button"
             className="backup-btn backup-btn--secondary backup-btn--sm"
-            onClick={() => loadHistory(pagination.page)}
+            onClick={() => refetchHistory()}
             disabled={historyLoading}
           >
             <RefreshCw size={12} />
@@ -745,7 +726,7 @@ export default function SystemBackupPage({ isEmbedded = false }) {
                     onChange={(e) => {
                       const newSize = Number(e.target.value);
                       setPageSize(newSize);
-                      loadHistory(1, newSize);
+                      setPage(1);
                     }}
                   >
                     <option value={5}>5</option>
@@ -764,7 +745,7 @@ export default function SystemBackupPage({ isEmbedded = false }) {
                   type="button"
                   className="backup-btn backup-btn--secondary backup-btn--sm"
                   disabled={pagination.page <= 1}
-                  onClick={() => loadHistory(pagination.page - 1)}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   <ChevronLeft size={14} />
                 </button>
@@ -775,7 +756,7 @@ export default function SystemBackupPage({ isEmbedded = false }) {
                   type="button"
                   className="backup-btn backup-btn--secondary backup-btn--sm"
                   disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => loadHistory(pagination.page + 1)}
+                  onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                 >
                   <ChevronRight size={14} />
                 </button>

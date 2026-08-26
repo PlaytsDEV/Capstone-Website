@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Download, FileDown } from "lucide-react";
-import { useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { useOwnerFinancialOverview } from "../../../shared/hooks/queries/useOwnerFinancials";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
@@ -68,7 +68,7 @@ export default function FinancialOverviewPage() {
  const [page, setPage] = useState(1);
 
  const params = useMemo(() => ({ range, branch }), [branch, range]);
- const { data, isLoading, isError } = useFinancialsAnalytics(params);
+ const { data, isLoading, isError } = useOwnerFinancialOverview(params);
  const branchComparison = data?.series?.branchComparison || [];
  const revenueByMonth = data?.series?.revenueByMonth || [];
  const overdueAging = data?.series?.overdueAging || [];

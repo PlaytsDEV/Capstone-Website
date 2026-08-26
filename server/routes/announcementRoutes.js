@@ -12,11 +12,11 @@
 import express from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
-import { validate } from "../validation/validate.js";
+import { validateRequest } from "../middleware/validateRequest.js";
 import {
   createAnnouncementSchema,
   updateAnnouncementSchema,
-} from "../validation/schemas.js";
+} from "../validation/zodSchemas.js";
 import { requirePermission } from "../middleware/permissions.js";
 import * as announcementsController from "../controllers/announcementsController.js";
 
@@ -90,7 +90,7 @@ router.post(
   verifyAdmin,
   filterByBranch,
   requirePermission("manageAnnouncements"),
-  validate(createAnnouncementSchema),
+  validateRequest({ body: createAnnouncementSchema }),
   announcementsController.createAnnouncement,
 );
 
@@ -103,7 +103,7 @@ router.put(
   verifyAdmin,
   filterByBranch,
   requirePermission("manageAnnouncements"),
-  validate(updateAnnouncementSchema),
+  validateRequest({ body: updateAnnouncementSchema }),
   announcementsController.updateAnnouncement,
 );
 

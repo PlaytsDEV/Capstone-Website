@@ -2,7 +2,13 @@ import { authFetch } from "./httpClient.js";
 
 export const settingsApi = {
   getBusinessSettings: () => authFetch("/settings/business"),
+  getSettings: () => authFetch("/settings/business"),
   updateBusinessSettings: (payload) =>
+    authFetch("/settings/business", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updateSettings: (payload) =>
     authFetch("/settings/business", {
       method: "PATCH",
       body: JSON.stringify(payload),

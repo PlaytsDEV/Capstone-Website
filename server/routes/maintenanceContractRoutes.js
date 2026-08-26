@@ -27,6 +27,8 @@ import {
   ATTACHMENT_TYPE_ERROR_MESSAGE,
   isAllowedAttachmentFile,
 } from "../services/attachmentUploadService.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { createMaintenanceSchema } from "../validation/zodSchemas.js";
 
 const router = express.Router();
 const maintenanceAttachmentUpload = multer({
@@ -291,7 +293,12 @@ router.patch(
 
 // Compatibility aliases for legacy repo callers
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
-router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
+router.post(
+  "/requests",
+  verifyApplicant,
+  validateRequest({ body: createMaintenanceSchema }),
+  maintenanceController.createRequestCompat,
+);
 router.post("/requests/:requestId/reply", verifyApplicant, maintenanceController.sendTenantReply);
 router.get(
   "/branch",

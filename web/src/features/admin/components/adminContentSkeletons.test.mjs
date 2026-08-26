@@ -39,7 +39,7 @@ test("AdminRoomAvailabilitySkeleton mirrors Room Management UI architecture with
   assert.match(skeletonsFile, /Quick Preset Filter Chips Bar/);
   // Multi-category status legend bar
   assert.match(skeletonsFile, /Multi-Category Status Legend Bar/);
-  // Floor grouped room cards & Double deck layout frame
+  // Floor section header & double deck layout frame
   assert.match(skeletonsFile, /Floor Section Header/);
   assert.match(skeletonsFile, /Double Deck Bunk Layout Frame/);
   // Bottom summary & pagination controls
@@ -162,7 +162,7 @@ test("AdminAnalyticsSkeleton and DetailSkeleton avoid colored icon classes and a
     "utf8"
   );
 
-  // Ensure no colored icon wrapper classes (e.g. analytics-kpi-icon blue/green/amber/purple) are used in skeleton
+  // Ensure no colored icon wrapper classes are used in skeleton
   assert.doesNotMatch(skeletonsFile, /analytics-kpi-icon (?:blue|green|amber|purple)/);
   assert.doesNotMatch(skeletonsFile, /iconBg:\s*["'](?:blue|green|amber|purple)["']/);
 
@@ -197,11 +197,20 @@ test("AdminChatPage integrates AdminChatSkeleton, ChatConversationListSkeleton, 
     path.join(__dirname, "../pages/AdminChatPage.jsx"),
     "utf8"
   );
+  const chatComponentsDir = path.join(__dirname, "chat");
+  const chatComponents = fs.existsSync(chatComponentsDir)
+    ? fs
+        .readdirSync(chatComponentsDir)
+        .filter((f) => f.endsWith(".js") || f.endsWith(".jsx"))
+        .map((f) => fs.readFileSync(path.join(chatComponentsDir, f), "utf8"))
+        .join("\n")
+    : "";
+  const allChatSources = `${chatPageFile}\n${chatComponents}`;
 
-  assert.match(chatPageFile, /AdminChatSkeleton/);
-  assert.match(chatPageFile, /ChatConversationListSkeleton/);
-  assert.match(chatPageFile, /ChatMessageFeedSkeleton/);
-  assert.doesNotMatch(chatPageFile, /\bListSkeleton\b/);
+  assert.match(allChatSources, /AdminChatSkeleton/);
+  assert.match(allChatSources, /ChatConversationListSkeleton/);
+  assert.match(allChatSources, /ChatMessageFeedSkeleton/);
+  assert.doesNotMatch(allChatSources, /\bListSkeleton\b/);
 });
 
 test("adminRoutes uses AdminChatSkeleton as route fallback", () => {
@@ -212,7 +221,3 @@ test("adminRoutes uses AdminChatSkeleton as route fallback", () => {
 
   assert.match(routesFile, /fallback=\{<AdminChatSkeleton \/>\}/);
 });
-
-
-
-

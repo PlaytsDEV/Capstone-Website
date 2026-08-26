@@ -265,6 +265,57 @@ test("mapReservationAdminRow does not mark moveIn or confirmed reservations as i
   assert.equal(rowConfirmed.isNew, false);
 });
 
+test("mapReservationAdminRow marks application as isNew when applicationSubmittedAt is newer than lastAdminViewedAt even if previously viewed", () => {
+  const previousViewedTime = new Date("2026-08-20T10:00:00.000Z").toISOString();
+  const submissionTime = new Date("2026-08-26T12:00:00.000Z").toISOString();
 
+  const row = mapReservationAdminRow({
+    _id: "res-new-submission",
+    status: "pending_application_review",
+    createdAt: new Date("2026-08-19T00:00:00.000Z").toISOString(),
+    isViewedByAdmin: true,
+    lastAdminViewedAt: previousViewedTime,
+    applicationSubmittedAt: submissionTime,
+    roomId: { name: "Room 201", branch: "gil-puyat" },
+  });
 
+  assert.equal(row.isNew, true);
+  assert.equal(row.isViewedByAdmin, false);
+});
 
+test("mapReservationAdminRow clears isNew once lastAdminViewedAt is newer than applicationSubmittedAt", () => {
+  const submissionTime = new Date("2026-08-26T12:00:00.000Z").toISOString();
+  const inspectionTime = new Date("2026-08-26T12:30:00.000Z").toISOString();
+
+  const row = mapReservationAdminRow({
+    _id: "res-inspected-submission",
+    status: "pending_application_review",
+    createdAt: new Date("2026-08-19T00:00:00.000Z").toISOString(),
+    isViewedByAdmin: true,
+    lastAdminViewedAt: inspectionTime,
+    applicationSubmittedAt: submissionTime,
+    roomId: { name: "Room 201", branch: "gil-puyat" },
+  });
+
+  assert.equal(row.isNew, false);
+  assert.equal(row.isViewedByAdmin, true);
+});
+
+test("mapReservationAdminRow identifies resubmitted application awaiting review as isNew with isResubmitted: true", () => {
+  const initialViewedTime = new Date("2026-08-25T10:00:00.000Z").toISOString();
+  const resubmissionTime = new Date("2026-08-26T15:00:00.000Z").toISOString();
+
+  const row = mapReservationAdminRow({
+    _id: "res-resubmitted",
+    status: "pending_application_review",
+    createdAt: new Date("2026-08-20T00:00:00.000Z").toISOString(),
+    isViewedByAdmin: true,
+    lastAdminViewedAt: initialViewedTime,
+    applicationSubmittedAt: new Date("2026-08-24T00:00:00.000Z").toISOString(),
+    applicationResubmittedAt: resubmissionTime,
+    roomId: { name: "Room 201", branch: "gil-puyat" },
+  });
+
+  assert.equal(row.isNew, true);
+  assert.equal(row.isResubmitted, true);
+});

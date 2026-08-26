@@ -217,11 +217,16 @@ describe("support-chat attachment limits — cross-repository contract", () => {
   });
 
   test("the admin compose UI stages against the same named cap", () => {
-    const page = readFileSync(
-      new URL("../../web/src/features/admin/pages/AdminChatPage.jsx", import.meta.url),
+    const constants = readFileSync(
+      new URL("../../web/src/features/admin/components/chat/chatConstants.js", import.meta.url),
       "utf8",
     );
-    expect(page).toContain("const MAX_SUPPORT_ATTACHMENTS = 5;");
-    expect(page).not.toMatch(/stagedAttachments[\s\S]{0,120}\.slice\(0, 5\)/);
+    const composer = readFileSync(
+      new URL("../../web/src/features/admin/components/chat/AdminChatComposer.jsx", import.meta.url),
+      "utf8",
+    );
+    expect(constants).toContain("export const MAX_SUPPORT_ATTACHMENTS = 5;");
+    expect(composer).toContain("MAX_SUPPORT_ATTACHMENTS");
+    expect(composer).not.toMatch(/stagedAttachments[\s\S]{0,120}\.slice\(0, 5\)/);
   });
 });

@@ -632,6 +632,7 @@ export const submitApplication = async (req, res, next) => {
     if (previouslySubmittedApplication) {
       updates.applicationResubmittedAt = new Date();
     }
+    updates.isViewedByAdmin = false;
     updates.applicationReviewReason = null;
     updates.applicationReviewedAt = null;
     updates.applicationReviewedBy = null;

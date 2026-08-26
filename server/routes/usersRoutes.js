@@ -31,6 +31,8 @@ import {
   requireAnyPermission,
   requirePermission,
 } from "../middleware/permissions.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { updateUserSchema } from "../validation/zodSchemas.js";
 import {
   createUser,
   getUserStats,
@@ -271,6 +273,7 @@ router.put(
   verifyAdmin,
   requirePermission("manageUsers"),
   filterByBranch,
+  validateRequest({ body: updateUserSchema }),
   updateUser,
 );
 

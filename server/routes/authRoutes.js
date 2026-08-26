@@ -24,8 +24,8 @@ import {
   validateProfileUpdateInput,
   createValidationMiddleware,
 } from "../middleware/validation.js";
-import { validate } from "../validation/validate.js";
-import { setRoleSchema, updateBranchSchema } from "../validation/schemas.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { setRoleSchema, updateBranchSchema } from "../validation/zodSchemas.js";
 import {
   register,
   login,
@@ -177,7 +177,7 @@ router.put(
  * @body { branch: 'gil-puyat' | 'guadalupe' }
  * @returns { updated user data }
  */
-router.patch("/update-branch", verifyToken, validate(updateBranchSchema), updateBranch);
+router.patch("/update-branch", verifyToken, validateRequest({ body: updateBranchSchema }), updateBranch);
 
 // ============================================================================
 // ADMIN OPERATIONS
@@ -193,7 +193,7 @@ router.patch("/update-branch", verifyToken, validate(updateBranchSchema), update
  * @body { userId, role }
  * @returns { message }
  */
-router.post("/set-role", verifyToken, verifyOwner, validate(setRoleSchema), setRole);
+router.post("/set-role", verifyToken, verifyOwner, validateRequest({ body: setRoleSchema }), setRole);
 
 /**
  * POST /api/auth/log-password-reset

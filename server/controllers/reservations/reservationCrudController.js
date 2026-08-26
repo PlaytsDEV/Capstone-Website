@@ -192,13 +192,19 @@ export const getReservationById = async (req, res) => {
       });
     }
 
-    if (isAdminRole(dbUser.role) && !reservation.isViewedByAdmin) {
+    if (isAdminRole(dbUser.role)) {
+      const now = new Date();
+      const needsSave = !reservation.isViewedByAdmin || !reservation.lastAdminViewedAt || (reservation.lastAdminViewedAt < (reservation.applicationSubmittedAt || 0));
       reservation.isViewedByAdmin = true;
-      reservation.adminViewedAt = new Date();
-      reservation.lastAdminViewedAt = new Date();
-      await reservation.save().catch((err) => {
-        logger.warn({ err, reservationId }, "Failed to update isViewedByAdmin on reservation view");
-      });
+      if (!reservation.adminViewedAt) {
+        reservation.adminViewedAt = now;
+      }
+      reservation.lastAdminViewedAt = now;
+      if (needsSave) {
+        await reservation.save().catch((err) => {
+          logger.warn({ err, reservationId }, "Failed to update isViewedByAdmin on reservation view");
+        });
+      }
     }
 
     const settings = await getBusinessSettings();

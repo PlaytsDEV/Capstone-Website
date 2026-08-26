@@ -54,4 +54,7 @@ test("sidebar exposes My History tab for both applicants and tenants", () => {
   assert.ok(historyIndex > 0, "My History tab must be defined in sidebar");
 });
 
-
+test("notification bell explicitly maps application_submitted notification type to file/document icon", () => {
+  const notificationBell = readSharedSource("components/NotificationBell.jsx");
+  assert.match(notificationBell, /case\s+"application_submitted":/);
+});

@@ -43,6 +43,8 @@ import {
   uploadRoomPhotos,
   uploadPhotosMiddleware,
 } from "../controllers/roomPhotoController.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { createRoomSchema, updateRoomSchema } from "../validation/zodSchemas.js";
 
 
 const router = express.Router();
@@ -143,6 +145,7 @@ router.post(
   verifyAdmin,
   requirePermission("manageRooms"),
   filterByBranch,
+  validateRequest({ body: createRoomSchema }),
   createRoom,
 );
 
@@ -163,6 +166,7 @@ router.put(
   verifyAdmin,
   requirePermission("manageRooms"),
   filterByBranch,
+  validateRequest({ body: updateRoomSchema }),
   updateRoom,
 );
 

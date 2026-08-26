@@ -1052,9 +1052,11 @@ function ReservationsPage() {
                       title={
                         hasPendingCancellationRequest(row)
                           ? "Cancellation requested (Requires admin action)"
-                          : row.paymentStatus === "proof_uploaded"
-                            ? "Payment proof uploaded (Requires admin verification)"
-                            : "Requires admin review / approval"
+                          : row.isResubmitted
+                            ? "Resubmitted documents awaiting review"
+                            : row.applicationSubmittedAt
+                              ? "New application submitted (Requires admin review)"
+                              : "Requires admin review / approval"
                       }
                     >
                       <span className="res-badge-new__dot" />
@@ -1649,9 +1651,11 @@ function ReservationsPage() {
                                     title={
                                       hasPendingCancellationRequest(row)
                                         ? "Cancellation requested (Requires admin action)"
-                                        : row.paymentStatus === "proof_uploaded"
-                                          ? "Payment proof uploaded (Requires admin verification)"
-                                          : "Requires admin review / approval"
+                                        : row.isResubmitted
+                                          ? "Resubmitted documents awaiting review"
+                                          : row.applicationSubmittedAt
+                                            ? "New application submitted (Requires admin review)"
+                                            : "Requires admin review / approval"
                                     }
                                   >
                                     <span className="res-badge-new__dot" />
