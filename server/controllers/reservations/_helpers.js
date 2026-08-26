@@ -827,6 +827,7 @@ export async function notifyAdminsOfVisitSchedule({
   viewingPreference,
   visitDate,
   visitTime,
+  isReschedule = false,
 }) {
   if (!reservation) return;
   try {
@@ -840,9 +841,22 @@ export async function notifyAdminsOfVisitSchedule({
       ? `${applicantUser.firstName || ""} ${applicantUser.lastName || ""}`.trim() || applicantUser.email || "An applicant"
       : "An applicant";
 
-    const adminRecipients = branch
+    const rawBranch = String(branch || "").trim();
+    const branchSlug = rawBranch.toLowerCase().replace(/\s+/g, "-");
+    const branchDisplay =
+      branchSlug === "gil-puyat"
+        ? "Gil Puyat"
+        : branchSlug === "guadalupe"
+          ? "Guadalupe"
+          : rawBranch;
+
+    const branchMatches = Array.from(
+      new Set([rawBranch, branchSlug, branchDisplay].filter(Boolean)),
+    );
+
+    const adminRecipients = branchMatches.length > 0
       ? [
-          { role: "branch_admin", branch },
+          { role: "branch_admin", branch: { $in: branchMatches } },
           { role: "owner" },
         ]
       : [
@@ -854,7 +868,7 @@ export async function notifyAdminsOfVisitSchedule({
       $or: adminRecipients,
       accountStatus: "active",
       isArchived: { $ne: true },
-    }).select("_id").lean();
+    }).select("_id branch role").lean();
 
     await Promise.all(
       adminUsers.map(async (admin) => {
@@ -866,6 +880,7 @@ export async function notifyAdminsOfVisitSchedule({
           visitTime: visitTime || reservation.visitTime,
           reservationId: reservation._id,
           viewingPreference: viewingPreference || reservation.viewingPreference,
+          isReschedule,
         });
         if (notification) {
           emitToUser(admin._id, "notification:new", notification);

@@ -504,7 +504,8 @@ export const createMoveInCheckout = async (req, res, next) => {
       monthlyRent,
       advanceRent,
       securityDeposit,
-      reservationFeeAmount: reservationFeeCredit,
+      reservationFeeAmount,
+      appliedReservationCredit: reservationFeeCredit,
       grossTotal,
       remainingDue,
     } = resolveReservationFinancials(reservation);

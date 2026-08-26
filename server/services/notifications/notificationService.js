@@ -278,10 +278,11 @@ const notify = {
       visitTime = "",
       reservationId = null,
       viewingPreference = "physical_visit",
+      isReschedule = false,
     } = {},
   ) => {
-    let title = "New Visit Schedule";
-    let message = `${tenantName} scheduled a visit for ${roomName}`;
+    let title = isReschedule ? "Visit Rescheduled" : "New Visit Schedule";
+    let message = `${tenantName} ${isReschedule ? "rescheduled a visit" : "scheduled a visit"} for ${roomName}`;
     if (visitDate) {
       const dateLabel = new Date(visitDate).toLocaleDateString("en-US", {
         month: "short",
@@ -299,10 +300,14 @@ const notify = {
     }
     message += ".";
 
-    return createNotification(adminUserId, "visit_scheduled", title, message, {
+    const actionUrl = reservationId
+      ? `/admin/reservations?reservationId=${encodeURIComponent(String(reservationId))}&tab=visits`
+      : "/admin/reservations?tab=visits";
+
+    return createNotification(adminUserId, "visit_requested", title, message, {
       entityType: "reservation",
       entityId: reservationId ? String(reservationId) : null,
-      actionUrl: "/admin/reservations?tab=visits",
+      actionUrl,
     });
   },
 
@@ -1043,20 +1048,56 @@ const notify = {
       });
   },
 
-  newVisitRequested: (branch, applicantName, roomName, visitDate, visitTime) =>
-    notifyBranchAdmins(branch, "visit_requested", "New Visit Scheduled",
-      `${applicantName} scheduled a viewing visit for ${roomName || "room"} on ${visitDate}${visitTime ? ` at ${visitTime}` : ""}.`,
-      {
-        entityType: "reservation",
-        actionUrl: "/admin/reservations?tab=visits",
-      }),
+  newVisitRequested: (branch, applicantName, roomName, visitDate, visitTime, options = {}) => {
+    const reservationId = options.reservationId || options.entityId || null;
+    const viewingPreference = options.viewingPreference || "physical_visit";
+    const isReschedule = options.isReschedule === true;
+
+    let title = isReschedule ? "Visit Rescheduled" : "New Visit Scheduled";
+    let message = `${applicantName} ${isReschedule ? "rescheduled a viewing visit" : "scheduled a viewing visit"} for ${roomName || "room"}`;
+    if (visitDate && visitDate !== "TBD") {
+      message += ` on ${visitDate}${visitTime ? ` at ${visitTime}` : ""}`;
+    }
+    if (viewingPreference === "remote_2d_viewing") {
+      title = "2D Remote Viewing Request";
+      message = `${applicantName} requested photo-based remote viewing for ${roomName || "room"}`;
+    } else if (viewingPreference === "urgent_move_in_review") {
+      title = "Priority Viewing Review Request";
+      message = `${applicantName} requested priority viewing review for ${roomName || "room"}`;
+    }
+    message += ".";
+
+    const actionUrl = reservationId
+      ? `/admin/reservations?reservationId=${encodeURIComponent(String(reservationId))}&tab=visits`
+      : "/admin/reservations?tab=visits";
+
+    return notifyBranchAdmins(branch, "visit_requested", title, message, {
+      entityType: "reservation",
+      entityId: reservationId ? String(reservationId) : null,
+      actionUrl,
+      ...options,
+    });
+  },
 };
 
 export async function notifyBranchAdmins(branch, type, title, message, options = {}) {
   try {
-    const adminRecipients = branch
+    const rawBranch = String(branch || "").trim();
+    const branchSlug = rawBranch.toLowerCase().replace(/\s+/g, "-");
+    const branchDisplay =
+      branchSlug === "gil-puyat"
+        ? "Gil Puyat"
+        : branchSlug === "guadalupe"
+          ? "Guadalupe"
+          : rawBranch;
+
+    const branchMatches = Array.from(
+      new Set([rawBranch, branchSlug, branchDisplay].filter(Boolean)),
+    );
+
+    const adminRecipients = branchMatches.length > 0
       ? [
-          { role: "branch_admin", branch },
+          { role: "branch_admin", branch: { $in: branchMatches } },
           { role: "owner" },
         ]
       : [

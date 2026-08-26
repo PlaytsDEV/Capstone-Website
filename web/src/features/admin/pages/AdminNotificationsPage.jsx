@@ -260,6 +260,15 @@ const TYPE_META = {
     category: "reservations",
     isPrimaryAction: true,
   },
+  visit_scheduled: {
+    label: "Visit Request",
+    icon: CalendarCheck,
+    priority: "medium",
+    variant: "info",
+    actionLabel: "Review Visit",
+    category: "reservations",
+    isPrimaryAction: true,
+  },
   visit_rejected: {
     label: "Visit Rejected",
     icon: CalendarCheck,
@@ -349,6 +358,7 @@ const ACTION_URLS = {
   application_submitted: "/admin/reservations",
   contract_signed: "/admin/contracts",
   visit_requested: "/admin/reservations?tab=visits",
+  visit_scheduled: "/admin/reservations?tab=visits",
   reservation_confirmed: "/admin/reservations",
   reservation_cancelled: "/admin/reservations",
   reservation_cancellation_requested: "/admin/reservations",
@@ -385,6 +395,14 @@ function getActionUrl(notification) {
     return `/admin/reservations?reservationId=${encodeURIComponent(
       notification.entityId
     )}&focus=cancellation`;
+  }
+  if (
+    (notification.type === "visit_requested" || notification.type === "visit_scheduled") &&
+    notification.entityId
+  ) {
+    return `/admin/reservations?reservationId=${encodeURIComponent(
+      notification.entityId
+    )}&tab=visits`;
   }
   return notification.actionUrl || ACTION_URLS[notification.type] || null;
 }
@@ -603,6 +621,7 @@ export default function AdminNotificationsPage() {
               "contract_incomplete",
               "contract_error",
               "visit_requested",
+              "visit_scheduled",
               "visit_approved",
               "visit_rejected",
               "grace_period_warning",

@@ -334,53 +334,6 @@ const ReservationApplicationStep = ({
     [sectionCompletionMap]
   );
 
-  // Auto-advance to next incomplete section when an active section becomes completed (with gentle pause)
-  const prevCompletionMapRef = useRef(sectionCompletionMap);
-  const autoAdvanceTimerRef = useRef(null);
-
-  useEffect(() => {
-    const prevMap = prevCompletionMapRef.current;
-    prevCompletionMapRef.current = sectionCompletionMap;
-
-    const sectionKeys = APPLICATION_SECTIONS.map((s) => s.key);
-    for (let i = 0; i < sectionKeys.length; i++) {
-      const key = sectionKeys[i];
-      if (!prevMap[key] && sectionCompletionMap[key]) {
-        const nextIncomplete = sectionKeys.find(
-          (k, idx) => idx > i && !sectionCompletionMap[k]
-        );
-        if (nextIncomplete) {
-          if (autoAdvanceTimerRef.current) {
-            clearTimeout(autoAdvanceTimerRef.current);
-          }
-
-          // Gentle 650ms pause so applicant sees the emerald completion checkmark before auto-transitioning
-          autoAdvanceTimerRef.current = setTimeout(() => {
-            setOpenSections((prev) => ({
-              ...prev,
-              [key]: false,
-              [nextIncomplete]: true,
-            }));
-
-            setTimeout(() => {
-              const el = sectionRefs.current[nextIncomplete];
-              if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }
-            }, 180);
-          }, 650);
-        }
-        break;
-      }
-    }
-
-    return () => {
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
-      }
-    };
-  }, [sectionCompletionMap]);
-
   useEffect(() => {
     if (!showValidationErrors) return;
     setOpenSections(buildOpenSectionState(true));
@@ -815,25 +768,26 @@ const ReservationApplicationStep = ({
           <button
             type="button"
             onClick={onNext}
-            disabled={submitDisabled}
+            disabled={submitDisabled || isSubmittingApplication}
             className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2"
           >
-            {isSubmittingApplication ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Submitting Application...</span>
-              </>
-            ) : (
-              <>
-                <span>{applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}</span>
-                <ArrowRight size={16} />
-              </>
-            )}
+            <span>{applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}</span>
+            <ArrowRight size={16} />
           </button>
         )}
       </div>
 
-      <ConfirmModal isOpen={confirmModal.open} onClose={() => setConfirmModal((p) => ({ ...p, open: false }))} onConfirm={confirmModal.onConfirm} title={confirmModal.title} message={confirmModal.message} variant={confirmModal.variant} confirmText={confirmModal.confirmText || "Confirm"} />
+      <ConfirmModal
+        isOpen={confirmModal.open}
+        onClose={() => setConfirmModal((p) => ({ ...p, open: false }))}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText || "Confirm"}
+        loadingText={confirmModal.loadingText}
+        loading={confirmModal.loading}
+      />
 
       <FormScrollArrows />
     </div>

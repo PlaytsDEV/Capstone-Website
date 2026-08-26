@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import {
   canAccessTenantApplication,
   getPhysicalVisitApplicantState,
@@ -7,7 +8,9 @@ import {
 import {
   canReservationAccessPayment,
   hasReservationStatus,
+  isReservationMoveInReady,
   normalizeReservationStatus,
+  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming.js";
 
 /**
@@ -262,27 +265,46 @@ export function getNextAction(activeReservation, reservationProgress) {
  };
  }
 
- if (hasReservationStatus(status, "payment_pending")) {
- return {
- title: "Payment In Progress",
- description:
- "Your checkout was started. The reservation will be confirmed once payment is completed.",
- buttonText: "Review Payment",
- buttonLink: "/applicant/reservation",
- reservationId: activeReservation._id,
- step: 4,
- };
- }
+  if (hasReservationStatus(status, "payment_pending")) {
+    return {
+      title: "Payment In Progress",
+      description:
+        "Your checkout was started. The reservation will be confirmed once payment is completed.",
+      buttonText: "Review Payment",
+      buttonLink: "/applicant/reservation",
+      reservationId: activeReservation._id,
+      step: 4,
+    };
+  }
 
- if (hasReservationStatus(status, "reserved")) {
- return {
- title: "Room Reserved",
- description:
- "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
- buttonText: "View Reservation Status",
- buttonLink: "/applicant/profile",
- };
- }
+  const isMoveInSettled =
+    isReservationMoveInReady(activeReservation) ||
+    activeReservation.initialPaymentStatus === "paid" ||
+    activeReservation.paymentStatus === "paid_in_full" ||
+    Boolean(activeReservation.initialPaymentSettledAt) ||
+    Boolean(activeReservation.initialPaymentPaidAt);
+
+  if (hasReservationStatus(status, "reserved")) {
+    if (isMoveInSettled) {
+      const moveInDate = readMoveInDate(activeReservation);
+      const moveInText = moveInDate
+        ? ` Prepare for your move-in date on ${dayjs(moveInDate).format("MMM D, YYYY")}.`
+        : " Prepare for your upcoming move-in date.";
+      return {
+        title: "Move-In Ready — Fully Settled",
+        description: `Your advance rent and security deposit are fully settled.${moveInText} Review your lease contract and house rules before arrival.`,
+        buttonText: "Review Lease Contract",
+        buttonLink: "/applicant/contracts",
+      };
+    }
+    return {
+      title: "Room Reserved",
+      description:
+        "Your room reservation has been confirmed. Settle your Advance Rent and Security Deposit before move-in day.",
+      buttonText: "View Move-In Schedule",
+      buttonLink: "/applicant/profile",
+    };
+  }
 
  if (hasReservationStatus(status, "moveIn", "moveOut")) {
  return {

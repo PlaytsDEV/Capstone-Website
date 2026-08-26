@@ -210,6 +210,21 @@ export const hasReservationStatus = (status, ...expectedStatuses) => {
     .includes(normalized);
 };
 
+export const isReservationMoveInReady = (reservation) => {
+  if (!reservation) return false;
+  const status = normalizeReservationStatus(
+    reservation.reservationStatus || reservation.status,
+  );
+  if (status !== "reserved") return false;
+  return (
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full" ||
+    Boolean(reservation.initialPaymentSettledAt) ||
+    Boolean(reservation.initialPaymentPaidAt) ||
+    (reservation.initialPaymentStatus === "paid" && (reservation.initialPaymentDate || reservation.updatedAt))
+  );
+};
+
 export const isApplicationApprovedStatus = (status, reservation = {}) => {
   const norm = normalizeReservationStatus(
     status || reservation?.status || reservation?.reservationStatus,

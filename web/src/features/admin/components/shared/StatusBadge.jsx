@@ -39,6 +39,7 @@ export default function StatusBadge({
       "new",
       "new_inquiry",
       "reserved",
+      "ready_for_move_in",
       "in_progress",
       "scheduled",
       "provider_assigned",
@@ -133,6 +134,7 @@ export default function StatusBadge({
     if (norm === "needs_revision") return "Needs Revision";
     if (norm === "approved_for_payment") return "Approved for Payment";
     if (norm === "reserved") return "Reserved";
+    if (norm === "ready_for_move_in") return "Ready for Move-In";
     if (norm === "partial") return "Proof Submitted";
     if (norm === "disputed") return "Disputed (Fees Paused)";
     if (norm === "manual_review_required") return "Manual Review Required";

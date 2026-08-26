@@ -75,9 +75,9 @@ test("reserved applicant progress uses reserved applicant wording", () => {
   assert.equal(nextAction.title, "Room Reserved");
   assert.equal(
     nextAction.description,
-    "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+    "Your room reservation has been confirmed. Settle your Advance Rent and Security Deposit before move-in day.",
   );
-  assert.equal(nextAction.buttonText, "View Reservation Status");
+  assert.equal(nextAction.buttonText, "View Move-In Schedule");
 });
 
 test("moved-in reservations keep tenant-stage wording separate from reserved applicants", () => {

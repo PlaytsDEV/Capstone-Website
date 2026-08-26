@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Loader2 } from "lucide-react";
 import BaseModal from "../../../shared/components/BaseModal.jsx";
 import { billingApi } from "../../../shared/api/billingApi.js";
 
@@ -41,6 +42,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
+      loading={loading}
       title={`Contest Bill #${bill.billNumber || bill._id?.slice(-6)}`}
       maxWidth="max-w-lg"
     >
@@ -67,6 +69,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
             placeholder="Explain why you are contesting this charge (e.g. meter reading discrepancy, incorrect rate)..."
             className="w-full p-2.5 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-[#0A1628]/20 focus:border-[#0A1628]"
             required
+            disabled={loading}
           />
         </div>
 
@@ -81,6 +84,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
             onChange={(e) => setEvidenceUrl(e.target.value)}
             placeholder="https://example.com/meter-photo.jpg"
             className="w-full p-2 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-[#0A1628]/20 focus:border-[#0A1628]"
+            disabled={loading}
           />
         </div>
 
@@ -88,16 +92,24 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+            disabled={loading}
+            className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-white bg-[#0A1628] border border-[#0A1628] rounded hover:bg-[#13243D] disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-white bg-[#0A1628] border border-[#0A1628] rounded hover:bg-[#13243D] disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 min-w-[120px]"
           >
-            {loading ? "Submitting..." : "Submit Dispute"}
+            {loading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>Submitting Dispute...</span>
+              </>
+            ) : (
+              "Submit Dispute"
+            )}
           </button>
         </div>
       </form>

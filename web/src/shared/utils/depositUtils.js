@@ -150,11 +150,37 @@ export function resolveReservationFinancials(reservation = {}, profileData = nul
     securityDeposit = rawDeposit;
   }
 
+  const feeStatus = String(reservation.reservationFeePaymentStatus || "").trim().toLowerCase();
+  const paymentStatus = String(reservation.paymentStatus || "").trim().toLowerCase();
+  const initialStatus = String(reservation.initialPaymentStatus || "").trim().toLowerCase();
+  const generalStatus = String(reservation.status || reservation.reservationStatus || "").trim().toLowerCase();
+
+  const isFeePaidStatus = ["verified", "paid", "settled", "completed", "paid_in_full"].includes(feeStatus);
+  const isGeneralPaymentSettled =
+    ["paid", "paid_in_full", "settled", "completed"].includes(paymentStatus) ||
+    ["paid", "paid_in_full", "settled", "completed"].includes(initialStatus);
+  const hasPaymentTimestamp = Boolean(
+    reservation.reservationFeePaidAt ||
+    reservation.initialPaymentSettledAt ||
+    reservation.initialPaymentPaidAt ||
+    reservation.initialPaymentDate
+  );
+
+  const isReservationFeePaid =
+    isFeePaidStatus ||
+    generalStatus === "reserved" ||
+    generalStatus === "ready_for_move_in" ||
+    isGeneralPaymentSettled ||
+    hasPaymentTimestamp;
+
+  const appliedReservationCredit = isReservationFeePaid ? reservationFeeAmount : 0;
+
   const grossTotal = advanceRent + securityDeposit;
-  const remainingDue = Math.max(0, grossTotal - reservationFeeAmount);
+  const remainingDue = Math.max(0, grossTotal - appliedReservationCredit);
   const isSettled =
-    reservation.initialPaymentStatus === "paid" ||
-    reservation.paymentStatus === "paid_in_full";
+    ["paid", "paid_in_full", "settled", "completed"].includes(initialStatus) ||
+    paymentStatus === "paid_in_full" ||
+    Boolean(reservation.initialPaymentSettledAt);
 
   return {
     monthlyRent,
@@ -162,6 +188,8 @@ export function resolveReservationFinancials(reservation = {}, profileData = nul
     securityDeposit,
     grossTotal,
     reservationFeeAmount,
+    appliedReservationCredit,
+    isReservationFeePaid,
     remainingDue: isSettled ? 0 : remainingDue,
     isSettled,
   };

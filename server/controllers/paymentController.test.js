@@ -881,6 +881,7 @@ describe("paymentController", () => {
         capacity: 1,
       },
       reservationFeeAmount: 2000,
+      reservationFeePaymentStatus: "verified",
       initialPaymentStatus: "pending",
       paymentStatus: "pending",
       save: jest.fn(async function save() {
@@ -954,6 +955,7 @@ describe("paymentController", () => {
       },
       initialPaymentBillId: "bill_initial_old",
       reservationFeeAmount: 2000,
+      reservationFeePaymentStatus: "verified",
       initialPaymentStatus: "pending",
       paymentStatus: "paid",
       save: jest.fn(async function save() {

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CreditCard,
   Download,
@@ -9,6 +10,7 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  ArrowRight,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -27,6 +29,7 @@ export default function MoveInSettlementCard({
   profileData,
   defaultExpanded = false,
 }) {
+  const navigate = useNavigate();
   const [payingOnline, setPayingOnline] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState(false);
@@ -41,6 +44,8 @@ export default function MoveInSettlementCard({
     securityDeposit,
     grossTotal,
     reservationFeeAmount,
+    appliedReservationCredit,
+    isReservationFeePaid,
     remainingDue,
     isSettled,
   } = resolveReservationFinancials(reservation, profileData);
@@ -241,35 +246,69 @@ export default function MoveInSettlementCard({
           {/* Quick Action in Header (only shown when collapsed to prevent redundancy with expanded actions) */}
           {!isExpanded && (
             isSettled ? (
-              <button
-                onClick={handleViewReceipt}
-                disabled={viewingReceipt}
-                title="View Official Receipt"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: "4px 10px",
-                  background: "var(--color-success, #059669)",
-                  color: "#ffffff",
-                  border: "1px solid #047857",
-                  borderRadius: 6,
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  cursor: viewingReceipt ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "background-color 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  if (!viewingReceipt) e.currentTarget.style.background = "#047857";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--color-success, #059669)";
-                }}
-              >
-                <FileText size={13} />
-                <span>{viewingReceipt ? "Opening..." : "View Receipt"}</span>
-              </button>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate("/applicant/contracts");
+                  }}
+                  title="Review Lease Contract"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "4px 10px",
+                    background: "var(--surface-card, #FFFFFF)",
+                    color: "var(--color-success, #059669)",
+                    border: "1px solid #059669",
+                    borderRadius: 6,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#ECFDF5";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
+                  }}
+                >
+                  <FileText size={13} />
+                  <span>Review Contract</span>
+                </button>
+                <button
+                  onClick={handleViewReceipt}
+                  disabled={viewingReceipt}
+                  title="View Official Receipt"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "4px 10px",
+                    background: "var(--color-success, #059669)",
+                    color: "#ffffff",
+                    border: "1px solid #047857",
+                    borderRadius: 6,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: viewingReceipt ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "background-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!viewingReceipt) e.currentTarget.style.background = "#047857";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--color-success, #059669)";
+                  }}
+                >
+                  <FileText size={13} />
+                  <span>{viewingReceipt ? "Opening..." : "View Receipt"}</span>
+                </button>
+              </div>
             ) : (
               <button
                 onClick={handlePayOnline}
@@ -416,27 +455,36 @@ export default function MoveInSettlementCard({
               <span style={{ fontWeight: 700, color: "var(--text-heading, #0F172A)" }}>{fmt(grossTotal)}</span>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5 }}>
-              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                <span style={{ color: "var(--color-success, #059669)", fontWeight: 600 }}>
-                  Less: Slot Reservation Fee Credit <span style={{ fontSize: 11, fontWeight: 400 }}>(Online)</span>
-                </span>
-                <span
-                  style={{
-                    fontSize: 9.5,
-                    fontWeight: 800,
-                    background: "#DCFCE7",
-                    color: "#15803D",
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    border: "1px solid #BBF7D0",
-                  }}
-                >
-                  CREDITED
+            {isReservationFeePaid ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5 }}>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                  <span style={{ color: "var(--color-success, #059669)", fontWeight: 600 }}>
+                    Less: Slot Reservation Fee Credit <span style={{ fontSize: 11, fontWeight: 400 }}>(Online)</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 800,
+                      background: "transparent",
+                      color: "var(--color-success, #059669)",
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      border: "1px solid var(--border-card, #E2E8F0)",
+                    }}
+                  >
+                    CREDITED
+                  </span>
+                </div>
+                <span style={{ color: "var(--color-success, #059669)", fontWeight: 700 }}>
+                  -{fmt(appliedReservationCredit || reservationFeeAmount)}
                 </span>
               </div>
-              <span style={{ color: "var(--color-success, #059669)", fontWeight: 700 }}>-{fmt(reservationFeeAmount)}</span>
-            </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, color: "var(--text-secondary, #64748B)" }}>
+                <span>Slot Reservation Fee:</span>
+                <span style={{ fontStyle: "italic" }}>Pending payment ({fmt(reservationFeeAmount)})</span>
+              </div>
+            )}
 
             <div
               style={{
@@ -557,8 +605,8 @@ export default function MoveInSettlementCard({
             ) : (
               <>
                 <button
-                  onClick={handleViewReceipt}
-                  disabled={viewingReceipt}
+                  type="button"
+                  onClick={() => navigate("/applicant/contracts")}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -570,15 +618,43 @@ export default function MoveInSettlementCard({
                     borderRadius: 6,
                     fontSize: 12.5,
                     fontWeight: 600,
-                    cursor: viewingReceipt ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     boxShadow: "0 1px 2px rgba(5, 150, 105, 0.2)",
                     transition: "background-color 0.15s ease",
                   }}
                   onMouseEnter={(e) => {
-                    if (!viewingReceipt) e.currentTarget.style.background = "#047857";
+                    e.currentTarget.style.background = "#047857";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "var(--color-success, #059669)";
+                  }}
+                >
+                  <FileText size={14} />
+                  <span>Review Lease Contract</span>
+                </button>
+
+                <button
+                  onClick={handleViewReceipt}
+                  disabled={viewingReceipt}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 16px",
+                    background: "var(--surface-card, #FFFFFF)",
+                    color: "var(--color-success, #059669)",
+                    border: "1px solid #059669",
+                    borderRadius: 6,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: viewingReceipt ? "not-allowed" : "pointer",
+                    transition: "background-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!viewingReceipt) e.currentTarget.style.background = "#ECFDF5";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
                   }}
                 >
                   <FileText size={14} />

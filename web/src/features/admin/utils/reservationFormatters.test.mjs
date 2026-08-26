@@ -10,7 +10,7 @@ import {
 } from "./reservationFormatters.js";
 
 test("formatPaymentStatus: formats raw snake_case and status codes properly", () => {
-  assert.equal(formatPaymentStatus("paid_in_full"), "Paid in Full");
+  assert.equal(formatPaymentStatus("paid_in_full"), "Fully Settled");
   assert.equal(formatPaymentStatus("paid"), "Paid");
   assert.equal(formatPaymentStatus("partial"), "Partially Paid");
   assert.equal(formatPaymentStatus("pending"), "Pending Payment");
@@ -29,7 +29,7 @@ test("formatPaymentStatus: formats raw snake_case and status codes properly", ()
 
 test("getPaymentStatusBadgeConfig: returns valid solid styling object without gradients", () => {
   const paidBadge = getPaymentStatusBadgeConfig("paid_in_full");
-  assert.equal(paidBadge.label, "Paid in Full");
+  assert.equal(paidBadge.label, "Fully Settled");
   assert.equal(paidBadge.color, "#047857");
   assert.equal(paidBadge.bg, "transparent");
   assert.equal(paidBadge.border, "transparent");

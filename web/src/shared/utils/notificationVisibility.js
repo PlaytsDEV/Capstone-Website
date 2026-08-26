@@ -59,6 +59,7 @@ export const ADMIN_NOTIFICATION_TYPES = new Set([
   "contract_incomplete",
   "contract_error",
   "visit_requested",
+  "visit_scheduled",
 ]);
 
 const APPLICANT_GENERAL_TITLES = new Set([

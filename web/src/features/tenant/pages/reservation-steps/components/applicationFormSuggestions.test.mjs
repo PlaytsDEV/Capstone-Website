@@ -10,15 +10,43 @@ const tenantRoot = resolve(__dirname, "../../..");
 const readTenantSource = (relativePath) =>
   readFileSync(resolve(tenantRoot, relativePath), "utf8");
 
-test("PhotoEmailSection provides locked verified account email with badge and icon", () => {
+test("PhotoEmailSection provides locked verified account email with Mail icon, Lock tooltip, and guaranteed padding", () => {
   const source = readTenantSource("pages/reservation-steps/components/PhotoEmailSection.jsx");
 
   // Verify email input is locked/readOnly/disabled
   assert.match(source, /readOnly/, "Email input in PhotoEmailSection should be readOnly");
   assert.match(source, /disabled/, "Email input in PhotoEmailSection should be disabled");
-  assert.match(source, /Lock/, "Lock icon should be rendered");
+  assert.match(source, /Mail/, "Mail icon should be imported and rendered on the left");
+  assert.match(source, /Lock/, "Lock icon should be rendered on the right");
+  assert.match(
+    source,
+    /title="Verified account email is locked and cannot be edited"/,
+    "Lock icon should have user-friendly tooltip title"
+  );
+  assert.match(
+    source,
+    /style=\{\{\s*paddingLeft:\s*"38px",\s*paddingRight:\s*"38px"\s*\}\}/,
+    "Email input must enforce 38px left and right padding to prevent icon collision"
+  );
   assert.match(source, /Verified Account/, "Verified Account badge should be rendered");
   assert.match(source, /accountEmail/, "Component should accept and use accountEmail");
+});
+
+test("ReservationApplicationStep supports Multi-Open Continuous Scroll with zero disruptive auto-advance timers", () => {
+  const source = readTenantSource("pages/reservation-steps/ReservationApplicationStep.jsx");
+
+  // Verify autoAdvanceTimerRef is removed
+  assert.doesNotMatch(
+    source,
+    /autoAdvanceTimerRef/,
+    "ReservationApplicationStep must not have autoAdvanceTimerRef to prevent abrupt auto-advancing"
+  );
+  assert.match(source, /toggleSection/, "Manual section toggling must be available");
+  assert.match(
+    source,
+    /setOpenSections\(buildOpenSectionState\(true\)\)/,
+    "Validation errors should expand all sections for clear error visibility"
+  );
 });
 
 test("PersonalInfoSection provides autocomplete attributes, datalist suggestions, and character counters", () => {

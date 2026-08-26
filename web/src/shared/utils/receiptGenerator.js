@@ -603,6 +603,8 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     securityDeposit,
     grossTotal,
     reservationFeeAmount,
+    appliedReservationCredit,
+    isReservationFeePaid,
     remainingDue: calculatedRemainingDue,
   } = resolveReservationFinancials(reservation, profile);
 
@@ -610,7 +612,7 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     bill?.paidAmount ||
       bill?.totalAmount ||
       calculatedRemainingDue ||
-      Math.max(0, advanceRent + securityDeposit - reservationFeeAmount),
+      Math.max(0, advanceRent + securityDeposit - (appliedReservationCredit || 0)),
   );
 
   const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
@@ -628,15 +630,10 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
   const bedDisplay = bedText ? bedText : "Assigned upon check-in";
 
   const moveInDateRaw =
-    reservation.targetMoveInDate ||
-    reservation.finalMoveInDate ||
+    reservation.actualMoveInDate ||
     reservation.moveInDate ||
     reservation.intendedMoveInDate ||
-    reservation.targetMoveIn ||
-    reservation.moveIn ||
-    profile?.targetMoveInDate ||
-    profile?.moveInDate;
-
+    reservation.targetMoveInDate;
   const formattedMoveIn = formatDate(moveInDateRaw);
   const moveInDisplay = formattedMoveIn !== "—" ? formattedMoveIn : "Scheduled upon Check-In";
 
@@ -696,15 +693,18 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
       unitPrice: securityDeposit,
       amount: securityDeposit,
     },
-    {
+  ];
+
+  if (isReservationFeePaid && (appliedReservationCredit || reservationFeeAmount) > 0) {
+    tableItems.push({
       title: "Less: Slot Reservation Fee Credit",
       subtext: "Online reservation fee previously settled — credited directly against move-in requirements.",
       qty: 1,
-      unitPrice: reservationFeeAmount,
-      amount: reservationFeeAmount,
+      unitPrice: appliedReservationCredit || reservationFeeAmount,
+      amount: appliedReservationCredit || reservationFeeAmount,
       isCredit: true,
-    },
-  ];
+    });
+  }
 
   y = drawItemizedTable(doc, y, tableItems, "ADVANCE RENT & SECURITY DEPOSIT SETTLEMENT");
 
@@ -712,9 +712,11 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
   const subtotal = advanceRent + securityDeposit;
   const totals = [
     { label: "Subtotal Charges:", amount: subtotal },
-    { label: "Less: Slot Reservation Credit:", amount: reservationFeeAmount, isCredit: true },
-    { label: "VAT / Tax (Exempt):", amount: 0 },
   ];
+  if (isReservationFeePaid && (appliedReservationCredit || reservationFeeAmount) > 0) {
+    totals.push({ label: "Less: Slot Reservation Credit:", amount: appliedReservationCredit || reservationFeeAmount, isCredit: true });
+  }
+  totals.push({ label: "VAT / Tax (Exempt):", amount: 0 });
   totals.mainTotal = totalSettlementAmount;
 
   y = drawAccountingTotals(doc, y, totals, "TOTAL AMOUNT PAID:");
@@ -796,6 +798,8 @@ async function buildMoveInStatementDoc(reservation, profile) {
     securityDeposit,
     grossTotal,
     reservationFeeAmount,
+    appliedReservationCredit,
+    isReservationFeePaid,
     remainingDue: netDue,
     isSettled,
   } = resolveReservationFinancials(reservation, profile);
@@ -852,23 +856,28 @@ async function buildMoveInStatementDoc(reservation, profile) {
       unitPrice: securityDeposit,
       amount: securityDeposit,
     },
-    {
+  ];
+
+  if (isReservationFeePaid && (appliedReservationCredit || reservationFeeAmount) > 0) {
+    tableItems.push({
       title: "Less: Slot Reservation Fee Credit",
       subtext: "Online deposit previously settled — credited directly against move-in requirements.",
       qty: 1,
-      unitPrice: reservationFeeAmount,
-      amount: reservationFeeAmount,
+      unitPrice: appliedReservationCredit || reservationFeeAmount,
+      amount: appliedReservationCredit || reservationFeeAmount,
       isCredit: true,
-    },
-  ];
+    });
+  }
 
   y = drawItemizedTable(doc, y, tableItems, "MOVE-IN FINANCIAL SCHEDULE & BREAKDOWN");
 
   // 4. Totals
   const totals = [
     { label: "Gross Total Requirements:", amount: grossTotal },
-    { label: "Reservation Fee Credit Applied:", amount: reservationFeeAmount, isCredit: true },
   ];
+  if (isReservationFeePaid && (appliedReservationCredit || reservationFeeAmount) > 0) {
+    totals.push({ label: "Reservation Fee Credit Applied:", amount: appliedReservationCredit || reservationFeeAmount, isCredit: true });
+  }
   totals.mainTotal = netDue;
 
   y = drawAccountingTotals(doc, y, totals, "NET REMAINING BALANCE DUE:");

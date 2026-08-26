@@ -349,9 +349,8 @@ const ReservationPaymentStep = ({
                       <span>Total Move-In Requirements:</span>
                       <span>{formatCurrency(monthlyRent * 2)}</span>
                     </div>
-                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span>Less Reservation Fee (Paid Now):</span>
-                      <span className="font-semibold">-{formatCurrency(reservationFeeAmount)}</span>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5 leading-relaxed">
+                      Paying the {formatCurrency(reservationFeeAmount)} reservation fee below will be credited towards your move-in requirements.
                     </div>
                     <div className="flex justify-between pt-1.5 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-xs">
                       <span>Estimated Balance (Due Before Move-In):</span>

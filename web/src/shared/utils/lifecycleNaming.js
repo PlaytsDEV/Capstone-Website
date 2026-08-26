@@ -78,6 +78,7 @@ export const RESERVATION_STATUS_LABELS = Object.freeze({
   approved_for_payment: "Approved for Payment",
   payment_pending: "Payment Pending",
   reserved: "Reserved",
+  ready_for_move_in: "Ready for Move-In",
   moveIn: "Move In",
   moveOut: "Moved Out",
   rejected: "Rejected",
@@ -147,6 +148,13 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
     color: "#047857",
     bg: "#ecfdf5",
     border: "#a7f3d0",
+    dot: "#10b981",
+  },
+  ready_for_move_in: {
+    label: RESERVATION_STATUS_LABELS.ready_for_move_in,
+    color: "#047857",
+    bg: "transparent",
+    border: "transparent",
     dot: "#10b981",
   },
   moveIn: {
@@ -316,9 +324,31 @@ export const getReservationStatusLabel = (status) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-export const getReservationStatusAppearance = (status) =>
-  RESERVATION_STATUS_APPEARANCE[normalizeReservationStatus(status)] ||
-  RESERVATION_STATUS_APPEARANCE.pending;
+export const isReservationMoveInReady = (reservation) => {
+  if (!reservation) return false;
+  const status = normalizeReservationStatus(
+    reservation.reservationStatus || reservation.status,
+  );
+  if (status !== "reserved") return false;
+  return (
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full" ||
+    Boolean(reservation.initialPaymentSettledAt) ||
+    Boolean(reservation.initialPaymentPaidAt) ||
+    (reservation.initialPaymentStatus === "paid" && (reservation.initialPaymentDate || reservation.updatedAt))
+  );
+};
+
+export const getReservationStatusAppearance = (status, reservation = null) => {
+  if (reservation && isReservationMoveInReady(reservation)) {
+    return RESERVATION_STATUS_APPEARANCE.ready_for_move_in;
+  }
+  const norm = normalizeReservationStatus(status);
+  return (
+    RESERVATION_STATUS_APPEARANCE[norm] ||
+    RESERVATION_STATUS_APPEARANCE.pending
+  );
+};
 
 export const getAllowedReservationActions = (status) =>
   ADMIN_RESERVATION_ACTIONS_BY_STATUS[normalizeReservationStatus(status)] || [];

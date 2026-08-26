@@ -14,19 +14,20 @@ export default defineConfig({
   build: {
     outDir: "build",
     sourcemap: false,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       maxParallelFileOps: 20,
       output: {
         manualChunks: {
-          // Split heavy vendor libs into separately cacheable chunks
-          "vendor-react": [
+          // Split heavy vendor libs into separately cacheable chunks without circular dependencies
+          "vendor-core": [
             "react",
             "react-dom",
             "react/jsx-runtime",
             "react/jsx-dev-runtime",
             "react-router-dom",
+            "@tanstack/react-query",
           ],
-          "vendor-tanstack": ["@tanstack/react-query"],
           "vendor-firebase": ["firebase/app", "firebase/auth"],
           "vendor-icons": ["lucide-react", "@tabler/icons-react"],
           "vendor-charts": ["recharts"],

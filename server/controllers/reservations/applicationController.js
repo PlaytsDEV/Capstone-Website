@@ -85,9 +85,6 @@ export const buildUserProfileUpdatesFromApplication = (body = {}, existingReserv
   const rawPhone = body.mobileNumber ?? body.phone ?? existingReservation.mobileNumber;
   if (hasText(rawPhone)) userUpdates.phone = String(rawPhone).trim();
 
-  const rawPhoto = body.selfiePhotoUrl ?? body.profileImage ?? existingReservation.selfiePhotoUrl;
-  if (hasText(rawPhoto)) userUpdates.profileImage = String(rawPhoto).trim();
-
   const rawGender = body.gender ?? existingReservation.gender;
   if (hasText(rawGender)) userUpdates.gender = String(rawGender).trim();
 

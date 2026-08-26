@@ -2874,17 +2874,22 @@ export default function useReservationFlow() {
   };
 
   const handleStageConfirm = async () => {
-    setShowStageConfirm(false);
+    setIsSubmittingApplication(true);
     try {
       if (pendingStageAction === "stage1") {
         if (!reservationId) {
           const draft = await createReservationDraft();
-          if (!draft) return;
+          if (!draft) {
+            setIsSubmittingApplication(false);
+            return;
+          }
         } else {
           await updateReservationDraft({ roomConfirmed: true });
         }
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
         await queryClient.invalidateQueries({ queryKey: ["rooms"] });
+        setShowStageConfirm(false);
+        setPendingStageAction(null);
         setSuccessOverlay({
           show: true,
           title: "Room Confirmed!",
@@ -2898,98 +2903,97 @@ export default function useReservationFlow() {
           },
         });
       } else if (pendingStageAction === "submit_application" || pendingStageAction === "stage3") {
-        setIsSubmittingApplication(true);
-        try {
-          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
-          const validIDFrontUrl = await uploadIfFile(validIDFront);
-          const validIDBackUrl = await uploadIfFile(validIDBack);
-          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
-          const companyIDUrl = await uploadIfFile(companyID);
-          const applicationPayload = {
-            firstName,
-            lastName,
-            middleName,
-            nickname,
-            mobileNumber,
-            billingEmail,
-            birthday,
-            gender,
-            maritalStatus,
-            nationality,
-            educationLevel,
-            addressUnitHouseNo,
-            addressStreet,
-            addressRegion,
-            addressBarangay,
-            addressCity,
-            addressProvince,
-            emergencyContactName,
-            emergencyRelationship,
-            emergencyContactNumber,
-            healthConcerns,
-            employerSchool,
-            employerAddress,
-            employerContact,
-            startDate,
-            occupation,
-            previousEmployment,
-            roomType,
-            preferredRoomNumber,
-            referralSource,
-            referrerName,
-            estimatedMoveInTime,
-            workSchedule,
-            workScheduleOther,
-            targetMoveInDate,
-            leaseDuration,
-            agreedToPrivacy,
-            agreedToCertification,
-            selfiePhotoUrl,
-            validIDFrontUrl,
-            validIDBackUrl,
-            nbiClearanceUrl,
-            nbiReason,
-            personalNotes,
-            companyIDUrl,
-            companyIDReason,
-            validIDType,
-            idType: validIDType,
-          };
-          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-          if (applicationDraftSaveClearTimerRef.current) {
-            clearTimeout(applicationDraftSaveClearTimerRef.current);
-          }
-          // First-time and re-submission both use the same dedicated endpoint
-          await reservationApi.submitApplication(reservationId, applicationPayload);
-          const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
-          if (draftKey && typeof window !== "undefined" && window.localStorage) {
-            window.localStorage.removeItem(draftKey);
-          }
-          lastSavedApplicationDraftRef.current = "";
-          setHasUnsavedApplicationChanges(false);
-          setSaveStatus("");
-          setDraftRecoveryMessage("");
-          setApplicationSubmitted(true);
-          setEditingApplication(false);
-          await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-          await queryClient.invalidateQueries({ queryKey: ["users"] });
-          setSuccessOverlay({
-            show: true,
-            title: "Application Submitted!",
-            subtitle: "Your application is under review. We will notify you once approved.",
-          });
-          appNavigate("/applicant/profile", {
-            flash: {
-              type: "success",
-              title: "Application Submitted!",
-              message: "Your application is under review. We will notify you once approved.",
-            },
-          });
-        } finally {
-          setIsSubmittingApplication(false);
+        const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
+        const validIDFrontUrl = await uploadIfFile(validIDFront);
+        const validIDBackUrl = await uploadIfFile(validIDBack);
+        const nbiClearanceUrl = await uploadIfFile(nbiClearance);
+        const companyIDUrl = await uploadIfFile(companyID);
+        const applicationPayload = {
+          firstName,
+          lastName,
+          middleName,
+          nickname,
+          mobileNumber,
+          billingEmail,
+          birthday,
+          gender,
+          maritalStatus,
+          nationality,
+          educationLevel,
+          addressUnitHouseNo,
+          addressStreet,
+          addressRegion,
+          addressBarangay,
+          addressCity,
+          addressProvince,
+          emergencyContactName,
+          emergencyRelationship,
+          emergencyContactNumber,
+          healthConcerns,
+          employerSchool,
+          employerAddress,
+          employerContact,
+          startDate,
+          occupation,
+          previousEmployment,
+          roomType,
+          preferredRoomNumber,
+          referralSource,
+          referrerName,
+          estimatedMoveInTime,
+          workSchedule,
+          workScheduleOther,
+          targetMoveInDate,
+          leaseDuration,
+          agreedToPrivacy,
+          agreedToCertification,
+          selfiePhotoUrl,
+          validIDFrontUrl,
+          validIDBackUrl,
+          nbiClearanceUrl,
+          nbiReason,
+          personalNotes,
+          companyIDUrl,
+          companyIDReason,
+          validIDType,
+          idType: validIDType,
+        };
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        if (applicationDraftSaveClearTimerRef.current) {
+          clearTimeout(applicationDraftSaveClearTimerRef.current);
         }
+        // First-time and re-submission both use the same dedicated endpoint
+        await reservationApi.submitApplication(reservationId, applicationPayload);
+        const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
+        if (draftKey && typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.removeItem(draftKey);
+        }
+        lastSavedApplicationDraftRef.current = "";
+        setHasUnsavedApplicationChanges(false);
+        setSaveStatus("");
+        setDraftRecoveryMessage("");
+        setApplicationSubmitted(true);
+        setEditingApplication(false);
+        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+        await queryClient.invalidateQueries({ queryKey: ["users"] });
+        setShowStageConfirm(false);
+        setPendingStageAction(null);
+        setSuccessOverlay({
+          show: true,
+          title: "Application Submitted!",
+          subtitle: "Your application is under review. We will notify you once approved.",
+        });
+        appNavigate("/applicant/profile", {
+          flash: {
+            type: "success",
+            title: "Application Submitted!",
+            message: "Your application is under review. We will notify you once approved.",
+          },
+        });
       } else if (pendingStageAction === "stage4") {
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+        setShowStageConfirm(false);
+        setPendingStageAction(null);
         setSuccessOverlay({
           show: true,
           title: "Reservation Submitted!",
@@ -3011,8 +3015,9 @@ export default function useReservationFlow() {
         "error",
         5000,
       );
+    } finally {
+      setIsSubmittingApplication(false);
     }
-    setPendingStageAction(null);
   };
 
   const handleExitToDashboard = async () => {

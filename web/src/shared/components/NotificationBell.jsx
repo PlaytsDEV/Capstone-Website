@@ -59,6 +59,7 @@ function NotificationBellIcon({ type }) {
     case "reservation_expired":
     case "reservation_cancellation_requested":
     case "visit_requested":
+    case "visit_scheduled":
     case "bill_due_reminder":
     case "penalty_applied":
     case "grace_period_warning":
@@ -127,16 +128,25 @@ function timeAgo(dateStr) {
 }
 
 function getNotificationActionUrl(notification) {
- if (
- notification?.type === "reservation_cancellation_requested" &&
- notification?.entityId
- ) {
- return `/admin/reservations?reservationId=${encodeURIComponent(
- notification.entityId,
- )}&focus=cancellation`;
- }
+  if (
+    notification?.type === "reservation_cancellation_requested" &&
+    notification?.entityId
+  ) {
+    return `/admin/reservations?reservationId=${encodeURIComponent(
+      notification.entityId,
+    )}&focus=cancellation`;
+  }
 
- return notification?.actionUrl || null;
+  if (
+    (notification?.type === "visit_requested" || notification?.type === "visit_scheduled") &&
+    notification?.entityId
+  ) {
+    return `/admin/reservations?reservationId=${encodeURIComponent(
+      notification.entityId,
+    )}&tab=visits`;
+  }
+
+  return notification?.actionUrl || null;
 }
 
 export default function NotificationBell() {
@@ -192,10 +202,11 @@ export default function NotificationBell() {
     }
 
     setIsOpen(false);
+    const resolvedUrl = getNotificationActionUrl(notification);
     if (!isAdmin() && notification.type === "announcement") {
       navigate("/applicant/announcements");
-    } else if (notification.actionUrl) {
-      navigate(notification.actionUrl);
+    } else if (resolvedUrl) {
+      navigate(resolvedUrl);
     } else {
       navigate(isAdmin() ? "/admin/notifications" : "/applicant/profile", isAdmin() ? undefined : { state: { tab: "notifications" } });
     }

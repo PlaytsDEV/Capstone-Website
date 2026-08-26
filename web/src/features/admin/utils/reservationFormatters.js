@@ -3,7 +3,7 @@
  */
 
 const PAYMENT_STATUS_MAP = {
-  paid_in_full: "Paid in Full",
+  paid_in_full: "Fully Settled",
   paid: "Paid",
   partial: "Partially Paid",
   pending: "Pending Payment",

@@ -39,6 +39,7 @@ import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pric
 import { getAvailableLeaseOptions, getMoveInDateConstraints } from "./applicationFormConstants";
 import { validateTargetMoveInDate } from "../../utils/reservationValidation";
 import { showNotification } from "../../../../shared/utils/notification";
+import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
 
 
 
@@ -730,15 +731,14 @@ const ReservationSummaryStep = ({
                     <span>Total Move-In Requirements:</span>
                     <span>{hasResolvedMonthlyRate ? formatCurrency(monthlyRent * 2) : "TBD"}</span>
                   </div>
-                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                    <span>Less Reservation Fee (Paid Now):</span>
-                    <span className="font-semibold">-{formatCurrency(reservationFeeAmount)}</span>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 leading-relaxed">
+                    Note: Your {formatCurrency(reservationFeeAmount)} reservation fee (due in the next step) will be credited toward your move-in balance once paid.
                   </div>
                   <div className="flex justify-between pt-2 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-sm">
                     <span>Remaining Balance (Due Before Move-In):</span>
-                    <span className="text-amber-700 dark:text-amber-400 font-bold">
+                    <span className="text-slate-900 dark:text-slate-100 font-bold">
                       {hasResolvedMonthlyRate
-                        ? formatCurrency(Math.max(0, monthlyRent * 2 - reservationFeeAmount))
+                        ? formatCurrency(monthlyRent * 2)
                         : "Calculated upon review"}
                     </span>
                   </div>
@@ -757,7 +757,9 @@ const ReservationSummaryStep = ({
               <Lock className="w-6 h-6 text-slate-700 dark:text-slate-300 shrink-0" />
               <div>
                 <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">This step is locked</div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{ROOM_SELECTION_LOCKED_MESSAGE}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  {ROOM_SELECTION_LOCKED_MESSAGE || "Room selection is locked while your reservation is under review."}
+                </div>
               </div>
             </div>
 

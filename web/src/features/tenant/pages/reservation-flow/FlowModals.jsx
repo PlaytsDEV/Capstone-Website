@@ -62,12 +62,14 @@ export const StageConfirmModal = ({
   const isStage1 = pendingAction === "stage1";
   const isApplicationSubmit =
     pendingAction === "stage3" || pendingAction === "submit_application";
+  const isStage4 = pendingAction === "stage4";
 
   let title = "Confirm Reservation Submission";
   let subtitle = "";
   let message =
     "Are you sure you want to submit your reservation? Once submitted, you will need to wait for admin confirmation.";
   let confirmText = "Proceed";
+  let loadingText = "Processing...";
   let cancelText = "Cancel";
 
   if (isStage1) {
@@ -75,6 +77,7 @@ export const StageConfirmModal = ({
     message =
       "Are you sure you want to proceed with this room selection? A reservation draft will be created.";
     confirmText = "Proceed";
+    loadingText = "Confirming Room...";
     cancelText = "Cancel";
   } else if (isApplicationSubmit) {
     title = applicationSubmitted ? "Save Application Changes" : "Submit Application";
@@ -85,7 +88,14 @@ export const StageConfirmModal = ({
       ? "Are you sure you want to save the changes made to your application? Your updated information and documents will be reviewed."
       : "Are you sure you want to submit your tenant application? Please verify that all personal details and uploaded verification documents are accurate and complete.";
     confirmText = applicationSubmitted ? "Save Changes" : "Submit Application";
+    loadingText = applicationSubmitted ? "Saving Changes..." : "Submitting Application...";
     cancelText = "Keep Editing";
+  } else if (isStage4) {
+    title = "Confirm Reservation";
+    message = "Are you sure you want to submit your reservation payment for verification?";
+    confirmText = "Submit Reservation";
+    loadingText = "Submitting Reservation...";
+    cancelText = "Cancel";
   }
 
   return (
@@ -98,6 +108,7 @@ export const StageConfirmModal = ({
       size="sm"
       cancelText={cancelText}
       confirmText={confirmText}
+      loadingText={loadingText}
       onConfirm={onConfirm}
       loading={loading}
     >

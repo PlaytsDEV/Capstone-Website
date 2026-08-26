@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Loader2 } from "lucide-react";
 import BaseModal from "../../../shared/components/BaseModal.jsx";
 import { reservationApi } from "../../../shared/api/reservationApi.js";
 
@@ -8,14 +9,16 @@ import { reservationApi } from "../../../shared/api/reservationApi.js";
  */
 export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reservationId, onResponseComplete }) {
   const [tenantNotes, setTenantNotes] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null); // "accept" | "decline" | null
   const [error, setError] = useState(null);
+
+  const loading = Boolean(loadingAction);
 
   if (!renewalOffer) return null;
 
   const handleRespond = async (action) => {
     try {
-      setLoading(true);
+      setLoadingAction(action);
       setError(null);
       await reservationApi.respondToRenewalOffer(
         reservationId,
@@ -28,7 +31,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
     } catch (err) {
       setError(err.message || "Failed to submit response to renewal offer.");
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -36,6 +39,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
+      loading={loading}
       title="Lease Renewal Proposal"
       maxWidth="max-w-lg"
     >
@@ -74,6 +78,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
             onChange={(e) => setTenantNotes(e.target.value)}
             placeholder="Add any questions or remarks regarding the proposed lease renewal..."
             className="w-full p-2.5 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+            disabled={loading}
           />
         </div>
 
@@ -82,17 +87,31 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
             type="button"
             onClick={() => handleRespond("decline")}
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
           >
-            Decline Proposal
+            {loadingAction === "decline" ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                <span>Declining...</span>
+              </>
+            ) : (
+              "Decline Proposal"
+            )}
           </button>
           <button
             type="button"
             onClick={() => handleRespond("accept")}
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-white bg-emerald-600 border border-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-white bg-emerald-600 border border-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 min-w-[150px]"
           >
-            {loading ? "Processing..." : "Sign & Accept Renewal"}
+            {loadingAction === "accept" ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>Accepting Renewal...</span>
+              </>
+            ) : (
+              "Sign & Accept Renewal"
+            )}
           </button>
         </div>
       </div>

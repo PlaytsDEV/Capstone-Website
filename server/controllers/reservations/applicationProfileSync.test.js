@@ -42,7 +42,7 @@ describe("Application to Profile Synchronization", () => {
       expect(userUpdates.middleName).toBe("Santos");
       expect(userUpdates.lastName).toBe("Dela Cruz");
       expect(userUpdates.phone).toBe("09171234567");
-      expect(userUpdates.profileImage).toBe("https://storage.example.com/selfie123.jpg");
+      expect(userUpdates.profileImage).toBeUndefined();
       expect(userUpdates.gender).toBe("female");
       expect(userUpdates.civilStatus).toBe("single");
       expect(userUpdates.nationality).toBe("Filipino");
@@ -102,7 +102,7 @@ describe("Application to Profile Synchronization", () => {
       expect(userUpdates.middleName).toBe("Santos");
       expect(userUpdates.lastName).toBe("Dela Cruz");
       expect(userUpdates.phone).toBe("09171234567");
-      expect(userUpdates.profileImage).toBe("https://storage.example.com/selfie.jpg");
+      expect(userUpdates.profileImage).toBeUndefined();
       expect(userUpdates.occupation).toBe("Designer");
       expect(userUpdates.address).toBe("Room 1, Main St, Central, Manila, Metro Manila");
       expect(userUpdates.emergencyContact).toBe("Pedro Santos");

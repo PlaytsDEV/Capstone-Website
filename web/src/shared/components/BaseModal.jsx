@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, AlertCircle, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { X, AlertCircle, AlertTriangle, CheckCircle, Info, Loader2 } from "lucide-react";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
 
 /**
@@ -29,6 +29,7 @@ export default function BaseModal({
   children,
   footer,
   confirmText,
+  loadingText,
   cancelText = "Cancel",
   onConfirm,
   loading = false,
@@ -122,6 +123,7 @@ export default function BaseModal({
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
+      aria-busy={loading ? "true" : undefined}
       aria-labelledby={title ? "base-modal-title" : undefined}
     >
       <style>{`
@@ -220,6 +222,7 @@ export default function BaseModal({
                   padding: 6,
                   borderRadius: 6,
                   cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.5 : 1,
                   color: "var(--text-muted, #64748b)",
                   display: "flex",
                   alignItems: "center",
@@ -282,6 +285,7 @@ export default function BaseModal({
                   fontWeight: 500,
                   color: "var(--text-secondary, #475569)",
                   cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.6 : 1,
                   transition: "all 0.15s",
                 }}
                 onMouseEnter={(e) => {
@@ -309,7 +313,7 @@ export default function BaseModal({
                   fontWeight: 600,
                   color: v.btnText,
                   cursor: loading || confirmDisabled ? "not-allowed" : "pointer",
-                  opacity: loading ? 0.75 : 1,
+                  opacity: loading ? 0.85 : 1,
                   transition: "all 0.15s",
                   display: "inline-flex",
                   alignItems: "center",
@@ -324,7 +328,14 @@ export default function BaseModal({
                   if (!confirmDisabled) e.currentTarget.style.background = v.btnBg;
                 }}
               >
-                {loading ? "Processing..." : confirmText || "Confirm"}
+                {loading ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>{loadingText || "Processing..."}</span>
+                  </>
+                ) : (
+                  confirmText || "Confirm"
+                )}
               </button>
             )}
           </div>

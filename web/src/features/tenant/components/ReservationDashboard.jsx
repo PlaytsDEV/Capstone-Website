@@ -19,6 +19,7 @@ import {
 import {
   canReservationAccessPayment,
   hasReservationStatus,
+  isReservationMoveInReady,
   readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
@@ -205,9 +206,30 @@ function getNextAction(reservation, currentStage) {
   const physicalVisitState = getPhysicalVisitApplicantState(reservation);
 
   if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
+    const isSettled =
+      isReservationMoveInReady(reservation) ||
+      reservation.initialPaymentStatus === "paid" ||
+      reservation.paymentStatus === "paid_in_full" ||
+      Boolean(reservation.initialPaymentSettledAt) ||
+      Boolean(reservation.initialPaymentPaidAt);
+
+    if (isSettled) {
+      const moveInDate = readMoveInDate(reservation);
+      const moveInText = moveInDate
+        ? ` Target move-in date: ${formatDate(moveInDate)}.`
+        : "";
+      return {
+        title: "Move-In Ready — Fully Settled",
+        description: `Advance rent and security deposit are fully settled.${moveInText} You can now review your official lease contract.`,
+        buttonLabel: "Review Lease Contract",
+        route: "/applicant/contracts",
+        isWaiting: false,
+      };
+    }
+
     return {
       title: "Reservation Secured",
-      description: "Your reservation is secured. You're all set for move-in!",
+      description: "Your room slot is locked! Settle your Advance Rent and Security Deposit below to complete move-in requirements.",
       buttonLabel: null,
       route: null,
       isWaiting: false,
@@ -591,6 +613,12 @@ export default function ReservationDashboard({
     "moveIn",
     "moveOut",
   );
+  const isMoveInSettled =
+    isReservationMoveInReady(reservation) ||
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full" ||
+    Boolean(reservation.initialPaymentSettledAt) ||
+    Boolean(reservation.initialPaymentPaidAt);
 
   return (
     <div style={styles.card}>
@@ -610,7 +638,7 @@ export default function ReservationDashboard({
             {isConfirmed ? (
               <span style={styles.confirmedBadge}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981", flexShrink: 0 }} />
-                Reserved
+                {isMoveInSettled ? "Ready for Move-In" : "Reserved"}
               </span>
             ) : (
               <span style={styles.pendingBadge}>
@@ -994,7 +1022,7 @@ export default function ReservationDashboard({
       </div>
 
       {/* ── Next Action Row ──────────────────────────────────────────────── */}
-      {action.title && !isConfirmed && (
+      {action.title && (!isConfirmed || Boolean(action.buttonLabel)) && (
         <div
           style={{
             display: "flex",

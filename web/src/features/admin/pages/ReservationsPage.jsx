@@ -49,6 +49,7 @@ import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import {
   RESERVATION_STATUS_LABELS,
   hasReservationStatus,
+  isReservationMoveInReady,
   readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
@@ -775,6 +776,10 @@ function ReservationsPage() {
           branchCode: reservation.roomId?.branch || "",
           roomType: reservation.roomId?.type || "",
           status: reservation.status || "pending",
+          initialPaymentStatus: reservation.initialPaymentStatus,
+          reservationFeePaymentStatus: reservation.reservationFeePaymentStatus,
+          initialPaymentSettledAt: reservation.initialPaymentSettledAt,
+          initialPaymentPaidAt: reservation.initialPaymentPaidAt,
           totalPrice: reservation.totalPrice,
           paymentStatus: reservation.paymentStatus,
           paymentMethod: reservation.paymentMethod,
@@ -1091,12 +1096,26 @@ function ReservationsPage() {
         key: "status",
         label: "Status",
         width: "18%",
-        render: (row) => (
-          <StatusBadge
-            module="reservation"
-            status={checkOverdueReservation(row) ? "overdue" : row.status}
-          />
-        ),
+        render: (row) => {
+          const isMoveInSettled =
+            isReservationMoveInReady(row) ||
+            row.initialPaymentStatus === "paid" ||
+            row.paymentStatus === "paid_in_full" ||
+            Boolean(row.initialPaymentSettledAt) ||
+            Boolean(row.initialPaymentPaidAt);
+
+          const displayStatus =
+            row.status === "reserved" && isMoveInSettled
+              ? "ready_for_move_in"
+              : row.status;
+
+          return (
+            <StatusBadge
+              module="reservation"
+              status={checkOverdueReservation(row) ? "overdue" : displayStatus}
+            />
+          );
+        },
       },
       {
         key: "moveInDate",
@@ -1678,7 +1697,14 @@ function ReservationsPage() {
                                   status={
                                     checkOverdueReservation(row)
                                       ? "overdue"
-                                      : row.status
+                                      : row.status === "reserved" &&
+                                          (isReservationMoveInReady(row) ||
+                                            row.initialPaymentStatus === "paid" ||
+                                            row.paymentStatus === "paid_in_full" ||
+                                            Boolean(row.initialPaymentSettledAt) ||
+                                            Boolean(row.initialPaymentPaidAt))
+                                        ? "ready_for_move_in"
+                                        : row.status
                                   }
                                 />
                                 {hasPendingCancellationRequest(row) && (

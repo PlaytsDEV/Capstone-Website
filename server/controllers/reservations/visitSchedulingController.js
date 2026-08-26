@@ -32,6 +32,7 @@ import {
   isViewingPreferenceLocked,
   buildVisitEmailContext,
   serializeReservation,
+  notifyAdminsOfVisitSchedule,
 } from "./_helpers.js";
 
 export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
@@ -492,23 +493,21 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
         }
 
         try {
-          const applicantName = `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim() || updatedReservation.userId.email;
-          const roomName = updatedReservation.roomId?.name || "";
-          const branchName = updatedReservation.roomId?.branch || dbUser.branch || "";
-          const visitDateLabel = updatedReservation.visitDate
-            ? new Date(updatedReservation.visitDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
-            : "";
-          notify
-            .newVisitRequested(
-              branchName,
-              applicantName,
-              roomName,
-              visitDateLabel || "TBD",
-              updatedReservation.visitTime || "",
-            )
-            .catch((e) => logger.warn({ err: e }, "Admin visit request notification failed (non-fatal)"));
+          const isReschedule =
+            reservation.visitStatus === "no_show" ||
+            reservation.scheduleRejected ||
+            updatedReservation.visitStatus === "rescheduled";
+
+          await notifyAdminsOfVisitSchedule({
+            reservation: updatedReservation,
+            applicantUser: updatedReservation.userId || dbUser,
+            viewingPreference: effectiveViewingPreference,
+            visitDate: updatedReservation.visitDate,
+            visitTime: updatedReservation.visitTime,
+            isReschedule,
+          });
         } catch (adminVisitErr) {
-          // non-fatal
+          logger.warn({ err: adminVisitErr }, "Admin visit request notification failed (non-fatal)");
         }
       } catch (notifyErr) {
         logger.warn(

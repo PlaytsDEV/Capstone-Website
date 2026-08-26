@@ -1,5 +1,5 @@
 import React from "react";
-import { Lock } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import FileUploadField from "./FileUploadField";
 
 /**
@@ -37,7 +37,7 @@ const PhotoEmailSection = ({
 
         <div className="relative flex items-center">
           <div className="absolute left-3 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
-            <Lock size={15} />
+            <Mail size={16} aria-hidden="true" />
           </div>
           <input
             id="billingEmailInput"
@@ -45,14 +45,22 @@ const PhotoEmailSection = ({
             name="email"
             readOnly
             disabled
-            className="form-input pl-9 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 cursor-not-allowed border-slate-200 dark:border-slate-700"
+            className="form-input bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 cursor-not-allowed border-slate-200 dark:border-slate-700 font-medium text-sm"
+            style={{ paddingLeft: "38px", paddingRight: "38px" }}
             value={effectiveEmail}
             aria-readonly="true"
             aria-describedby="billingEmailHelper"
           />
+          <div
+            className="absolute right-3 flex items-center text-slate-400 dark:text-slate-500 cursor-help"
+            title="Verified account email is locked and cannot be edited"
+            aria-label="Verified account email is locked and cannot be edited"
+          >
+            <Lock size={15} />
+          </div>
         </div>
 
-        <div id="billingEmailHelper" className="form-helper mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <div id="billingEmailHelper" className="form-helper mt-1.5 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
           Official receipts, reservation updates, and monthly rent billing statements will be sent to your verified account email address.
         </div>
       </div>

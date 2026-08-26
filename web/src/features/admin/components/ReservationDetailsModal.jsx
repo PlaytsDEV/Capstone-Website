@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, FileText, Image as ImageIcon, Info, Maximize2, Receipt, User, XCircle } from "lucide-react";
+import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, FileText, Image as ImageIcon, Info, Loader2, Maximize2, Receipt, User, XCircle } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
@@ -10,10 +10,11 @@ import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import {
- getAllowedReservationActions,
- getReservationStatusAppearance,
- normalizeReservationStatus,
- readMoveInDate,
+  getAllowedReservationActions,
+  getReservationStatusAppearance,
+  isReservationMoveInReady,
+  normalizeReservationStatus,
+  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
   fmtDate as sharedFmtDate,
@@ -79,12 +80,23 @@ import "../styles/reservation-details-modal.css";
  variant: "info",
  },
  rejectApplication: {
- title: "Reject Application",
- message:
- "This rejects the application and keeps payment locked.",
- confirmText: "Reject Application",
- variant: "danger",
- },
+    title: "Reject Application",
+    message:
+      "This rejects the application and keeps payment locked.",
+    confirmText: "Reject Application",
+    variant: "danger",
+  },
+};
+
+const ACTION_LOADING_MSGS = {
+  moveIn: "Processing Move-In...",
+  cancel: "Cancelling Reservation...",
+  approveCancellation: "Approving Cancellation...",
+  rejectCancellation: "Rejecting Cancellation...",
+  approveForPayment: "Approving Application...",
+  requestRevision: "Sending Revision Request...",
+  rejectApplication: "Rejecting Application...",
+  extend: "Saving Reschedule...",
 };
 
 const getQuickActionsEmptyState = (status, isMovedOut) => {
@@ -559,11 +571,14 @@ export default function ReservationDetailsModal({
   const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
   /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
   const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
-  const appearance = getReservationStatusAppearance(status);
+  const appearance = getReservationStatusAppearance(status, reservation);
   const allowedActions = getAllowedReservationActions(status);
   const isMoveInPaymentSettled =
+    isReservationMoveInReady(reservation) ||
     reservation?.initialPaymentStatus === "paid" ||
-    reservation?.paymentStatus === "paid_in_full";
+    reservation?.paymentStatus === "paid_in_full" ||
+    Boolean(reservation?.initialPaymentSettledAt) ||
+    Boolean(reservation?.initialPaymentPaidAt);
   const isMovedOut = status === "moveOut";
   const stageGuide = STAGE_GUIDANCE[status];
   const hasActionButtons =
@@ -878,86 +893,93 @@ export default function ReservationDetailsModal({
         ? "Short-term"
         : "—";
 
- const doAction = (key, apiCall, successMsg) => {
- const modalConfig =
- key === "extend"
- ? {
- title: `Reschedule Move-in`,
- message: `Update the move-in date for the reservation.`,
- confirmText: "Save Changes",
- variant: "info",
- }
- : key === "cancel"
- ? {
- ...ACTION_MSGS.cancel,
- message: `The ${reservationFeeLabel} reservation fee is non-refundable. The bed will be freed and user reset to applicant.`,
- }
- : ACTION_MSGS[key];
+  const doAction = (key, apiCall, successMsg) => {
+    const modalConfig =
+      key === "extend"
+        ? {
+            title: `Reschedule Move-in`,
+            message: `Update the move-in date for the reservation.`,
+            confirmText: "Save Changes",
+            loadingText: ACTION_LOADING_MSGS.extend,
+            variant: "info",
+          }
+        : key === "cancel"
+          ? {
+              ...ACTION_MSGS.cancel,
+              message: `The ${reservationFeeLabel} reservation fee is non-refundable. The bed will be freed and user reset to applicant.`,
+              loadingText: ACTION_LOADING_MSGS.cancel,
+            }
+          : {
+              ...ACTION_MSGS[key],
+              loadingText: ACTION_LOADING_MSGS[key] || "Processing...",
+            };
 
- setConfirmModal({
- open: true,
- ...modalConfig,
- onConfirm: async () => {
- setConfirmModal((previous) => ({ ...previous, open: false }));
- setIsSubmitting(true);
+    setConfirmModal({
+      open: true,
+      ...modalConfig,
+      onConfirm: async () => {
+        setIsSubmitting(true);
 
- try {
- await apiCall();
- showNotification(successMsg, "success");
- onUpdate?.();
- onClose();
- } catch (error) {
- const errorCode = error?.response?.data?.code;
- const isCancellationReviewAction =
- key === "approveCancellation" || key === "rejectCancellation";
- if (isCancellationReviewAction) {
- try {
- const latest = await reservationApi.getById(reservation.id);
- const latestReservation = latest?.reservation || latest;
- const latestCancellationPending =
- latestReservation?.cancellationRequested &&
- latestReservation?.cancellationStatus === "pending";
- const reviewWasApplied =
- key === "approveCancellation"
- ? latestReservation?.status === "cancelled" ||
- latestReservation?.cancellationStatus === "approved"
- : !latestCancellationPending &&
- (latestReservation?.cancellationStatus === "rejected" ||
- latestReservation?.cancellationRequested === false);
+        try {
+          await apiCall();
+          setConfirmModal((previous) => ({ ...previous, open: false }));
+          showNotification(successMsg, "success");
+          onUpdate?.();
+          onClose();
+        } catch (error) {
+          const errorCode = error?.response?.data?.code;
+          const isCancellationReviewAction =
+            key === "approveCancellation" || key === "rejectCancellation";
+          if (isCancellationReviewAction) {
+            try {
+              const latest = await reservationApi.getById(reservation.id);
+              const latestReservation = latest?.reservation || latest;
+              const latestCancellationPending =
+                latestReservation?.cancellationRequested &&
+                latestReservation?.cancellationStatus === "pending";
+              const reviewWasApplied =
+                key === "approveCancellation"
+                  ? latestReservation?.status === "cancelled" ||
+                    latestReservation?.cancellationStatus === "approved"
+                  : !latestCancellationPending &&
+                    (latestReservation?.cancellationStatus === "rejected" ||
+                      latestReservation?.cancellationRequested === false);
 
- if (reviewWasApplied) {
- showNotification(successMsg, "success");
- onUpdate?.();
- onClose();
- return;
- }
- } catch (refreshError) {
- console.warn("Failed to verify cancellation review state:", refreshError);
- }
- }
- if (
- isCancellationReviewAction &&
- errorCode === "NO_PENDING_REQUEST"
- ) {
- showNotification(
- "This cancellation request was already reviewed. Refreshing reservation details.",
- "info",
- );
- onUpdate?.();
- onClose();
- return;
- }
- console.error(error);
- showNotification(
- getFriendlyError(error, "Action failed. Please try again."),
- "error",
- );
- } finally {
- setIsSubmitting(false);
- }
- },
- });
- };
+              if (reviewWasApplied) {
+                setConfirmModal((previous) => ({ ...previous, open: false }));
+                showNotification(successMsg, "success");
+                onUpdate?.();
+                onClose();
+                return;
+              }
+            } catch (refreshError) {
+              console.warn("Failed to verify cancellation review state:", refreshError);
+            }
+          }
+          if (
+            isCancellationReviewAction &&
+            errorCode === "NO_PENDING_REQUEST"
+          ) {
+            setConfirmModal((previous) => ({ ...previous, open: false }));
+            showNotification(
+              "This cancellation request was already reviewed. Refreshing reservation details.",
+              "info",
+            );
+            onUpdate?.();
+            onClose();
+            return;
+          }
+          console.error(error);
+          showNotification(
+            getFriendlyError(error, "Action failed. Please try again."),
+            "error",
+          );
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+    });
+  };
 
   const handleNotesBlur = async () => {
     const currentNotes = adminNotes ?? "";
@@ -1975,7 +1997,7 @@ export default function ReservationDetailsModal({
                         }}
                         disabled={isSubmitting}
                       >
-                        {isSubmitting ? "Processing..." : "Move In"}
+                        Move In
                       </button>
                     </div>
                   </div>
@@ -2444,40 +2466,60 @@ export default function ReservationDetailsModal({
     </div>
   )}
 
- <ConfirmModal
- isOpen={confirmModal.open}
- onClose={() => setConfirmModal((previous) => ({ ...previous, open: false }))}
- onConfirm={confirmModal.onConfirm}
- title={confirmModal.title}
- message={confirmModal.message}
- variant={confirmModal.variant}
- confirmText={confirmModal.confirmText || "Confirm"}
- />
+      <ConfirmModal
+        isOpen={confirmModal.open}
+        onClose={() => {
+          if (!isSubmitting) {
+            setConfirmModal((previous) => ({ ...previous, open: false }));
+          }
+        }}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText || "Confirm"}
+        loadingText={confirmModal.loadingText || "Processing..."}
+        loading={isSubmitting}
+      />
 
- {revisionModal.open && (
- <RevisionReasonModal
- onClose={() => setRevisionModal({ open: false })}
- onSubmit={(reason) => {
- setRevisionModal({ open: false });
- doAction(
- "requestRevision",
- () =>
- reservationApi.update(reservation.id, {
- status: "needs_revision",
- applicationReviewReason: reason,
- }),
- "Revision request sent to applicant",
- );
- }}
- />
- )}
- </>,
- document.body,
- );
+      {revisionModal.open && (
+        <RevisionReasonModal
+          loading={isSubmitting}
+          onClose={() => {
+            if (!isSubmitting) {
+              setRevisionModal({ open: false });
+            }
+          }}
+          onSubmit={async (reason) => {
+            setIsSubmitting(true);
+            try {
+              await reservationApi.update(reservation.id, {
+                status: "needs_revision",
+                applicationReviewReason: reason,
+              });
+              showNotification("Revision request sent to applicant", "success");
+              setRevisionModal({ open: false });
+              onUpdate?.();
+              onClose();
+            } catch (error) {
+              console.error(error);
+              showNotification(
+                getFriendlyError(error, "Failed to send revision request. Please try again."),
+                "error",
+              );
+            } finally {
+              setIsSubmitting(false);
+            }
+          }}
+        />
+      )}
+    </>,
+    document.body,
+  );
 }
 
 /* ──────────────────────────────────────────────────────────────
- RevisionReasonModal — template-based revision request modal
+   RevisionReasonModal — template-based revision request modal
 ────────────────────────────────────────────────────────────── */
 
 const REVISION_TEMPLATES = [
@@ -2523,11 +2565,12 @@ const REVISION_TEMPLATES = [
   },
 ];
 
-function RevisionReasonModal({ onClose, onSubmit }) {
+function RevisionReasonModal({ onClose, onSubmit, loading = false }) {
   const [selected, setSelected] = useState([]);
   const [customNote, setCustomNote] = useState("");
 
   const toggleTemplate = (template) => {
+    if (loading) return;
     setSelected((prev) =>
       prev.find((t) => t.id === template.id)
         ? prev.filter((t) => t.id !== template.id)
@@ -2543,7 +2586,15 @@ function RevisionReasonModal({ onClose, onSubmit }) {
   const canSubmit = selected.length > 0 || customNote.trim().length > 0;
 
   return (
-    <div className="rdm-revision-overlay" onClick={onClose}>
+    <div
+      className="rdm-revision-overlay"
+      onClick={(e) => {
+        if (!loading) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-busy={loading ? "true" : undefined}
+    >
       <div
         className="rdm-revision-modal"
         onClick={(e) => e.stopPropagation()}
@@ -2565,6 +2616,7 @@ function RevisionReasonModal({ onClose, onSubmit }) {
                 type="button"
                 className={`rdm-revision-chip ${isActive ? "rdm-revision-chip--active" : ""}`}
                 onClick={() => toggleTemplate(tpl)}
+                disabled={loading}
               >
                 <span className="rdm-revision-chip-check">
                   {isActive ? "✓" : "+"}
@@ -2585,6 +2637,7 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             value={customNote}
             onChange={(e) => setCustomNote(e.target.value)}
             rows="3"
+            disabled={loading}
           />
         </div>
 
@@ -2600,6 +2653,8 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             type="button"
             className="rdm-action rdm-action-outline"
             onClick={onClose}
+            disabled={loading}
+            style={{ opacity: loading ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer" }}
           >
             <XCircle size={16} />
             <span>Cancel</span>
@@ -2607,11 +2662,21 @@ function RevisionReasonModal({ onClose, onSubmit }) {
           <button
             type="button"
             className="rdm-action rdm-action-dark"
-            disabled={!canSubmit}
+            disabled={!canSubmit || loading}
             onClick={() => onSubmit(composedReason)}
+            style={{ opacity: loading ? 0.85 : !canSubmit ? 0.5 : 1, cursor: loading || !canSubmit ? "not-allowed" : "pointer" }}
           >
-            <CheckCircle size={16} />
-            <span>Send Revision Request</span>
+            {loading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Sending Revision Request...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={16} />
+                <span>Send Revision Request</span>
+              </>
+            )}
           </button>
         </div>
       </div>
