@@ -245,3 +245,29 @@ export const updateViolationSchema = z
     }
   });
 
+export const overdueNoticeActionSchema = z.object({
+  noticeNumber: z.union([z.number(), z.string()]).optional(),
+  noticeType: z.string().optional(),
+  noticeStage: z.string().optional(),
+  targetDate: z.string().optional().nullable(),
+  noticeMessage: z.string().trim().max(3000, "Notice message cannot exceed 3000 characters.").optional().nullable(),
+  message: z.string().trim().max(3000, "Notice message cannot exceed 3000 characters.").optional().nullable(),
+  notes: z.string().trim().max(3000, "Notes cannot exceed 3000 characters.").optional().nullable(),
+  forceOverride: z.boolean().optional(),
+  sendEmail: z.boolean().optional().default(true),
+  sendInApp: z.boolean().optional().default(true),
+  customPenalty: z.coerce.number().min(0, "Penalty cannot be negative").max(50000, "Penalty cannot exceed ₱50,000").optional().nullable(),
+});
+
+export const adjudicateViolationSchema = z.object({
+  decision: z.enum(["confirmed", "dismissed"]),
+  decisionReason: z.string().trim().min(1, "A formal administrative decision reason is required.").max(3000),
+  status: z.enum(["confirmed", "warning_issued", "penalty_issued", "dismissed", "resolved", "escalated"]).optional(),
+  targetStatus: z.enum(["confirmed", "warning_issued", "penalty_issued", "dismissed", "resolved", "escalated"]).optional(),
+  penaltyApplied: z.coerce.number().min(0).max(50000).optional().nullable(),
+  penaltyReason: z.string().trim().max(1000).optional().nullable(),
+  resolution: z.string().trim().max(3000).optional().nullable(),
+  chargeToBill: z.boolean().optional().default(false),
+});
+
+

@@ -459,7 +459,7 @@ export const getActiveTenantsForViolations = async (req, res, next) => {
         phone: u.phone || "",
         profileImage: avatarUrl,
         avatar: avatarUrl,
-        roomName: "Resident (No Room Assigned)",
+        roomName: "Tenant (No Room Assigned)",
         roomNumber: "",
         bedIdentifier: "",
         branch: u.branch || effectiveBranch || "gil-puyat",
@@ -623,7 +623,7 @@ export const createViolation = async (req, res, next) => {
     if (!tenantUser && !reservation) {
       return res.status(404).json({
         success: false,
-        error: "Resident user record not found.",
+        error: "Tenant user record not found.",
       });
     }
 
@@ -780,12 +780,15 @@ export const updateViolationDecision = async (req, res, next) => {
     const {
       decision,
       decisionReason,
-      status: targetStatus,
+      status,
+      targetStatus: rawTargetStatus,
       penaltyApplied,
       penaltyReason,
       resolution,
       chargeToBill,
     } = req.body;
+
+    const targetStatus = status || rawTargetStatus;
 
     if (!["confirmed", "dismissed"].includes(decision)) {
       return res.status(400).json({

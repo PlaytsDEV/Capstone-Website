@@ -364,6 +364,36 @@ describe("Tenant Violation Controller Unit Tests", () => {
     );
   });
 
+  test("updateViolationDecision properly accepts targetStatus payload key from frontend modal", async () => {
+    const violationId = new mongoose.Types.ObjectId();
+    const mockViolationInstance = {
+      _id: violationId,
+      branch: "gil-puyat",
+      reservationId: new mongoose.Types.ObjectId(),
+      tenantId: new mongoose.Types.ObjectId(),
+      violationType: "noise_curfew",
+      status: "reported",
+      adminDecision: null,
+      save: mockViolationSave.mockResolvedValue(true),
+    };
+
+    mockFindByIdViolation.mockResolvedValue(mockViolationInstance);
+
+    req.params = { id: violationId };
+    req.body = {
+      decision: "confirmed",
+      decisionReason: "First offense noisy gathering after curfew",
+      targetStatus: "warning_issued", // Key sent by frontend modal
+    };
+
+    await updateViolationDecision(req, res, next);
+
+    expect(mockViolationInstance.status).toBe("warning_issued");
+    expect(mockViolationInstance.adminDecision).toBe("confirmed");
+    expect(mockViolationSave).toHaveBeenCalled();
+  });
+
+
 
 
   describe("Standalone Penalty Bill Generation", () => {

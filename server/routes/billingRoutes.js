@@ -17,7 +17,12 @@ import * as billingController from "../controllers/billingController.js";
 import { requirePermission } from "../middleware/permissions.js";
 import { apiLimiter } from "../middleware/rateLimiter.js";
 import { validateRequest } from "../middleware/validateRequest.js";
-import { createViolationSchema, updateViolationSchema } from "../validation/zodSchemas.js";
+import {
+  createViolationSchema,
+  updateViolationSchema,
+  adjudicateViolationSchema,
+  overdueNoticeActionSchema,
+} from "../validation/zodSchemas.js";
 
 const router = express.Router();
 
@@ -487,6 +492,7 @@ router.patch(
   verifyAdmin,
   requirePermission("manageBilling"),
   filterByBranch,
+  validateRequest({ body: adjudicateViolationSchema }),
   billingController.updateViolationDecision,
 );
 
@@ -542,6 +548,7 @@ router.post(
   verifyAdmin,
   requirePermission("manageBilling"),
   filterByBranch,
+  validateRequest({ body: overdueNoticeActionSchema }),
   billingController.sendOverdueNoticeAction,
 );
 

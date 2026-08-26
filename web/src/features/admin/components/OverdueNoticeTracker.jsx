@@ -95,7 +95,7 @@ export default function OverdueNoticeTracker({
   }, [notices, searchQuery]);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4 text-card-foreground">
+    <div className="space-y-4 text-card-foreground">
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -108,30 +108,11 @@ export default function OverdueNoticeTracker({
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <div className="relative flex items-center w-full sm:w-56">
-            <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tenant, room, bill..."
-              className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
           <button
             type="button"
             onClick={handleRefresh}
             disabled={loading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             title="Refresh notice delivery records"
           >
             <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
@@ -204,33 +185,57 @@ export default function OverdueNoticeTracker({
         </div>
       )}
 
-      {/* Stage Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2 text-xs">
-        <span className="text-[11px] font-bold text-muted-foreground mr-1">Stage Filter:</span>
-        {[
-          { key: "all", label: "All Overdue" },
-          { key: "eligible", label: "Needs 1st Reminder" },
-          { key: "notice_1", label: "1st Reminder Sent" },
-          { key: "notice_2", label: "2nd Notice Sent" },
-          { key: "notice_3", label: "Final Notice / Escalated" },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setStageFilter(tab.key)}
-            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-              stageFilter === tab.key
-                ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
-                : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-card-foreground"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Notices Table */}
+      {/* Notices Data Card (Single Container, No Nested Boxes) */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        {/* Stage Filter & Search Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+            <span className="text-[11px] font-bold text-muted-foreground mr-1 hidden sm:inline">Stage Filter:</span>
+            {[
+              { key: "all", label: "All Overdue" },
+              { key: "eligible", label: "Needs 1st Reminder" },
+              { key: "notice_1", label: "1st Reminder Sent" },
+              { key: "notice_2", label: "2nd Notice Sent" },
+              { key: "notice_3", label: "Final Notice / Escalated" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setStageFilter(tab.key)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                  stageFilter === tab.key
+                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-900 font-bold"
+                    : "text-muted-foreground hover:bg-card hover:text-card-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex items-center w-full sm:w-56">
+            <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tenant, room, bill..."
+              className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                aria-label="Clear search query"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Notices Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-background">
@@ -268,7 +273,9 @@ export default function OverdueNoticeTracker({
                 </tr>
               ) : (
                 filteredNotices.map((n) => {
-                  const isNotice3OrHigher = n.noticeStage === "notice_3" || (n.noticeCount && n.noticeCount >= 3);
+                  const isNotice3OrHigher = Boolean(
+                    n.noticeStage === "notice_3" || Number(n.noticeCount || 0) >= 3,
+                  );
                   return (
                     <tr key={n._id} className="group transition-colors hover:bg-muted/30">
                       <td className="px-4 py-3">
@@ -332,7 +339,7 @@ export default function OverdueNoticeTracker({
                           </button>
 
                           {/* Escalate to Board CTA for Notice 3 accounts */}
-                          {isNotice3OrHigher && onEscalateToTermination && (
+                          {Boolean(isNotice3OrHigher && onEscalateToTermination) && (
                             <button
                               type="button"
                               onClick={() => onEscalateToTermination(n)}

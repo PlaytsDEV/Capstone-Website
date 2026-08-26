@@ -19,6 +19,7 @@ const mockFindReviews = jest.fn();
 const mockFindOneReview = jest.fn();
 const mockFindByIdReview = jest.fn();
 const mockBillingNotice = jest.fn();
+const mockFindUsers = jest.fn();
 
 await jest.unstable_mockModule("../../models/index.js", () => {
   class MockOverdueNotice {
@@ -69,7 +70,7 @@ await jest.unstable_mockModule("../../models/index.js", () => {
       find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) }),
     },
     User: {
-      find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) }),
+      find: mockFindUsers,
       findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(null) }),
       findOne: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue({
@@ -148,6 +149,7 @@ describe("OverdueNoticeController Tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockBillingNotice.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
+    mockFindUsers.mockReturnValue({ select: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) });
 
     req = {
       user: {
@@ -218,6 +220,106 @@ describe("OverdueNoticeController Tests", () => {
       expect(response.data[0].noticeStage).toBe("notice_1");
       expect(response.stats.totalExposure).toBe(5000);
       expect(response.stats.notice1ActiveCount).toBe(1);
+    });
+
+    test("resolves tenant details from reservationId.userId when bill.userId is null", async () => {
+      const tenantId = new mongoose.Types.ObjectId();
+      const mockBill = {
+        _id: new mongoose.Types.ObjectId(),
+        branch: "gil-puyat",
+        userId: null,
+        reservationId: {
+          roomId: { name: "Room 203" },
+          userId: {
+            _id: tenantId,
+            firstName: "Juan",
+            lastName: "Dela Cruz",
+            email: "juan@example.com",
+            phone: "09123456789",
+          },
+        },
+        roomId: null,
+        remainingAmount: 6250,
+        totalAmount: 6250,
+        charges: { rent: 1600, penalty: 4650 },
+        dueDate: new Date(Date.now() - 93 * 24 * 60 * 60 * 1000),
+        status: "overdue",
+        overdueNoticeCount: 0,
+      };
+
+      mockFindBills.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([mockBill]),
+      });
+
+      mockFindNotices.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([]),
+      });
+
+      await getOverdueNoticesAction(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.success).toBe(true);
+      expect(response.data[0].tenantName).toBe("Juan Dela Cruz");
+      expect(response.data[0].tenantEmail).toBe("juan@example.com");
+      expect(response.data[0].tenantPhone).toBe("09123456789");
+      expect(response.data[0].tenantId).toEqual(tenantId);
+    });
+
+    test("resolves unpopulated legacy userId via secondary batch lookup when bill is detached from reservation", async () => {
+      const legacyUserId = new mongoose.Types.ObjectId();
+      const mockBill = {
+        _id: new mongoose.Types.ObjectId(),
+        branch: "gil-puyat",
+        userId: legacyUserId, // Raw ObjectId without populated fields
+        reservationId: null,
+        roomId: null,
+        remainingAmount: 4500,
+        totalAmount: 4500,
+        charges: { rent: 4500, penalty: 0 },
+        dueDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        status: "overdue",
+        overdueNoticeCount: 0,
+      };
+
+      mockFindBills.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([mockBill]),
+      });
+
+      mockFindNotices.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([]),
+      });
+
+      mockFindUsers.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([
+          {
+            _id: legacyUserId,
+            firstName: "Maria",
+            lastName: "Santos",
+            email: "maria.santos@example.com",
+            phone: "09171234567",
+          },
+        ]),
+      });
+
+      await getOverdueNoticesAction(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.success).toBe(true);
+      expect(response.data[0].tenantName).toBe("Maria Santos");
+      expect(response.data[0].tenantEmail).toBe("maria.santos@example.com");
+      expect(response.data[0].tenantPhone).toBe("09171234567");
+      expect(response.data[0].tenantId).toEqual(legacyUserId);
     });
   });
 
@@ -376,6 +478,102 @@ describe("OverdueNoticeController Tests", () => {
       const response = res.json.mock.calls[0][0];
       expect(response.success).toBe(true);
       expect(response.data.escalatedToReviewId).toBeDefined();
+    });
+
+    test("rejects notice dispatch if no valid tenant account is linked to bill or reservation", async () => {
+      const billId = new mongoose.Types.ObjectId();
+      req.params.billId = billId;
+      req.body = { noticeType: "notice_1" };
+
+      const billDoc = {
+        _id: billId,
+        branch: "gil-puyat",
+        status: "overdue",
+        remainingAmount: 5000,
+        totalAmount: 5000,
+        charges: { rent: 4500, penalty: 500 },
+        disputeState: "none",
+        overdueNoticeCount: 0,
+        dueDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        userId: null,
+        reservationId: null,
+        save: mockBillSave.mockResolvedValue(true),
+      };
+
+      mockFindByIdBill.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue(billDoc),
+          }),
+        }),
+      });
+
+      await sendOverdueNoticeAction(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining("No active tenant account is linked"),
+        }),
+      );
+    });
+
+    test("successfully resolves tenant from reservationId.userId when bill.userId is null", async () => {
+      const billId = new mongoose.Types.ObjectId();
+      const tenantId = new mongoose.Types.ObjectId();
+      const resvId = new mongoose.Types.ObjectId();
+      req.params.billId = billId;
+      req.body = { noticeType: "notice_1", noticeMessage: "Please settle." };
+
+      const billDoc = {
+        _id: billId,
+        branch: "gil-puyat",
+        status: "overdue",
+        remainingAmount: 6250,
+        totalAmount: 6250,
+        charges: { rent: 1600, penalty: 4650 },
+        disputeState: "none",
+        overdueNoticeCount: 0,
+        dueDate: new Date(Date.now() - 93 * 24 * 60 * 60 * 1000),
+        userId: null, // bill.userId is null (like in the screenshot)
+        reservationId: {
+          _id: resvId,
+          userId: {
+            _id: tenantId,
+            firstName: "Juan",
+            lastName: "Dela Cruz",
+            email: "juan@example.com",
+            phone: "09123456789",
+          },
+        },
+        save: mockBillSave.mockResolvedValue(true),
+      };
+
+      mockFindByIdBill.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue(billDoc),
+          }),
+        }),
+      });
+
+      mockFindOneNotice.mockResolvedValue(null);
+
+      await sendOverdueNoticeAction(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      const response = res.json.mock.calls[0][0];
+      expect(response.success).toBe(true);
+      expect(response.data.overdueNoticeCount).toBe(1);
+      expect(mockBillingNotice).toHaveBeenCalledWith(
+        tenantId,
+        expect.objectContaining({
+          notificationType: "bill_due_reminder",
+          billId,
+          pushType: "overdue_notice",
+        }),
+      );
     });
   });
 

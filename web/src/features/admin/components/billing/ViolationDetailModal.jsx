@@ -340,6 +340,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
       setAdjudicating(true);
       await billingApi.adjudicateViolation(violation._id, {
         decision,
+        status: decision === "confirmed" ? targetStatus : "dismissed",
         targetStatus: decision === "confirmed" ? targetStatus : "dismissed",
         decisionReason: decisionReason.trim(),
         chargeToBill: decision === "confirmed" && Number(violation.penaltyApplied) > 0 ? chargeToBill : false,
@@ -391,21 +392,21 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
       aria-modal="true"
       aria-labelledby="violation-modal-title"
     >
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
+      <div className="relative flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0 bg-card">
           <div className="flex items-center gap-3">
             <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
               <ShieldAlert size={20} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 id="violation-modal-title" className="text-base font-bold text-card-foreground">
                   Infraction Record #{String(violation._id).slice(-6).toUpperCase()}
                 </h2>
                 <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeCfg.text}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${badgeCfg.dot}`} />
-                  <span>{violation.status?.replace(/_/g, " ")}</span>
+                  <span className="capitalize">{violation.status?.replace(/_/g, " ")}</span>
                 </span>
                 {violation.warningNumber && (
                   <span className="inline-flex rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -426,7 +427,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                   onClick={handleStartEdit}
                   disabled={deleting || confirmingDelete}
                   aria-label="Edit this violation record"
-                  className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground hover:bg-muted transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground hover:bg-muted transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
                   title="Edit this violation record"
                 >
                   <Pencil size={13} />
@@ -445,34 +446,17 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  disabled={savingEdit}
-                  aria-label="Cancel editing"
-                  className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground hover:bg-muted transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
-                >
-                  <RotateCcw size={13} />
-                  <span>Cancel</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={savingEdit}
-                  aria-label="Save changes to violation record"
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#0A1628] text-xs font-bold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] cursor-pointer disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-                >
-                  {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span>{savingEdit ? "Saving..." : "Save Changes"}</span>
-                </button>
-              </>
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                <Pencil size={12} />
+                <span>Editing Record</span>
+              </span>
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={isEditing ? handleCancelEdit : onClose}
               aria-label="Close dialog"
               className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-card-foreground cursor-pointer"
+              title={isEditing ? "Exit editing" : "Close dialog"}
             >
               <X size={18} />
             </button>
@@ -480,7 +464,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
         </div>
 
         {/* Content Body */}
-        <div className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {confirmingDelete && (
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3.5 space-y-2 text-xs animate-in fade-in">
               <div className="flex items-center gap-2 font-bold text-rose-600 dark:text-rose-400">
@@ -557,7 +541,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
 
           {/* Body Mode: In-Place Editing Form vs Read-Only Details */}
           {isEditing ? (
-            <form onSubmit={handleSaveEdit} className="space-y-4">
+            <form id="violation-edit-form" onSubmit={handleSaveEdit} className="space-y-4">
               <div className="rounded-xl border border-border bg-card p-4 space-y-4 shadow-xs">
                 <div className="flex items-center gap-2 pb-1 border-b border-border text-xs font-bold uppercase tracking-wider text-card-foreground">
                   <Pencil size={14} className="text-muted-foreground" />
@@ -572,7 +556,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                   <select
                     value={editForm.violationType}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, violationType: e.target.value }))}
-                    className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                    className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                   >
                     {CATEGORY_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -596,7 +580,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                         setEditForm((prev) => ({ ...prev, customViolationDescription: e.target.value }))
                       }
                       placeholder="Specify the nature of this custom infraction..."
-                      className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                     />
                   </div>
                 )}
@@ -613,7 +597,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       max={new Date().toISOString().split("T")[0]}
                       value={editForm.dateOfIncident}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, dateOfIncident: e.target.value }))}
-                      className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                     />
                   </div>
 
@@ -626,7 +610,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       value={editForm.timeOfIncident}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, timeOfIncident: e.target.value }))}
                       placeholder="e.g. 10:30 PM or 22:30"
-                      className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                     />
                   </div>
 
@@ -639,7 +623,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       value={editForm.locationOfIncident}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, locationOfIncident: e.target.value }))}
                       placeholder="e.g. Room 302, Kitchen"
-                      className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -654,7 +638,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                     value={editForm.evidenceNotes}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, evidenceNotes: e.target.value }))}
                     placeholder="Record factual observations, staff eyewitness statements, or context..."
-                    className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-card p-2.5 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none leading-relaxed"
                   />
                 </div>
 
@@ -669,7 +653,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       {editForm.evidenceUrls.map((url, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2 text-xs"
+                          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 p-2.5 text-xs"
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <Camera size={14} className="text-muted-foreground shrink-0" />
@@ -713,13 +697,13 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                         }
                       }}
                       placeholder="Paste new photo URL (https://...)..."
-                      className="flex-1 h-8 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="flex-1 h-8 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={handleAddPhoto}
                       disabled={!newPhotoUrl.trim()}
-                      className="inline-flex h-8 items-center gap-1 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted disabled:opacity-40 cursor-pointer"
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted disabled:opacity-40 cursor-pointer"
                     >
                       <Plus size={13} />
                       <span>Add Photo</span>
@@ -748,7 +732,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                           }))
                         }
                         placeholder="0.00"
-                        className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                        className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                       />
                     </div>
 
@@ -762,31 +746,11 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                         value={editForm.penaltyReason}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, penaltyReason: e.target.value }))}
                         placeholder="e.g. Mandatory appliance surcharges / repeat offense"
-                        className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                        className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Bottom Actions */}
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  disabled={savingEdit}
-                  className="h-8 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingEdit}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] cursor-pointer disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-                >
-                  {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span>{savingEdit ? "Saving Changes..." : "Save Changes"}</span>
-                </button>
               </div>
             </form>
           ) : (
@@ -845,16 +809,6 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                     <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                       Photo Evidence ({allPhotos.length})
                     </p>
-                    {allPhotos.length === 1 && (
-                      <a
-                        href={allPhotos[0]}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        <ExternalLink size={13} /> View Full Resolution
-                      </a>
-                    )}
                   </div>
                   <div className={`grid ${allPhotos.length > 1 ? "grid-cols-1 sm:grid-cols-2 gap-3" : "grid-cols-1"}`}>
                     {allPhotos.map((photoUrl, idx) => (
@@ -868,10 +822,12 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                           <a
                             href={photoUrl}
                             target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 bg-slate-900/80 text-white px-2 py-1 rounded-md text-[10px] font-semibold hover:bg-slate-900"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 bg-slate-900/80 text-white px-2.5 py-1 rounded-md text-[11px] font-semibold hover:bg-slate-900 shadow-xs"
+                            title="Open full resolution photo in new tab"
                           >
-                            <ExternalLink size={11} /> Open
+                            <ExternalLink size={12} />
+                            <span>Open Full Image</span>
                           </a>
                         </div>
                       </div>
@@ -889,7 +845,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                 <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-card-foreground">Penalty Assessment Details</span>
-                    <span className="text-xs font-bold text-red-600">
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400">
                       ₱{Number(violation.penaltyApplied).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -914,7 +870,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       <select
                         value={decision}
                         onChange={(e) => setDecision(e.target.value)}
-                        className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                        className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                       >
                         <option value="confirmed">Confirm Infraction (Substantiated)</option>
                         <option value="dismissed">Dismiss Infraction (Unsubstantiated)</option>
@@ -927,7 +883,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                         <select
                           value={targetStatus}
                           onChange={(e) => setTargetStatus(e.target.value)}
-                          className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                          className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
                         >
                           <option value="warning_issued">Issue Formal Written Warning</option>
                           <option value="penalty_issued">Enforce Penalty Fee on Ledger</option>
@@ -940,7 +896,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
 
                   <div>
                     <label className="block text-xs font-semibold text-card-foreground mb-1">
-                      Administrative Decision Rationale <span className="text-red-500">*</span>
+                      Administrative Decision Rationale <span className="text-rose-500">*</span>
                     </label>
                     <textarea
                       rows={2}
@@ -948,7 +904,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       value={decisionReason}
                       onChange={(e) => setDecisionReason(e.target.value)}
                       placeholder="Record formal administrative findings, evidence evaluation, or warning notice delivery details..."
-                      className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-card p-2.5 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none leading-relaxed"
                     />
                   </div>
 
@@ -972,7 +928,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                       type="submit"
                       disabled={adjudicating || !decisionReason.trim()}
                       title={!decisionReason.trim() ? "Please enter a decision rationale" : "Save and action decision"}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                     >
                       {adjudicating ? (
                         <>
@@ -1007,6 +963,49 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                   )}
                 </div>
               )}
+            </>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="flex items-center justify-between border-t border-border px-6 py-3.5 shrink-0 bg-card">
+          {isEditing ? (
+            <>
+              <span className="text-[11px] text-muted-foreground">
+                Unsaved changes will be discarded on cancel.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  disabled={savingEdit}
+                  className="h-8 px-3.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground hover:bg-muted transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="violation-edit-form"
+                  disabled={savingEdit}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] hover:bg-[#13243D] px-4 text-xs font-bold text-white shadow-xs focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition active:scale-[0.98] cursor-pointer disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                >
+                  {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  <span>{savingEdit ? "Saving Changes..." : "Save Changes"}</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-[11px] text-muted-foreground font-mono">
+                Infraction ID: {String(violation._id)}
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-8 px-4 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground hover:bg-muted transition active:scale-[0.98] cursor-pointer"
+              >
+                Close
+              </button>
             </>
           )}
         </div>

@@ -31,9 +31,9 @@ import notify from "../../services/notifications/notificationService.js";
 const parseNoticeNumber = (val) => {
   if (typeof val === "number" && [1, 2, 3].includes(val)) return val;
   const str = String(val || "").toLowerCase().trim();
-  if (str === "notice_1" || str === "1" || str === "n1") return 1;
-  if (str === "notice_2" || str === "2" || str === "n2") return 2;
-  if (str === "notice_3" || str === "3" || str === "n3" || str === "notice_3_final") return 3;
+  if (str === "notice_1" || str === "1" || str === "n1" || str === "1st_notice" || str === "stage_1" || str === "stage 1") return 1;
+  if (str === "notice_2" || str === "2" || str === "n2" || str === "2nd_notice" || str === "stage_2" || str === "stage 2") return 2;
+  if (str === "notice_3" || str === "3" || str === "n3" || str === "notice_3_final" || str === "3rd_notice" || str === "stage_3" || str === "stage 3" || str === "final_demand") return 3;
   return null;
 };
 
@@ -75,8 +75,11 @@ export const getOverdueNoticesAction = async (req, res, next) => {
       .populate("userId", "firstName lastName email phone avatar profileImage photoURL")
       .populate({
         path: "reservationId",
-        select: "roomId roomNumber branch moveInDate moveOutDate status",
-        populate: { path: "roomId", select: "name roomNumber branch type" },
+        select: "roomId roomNumber branch moveInDate moveOutDate status userId",
+        populate: [
+          { path: "roomId", select: "name roomNumber branch type" },
+          { path: "userId", select: "firstName lastName email phone avatar profileImage photoURL" },
+        ],
       })
       .populate("roomId", "name roomNumber branch type")
       .sort({ dueDate: 1, createdAt: -1 })
@@ -100,10 +103,39 @@ export const getOverdueNoticesAction = async (req, res, next) => {
       noticesByBill.get(bId).push(notice);
     }
 
-    // 3. Assemble unified records
+    // 3. Check for any unpopulated legacy/detached tenant IDs across overdue bills
+    const missingUserIds = new Set();
+    for (const bill of overdueBills) {
+      const hasDirectPopulated = bill.userId && typeof bill.userId === "object" && (bill.userId.firstName || bill.userId.email);
+      const hasResvPopulated = bill.reservationId?.userId && typeof bill.reservationId.userId === "object" && (bill.reservationId.userId.firstName || bill.reservationId.userId.email);
+      if (!hasDirectPopulated && !hasResvPopulated) {
+        const directId = bill.userId?._id || (typeof bill.userId === "string" || mongoose.Types.ObjectId.isValid(bill.userId) ? bill.userId : null);
+        const resvUserId = bill.reservationId?.userId?._id || (typeof bill.reservationId?.userId === "string" || mongoose.Types.ObjectId.isValid(bill.reservationId?.userId) ? bill.reservationId?.userId : null);
+        if (directId) missingUserIds.add(String(directId));
+        if (resvUserId) missingUserIds.add(String(resvUserId));
+      }
+    }
+
+    const extraUserMap = new Map();
+    if (missingUserIds.size > 0) {
+      const extraUsers = await User.find({ _id: { $in: Array.from(missingUserIds) } })
+        .select("firstName lastName email phone avatar profileImage photoURL")
+        .lean();
+      for (const u of extraUsers) {
+        extraUserMap.set(String(u._id), u);
+      }
+    }
+
+    // 4. Assemble unified records
     let records = overdueBills.map((bill) => {
-      const tenant = bill.userId || {};
       const resv = bill.reservationId || {};
+      const directUser = (bill.userId && typeof bill.userId === "object" && (bill.userId.firstName || bill.userId.email)) ? bill.userId : null;
+      const resvUser = (resv.userId && typeof resv.userId === "object" && (resv.userId.firstName || resv.userId.email)) ? resv.userId : null;
+      const fallbackUser = (bill.userId && extraUserMap.get(String(bill.userId._id || bill.userId)))
+        || (resv.userId && extraUserMap.get(String(resv.userId._id || resv.userId)))
+        || null;
+
+      const tenant = directUser || resvUser || fallbackUser || (bill.userId && typeof bill.userId === "object" ? bill.userId : {}) || (resv.userId && typeof resv.userId === "object" ? resv.userId : {});
       const room = bill.roomId || resv.roomId || {};
       const billNotices = noticesByBill.get(String(bill._id)) || [];
       
@@ -118,12 +150,13 @@ export const getOverdueNoticesAction = async (req, res, next) => {
 
       const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
       const roomName = room.name || room.roomNumber || resv.roomNumber || "Room";
+      const tenantId = tenant._id || (bill.userId?._id || bill.userId) || (resv.userId?._id || resv.userId) || null;
 
       return {
         _id: latestNotice?._id || `bill-${bill._id}`,
         billId: bill._id,
         billNumber: String(bill._id).slice(-6).toUpperCase(),
-        tenantId: tenant._id,
+        tenantId,
         tenantName,
         tenantEmail: tenant.email || "",
         tenantPhone: tenant.phone || "",
@@ -219,9 +252,19 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
     }
 
     const { billId } = req.params;
-    const { noticeType, noticeNumber: rawNoticeNumber, noticeMessage, forceOverride } = req.body;
+    const {
+      noticeType,
+      noticeStage,
+      noticeNumber: rawNoticeNumber,
+      noticeMessage,
+      message,
+      notes,
+      forceOverride,
+    } = req.body;
 
-    const noticeNumber = parseNoticeNumber(rawNoticeNumber !== undefined ? rawNoticeNumber : noticeType);
+    const rawStage = rawNoticeNumber !== undefined ? rawNoticeNumber : (noticeType || noticeStage);
+    const noticeNumber = parseNoticeNumber(rawStage);
+    const finalNoticeMessage = (noticeMessage || message || notes || "").trim();
     if (!noticeNumber) {
       return res.status(400).json({
         success: false,
@@ -232,7 +275,10 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
     // Fetch target bill
     const bill = await Bill.findById(billId)
       .populate("userId", "firstName lastName email phone branch")
-      .populate("reservationId")
+      .populate({
+        path: "reservationId",
+        populate: { path: "userId", select: "firstName lastName email phone branch" },
+      })
       .populate("roomId", "name roomNumber branch");
 
     if (!bill) {
@@ -278,17 +324,37 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
       });
     }
 
-    // Compute frozen snapshot
+    // Resolve tenant via multi-tier fallback: direct bill.userId -> reservationId.userId -> User lookup
+    const directUser = (bill.userId && typeof bill.userId === "object" && (bill.userId._id || bill.userId.firstName || bill.userId.email)) ? bill.userId : null;
+    const resvUser = (bill.reservationId?.userId && typeof bill.reservationId.userId === "object" && (bill.reservationId.userId._id || bill.reservationId.userId.firstName || bill.reservationId.userId.email)) ? bill.reservationId.userId : null;
 
+    let tenantUser = directUser || resvUser;
+    let resolvedTenantId = tenantUser?._id
+      || (bill.userId && (mongoose.Types.ObjectId.isValid(bill.userId) || typeof bill.userId === "string") ? bill.userId : null)
+      || (bill.reservationId?.userId && (mongoose.Types.ObjectId.isValid(bill.reservationId.userId) || typeof bill.reservationId.userId === "string") ? bill.reservationId.userId : null);
+
+    if (!tenantUser && resolvedTenantId) {
+      tenantUser = await User.findById(resolvedTenantId).select("firstName lastName email phone branch").lean();
+    }
+
+    // Validation Guard: Ensure a valid tenant is linked
+    if (!resolvedTenantId) {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot dispatch overdue notice: No active tenant account is linked to this billing statement.",
+      });
+    }
+
+    tenantUser = tenantUser || {};
+    const tenantName = `${tenantUser.firstName || ""} ${tenantUser.lastName || ""}`.trim() || "Tenant";
+
+    // Compute frozen snapshot
     const daysOverdue = bill.dueDate
       ? Math.max(0, dayjs().diff(dayjs(bill.dueDate), "day"))
       : 0;
 
     const penaltyAmount = Number(bill.charges?.penalty || 0);
     const totalFrozenAmount = Number(outstandingAmount || 0);
-
-    const tenantUser = bill.userId || {};
-    const tenantName = `${tenantUser.firstName || ""} ${tenantUser.lastName || ""}`.trim() || "Tenant";
 
     // 1. Create OverdueNotice Document
     let noticeDoc = await OverdueNotice.findOne({
@@ -305,13 +371,13 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
       noticeDoc.penaltyAmountAtIssuance = penaltyAmount;
       noticeDoc.totalAmountAtIssuance = totalFrozenAmount;
       noticeDoc.daysOverdueAtIssuance = daysOverdue;
-      noticeDoc.noticeMessage = (noticeMessage || "").trim();
+      noticeDoc.noticeMessage = finalNoticeMessage;
       noticeDoc.deliveryStatus = "pending";
     } else {
       noticeDoc = new OverdueNotice({
         billId: bill._id,
         reservationId: bill.reservationId?._id || bill.reservationId,
-        tenantId: tenantUser._id,
+        tenantId: resolvedTenantId,
         branch: bill.branch,
         noticeNumber,
         outstandingAmountAtIssuance: totalFrozenAmount,
@@ -320,7 +386,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
         daysOverdueAtIssuance: daysOverdue,
         issuedBy: adminUserId,
         issuedAt: new Date(),
-        noticeMessage: (noticeMessage || "").trim(),
+        noticeMessage: finalNoticeMessage,
         deliveryStatus: "pending",
       });
     }
@@ -376,7 +442,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
           ? `URGENT: Your bill #${String(bill._id).slice(-6)} (₱${totalFrozenAmount.toLocaleString()}) is ${daysOverdue} days overdue. Penalties continue to accrue.`
           : `Friendly Reminder: Your bill #${String(bill._id).slice(-6)} (₱${totalFrozenAmount.toLocaleString()}) was due on ${dayjs(bill.dueDate).format("MM/DD/YYYY")}. Please settle immediately.`;
 
-      await notify.billingNotice(tenantUser._id, {
+      await notify.billingNotice(resolvedTenantId, {
         notificationType: "bill_due_reminder",
         title: notifTitle,
         message: notifMsg,
@@ -423,7 +489,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
       if (!existingReview) {
         existingReview = new TerminationReview({
           reservationId: resvId,
-          tenantId: tenantUser._id,
+          tenantId: resolvedTenantId,
           branch: bill.branch,
           triggerType: "notice_exhaustion",
           triggeredByNoticeId: noticeDoc._id,
@@ -457,7 +523,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
     await logBillingAudit({
       action: "DISPATCH_OVERDUE_NOTICE",
       actorId: adminUserId,
-      targetUserId: tenantUser._id,
+      targetUserId: resolvedTenantId,
       branch: bill.branch,
       details: {
         billId: bill._id,

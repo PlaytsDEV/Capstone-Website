@@ -196,6 +196,39 @@ export default function TenantViolationManager({ branch }) {
 
   return (
     <div className="space-y-4">
+      {/* Header bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
+            <AlertTriangle size={18} className="text-rose-600 dark:text-rose-400" />
+            Tenant Violation & Warning Log
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Track dormitory rule infractions, warning counts, penalty fees, and photo evidence.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={fetchViolations}
+            disabled={loading}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+            title="Refresh tenant violation logs"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setRecordModalOpen(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white cursor-pointer"
+            title="Log new tenant rule infraction"
+          >
+            <Plus size={14} /> Log Violation
+          </button>
+        </div>
+      </div>
+
       {/* Top KPI Metrics Banner */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
         <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
@@ -259,20 +292,45 @@ export default function TenantViolationManager({ branch }) {
         </div>
       </div>
 
-      {/* Main Container */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4">
-        {/* Header bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-              <AlertTriangle size={18} className="text-rose-600 dark:text-rose-400" />
-              Tenant Violation & Warning Log
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Track dormitory rule infractions, warning counts, penalty fees, and photo evidence.
-            </p>
+      {/* Violations Data Card (Single Container, No Nested Boxes) */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        {/* Filter Controls Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5">
+          {/* Status Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+            {STATUS_FILTERS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                  statusFilter === tab.id
+                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-950 font-bold"
+                    : "text-muted-foreground hover:bg-card hover:text-card-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-2.5">
+
+          {/* Right Controls: Category & Search */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium hidden sm:inline">Category:</span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+              >
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="relative flex items-center w-full sm:w-56">
               <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
               <input
@@ -286,260 +344,203 @@ export default function TenantViolationManager({ branch }) {
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground"
+                  className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                  aria-label="Clear search query"
                 >
                   <X size={12} />
                 </button>
               )}
             </div>
-
-            <button
-              type="button"
-              onClick={fetchViolations}
-              disabled={loading}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
-              title="Refresh tenant violation logs"
-            >
-              <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setRecordModalOpen(true)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-              title="Log new tenant rule infraction"
-            >
-              <Plus size={14} /> Log Violation
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border/60 py-3">
-          {/* Status Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
-            {STATUS_FILTERS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatusFilter(tab.id)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  statusFilter === tab.id
-                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-950"
-                    : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-card-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Category Dropdown */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-medium hidden sm:inline">Category:</span>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
-            >
-              {CATEGORY_OPTIONS.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
         {/* Violations Data Table */}
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-background">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-background">
+              <tr>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Logged Date
+                </th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Tenant & Room
+                </th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Category
+                </th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Warning #
+                </th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Evidence
+                </th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Penalty Fee
+                </th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50 bg-card">
+              {loading ? (
+                // Skeleton State
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-4 py-3.5">
+                      <div className="h-3 w-20 rounded bg-muted"></div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-full bg-muted"></div>
+                        <div className="space-y-1.5">
+                          <div className="h-3 w-28 rounded bg-muted"></div>
+                          <div className="h-2.5 w-16 rounded bg-muted"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="h-5 w-24 rounded bg-muted"></div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="h-4 w-12 rounded bg-muted"></div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="h-5 w-20 rounded bg-muted"></div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="h-3 w-16 rounded bg-muted"></div>
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="h-3 w-14 rounded bg-muted ml-auto"></div>
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="h-6 w-16 rounded bg-muted ml-auto"></div>
+                    </td>
+                  </tr>
+                ))
+              ) : filteredViolations.length === 0 ? (
                 <tr>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Logged Date
-                  </th>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Tenant & Room
-                  </th>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Category
-                  </th>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Warning #
-                  </th>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Evidence
-                  </th>
-                  <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Penalty Fee
-                  </th>
-                  <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Action
-                  </th>
+                  <td colSpan={8} className="py-12 text-center">
+                    <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
+                      <CheckCircle2 size={28} className="text-emerald-600 mb-2" />
+                      <p className="font-bold text-card-foreground">No violations found</p>
+                      <p className="mt-0.5 text-xs">
+                        {searchQuery
+                          ? `No infraction records match "${searchQuery}"`
+                          : "Zero tenant rule infractions currently recorded for this selection."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setRecordModalOpen(true)}
+                        className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted"
+                      >
+                        <Plus size={13} /> Log New Violation
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50 bg-card">
-                {loading ? (
-                  // Skeleton State
-                  Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      <td className="px-4 py-3.5">
-                        <div className="h-3 w-20 rounded bg-muted"></div>
+              ) : (
+                filteredViolations.map((v) => {
+                  const primaryPhoto = v.evidenceUrls?.[0] || v.evidenceUrl;
+                  return (
+                    <tr
+                      key={v._id}
+                      onClick={() => setSelectedViolation(v)}
+                      className="group cursor-pointer transition-colors hover:bg-muted/30"
+                    >
+                      <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
+                        {new Date(v.createdAt).toLocaleDateString("en-PH")}
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="h-8 w-8 rounded-full bg-muted"></div>
-                          <div className="space-y-1.5">
-                            <div className="h-3 w-28 rounded bg-muted"></div>
-                            <div className="h-2.5 w-16 rounded bg-muted"></div>
+                          <ProfileAvatar
+                            user={{ name: v.tenantName }}
+                            initials={getInitials(v.tenantName)}
+                            size={32}
+                            defaultOnly
+                          />
+                          <div>
+                            <p className="font-bold text-card-foreground">{v.tenantName}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {v.roomName} {v.branch ? `· ${v.branch}` : ""}
+                            </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="h-5 w-24 rounded bg-muted"></div>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                          {v.violationType?.replace(/_/g, " ")}
+                        </span>
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="h-4 w-12 rounded bg-muted"></div>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {v.warningNumber ? (
+                          <span className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-slate-800 dark:text-slate-200">
+                            #{v.warningNumber}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="h-5 w-20 rounded bg-muted"></div>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {(() => {
+                          const badgeCfg = getStatusBadgeConfig(v.status);
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeCfg.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${badgeCfg.dot}`} />
+                              <span>{v.status?.replace(/_/g, " ")}</span>
+                            </span>
+                          );
+                        })()}
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="h-3 w-16 rounded bg-muted"></div>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        {primaryPhoto ? (
+                          <a
+                            href={primaryPhoto}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
+                            title="View photo evidence in new tab"
+                          >
+                            <ExternalLink size={12} /> View Photo
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic">None</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="h-3 w-14 rounded bg-muted ml-auto"></div>
+                      <td className="px-4 py-3 text-right font-bold text-red-600 whitespace-nowrap">
+                        ₱{Number(v.penaltyApplied || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="h-6 w-16 rounded bg-muted ml-auto"></div>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedViolation(v)}
+                            aria-label={`View details for infraction #${String(v._id).slice(-6).toUpperCase()}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground shadow-xs hover:bg-muted transition cursor-pointer"
+                          >
+                            <Eye size={12} /> Details
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViolationToDelete(v)}
+                            aria-label={`Delete infraction #${String(v._id).slice(-6).toUpperCase()}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400 shadow-xs hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
+                            title="Delete violation record"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))
-                ) : filteredViolations.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center">
-                      <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
-                        <CheckCircle2 size={28} className="text-emerald-600 mb-2" />
-                        <p className="font-bold text-card-foreground">No violations found</p>
-                        <p className="mt-0.5 text-xs">
-                          {searchQuery
-                            ? `No infraction records match "${searchQuery}"`
-                            : "Zero tenant rule infractions currently recorded for this selection."}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setRecordModalOpen(true)}
-                          className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted"
-                        >
-                          <Plus size={13} /> Log New Violation
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredViolations.map((v) => {
-                    const primaryPhoto = v.evidenceUrls?.[0] || v.evidenceUrl;
-                    return (
-                      <tr
-                        key={v._id}
-                        onClick={() => setSelectedViolation(v)}
-                        className="group cursor-pointer transition-colors hover:bg-muted/30"
-                      >
-                        <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
-                          {new Date(v.createdAt).toLocaleDateString("en-PH")}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <ProfileAvatar
-                              user={{ name: v.tenantName }}
-                              initials={getInitials(v.tenantName)}
-                              size={32}
-                              defaultOnly
-                            />
-                            <div>
-                              <p className="font-bold text-card-foreground">{v.tenantName}</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {v.roomName} {v.branch ? `· ${v.branch}` : ""}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                            {v.violationType?.replace(/_/g, " ")}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {v.warningNumber ? (
-                            <span className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-slate-800 dark:text-slate-200">
-                              #{v.warningNumber}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground italic">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {(() => {
-                            const badgeCfg = getStatusBadgeConfig(v.status);
-                            return (
-                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeCfg.text}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${badgeCfg.dot}`} />
-                                <span>{v.status?.replace(/_/g, " ")}</span>
-                              </span>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          {primaryPhoto ? (
-                            <a
-                              href={primaryPhoto}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
-                              title="View photo evidence in new tab"
-                            >
-                              <ExternalLink size={12} /> View Photo
-                            </a>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground italic">None</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-red-600 whitespace-nowrap">
-                          ₱{Number(v.penaltyApplied || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedViolation(v)}
-                              aria-label={`View details for infraction #${String(v._id).slice(-6).toUpperCase()}`}
-                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground shadow-xs hover:bg-muted transition cursor-pointer"
-                            >
-                              <Eye size={12} /> Details
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setViolationToDelete(v)}
-                              aria-label={`Delete infraction #${String(v._id).slice(-6).toUpperCase()}`}
-                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400 shadow-xs hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
-                              title="Delete violation record"
-                            >
-                              <Trash2 size={12} /> Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

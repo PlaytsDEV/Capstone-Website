@@ -8,6 +8,8 @@ import {
   createMaintenanceSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
+  overdueNoticeActionSchema,
+  adjudicateViolationSchema,
 } from "../validation/zodSchemas.js";
 
 describe("validateRequest middleware", () => {
@@ -223,4 +225,67 @@ describe("zodSchemas suite", () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe("overdueNoticeActionSchema", () => {
+    it("validates valid overdue notice payload", () => {
+      const result = overdueNoticeActionSchema.safeParse({
+        noticeStage: "notice_1",
+        message: "Your monthly rent is 5 days overdue.",
+        sendEmail: true,
+        sendInApp: true,
+        customPenalty: 300,
+      });
+      expect(result.success).toBe(true);
+      expect(result.data.noticeStage).toBe("notice_1");
+      expect(result.data.sendEmail).toBe(true);
+      expect(result.data.customPenalty).toBe(300);
+    });
+
+    it("rejects negative customPenalty and excess message length", () => {
+      const result = overdueNoticeActionSchema.safeParse({
+        customPenalty: -100,
+        message: "a".repeat(3001),
+      });
+      expect(result.success).toBe(false);
+      expect(result.error.issues.some((i) => i.path.includes("customPenalty"))).toBe(true);
+      expect(result.error.issues.some((i) => i.path.includes("message"))).toBe(true);
+    });
+
+    it("preserves noticeNumber, noticeType, and noticeMessage sent by frontend modal", () => {
+      const result = overdueNoticeActionSchema.safeParse({
+        noticeNumber: 1,
+        noticeType: "notice_1",
+        noticeMessage: "Please settle your outstanding balance at your earliest convenience.",
+      });
+      expect(result.success).toBe(true);
+      expect(result.data.noticeNumber).toBe(1);
+      expect(result.data.noticeType).toBe("notice_1");
+      expect(result.data.noticeMessage).toBe("Please settle your outstanding balance at your earliest convenience.");
+    });
+  });
+
+  describe("adjudicateViolationSchema", () => {
+    it("validates valid adjudication payload", () => {
+      const result = adjudicateViolationSchema.safeParse({
+        decision: "confirmed",
+        decisionReason: "Tenant confirmed noise violation on balcony after 11 PM.",
+        targetStatus: "warning_issued",
+        penaltyApplied: 0,
+        chargeToBill: false,
+      });
+      expect(result.success).toBe(true);
+      expect(result.data.decision).toBe("confirmed");
+      expect(result.data.targetStatus).toBe("warning_issued");
+    });
+
+    it("rejects missing decisionReason", () => {
+      const result = adjudicateViolationSchema.safeParse({
+        decision: "confirmed",
+        decisionReason: "",
+      });
+      expect(result.success).toBe(false);
+      expect(result.error.issues.some((i) => i.path.includes("decisionReason"))).toBe(true);
+    });
+  });
 });
+
