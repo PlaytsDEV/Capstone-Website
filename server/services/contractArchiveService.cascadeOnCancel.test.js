@@ -32,6 +32,7 @@ const draftContract = (overrides = {}) => ({
   archivedAt: null,
   isCurrent: true,
   isCanonical: true,
+  tenantVisible: true,
   statusHistory: [],
   ...overrides,
 });
@@ -49,13 +50,25 @@ describe("archiveContractForCancelledReservation", () => {
     expect(archived.isCurrent).toBe(false);
     expect(archived.isCanonical).toBe(false);
     expect(archived.tenantVisible).toBe(false);
+    expect(archived.publicationStatus).toBe("withdrawn");
     expect(archived.archivedBy).toBe("admin-1");
-    expect(archived.archiveReason).toMatch(/early-stage draft lifecycle/);
+    expect(archived.archiveReason).toMatch(/Reservation cancelled/);
     expect(archived.statusHistory).toHaveLength(1);
   });
 
-  test.each(["incomplete", "ready_for_generation"])(
-    "also archives a %s-status Contract",
+  test.each([
+    "incomplete",
+    "ready_for_generation",
+    "generated",
+    "awaiting_signatures",
+    "partially_signed",
+    "signed",
+    "awaiting_notarization",
+    "notarized",
+    "ready_for_publication",
+    "published",
+  ])(
+    "archives a %s-status Contract when its reservation is cancelled",
     async (status) => {
       const ContractModel = makeFakeContractModel([draftContract({ status })]);
       const result = await archiveContractForCancelledReservation({
@@ -64,20 +77,13 @@ describe("archiveContractForCancelledReservation", () => {
         adapters: { ContractModel },
       });
       expect(result).toHaveLength(1);
-    },
-  );
-
-  test.each(["generated", "published", "active", "signed"])(
-    "does not touch a %s Contract that has progressed past draft",
-    async (status) => {
-      const ContractModel = makeFakeContractModel([draftContract({ status })]);
-      const result = await archiveContractForCancelledReservation({
-        reservationId: "reservation-1",
-        actorId: "admin-1",
-        adapters: { ContractModel },
-      });
-      expect(result).toHaveLength(0);
-      expect(ContractModel._store.get("contract-1").archivedAt).toBeNull();
+      const archived = result[0];
+      expect(archived.status).toBe("cancelled");
+      expect(archived.archivedAt).toBeInstanceOf(Date);
+      expect(archived.isCurrent).toBe(false);
+      expect(archived.isCanonical).toBe(false);
+      expect(archived.tenantVisible).toBe(false);
+      expect(archived.publicationStatus).toBe("withdrawn");
     },
   );
 

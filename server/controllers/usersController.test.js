@@ -51,9 +51,13 @@ const contractModel = {
 const archiveContractForCancelledReservation = jest.fn().mockResolvedValue([]);
 const setCustomUserClaims = jest.fn();
 const deleteUserFromAuth = jest.fn();
+const updateUserInAuth = jest.fn().mockResolvedValue({});
+const revokeRefreshTokensInAuth = jest.fn().mockResolvedValue({});
 const getAuth = jest.fn(() => ({
   setCustomUserClaims,
   deleteUser: deleteUserFromAuth,
+  updateUser: updateUserInAuth,
+  revokeRefreshTokens: revokeRefreshTokensInAuth,
 }));
 const invalidateUserSessions = jest.fn(async () => ({ failures: [] }));
 const auditLog = jest.fn();
@@ -1302,5 +1306,119 @@ describe("usersController", () => {
       metadata: expect.objectContaining({ mongoDeletion: "skipped", reconciliationRequired: true }),
     }));
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("archiveUser disables user in Firebase Auth and revokes refresh tokens", async () => {
+    updateUserInAuth.mockClear();
+    revokeRefreshTokensInAuth.mockClear();
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-uid-1",
+      role: "applicant",
+      isArchived: false,
+      archive: jest.fn().mockResolvedValue(true),
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011" }),
+    };
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "actor-1" }) }),
+    });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-admin-1" },
+      isOwner: true,
+    };
+    const res = createResponse();
+    await archiveUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(targetUser.archive).toHaveBeenCalled();
+    expect(updateUserInAuth).toHaveBeenCalledWith("firebase-uid-1", { disabled: true });
+    expect(revokeRefreshTokensInAuth).toHaveBeenCalledWith("firebase-uid-1");
+  });
+
+  test("restoreUser re-enables user in Firebase Auth", async () => {
+    updateUserInAuth.mockClear();
+    revokeRefreshTokensInAuth.mockClear();
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-uid-1",
+      role: "applicant",
+      isArchived: true,
+      restore: jest.fn().mockResolvedValue(true),
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011" }),
+    };
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "actor-1" }) }),
+    });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-admin-1" },
+      isOwner: true,
+    };
+    const res = createResponse();
+    await restoreUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(targetUser.restore).toHaveBeenCalled();
+    expect(updateUserInAuth).toHaveBeenCalledWith("firebase-uid-1", { disabled: false });
+    expect(revokeRefreshTokensInAuth).not.toHaveBeenCalled();
+  });
+
+  test("suspendUser disables user in Firebase Auth and revokes refresh tokens", async () => {
+    updateUserInAuth.mockClear();
+    revokeRefreshTokensInAuth.mockClear();
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-uid-1",
+      role: "applicant",
+      suspend: jest.fn().mockResolvedValue(true),
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011" }),
+    };
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockResolvedValue({ _id: "admin-1" });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      body: { reason: "Policy violation" },
+      user: { uid: "firebase-admin-1" },
+      isOwner: true,
+    };
+    const res = createResponse();
+    await suspendUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(targetUser.suspend).toHaveBeenCalled();
+    expect(updateUserInAuth).toHaveBeenCalledWith("firebase-uid-1", { disabled: true });
+    expect(revokeRefreshTokensInAuth).toHaveBeenCalledWith("firebase-uid-1");
+  });
+
+  test("reactivateUser re-enables user in Firebase Auth", async () => {
+    updateUserInAuth.mockClear();
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      firebaseUid: "firebase-uid-1",
+      role: "applicant",
+      accountStatus: "suspended",
+      reactivate: jest.fn().mockResolvedValue(true),
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011" }),
+    };
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockResolvedValue({ _id: "admin-1" });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-admin-1" },
+      isOwner: true,
+    };
+    const res = createResponse();
+    await reactivateUser(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(targetUser.reactivate).toHaveBeenCalled();
+    expect(updateUserInAuth).toHaveBeenCalledWith("firebase-uid-1", { disabled: false });
   });
 });

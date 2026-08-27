@@ -234,6 +234,7 @@ function PreviousContractsSection({ history, onPreview, onDownload, actionBusyId
               const isReplacement = item.contractPurpose === "replacement" || item.status === "replaced";
               const isExpired = item.status === "expired" || item.status === "completed";
               const isRenewed = item.status === "renewed";
+              const isCancelled = item.status === "cancelled" || item.status === "voided";
 
               const statusBadgeLabel = isReplacement
                 ? "Superseded (Transfer)"
@@ -241,12 +242,16 @@ function PreviousContractsSection({ history, onPreview, onDownload, actionBusyId
                 ? "Renewed"
                 : isExpired
                 ? "Term Expired"
+                : isCancelled
+                ? "Cancelled"
                 : item.status?.replace(/_/g, " ") || "Archived";
 
               const statusDotColor = isReplacement
                 ? "bg-amber-500"
                 : isRenewed
                 ? "bg-blue-500"
+                : isCancelled
+                ? "bg-rose-500"
                 : "bg-slate-400";
 
               return (

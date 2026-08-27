@@ -29,7 +29,11 @@ import { recoverFromAuthFailure } from "../../../shared/utils/identitySafety";
 import {
   validateEmail,
   getFirebaseErrorMessage,
+  generateUsername,
+  sanitizeName,
+  formatProperCase,
 } from "../../../shared/utils/authValidation";
+import { authApi } from "../../../shared/api/apiClient";
 import {
   AUTH_TOAST_DURATION,
   buildAuthSuccessMessage,
@@ -490,10 +494,6 @@ function SignIn() {
  resetLockoutState();
  handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
  } catch (loginError) {
- // Preserve the Firebase identity. Backend failures are recoverable and must
- // never be treated as authorization to delete an authentication account.
- await recoverFromAuthFailure(auth, loginError);
-
  const status = loginError.response?.status;
  const errMsg = loginError.message || "";
 
@@ -501,11 +501,61 @@ function SignIn() {
  status === 404 ||
  /not found|not registered|register first/i.test(errMsg)
  ) {
+ try {
+ const rawName = (firebaseUser.displayName || "")
+ .replace(/[^a-zA-Z\s'-]/g, "")
+ .replace(/\s+/g, " ")
+ .trim();
+ const parts = rawName.split(" ");
+ const firstName = formatProperCase(parts[0] || "User");
+ const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
+
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            try {
+              const usernameCandidate =
+                attempt < 4
+                  ? generateUsername(firebaseUser.email, attempt)
+                  : `${generateUsername(firebaseUser.email, 0)}_${Date.now().toString(36).slice(-4)}`;
+              await authApi.register({
+                email: firebaseUser.email,
+                username: usernameCandidate,
+                firstName: sanitizeName(firstName).trim(),
+                lastName: sanitizeName(lastName).trim(),
+                phone: firebaseUser.phoneNumber || "",
+              });
+              break;
+            } catch (regAttemptError) {
+              const code = regAttemptError?.code || regAttemptError?.response?.data?.code;
+              if (code !== "USERNAME_TAKEN") throw regAttemptError;
+            }
+          }
+ const postRegLogin = await login();
+ resetLockoutState();
+ handlePostAuthFlow(postRegLogin, firebaseUser.displayName || firebaseUser.email || "there");
+ return;
+ } catch (autoRegError) {
+ await recoverFromAuthFailure(auth, autoRegError);
+ const regErrCode = autoRegError.response?.data?.code || autoRegError.code || "";
+ if (regErrCode === "IDENTITY_CONFLICT") {
  showNotification(
- "This Google account isn't registered yet. Please sign up first.",
+ "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
  "warning",
+ 7000,
  );
- } else if (status === 403) {
+ return;
+ }
+ showNotification(
+ "Account registration could not be completed. Please try signing up or contact support.",
+ "error",
+ );
+ return;
+ }
+ }
+
+ // Preserve the Firebase identity for non-404 backend failures.
+ await recoverFromAuthFailure(auth, loginError);
+
+ if (status === 403) {
  const code = loginError.response?.data?.code;
  if (code === "EMAIL_NOT_VERIFIED") {
  showNotification(

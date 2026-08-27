@@ -137,6 +137,25 @@ const canTransitionTenantStatus = (fromStatus, toStatus) => {
   return (TENANT_STATUS_TRANSITIONS[fromStatus] || []).includes(toStatus);
 };
 
+const syncFirebaseUserDisabledState = async (firebaseUid, disabled) => {
+  if (!firebaseUid) return;
+  const auth = getAuth();
+  if (!auth) return;
+  try {
+    await auth.updateUser(firebaseUid, { disabled });
+    if (disabled && typeof auth.revokeRefreshTokens === "function") {
+      await auth.revokeRefreshTokens(firebaseUid);
+    }
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") {
+      logger.warn(
+        { error, firebaseUid, disabled },
+        "[syncFirebaseUserDisabledState] Firebase sync error (non-fatal)",
+      );
+    }
+  }
+};
+
 const isLifecycleManagedRole = (role) => LIFECYCLE_MANAGED_ROLES.includes(role);
 
 const hasBranchAccessToTargetUser = async (targetUser, branchFilter) => {
@@ -1215,6 +1234,7 @@ export const deleteUser = async (req, res, next) => {
           "Blocked via delete endpoint because the account has significant history",
         );
         await invalidateUserSessions({ user, reason: "account_blocked", req });
+        await syncFirebaseUserDisabledState(user.firebaseUid, true);
 
         await auditLogger.logModification(
           req,
@@ -1241,6 +1261,7 @@ export const deleteUser = async (req, res, next) => {
       if (!wasArchived) {
         await user.archive(actor?._id || null);
         await invalidateUserSessions({ user, reason: "account_archived", req });
+        await syncFirebaseUserDisabledState(user.firebaseUid, true);
       }
 
       await auditLogger.logModification(
@@ -1571,6 +1592,7 @@ export const suspendUser = async (req, res, next) => {
 
     await targetUser.suspend(adminUser?._id, reason || "Suspended by admin");
     await invalidateUserSessions({ user: targetUser, reason: "account_suspended", req });
+    await syncFirebaseUserDisabledState(targetUser.firebaseUid, true);
 
     await auditLogger.logModification(
       req,
@@ -1638,6 +1660,7 @@ export const reactivateUser = async (req, res, next) => {
 
     const invalidation = await invalidateUserSessions({ user: targetUser, reason: "account_reactivated", req });
     await targetUser.reactivate(adminUser?._id);
+    await syncFirebaseUserDisabledState(targetUser.firebaseUid, false);
 
     await auditLogger.logModification(
       req,
@@ -1710,6 +1733,7 @@ export const restoreUser = async (req, res, next) => {
 
     const invalidation = await invalidateUserSessions({ user: targetUser, reason: "account_restored", req });
     await targetUser.restore(adminUser?._id || null);
+    await syncFirebaseUserDisabledState(targetUser.firebaseUid, false);
 
     await auditLogger.logModification(
       req,
@@ -1766,6 +1790,7 @@ export const archiveUser = async (req, res, next) => {
 
     await targetUser.archive(actor?._id || null);
     await invalidateUserSessions({ user: targetUser, reason: "account_archived", req });
+    await syncFirebaseUserDisabledState(targetUser.firebaseUid, true);
 
     await auditLogger.logModification(
       req,
@@ -1815,6 +1840,7 @@ export const banUser = async (req, res, next) => {
 
     await targetUser.ban(adminUser?._id, reason || "Banned by admin");
     await invalidateUserSessions({ user: targetUser, reason: "account_banned", req });
+    await syncFirebaseUserDisabledState(targetUser.firebaseUid, true);
 
     await auditLogger.logModification(
       req,

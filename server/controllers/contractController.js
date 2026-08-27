@@ -59,6 +59,7 @@ import {
 } from "../services/contractAcknowledgementService.js";
 import {
   archiveContract as archiveContractRecord,
+  archiveContractForCancelledReservation,
   buildContractDeletionEligibility,
   permanentlyDeleteTestContract,
   restoreArchivedContract,
@@ -1276,14 +1277,33 @@ export const getMyCurrentContract = async (req, res) => {
     const user = await tenantActor(req);
     let contract = await resolveTenantCanonicalContract(user._id);
 
+    // If the resolved contract belongs to a reservation that has been cancelled or rejected,
+    // auto-reconcile it immediately by cascading archive/void and excluding it.
+    if (contract && contract.reservationId) {
+      const parentReservation = await Reservation.findById(contract.reservationId).select("status").lean();
+      if (parentReservation && ["cancelled", "rejected", "archived"].includes(parentReservation.status)) {
+        await archiveContractForCancelledReservation({
+          reservationId: contract.reservationId,
+          actorId: user._id,
+        }).catch((err) => logger.warn({ err }, "[getMyCurrentContract] On-the-fly cancellation archive failed"));
+        try {
+          emitToUser(user._id, "contract:updated", { status: "cancelled", reservationId: contract.reservationId });
+        } catch (_) {
+          // Socket dispatch failure is non-fatal
+        }
+        contract = null;
+      }
+    }
+
     if (!contract) {
       try {
         const settledReservation = await Reservation.findOne({
           userId: user._id,
+          status: { $nin: ["cancelled", "rejected", "archived", "completed"] },
           $or: [
             { initialPaymentStatus: "paid" },
-            { status: "reserved" },
-            { paymentStatus: { $in: ["paid", "paid_in_full"] } },
+            { advanceRentPaid: true },
+            { status: "moveIn" },
           ],
         }).sort({ createdAt: -1 });
 

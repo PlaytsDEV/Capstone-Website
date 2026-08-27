@@ -13,8 +13,8 @@ export const TENANT_CONTRACT_STATUS = Object.freeze({
   active: "Active",
   expiring_soon: "Expiring Soon",
   expired: "Expired",
-  terminated: "Expired",
-  cancelled: "Expired",
+  terminated: "Terminated",
+  cancelled: "Cancelled",
 });
 
 export const formatTenantContractStatus = (status) =>
