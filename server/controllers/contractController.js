@@ -56,6 +56,7 @@ import {
 import {
   acknowledgeContract,
   getAcknowledgementStatus,
+  getAcknowledgementStatusForContract,
 } from "../services/contractAcknowledgementService.js";
 import {
   archiveContract as archiveContractRecord,
@@ -1226,7 +1227,18 @@ export const getTenantCurrentContract = async (req, res) => {
     const contract = await findCurrentContract({ tenantId: req.params.tenantId });
     if (!contract) return res.status(404).json({ error: "No current Contract found.", code: "CONTRACT_NOT_FOUND" });
     assertContractBranchAccess(req, contract.branch);
-    res.json({ contract });
+    // Embed the canonical acknowledgement state (draft or final) so Admin
+    // Contract Management / Tenant Details render Pending/Acknowledged from
+    // the same source the tenant + mobile use, in one call. The standalone
+    // GET /contracts/:id/acknowledgement endpoint stays for live refetch.
+    let acknowledgement = null;
+    try {
+      acknowledgement = await getAcknowledgementStatusForContract(contract, contract.tenantId);
+    } catch (ackErr) {
+      logger.warn({ err: ackErr, contractId: String(contract._id) }, "[getTenantCurrentContract] acknowledgement resolve failed (non-fatal)");
+    }
+    const contractPayload = contract.toObject ? contract.toObject() : contract;
+    res.json({ contract: { ...contractPayload, acknowledgement } });
   } catch (error) {
     if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {
       logger.error(
@@ -1334,9 +1346,16 @@ export const getMyCurrentContract = async (req, res) => {
               contractAvailable: true,
               state: "STAY_PROOF_AVAILABLE",
               contract: {
+                // No canonical Contract row exists for this tenant yet — this
+                // object is derived from the active Stay only. `id` is a
+                // human reference string, NOT a Mongo ObjectId, so it must
+                // never be used to hit /contracts/my/:id/documents/*.
+                // `isSynthetic` tells the client to render the DOM preview
+                // only (no canonical-PDF Print/Download, no acknowledgement).
                 id: stayData.referenceNumber,
                 contractId: stayData.referenceNumber,
                 contractNumber: stayData.referenceNumber,
+                isSynthetic: true,
                 isCanonical: true,
                 status: "generated",
                 displayStatus: "Lease Draft — Review Copy",
@@ -1352,16 +1371,26 @@ export const getMyCurrentContract = async (req, res) => {
                 advanceRentAmount: stayData.advanceRent,
                 securityDepositAmount: stayData.securityDeposit,
                 stayProofAvailable: true,
-                preparedDocument: { available: true },
+                preparedDocument: { available: false },
                 finalDocument: { available: false },
                 tenantDocument: {
-                  available: true,
+                  // No real prepared PDF is resolvable without a Contract
+                  // row — the tenant sees the live DOM preview instead.
+                  available: false,
                   type: "generated_draft",
                   label: "Lease Draft — For Review",
                   isFinal: false,
                 },
+                acknowledgement: {
+                  required: false,
+                  acknowledged: false,
+                  acknowledgedAt: null,
+                  documentVersion: null,
+                  documentKind: null,
+                  documentLabel: null,
+                },
               },
-              documents: { prepared: { available: true } },
+              documents: { prepared: { available: false } },
             });
           }
         }
@@ -1384,9 +1413,20 @@ export const getMyCurrentContract = async (req, res) => {
         preparedDocumentIssue = error.code || "PREPARED_DOCUMENT_UNAVAILABLE";
       }
     }
+    // Canonical acknowledgement state (draft or final) embedded in the same
+    // payload so a plain page load / refresh returns it with no second
+    // round-trip. Same service the standalone GET .../acknowledgement
+    // endpoint and Mobile use — one source of truth. Non-fatal on error.
+    let acknowledgement = null;
+    try {
+      acknowledgement = await getAcknowledgementStatusForContract(contract, user._id);
+    } catch (ackErr) {
+      logger.warn({ err: ackErr, contractId: String(contract._id) }, "[getMyCurrentContract] acknowledgement resolve failed (non-fatal)");
+    }
     const view = toTenantContractView(contract, new Date(), {
       preparedDocument,
       preparedDocumentIssue,
+      acknowledgement,
     });
 
     // "Upcoming" leg of the current/upcoming/history triad — a renewal or

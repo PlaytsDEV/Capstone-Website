@@ -59,25 +59,56 @@ export default function TenantContractsTab({
   const hasMultipleContracts = Array.isArray(allTenantContracts) && allTenantContracts.length > 1;
 
   const displayContractId = displayContract?._id || displayContract?.id;
-  const [acknowledgement, setAcknowledgement] = useState(null);
+  const isRealContractId = /^[a-f\d]{24}$/i.test(String(displayContractId || ""));
+  // Prefer the acknowledgement embedded in the current-contract payload
+  // (getTenantCurrentContract now returns it) — one canonical value, no
+  // extra round-trip. Fall back to the standalone endpoint, and re-fetch on
+  // the app-wide "contract-updated" event so an open admin page reflects a
+  // tenant's acknowledgement after navigation/action (a plain refresh also
+  // works). This is READ of the one backend state — no local-only state.
+  const [acknowledgement, setAcknowledgement] = useState(
+    displayContract?.acknowledgement || null,
+  );
+
   useEffect(() => {
     let cancelled = false;
-    if (!displayContractId) {
-      setAcknowledgement(null);
-      return undefined;
-    }
-    contractApi
-      .getContractAcknowledgement(displayContractId)
-      .then((result) => {
-        if (!cancelled) setAcknowledgement(result || null);
-      })
-      .catch(() => {
-        if (!cancelled) setAcknowledgement(null);
-      });
+
+    const load = () => {
+      if (!isRealContractId) {
+        setAcknowledgement(null);
+        return;
+      }
+      if (displayContract?.acknowledgement) {
+        setAcknowledgement(displayContract.acknowledgement);
+        return;
+      }
+      contractApi
+        .getContractAcknowledgement(displayContractId)
+        .then((result) => {
+          if (!cancelled) setAcknowledgement(result || null);
+        })
+        .catch(() => {
+          if (!cancelled) setAcknowledgement(null);
+        });
+    };
+
+    load();
+
+    const refetch = () => {
+      if (!isRealContractId) return;
+      contractApi
+        .getContractAcknowledgement(displayContractId)
+        .then((result) => {
+          if (!cancelled) setAcknowledgement(result || null);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("lilycrest:contract-updated", refetch);
     return () => {
       cancelled = true;
+      window.removeEventListener("lilycrest:contract-updated", refetch);
     };
-  }, [displayContractId]);
+  }, [displayContractId, isRealContractId, displayContract?.acknowledgement]);
 
   return (
     <div className="space-y-4">
@@ -215,7 +246,15 @@ export default function TenantContractsTab({
             </div>
             {acknowledgement?.required && (
               <div className="col-span-2">
-                <span className="text-muted-foreground block text-[11px]">Tenant Acknowledgement</span>
+                <span className="text-muted-foreground block text-[11px]">
+                  Tenant Acknowledgement
+                  {acknowledgement.documentKind === "draft"
+                    ? " (Draft)"
+                    : acknowledgement.documentKind === "final"
+                    ? " (Final)"
+                    : ""}
+                  {acknowledgement.documentVersion ? ` • v${acknowledgement.documentVersion}` : ""}
+                </span>
                 <span className="font-semibold text-foreground flex items-center gap-1.5">
                   {acknowledgement.acknowledged ? (
                     <>
@@ -229,8 +268,8 @@ export default function TenantContractsTab({
                     </>
                   ) : (
                     <>
-                      <Circle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                      <span className="text-muted-foreground">Not Yet Acknowledged</span>
+                      <Circle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      <span className="text-muted-foreground">Pending acknowledgement</span>
                     </>
                   )}
                 </span>

@@ -52,6 +52,23 @@ describe("contractAcknowledgementService", () => {
     ]);
   });
 
+  const minimalPreparedDocument = (actorId, overrides = {}) => ({
+    documentType: "prepared",
+    version: 1,
+    storageProvider: "local",
+    storageKey: "gil-puyat/2026/prepared_v1.pdf",
+    fileName: "prepared_v1.pdf",
+    fileHash: "draft-hash-v1",
+    fileSize: 2048,
+    pageCount: 3,
+    generatedAt: new Date(),
+    generatedBy: actorId,
+    templateId: "official-v1",
+    templateVersion: "1.0.0",
+    coordinateVersion: "1.0.0",
+    ...overrides,
+  });
+
   const minimalFinalDocument = (actorId, overrides = {}) => ({
     version: 1,
     storageKey: "gil-puyat/2026/final_v1.pdf",
@@ -69,7 +86,12 @@ describe("contractAcknowledgementService", () => {
     ...overrides,
   });
 
-  async function seedTenantAndContract({ finalDocumentOverrides = {}, hasFinalDocument = true } = {}) {
+  async function seedTenantAndContract({
+    finalDocumentOverrides = {},
+    hasFinalDocument = true,
+    status = "active",
+    preparedDocuments = null,
+  } = {}) {
     const actorId = new mongoose.Types.ObjectId();
     const tenant = await User.create({
       firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
@@ -113,11 +135,14 @@ describe("contractAcknowledgementService", () => {
       roomNumber: room.roomNumber,
       roomType: "quadruple-sharing",
       leaseType: "long_term",
-      status: "active",
+      status,
       isCurrent: true,
-      statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
+      statusHistory: [{ status, changedBy: actorId, reason: "seed" }],
       createdBy: actorId,
       updatedBy: actorId,
+      preparedDocuments: preparedDocuments === null
+        ? []
+        : preparedDocuments.map((overrides) => minimalPreparedDocument(actorId, overrides)),
       finalDocument: hasFinalDocument ? minimalFinalDocument(actorId, finalDocumentOverrides) : null,
     });
     return { actorId, tenant, room, reservation, contract };
@@ -239,5 +264,128 @@ describe("contractAcknowledgementService", () => {
     await expect(
       acknowledgeContract({ contractId: contract._id, tenantId: otherTenantId, req: fakeReq() }),
     ).rejects.toMatchObject({ code: "CONTRACT_ACCESS_DENIED", statusCode: 403 });
+  });
+
+  // ── Generated Draft acknowledgement ────────────────────────────────────
+
+  const seedDraft = () => seedTenantAndContract({
+    status: "generated",
+    hasFinalDocument: false,
+    preparedDocuments: [{}], // one prepared v1, hash "draft-hash-v1"
+  });
+
+  test("an eligible generated Draft is acknowledgeable (required:true, kind draft)", async () => {
+    const { tenant, contract } = await seedDraft();
+
+    const status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: tenant._id });
+    expect(status).toMatchObject({
+      required: true,
+      acknowledged: false,
+      documentKind: "draft",
+      documentVersion: 1,
+    });
+  });
+
+  test("tenant can acknowledge a generated Draft and it persists, bound to the draft version+hash", async () => {
+    const { tenant, contract } = await seedDraft();
+
+    const record = await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+    expect(record.documentKind).toBe("draft");
+    expect(record.documentVersion).toBe(1);
+    expect(record.documentFileHash).toBe("draft-hash-v1");
+
+    const after = await getAcknowledgementStatus({ contractId: contract._id, tenantId: tenant._id });
+    expect(after).toMatchObject({ required: true, acknowledged: true, documentKind: "draft", documentVersion: 1 });
+
+    const stored = await ContractAcknowledgement.countDocuments({ contractId: contract._id, tenantId: tenant._id });
+    expect(stored).toBe(1);
+  });
+
+  test("acknowledging a generated Draft is idempotent on repeated calls", async () => {
+    const { tenant, contract } = await seedDraft();
+
+    const a = await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+    const b = await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+    expect(String(a._id)).toBe(String(b._id));
+
+    const count = await ContractAcknowledgement.countDocuments({ contractId: contract._id, tenantId: tenant._id });
+    expect(count).toBe(1);
+    expect(mockAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  test("acknowledging a generated Draft does NOT change the Contract's legal status/isCurrent", async () => {
+    const { tenant, contract } = await seedDraft();
+
+    await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+
+    const fresh = await Contract.findById(contract._id).lean();
+    expect(fresh.status).toBe("generated");
+    expect(fresh.isCurrent).toBe(true);
+    expect(fresh.tenantVisible).not.toBe(true);
+    expect(fresh.finalDocument == null).toBe(true);
+  });
+
+  test("another tenant cannot acknowledge someone else's generated Draft", async () => {
+    const { contract } = await seedDraft();
+    await expect(
+      acknowledgeContract({ contractId: contract._id, tenantId: new mongoose.Types.ObjectId(), req: fakeReq() }),
+    ).rejects.toMatchObject({ code: "CONTRACT_ACCESS_DENIED", statusCode: 403 });
+  });
+
+  test("regenerating the Draft (new prepared version+hash) reverts status to Pending; old record preserved", async () => {
+    const { actorId, tenant, contract } = await seedDraft();
+
+    const original = await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+    let status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: tenant._id });
+    expect(status).toMatchObject({ acknowledged: true, documentKind: "draft", documentVersion: 1 });
+
+    // Regenerate: supersede v1, add v2 with a new hash (what
+    // generatePreparedContract does).
+    await Contract.updateOne(
+      { _id: contract._id },
+      { $set: { "preparedDocuments.0.superseded": true } },
+    );
+    await Contract.updateOne(
+      { _id: contract._id },
+      {
+        $push: {
+          preparedDocuments: minimalPreparedDocument(actorId, {
+            version: 2,
+            fileHash: "draft-hash-v2",
+            storageKey: "gil-puyat/2026/prepared_v2.pdf",
+            fileName: "prepared_v2.pdf",
+          }),
+        },
+      },
+    );
+
+    status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: tenant._id });
+    expect(status).toMatchObject({ required: true, acknowledged: false, documentKind: "draft", documentVersion: 2 });
+
+    // Original v1 record still present, untouched.
+    const stillThere = await ContractAcknowledgement.findById(original._id);
+    expect(stillThere).toBeTruthy();
+    expect(stillThere.documentVersion).toBe(1);
+
+    // Acknowledging again creates a distinct v2 record.
+    const second = await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+    expect(String(second._id)).not.toBe(String(original._id));
+    expect(second.documentVersion).toBe(2);
+    const total = await ContractAcknowledgement.countDocuments({ contractId: contract._id, tenantId: tenant._id });
+    expect(total).toBe(2);
+  });
+
+  test("once a final document exists it outranks the draft (kind flips to final, fresh acknowledgement)", async () => {
+    // Draft acknowledged, then admin uploads the wet-signed final.
+    const { actorId, tenant, contract } = await seedDraft();
+    await acknowledgeContract({ contractId: contract._id, tenantId: tenant._id, req: fakeReq() });
+
+    await Contract.updateOne(
+      { _id: contract._id },
+      { $set: { status: "published", tenantVisible: true, finalDocument: minimalFinalDocument(actorId) } },
+    );
+
+    const status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: tenant._id });
+    expect(status).toMatchObject({ required: true, acknowledged: false, documentKind: "final", documentVersion: 1 });
   });
 });

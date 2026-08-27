@@ -55,6 +55,32 @@ describe("secure prepared Contract responses", () => {
     expect(finalFlow).toMatch(/finalDocument\?\.sourceVersion/);
   });
 
+  test("both current-contract endpoints embed the ONE canonical acknowledgement state", () => {
+    // Tenant endpoint: getMyCurrentContract resolves the canonical
+    // acknowledgement state from the already-loaded contract (no extra read)
+    // and passes it through toTenantContractView.
+    const tenantStart = source.indexOf("export const getMyCurrentContract");
+    const tenantEnd = source.indexOf("export const downloadMyStayProof", tenantStart);
+    const tenantFlow = source.slice(tenantStart, tenantEnd);
+    expect(tenantFlow).toMatch(/getAcknowledgementStatusForContract\(contract, user\._id\)/);
+    expect(tenantFlow).toMatch(/toTenantContractView\(contract, new Date\(\), \{[\s\S]*acknowledgement,[\s\S]*\}\)/);
+
+    // Admin endpoint: getTenantCurrentContract resolves the SAME service and
+    // merges it into the contract payload.
+    const adminStart = source.indexOf("export const getTenantCurrentContract");
+    const adminEnd = source.indexOf("const tenantActor", adminStart);
+    const adminFlow = source.slice(adminStart, adminEnd);
+    expect(adminFlow).toMatch(/getAcknowledgementStatusForContract\(contract, contract\.tenantId\)/);
+    expect(adminFlow).toMatch(/\{ \.\.\.contractPayload, acknowledgement \}/);
+
+    // The synthetic (Stay-derived, no Contract row) branch must NOT advertise
+    // a canonical PDF or an acknowledgement requirement.
+    const syntheticStart = source.indexOf("STAY_PROOF_AVAILABLE");
+    const syntheticFlow = source.slice(syntheticStart, syntheticStart + 2600);
+    expect(syntheticFlow).toMatch(/isSynthetic: true/);
+    expect(syntheticFlow).toMatch(/acknowledgement: \{\s*\n\s*required: false/);
+  });
+
   test("both production notification call sites receive deterministic positive document versions", () => {
     expect(pdfSource).toMatch(
       /const generatedVersion = Math\.max\([\s\S]*preparedDocuments[\s\S]*\) \+ 1;/,
