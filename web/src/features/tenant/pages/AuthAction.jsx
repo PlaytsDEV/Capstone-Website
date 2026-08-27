@@ -429,6 +429,9 @@ function AuthAction() {
           <button type="button" onClick={() => signOutAndNavigate("/signin")} className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">
             Return to standard sign-in
           </button>
+          <Link to="/" className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">
+            Cancel
+          </Link>
         </>
       )}
 
@@ -472,9 +475,20 @@ function AuthAction() {
         </div>
       )}
 
-      <Link to="/" className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">
-        {state === EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH ? "Cancel" : "Return to the application"}
-      </Link>
+      {![
+        EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK,
+        EMAIL_VERIFICATION_STATES.ALREADY_USED_LINK_VERIFIED_USER,
+        EMAIL_VERIFICATION_STATES.ALREADY_VERIFIED_ACCOUNT,
+        EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH,
+        EMAIL_VERIFICATION_STATES.RECONCILIATION_REQUIRED,
+      ].includes(state) && !canResend && (
+        <Link
+          to="/signin"
+          className="block w-full py-3 mt-3 rounded-full text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+        >
+          Return to sign in
+        </Link>
+      )}
     </VerificationLayout>
   );
 }
