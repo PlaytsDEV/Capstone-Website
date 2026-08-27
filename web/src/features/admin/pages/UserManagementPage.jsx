@@ -679,6 +679,7 @@ function UserManagementPage() {
     setEditForm({
       username: userData.username || "",
       firstName: userData.firstName || "",
+      middleName: userData.middleName || "",
       lastName: userData.lastName || "",
       email: userData.email || "",
       phone: userData.phone || "",
@@ -686,12 +687,16 @@ function UserManagementPage() {
       branch: userData.branch || "",
       isActive: userData.isActive !== false,
       gender: userData.gender || "",
+      civilStatus: userData.civilStatus || "",
+      nationality: userData.nationality || "",
+      occupation: userData.occupation || "",
       dateOfBirth: userData.dateOfBirth
         ? new Date(userData.dateOfBirth).toISOString().split("T")[0]
         : "",
       address: userData.address || "",
       city: userData.city || "",
       emergencyContact: userData.emergencyContact || "",
+      emergencyRelationship: userData.emergencyRelationship || "",
       emergencyPhone: userData.emergencyPhone || "",
       studentId: userData.studentId || "",
       school: userData.school || "",
@@ -727,13 +732,18 @@ function UserManagementPage() {
         username: editForm.username?.trim(),
         email: editForm.email?.trim(),
         firstName: editForm.firstName?.trim(),
+        middleName: editForm.middleName?.trim() || "",
         lastName: editForm.lastName?.trim(),
         phone: editForm.phone || "",
         gender: editForm.gender || "",
+        civilStatus: editForm.civilStatus || "",
+        nationality: editForm.nationality?.trim() || "",
+        occupation: editForm.occupation?.trim() || "",
         dateOfBirth: editForm.dateOfBirth || null,
         address: editForm.address || "",
         city: editForm.city || "",
         emergencyContact: editForm.emergencyContact || "",
+        emergencyRelationship: editForm.emergencyRelationship || "",
         emergencyPhone: editForm.emergencyPhone || "",
       };
 

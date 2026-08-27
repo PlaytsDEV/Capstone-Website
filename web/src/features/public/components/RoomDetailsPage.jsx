@@ -1,5 +1,5 @@
 import "../styles/room-details.css";
-import Footer from "../../../shared/components/Footer";
+import Footer from "./ContactFooter";
 import Navbar from "../components/Navbar";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

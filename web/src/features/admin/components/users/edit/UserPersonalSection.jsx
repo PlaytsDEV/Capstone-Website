@@ -53,6 +53,33 @@ export default function UserPersonalSection({
           )}
         </div>
 
+        <div className="form-group">
+          <div className="flex items-center justify-between">
+            <label>Middle Name</label>
+            <span className="text-[11px] text-muted-foreground">
+              {(editForm.middleName || "").length}/50
+            </span>
+          </div>
+          <input
+            type="text"
+            value={editForm.middleName || ""}
+            onChange={(e) => {
+              const sanitized = sanitizeName(e.target.value);
+              onFormChange({ ...editForm, middleName: sanitized }, "middleName", sanitized);
+            }}
+            onBlur={() => {
+              if (editForm.middleName && typeof editForm.middleName === "string") {
+                const proper = formatProperCase(editForm.middleName.trim());
+                if (proper !== editForm.middleName) {
+                  onFormChange({ ...editForm, middleName: proper }, "middleName", proper);
+                }
+              }
+            }}
+            maxLength={50}
+            placeholder="Optional"
+          />
+        </div>
+
         <div className={`form-group ${touched.lastName && editFormErrors.lastName ? "has-error" : ""}`}>
           <div className="flex items-center justify-between">
             <label>Last Name *</label>
@@ -124,6 +151,77 @@ export default function UserPersonalSection({
             <option value="other">Other</option>
             <option value="prefer-not-to-say">Prefer not to say</option>
           </select>
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label>Civil Status</label>
+          <select
+            value={editForm.civilStatus || ""}
+            onChange={(e) =>
+              onFormChange({ ...editForm, civilStatus: e.target.value })
+            }
+          >
+            <option value="">Not specified</option>
+            <option value="single">Single</option>
+            <option value="married">Married</option>
+            <option value="widowed">Widowed</option>
+            <option value="divorced">Divorced</option>
+            <option value="separated">Separated</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <div className="flex items-center justify-between">
+            <label>Nationality</label>
+            <span className="text-[11px] text-muted-foreground">
+              {(editForm.nationality || "").length}/50
+            </span>
+          </div>
+          <input
+            type="text"
+            value={editForm.nationality || ""}
+            onChange={(e) =>
+              onFormChange({ ...editForm, nationality: e.target.value })
+            }
+            onBlur={() => {
+              if (editForm.nationality && typeof editForm.nationality === "string") {
+                const proper = formatProperCase(editForm.nationality.trim());
+                if (proper !== editForm.nationality) {
+                  onFormChange({ ...editForm, nationality: proper }, "nationality", proper);
+                }
+              }
+            }}
+            maxLength={50}
+            placeholder="e.g. Filipino"
+          />
+        </div>
+
+        <div className="form-group">
+          <div className="flex items-center justify-between">
+            <label>Occupation</label>
+            <span className="text-[11px] text-muted-foreground">
+              {(editForm.occupation || "").length}/100
+            </span>
+          </div>
+          <input
+            type="text"
+            value={editForm.occupation || ""}
+            onChange={(e) =>
+              onFormChange({ ...editForm, occupation: e.target.value })
+            }
+            onBlur={() => {
+              if (editForm.occupation && typeof editForm.occupation === "string") {
+                const proper = formatProperCase(editForm.occupation.trim());
+                if (proper !== editForm.occupation) {
+                  onFormChange({ ...editForm, occupation: proper }, "occupation", proper);
+                }
+              }
+            }}
+            maxLength={100}
+            placeholder="e.g. Student / Software Engineer"
+          />
         </div>
       </div>
     </>

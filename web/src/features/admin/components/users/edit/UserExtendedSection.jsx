@@ -1,3 +1,8 @@
+import {
+  RELATIONSHIP_OPTIONS,
+  isSamePhone,
+} from "../../../../tenant/components/profile/personalDetailsValidation";
+
 const sanitizePhoneInput = (value) => {
   let val = value;
   if (val.startsWith("+")) {
@@ -19,6 +24,10 @@ export default function UserExtendedSection({
   sectionHeaderStyle,
 }) {
   const isStudentRole = ["applicant", "tenant"].includes(editForm.role);
+  const isSameEmergencyPhone =
+    Boolean(editForm.emergencyPhone) &&
+    Boolean(editForm.phone) &&
+    isSamePhone(editForm.emergencyPhone, editForm.phone);
 
   return (
     <>
@@ -77,7 +86,28 @@ export default function UserExtendedSection({
             placeholder="Full name of emergency contact"
           />
         </div>
-        <div className={`form-group ${touched.emergencyPhone && editFormErrors.emergencyPhone ? "has-error" : ""}`}>
+
+        <div className="form-group">
+          <label>Relationship</label>
+          <select
+            value={editForm.emergencyRelationship || ""}
+            onChange={(e) =>
+              onFormChange({
+                ...editForm,
+                emergencyRelationship: e.target.value,
+              })
+            }
+          >
+            <option value="">Select relationship</option>
+            {RELATIONSHIP_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={`form-group ${isSameEmergencyPhone || (touched.emergencyPhone && editFormErrors.emergencyPhone) ? "has-error" : ""}`}>
           <label>Emergency Contact Number</label>
           <input
             type="tel"
@@ -91,13 +121,16 @@ export default function UserExtendedSection({
             placeholder="e.g. 0917 123 4567"
             maxLength={editForm.emergencyPhone?.startsWith("+") ? 13 : editForm.emergencyPhone?.startsWith("0") ? 11 : 10}
           />
-          {!editFormErrors.emergencyPhone && (
+          {isSameEmergencyPhone ? (
+            <span className="field-error">
+              Emergency number cannot match personal mobile number
+            </span>
+          ) : touched.emergencyPhone && editFormErrors.emergencyPhone ? (
+            <span className="field-error">{editFormErrors.emergencyPhone}</span>
+          ) : (
             <span className="text-[11px] text-muted-foreground mt-1 block">
               11 digits starting with 09 (or 10 digits starting with 9)
             </span>
-          )}
-          {touched.emergencyPhone && editFormErrors.emergencyPhone && (
-            <span className="field-error">{editFormErrors.emergencyPhone}</span>
           )}
         </div>
       </div>

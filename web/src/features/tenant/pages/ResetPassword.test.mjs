@@ -145,3 +145,17 @@ test("clearApplicationSession is unconditional — not inside the try/catch arou
   const tryIndex = source.indexOf("sessionStorage.setItem(\"resendInProgress\", \"1\");");
   assert.ok(clearIndex < tryIndex, "clearApplicationSession() must run before entering the best-effort cleanup try block");
 });
+
+test("reset password container is centered vertically and horizontally matching SignUp", () => {
+  assert.match(
+    source,
+    /<div className="flex items-center justify-center p-8 lg:p-12 bg-white overflow-y-auto">\s*<div className="w-full max-w-md my-auto">/,
+    "ResetPassword right-hand container must use items-center with an inner my-auto card to match SignUp centering",
+  );
+  assert.doesNotMatch(
+    source,
+    /items-start/,
+    "ResetPassword must not be top-aligned with items-start",
+  );
+});
+

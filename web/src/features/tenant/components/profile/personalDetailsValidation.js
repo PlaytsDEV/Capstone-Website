@@ -78,7 +78,86 @@ export const buildYearOptions = (minAge = 18, maxAge = 100) => {
   return years;
 };
 
-export const validateField = (field, value) => {
+export const RELATIONSHIP_OPTIONS = [
+  { value: "parent", label: "Parent" },
+  { value: "sibling", label: "Sibling" },
+  { value: "spouse", label: "Spouse" },
+  { value: "relative", label: "Relative" },
+  { value: "guardian", label: "Guardian" },
+  { value: "friend", label: "Friend" },
+  { value: "colleague", label: "Colleague / Coworker" },
+  { value: "other", label: "Other" },
+];
+
+export const normalizePhoneDigits = (num) => {
+  const digits = String(num || "").replace(/\D+/g, "");
+  if (digits.startsWith("63") && digits.length >= 11) {
+    return digits.slice(2);
+  }
+  if (digits.startsWith("0") && digits.length >= 10) {
+    return digits.slice(1);
+  }
+  return digits;
+};
+
+export const isSamePhone = (a, b) => {
+  const na = normalizePhoneDigits(a);
+  const nb = normalizePhoneDigits(b);
+  if (!na || !nb || na.length < 7 || nb.length < 7) return false;
+  if (na === nb || na.endsWith(nb) || nb.endsWith(na)) return true;
+  if (na.length >= 10 && nb.length >= 10 && na.slice(-10) === nb.slice(-10)) return true;
+  return false;
+};
+
+
+export const isValidPhoneFormat = (val) => {
+  if (!val) return false;
+  const clean = String(val).replace(/[\s\-()]+/g, "");
+  if (clean.startsWith("+")) {
+    return /^\+\d{10,15}$/.test(clean);
+  }
+  return /^09\d{9}$/.test(clean) || /^\d{10,15}$/.test(clean);
+};
+
+export const validateEmergencyContactGroup = (data = {}, personalPhone = "") => {
+  const name = String(data.emergencyContact || "").trim();
+  const rel = String(data.emergencyRelationship || "").trim();
+  const phone = String(data.emergencyPhone || "").trim();
+
+  const anyEntered = Boolean(name || rel || phone);
+  if (!anyEntered) {
+    return { isValid: true, errors: {} };
+  }
+
+  const errors = {};
+  if (!name) {
+    errors.emergencyContact = "Contact person is required";
+  } else {
+    const err = validateField("emergencyContact", name);
+    if (err) errors.emergencyContact = err;
+  }
+
+  if (!rel) {
+    errors.emergencyRelationship = "Relationship is required";
+  } else {
+    const err = validateField("emergencyRelationship", rel);
+    if (err) errors.emergencyRelationship = err;
+  }
+
+  if (!phone) {
+    errors.emergencyPhone = "Emergency contact number is required";
+  } else {
+    const err = validateField("emergencyPhone", phone, { personalPhone });
+    if (err) errors.emergencyPhone = err;
+  }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+  };
+};
+
+export const validateField = (field, value, options = {}) => {
   const strVal =
     typeof value === "string"
       ? value.trim()
@@ -166,7 +245,47 @@ export const validateField = (field, value) => {
       return null;
     }
 
+    case "phone": {
+      if (!strVal) return null;
+      if (!isValidPhoneFormat(strVal)) return "Please enter a valid phone number";
+      return null;
+    }
+
+    case "address": {
+      if (!strVal) return null;
+      if (strVal.length > 200) return "200 characters maximum";
+      return null;
+    }
+
+    case "emergencyContact": {
+      if (!strVal) return null;
+      if (strVal.length < 2) return "At least 2 characters required";
+      if (strVal.length > 100) return "100 characters maximum";
+      if (!/^[a-zA-Z\s\-']+$/.test(strVal))
+        return "Letters, hyphens, and apostrophes only";
+      return null;
+    }
+
+    case "emergencyRelationship": {
+      if (!strVal) return null;
+      const valid = RELATIONSHIP_OPTIONS.map((o) => o.value);
+      if (!valid.includes(strVal))
+        return "Invalid relationship option selected";
+      return null;
+    }
+
+    case "emergencyPhone": {
+      if (!strVal) return null;
+      if (!isValidPhoneFormat(strVal)) return "Please enter a valid phone number";
+      const personalPhone = options?.personalPhone;
+      if (personalPhone && isSamePhone(strVal, personalPhone)) {
+        return "Emergency contact number cannot be the same as your personal mobile number";
+      }
+      return null;
+    }
+
     default:
       return null;
   }
 };
+

@@ -28,11 +28,23 @@ test("subcomponents contain respective input groups and sanitizers", () => {
   assert.match(credSource, /username/);
   assert.match(credSource, /email/);
   assert.match(personalSource, /firstName/);
+  assert.match(personalSource, /middleName/);
   assert.match(personalSource, /lastName/);
   assert.match(personalSource, /phone/);
+  assert.match(personalSource, /civilStatus/);
+  assert.match(personalSource, /nationality/);
+  assert.match(personalSource, /occupation/);
   assert.match(roleSource, /dateOfBirth/);
   assert.match(roleSource, /isLifecycleManaged/);
   assert.match(extendedSource, /address/);
   assert.match(extendedSource, /emergencyContact/);
+  assert.match(extendedSource, /emergencyRelationship/);
+  assert.match(extendedSource, /emergencyPhone/);
   assert.match(extendedSource, /studentId/);
 });
+
+test("UserExtendedSection integrates RELATIONSHIP_OPTIONS for emergency relationship", () => {
+  assert.match(extendedSource, /RELATIONSHIP_OPTIONS/);
+  assert.match(extendedSource, /emergencyRelationship/);
+});
+

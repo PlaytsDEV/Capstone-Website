@@ -59,3 +59,22 @@ test("PersonalDetailsTab passes locked state to gender and civil status SelectFi
   assert.match(formSource, /id="maritalStatusSelect"/, "Application form must have marital status select");
   assert.match(formSource, /value="divorced"/, "Application form must support divorced civil status option");
 });
+
+test("PersonalDetailsTab connects Contact Information and Emergency Contact to {...fp} while keeping Email explicitly locked", () => {
+  const tabSource = readTenantSource("components/profile/PersonalDetailsTab.jsx");
+
+  // Contact Info
+  assert.match(tabSource, /field="phone"[\s\S]*?\{\.\.\.fp\}/, "Phone field must inherit {...fp}");
+  assert.match(tabSource, /field="email"[\s\S]*?locked/, "Email field must remain explicitly locked");
+  assert.match(tabSource, /field="address"[\s\S]*?\{\.\.\.fp\}/, "Address field must inherit {...fp}");
+
+  // Emergency Contact
+  assert.match(tabSource, /field="emergencyContact"[\s\S]*?\{\.\.\.fp\}/, "Emergency contact person must inherit {...fp}");
+  assert.match(tabSource, /field="emergencyRelationship"[\s\S]*?\{\.\.\.fp\}/, "Emergency relationship must inherit {...fp}");
+  assert.match(tabSource, /field="emergencyPhone"[\s\S]*?\{\.\.\.fp\}/, "Emergency phone must inherit {...fp}");
+
+  // Relationship options and phone input integration
+  assert.match(tabSource, /RELATIONSHIP_OPTIONS/, "Must use RELATIONSHIP_OPTIONS in PersonalDetailsTab");
+  assert.match(tabSource, /PhoneInputField|PhoneInput/, "Must integrate phone input in PersonalDetailsTab");
+});
+

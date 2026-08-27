@@ -856,6 +856,81 @@ describe("usersController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("updateUser whitelists and updates middleName, civilStatus, nationality, occupation, and emergencyRelationship", async () => {
+    userModel.findOne.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      role: "tenant",
+      tenantStatus: "active",
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011", role: "tenant", tenantStatus: "active" }),
+    });
+    mockNoActiveStay();
+    userModel.findByIdAndUpdate.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: "507f1f77bcf86cd799439011",
+        firstName: "Juan",
+        middleName: "Protacio",
+        lastName: "Rizal",
+        civilStatus: "single",
+        nationality: "Filipino",
+        occupation: "Physician",
+        emergencyContact: "Francisco Mercado",
+        emergencyRelationship: "parent",
+        emergencyPhone: "09181234567",
+        toObject: () => ({
+          _id: "507f1f77bcf86cd799439011",
+          firstName: "Juan",
+          middleName: "Protacio",
+          lastName: "Rizal",
+          civilStatus: "single",
+          nationality: "Filipino",
+          occupation: "Physician",
+          emergencyContact: "Francisco Mercado",
+          emergencyRelationship: "parent",
+          emergencyPhone: "09181234567",
+        }),
+      }),
+    });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      body: {
+        firstName: "Juan",
+        middleName: "Protacio",
+        lastName: "Rizal",
+        civilStatus: "single",
+        nationality: "Filipino",
+        occupation: "Physician",
+        emergencyContact: "Francisco Mercado",
+        emergencyRelationship: "parent",
+        emergencyPhone: "09181234567",
+      },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439011",
+      expect.objectContaining({
+        firstName: "Juan",
+        middleName: "Protacio",
+        lastName: "Rizal",
+        civilStatus: "single",
+        nationality: "Filipino",
+        occupation: "Physician",
+        emergencyContact: "Francisco Mercado",
+        emergencyRelationship: "parent",
+        emergencyPhone: "09181234567",
+      }),
+      expect.any(Object),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("restoreUser reactivates archived accounts", async () => {
     const restore = jest.fn().mockResolvedValue(undefined);
     const targetUser = {

@@ -208,8 +208,8 @@ function ResetPassword() {
         subtitle="Secure your Lilycrest account"
       />
 
-      <div className="flex items-start justify-center p-8 lg:p-12 lg:py-16 bg-white overflow-y-auto">
-        <div className="w-full max-w-md">
+      <div className="flex items-center justify-center p-8 lg:p-12 bg-white overflow-y-auto">
+        <div className="w-full max-w-md my-auto">
           {status === "checking" && (
             <div className="text-center">
               <Loader2 className="animate-spin mx-auto mb-5" style={{ width: 36, height: 36, color: "#D4AF37" }} />

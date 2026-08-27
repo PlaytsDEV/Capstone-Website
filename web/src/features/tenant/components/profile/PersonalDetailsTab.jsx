@@ -21,6 +21,7 @@ import {
   Loader2,
   Lock,
 } from "lucide-react";
+import PhoneInput from "../../../../shared/components/PhoneInput";
 import { fmtDate, formatBranch } from "../../../../shared/utils/formatDate";
 import { showNotification } from "../../../../shared/utils/notification";
 
@@ -29,23 +30,30 @@ import {
   formatProperCase,
   formatBed,
   MONTH_OPTIONS,
+  RELATIONSHIP_OPTIONS,
   parseDateParts,
   getDaysInMonth,
   composeDate,
   buildYearOptions,
   validateField,
+  validateEmergencyContactGroup,
+  isSamePhone,
 } from "./personalDetailsValidation";
 
 export {
   toTitleCase,
   formatBed,
   MONTH_OPTIONS,
+  RELATIONSHIP_OPTIONS,
   parseDateParts,
   getDaysInMonth,
   composeDate,
   buildYearOptions,
   validateField,
+  validateEmergencyContactGroup,
+  isSamePhone,
 };
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
  STYLES — Solid HSL tokens, no gradients, clean 1px borders
@@ -565,7 +573,91 @@ const Field = ({
   );
 };
 
+const PhoneField = ({
+  icon: Icon,
+  label,
+  value,
+  field,
+  colSpan,
+  editing,
+  editData,
+  setEditData,
+  errors,
+  onBlur,
+  required,
+  locked,
+  onAdd,
+  placeholder = "Enter contact number",
+}) => {
+  const [focused, setFocused] = useState(false);
+  const hasError = errors?.[field];
+  const currentVal = editData?.[field] !== undefined && editData?.[field] !== null ? String(editData[field]) : "";
+
+  const handlePhoneChange = (val) => {
+    setEditData((prev) => ({ ...prev, [field]: val }));
+  };
+
+  const handlePhoneBlur = () => {
+    setFocused(false);
+    onBlur?.(field, currentVal);
+  };
+
+  return (
+    <div style={{ ...s.fieldTile, ...(colSpan ? { gridColumn: `span ${colSpan}` } : {}) }}>
+      <div style={s.fieldHeader}>
+        {Icon && <Icon size={13} color="var(--muted-foreground)" style={{ flexShrink: 0 }} />}
+        <span style={s.fieldLabel}>
+          {label}
+          {required && editing && <span style={{ color: "var(--danger)", marginLeft: 2 }}>*</span>}
+        </span>
+      </div>
+      {editing ? (
+        locked ? (
+          <input
+            type="text"
+            value={value || "Not provided"}
+            readOnly
+            style={{ ...s.input, ...s.inputLocked }}
+          />
+        ) : (
+          <div style={{ marginTop: 2 }}>
+            <PhoneInput
+              value={currentVal}
+              onChange={handlePhoneChange}
+              onBlur={handlePhoneBlur}
+              onFocus={() => setFocused(true)}
+              placeholder={placeholder}
+              error={Boolean(hasError)}
+              hasError={Boolean(hasError)}
+              showValidation={Boolean(hasError)}
+              defaultCountry="PH"
+              inputStyle={{
+                fontSize: "13px",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-md, 8px)",
+              }}
+            />
+            {hasError && <div style={s.errorText}>{hasError}</div>}
+          </div>
+        )
+      ) : value && value !== "Not provided" ? (
+        <p style={s.fieldValue}>{value}</p>
+      ) : (
+        <div style={s.emptyLine}>
+          <p style={s.fieldEmpty}>Not provided</p>
+          {onAdd && (
+            <button type="button" style={s.addNowBtn} onClick={onAdd}>
+              + Add now
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BirthdayField = ({
+
   icon: Icon,
   label,
   field,
@@ -937,6 +1029,9 @@ const PersonalDetailsTab = ({
       hasText(profileData.nationality),
       hasText(profileData.occupation),
       hasText(profileData.profileImage),
+      hasText(profileData.phone),
+      hasText(profileData.address),
+      hasText(profileData.emergencyContact) && hasText(profileData.emergencyPhone),
     ];
     const completed = items.filter(Boolean).length;
     return { completed, total: items.length, percent: Math.round((completed / items.length) * 100) };
@@ -949,6 +1044,10 @@ const PersonalDetailsTab = ({
     profileData.nationality,
     profileData.occupation,
     profileData.profileImage,
+    profileData.phone,
+    profileData.address,
+    profileData.emergencyContact,
+    profileData.emergencyPhone,
   ]);
 
   const handleStartEditing = () => {
@@ -983,13 +1082,19 @@ const PersonalDetailsTab = ({
       (editData.civilStatus || "") !== (profileData.civilStatus || "") ||
       (editData.nationality || "").trim() !== (profileData.nationality || "").trim() ||
       (editData.occupation || "").trim() !== (profileData.occupation || "").trim() ||
+      (editData.phone || "").trim() !== (profileData.phone || "").trim() ||
+      (editData.address || "").trim() !== (profileData.address || "").trim() ||
+      (editData.emergencyContact || "").trim() !== (profileData.emergencyContact || "").trim() ||
+      (editData.emergencyRelationship || "").trim() !== (profileData.emergencyRelationship || "").trim() ||
+      (editData.emergencyPhone || "").trim() !== (profileData.emergencyPhone || "").trim() ||
       (editData.profileImage || "") !== (profileData.profileImage || "")
     );
   }, [editData, profileData, pendingFile]);
 
   const handleBlur = (field, customVal) => {
     const val = customVal !== undefined ? customVal : editData?.[field];
-    const err = validateField(field, val);
+    const personalPhone = editData?.phone || profileData?.phone || "";
+    const err = validateField(field, val, { personalPhone });
     setErrors((p) => {
       const n = { ...p };
       if (err) n[field] = err;
@@ -1001,11 +1106,29 @@ const PersonalDetailsTab = ({
   const handleSaveWithValidation = async () => {
     if (!isProfileLocked) {
       const newErrors = {};
-      const fieldsToValidate = ["firstName", "middleName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
+      const fieldsToValidate = [
+        "firstName",
+        "middleName",
+        "lastName",
+        "dateOfBirth",
+        "gender",
+        "civilStatus",
+        "nationality",
+        "occupation",
+        "phone",
+        "address",
+      ];
+      const personalPhone = (editData.phone || "").trim();
       for (const f of fieldsToValidate) {
         const val = editData[f];
-        const e = validateField(f, val);
+        const e = validateField(f, val, { personalPhone });
         if (e) newErrors[f] = e;
+      }
+
+      // Emergency Contact group validation
+      const emGroup = validateEmergencyContactGroup(editData, personalPhone);
+      if (!emGroup.isValid) {
+        Object.assign(newErrors, emGroup.errors);
       }
 
       setErrors(newErrors);
@@ -1027,8 +1150,14 @@ const PersonalDetailsTab = ({
         lastName: (editData.lastName || "").trim(),
         nationality: (editData.nationality || "").trim(),
         occupation: (editData.occupation || "").trim(),
+        phone: (editData.phone || "").trim() || null,
+        address: (editData.address || "").trim(),
+        emergencyContact: (editData.emergencyContact || "").trim(),
+        emergencyRelationship: (editData.emergencyRelationship || "").trim(),
+        emergencyPhone: (editData.emergencyPhone || "").trim(),
       };
     }
+
 
     if (pendingFile) {
       setUploading(true);
@@ -1348,12 +1477,13 @@ const PersonalDetailsTab = ({
         <SectionHeader icon={Phone} title="Contact Information" />
         <div style={s.sectionBody}>
           <div style={s.grid3}>
-            <Field
+            <PhoneField
               icon={Phone}
               label="Contact Number"
               field="phone"
-              value={profileData.phone}
-              locked
+              value={isEditingProfile ? editData?.phone || "" : profileData.phone}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
             <Field
               icon={Mail}
@@ -1366,8 +1496,11 @@ const PersonalDetailsTab = ({
               icon={MapPin}
               label="Current Address"
               field="address"
-              value={profileData.address}
-              locked
+              value={isEditingProfile ? editData?.address || "" : profileData.address}
+              maxLength={200}
+              autoCapitalizeWords
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
           </div>
         </div>
@@ -1382,26 +1515,34 @@ const PersonalDetailsTab = ({
               icon={User}
               label="Contact Person"
               field="emergencyContact"
-              value={profileData.emergencyContact}
-              locked
+              value={isEditingProfile ? editData?.emergencyContact || "" : profileData.emergencyContact}
+              maxLength={100}
+              autoCapitalizeWords
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
-            <Field
+            <SelectField
               icon={Users}
               label="Relationship"
               field="emergencyRelationship"
-              value={toTitleCase(profileData.emergencyRelationship)}
-              locked
+              options={RELATIONSHIP_OPTIONS}
+              value={isEditingProfile ? editData?.emergencyRelationship || "" : profileData.emergencyRelationship}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
-            <Field
+            <PhoneField
               icon={Phone}
               label="Contact Number"
               field="emergencyPhone"
-              value={profileData.emergencyPhone}
-              locked
+              value={isEditingProfile ? editData?.emergencyPhone || "" : profileData.emergencyPhone}
+              placeholder="Enter emergency contact number"
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
           </div>
         </div>
       </div>
+
 
       {/* ── Section 4: Current Stay & Lease Details (Tenants Only) ── */}
       {profileData.role === "tenant" && (

@@ -154,6 +154,141 @@ test("parseDateParts, getDaysInMonth, and composeDate operate correctly", () => 
   assert.equal(years[years.length - 1], String(currentYear - 100));
 });
 
+test("validateField validates phone and contact number constraints", () => {
+  // Empty is allowed (optional)
+  assert.equal(validateField("phone", ""), null);
+  assert.equal(validateField("phone", null), null);
+
+  // Invalid formats
+  assert.equal(validateField("phone", "123"), "Please enter a valid phone number");
+  assert.equal(validateField("phone", "abc"), "Please enter a valid phone number");
+  assert.equal(validateField("phone", "09123"), "Please enter a valid phone number");
+
+  // Valid formats
+  assert.equal(validateField("phone", "+639171234567"), null);
+  assert.equal(validateField("phone", "09171234567"), null);
+  assert.equal(validateField("phone", "+63 917 123 4567"), null);
+  assert.equal(validateField("phone", "+12025550123"), null);
+});
+
+test("validateField validates current address constraints", () => {
+  // Empty is allowed (optional)
+  assert.equal(validateField("address", ""), null);
+  assert.equal(validateField("address", null), null);
+
+  // Max length (200 chars)
+  const longAddress = "A".repeat(201);
+  assert.equal(validateField("address", longAddress), "200 characters maximum");
+
+  // Valid address
+  assert.equal(validateField("address", "123 Boni Ave, Plainview, Mandaluyong City"), null);
+});
+
+test("validateField validates emergency contact person name", () => {
+  // Empty is allowed individually
+  assert.equal(validateField("emergencyContact", ""), null);
+  assert.equal(validateField("emergencyContact", null), null);
+
+  // Min length
+  assert.equal(validateField("emergencyContact", "A"), "At least 2 characters required");
+
+  // Max length (100 chars)
+  const longName = "A".repeat(101);
+  assert.equal(validateField("emergencyContact", longName), "100 characters maximum");
+
+  // Format
+  assert.equal(validateField("emergencyContact", "Mama123"), "Letters, hyphens, and apostrophes only");
+  assert.equal(validateField("emergencyContact", "Jane@Home"), "Letters, hyphens, and apostrophes only");
+
+  // Valid
+  assert.equal(validateField("emergencyContact", "Maria Santos"), null);
+  assert.equal(validateField("emergencyContact", "John O'Connor"), null);
+  assert.equal(validateField("emergencyContact", "Mary-Jane Watson"), null);
+});
+
+test("validateField validates emergency relationship options", () => {
+  // Empty is allowed individually
+  assert.equal(validateField("emergencyRelationship", ""), null);
+  assert.equal(validateField("emergencyRelationship", null), null);
+
+  // Valid options
+  assert.equal(validateField("emergencyRelationship", "parent"), null);
+  assert.equal(validateField("emergencyRelationship", "sibling"), null);
+  assert.equal(validateField("emergencyRelationship", "spouse"), null);
+  assert.equal(validateField("emergencyRelationship", "relative"), null);
+  assert.equal(validateField("emergencyRelationship", "guardian"), null);
+  assert.equal(validateField("emergencyRelationship", "friend"), null);
+  assert.equal(validateField("emergencyRelationship", "colleague"), null);
+  assert.equal(validateField("emergencyRelationship", "other"), null);
+
+  // Invalid option
+  assert.equal(validateField("emergencyRelationship", "invalid_relation"), "Invalid relationship option selected");
+});
+
+test("validateField validates emergency phone and rejects collisions with personal phone", () => {
+  // Empty is allowed individually
+  assert.equal(validateField("emergencyPhone", ""), null);
+  assert.equal(validateField("emergencyPhone", null), null);
+
+  // Invalid format
+  assert.equal(validateField("emergencyPhone", "12345"), "Please enter a valid phone number");
+
+  // Valid phone
+  assert.equal(validateField("emergencyPhone", "+639181234567"), null);
+  assert.equal(validateField("emergencyPhone", "09181234567"), null);
+
+  // Collision with personal phone
+  assert.equal(
+    validateField("emergencyPhone", "+639171234567", { personalPhone: "+639171234567" }),
+    "Emergency contact number cannot be the same as your personal mobile number",
+  );
+  assert.equal(
+    validateField("emergencyPhone", "09171234567", { personalPhone: "+639171234567" }),
+    "Emergency contact number cannot be the same as your personal mobile number",
+  );
+});
+
+test("validateEmergencyContactGroup enforces group completeness and cross-field rules", async () => {
+  const { validateEmergencyContactGroup, RELATIONSHIP_OPTIONS } = await import("./personalDetailsValidation.js");
+
+  assert.ok(Array.isArray(RELATIONSHIP_OPTIONS) && RELATIONSHIP_OPTIONS.length >= 8);
+
+  // All empty -> valid
+  assert.deepEqual(validateEmergencyContactGroup({}), { isValid: true, errors: {} });
+  assert.deepEqual(
+    validateEmergencyContactGroup({ emergencyContact: "", emergencyRelationship: "", emergencyPhone: "" }),
+    { isValid: true, errors: {} },
+  );
+
+  // Partially filled -> requires all 3
+  const partial1 = validateEmergencyContactGroup({ emergencyContact: "Maria Santos" });
+  assert.equal(partial1.isValid, false);
+  assert.equal(partial1.errors.emergencyRelationship, "Relationship is required");
+  assert.equal(partial1.errors.emergencyPhone, "Emergency contact number is required");
+
+  const partial2 = validateEmergencyContactGroup({ emergencyRelationship: "parent", emergencyPhone: "+639181234567" });
+  assert.equal(partial2.isValid, false);
+  assert.equal(partial2.errors.emergencyContact, "Contact person is required");
+
+  // Fully filled and valid
+  const complete = validateEmergencyContactGroup({
+    emergencyContact: "Maria Santos",
+    emergencyRelationship: "parent",
+    emergencyPhone: "+639181234567",
+  }, "+639170001122");
+  assert.equal(complete.isValid, true);
+  assert.deepEqual(complete.errors, {});
+
+  // Fully filled but phone collision
+  const collision = validateEmergencyContactGroup({
+    emergencyContact: "Maria Santos",
+    emergencyRelationship: "parent",
+    emergencyPhone: "+639170001122",
+  }, "+639170001122");
+  assert.equal(collision.isValid, false);
+  assert.equal(collision.errors.emergencyPhone, "Emergency contact number cannot be the same as your personal mobile number");
+});
+
 test("PersonalDetailsTab component enforces visual limits, counters, and birthday dropdown selector", () => {
   assert.match(source, /BirthdayField/);
   assert.match(source, /MONTH_OPTIONS/);
@@ -162,3 +297,4 @@ test("PersonalDetailsTab component enforces visual limits, counters, and birthda
   assert.match(source, /charCounter/);
   assert.match(source, /Must be at least 18 years old/);
 });
+

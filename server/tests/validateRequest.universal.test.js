@@ -10,15 +10,27 @@ import {
 
 describe("Universal Zod Validation Suite", () => {
   describe("updateUserSchema", () => {
-    it("validates valid user update data", () => {
+    it("validates valid user update data including middleName, civilStatus, nationality, occupation, and emergencyRelationship", () => {
       const result = updateUserSchema.safeParse({
         firstName: "John",
+        middleName: "Protacio",
         lastName: "Doe",
         email: "john.doe@example.com",
         phone: "09171234567",
         gender: "male",
+        civilStatus: "single",
+        nationality: "Filipino",
+        occupation: "Engineer",
+        emergencyContact: "Jane Doe",
+        emergencyRelationship: "parent",
+        emergencyPhone: "09181234567",
       });
       expect(result.success).toBe(true);
+      expect(result.data.middleName).toBe("Protacio");
+      expect(result.data.civilStatus).toBe("single");
+      expect(result.data.nationality).toBe("Filipino");
+      expect(result.data.occupation).toBe("Engineer");
+      expect(result.data.emergencyRelationship).toBe("parent");
     });
 
     it("rejects invalid email", () => {

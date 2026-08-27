@@ -86,6 +86,11 @@ const ProfilePage = () => {
  civilStatus: "",
  nationality: "",
  occupation: "",
+ phone: "",
+ address: "",
+ emergencyContact: "",
+ emergencyRelationship: "",
+ emergencyPhone: "",
  });
 
  const { data: profile, isLoading: profileLoading } = useCurrentUser();
@@ -97,21 +102,26 @@ const ProfilePage = () => {
  const loading = (!profile && profileLoading) || (!reservationsData && reservationsLoading);
 
  useEffect(() => {
- if (!profile) return;
+    if (!profile) return;
 
- setProfileData(profile);
- setEditData({
- firstName: profile.firstName || "",
- middleName: profile.middleName || "",
- lastName: profile.lastName || "",
- profileImage: profile.profileImage || "",
- dateOfBirth: profile.dateOfBirth || "",
- gender: profile.gender || "",
- civilStatus: profile.civilStatus || "",
- nationality: profile.nationality || "",
- occupation: profile.occupation || "",
- });
- }, [profile]);
+    setProfileData(profile);
+    setEditData({
+      firstName: profile.firstName || "",
+      middleName: profile.middleName || "",
+      lastName: profile.lastName || "",
+      profileImage: profile.profileImage || "",
+      dateOfBirth: profile.dateOfBirth || "",
+      gender: profile.gender || "",
+      civilStatus: profile.civilStatus || "",
+      nationality: profile.nationality || "",
+      occupation: profile.occupation || "",
+      phone: profile.phone || "",
+      address: profile.address || "",
+      emergencyContact: profile.emergencyContact || "",
+      emergencyRelationship: profile.emergencyRelationship || "",
+      emergencyPhone: profile.emergencyPhone || "",
+    });
+  }, [profile]);
 
  useEffect(() => {
  const nextTab =
@@ -449,6 +459,11 @@ const ProfilePage = () => {
       civilStatus: profileData.civilStatus || "",
       nationality: profileData.nationality || "",
       occupation: profileData.occupation || "",
+      phone: profileData.phone || "",
+      address: profileData.address || "",
+      emergencyContact: profileData.emergencyContact || "",
+      emergencyRelationship: profileData.emergencyRelationship || "",
+      emergencyPhone: profileData.emergencyPhone || "",
     });
     setIsEditingProfile(false);
   };
@@ -463,7 +478,13 @@ const ProfilePage = () => {
       editData.gender !== (profileData.gender || "") ||
       editData.civilStatus !== (profileData.civilStatus || "") ||
       editData.nationality !== (profileData.nationality || "") ||
-      editData.occupation !== (profileData.occupation || ""));
+      editData.occupation !== (profileData.occupation || "") ||
+      editData.phone !== (profileData.phone || "") ||
+      editData.address !== (profileData.address || "") ||
+      editData.emergencyContact !== (profileData.emergencyContact || "") ||
+      editData.emergencyRelationship !== (profileData.emergencyRelationship || "") ||
+      editData.emergencyPhone !== (profileData.emergencyPhone || ""));
+
 
   const handleTabChange = (nextTab) => {
     if (hasUnsavedChanges) {

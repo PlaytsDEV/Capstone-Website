@@ -36,7 +36,7 @@ const socialLinks = [
 export function ContactFooter() {
   return (
     <footer
-      className="py-12 lg:py-16"
+      className="py-8 lg:py-10"
       style={{
         backgroundColor: 'var(--lp-bg)',
         borderTop: '1px solid var(--lp-border)',
@@ -44,21 +44,21 @@ export function ContactFooter() {
     >
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Main content */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-16 mb-10">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6">
           {/* Brand + Social */}
           <div>
             <h3
-              className="text-xl font-medium mb-3 tracking-tight"
+              className="text-xl font-medium mb-2 tracking-tight"
               style={{ color: 'var(--lp-text)' }}
             >
               Lilycrest
             </h3>
-            <p className="text-sm font-light leading-relaxed mb-5" style={{ color: 'var(--lp-text-muted)' }}>
+            <p className="text-xs font-light leading-relaxed mb-3" style={{ color: 'var(--lp-text-muted)' }}>
               Premium living spaces designed for comfort, convenience, and
               community.
             </p>
             {/* Social Media Links */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {socialLinks.map((social) => {
                 const Icon = social.icon;
                 return (
@@ -70,8 +70,8 @@ export function ContactFooter() {
                     aria-label={social.label}
                     className="flex items-center justify-center transition-all duration-200"
                     style={{
-                      width: '34px',
-                      height: '34px',
+                      width: '32px',
+                      height: '32px',
                       borderRadius: '8px',
                       backgroundColor: 'var(--lp-icon-bg)',
                       border: '1px solid var(--lp-border)',
@@ -98,12 +98,12 @@ export function ContactFooter() {
           {/* Quick Links */}
           <div>
             <h4
-              className="text-xs tracking-widest uppercase mb-5 font-medium"
+              className="text-xs tracking-widest uppercase mb-3 font-medium"
               style={{ color: 'var(--lp-text-muted)' }}
             >
               Navigation
             </h4>
-            <ul className="space-y-3">
+            <ul className="space-y-2">
               {[
                 { label: 'Browse Rooms', href: '#rooms', id: 'rooms' },
                 { label: 'Our Branches', href: '#location', id: 'location' },
@@ -132,12 +132,12 @@ export function ContactFooter() {
           {/* Branches */}
           <div>
             <h4
-              className="text-xs tracking-widest uppercase mb-5 font-medium"
+              className="text-xs tracking-widest uppercase mb-3 font-medium"
               style={{ color: 'var(--lp-text-muted)' }}
             >
               Locations
             </h4>
-            <ul className="space-y-4">
+            <ul className="space-y-2.5">
               <li>
                 <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
                   Gil Puyat
@@ -160,14 +160,14 @@ export function ContactFooter() {
           {/* Contact */}
           <div>
             <h4
-              className="text-xs tracking-widest uppercase mb-5 font-medium"
+              className="text-xs tracking-widest uppercase mb-3 font-medium"
               style={{ color: 'var(--lp-text-muted)' }}
             >
               Get in Touch
             </h4>
-            <ul className="space-y-3">
-              <li className="flex items-center gap-3">
-                <Mail className="w-4 h-4" style={{ color: 'var(--lp-accent)' }} />
+            <ul className="space-y-2">
+              <li className="flex items-center gap-2.5">
+                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
                 <a
                   href="mailto:lilycrestadmin@gmail.com"
                   className="text-sm font-light transition-colors"
@@ -178,8 +178,8 @@ export function ContactFooter() {
                   lilycrestadmin@gmail.com
                 </a>
               </li>
-              <li className="flex items-center gap-3">
-                <Phone className="w-4 h-4" style={{ color: 'var(--lp-accent)' }} />
+              <li className="flex items-center gap-2.5">
+                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
                 <a
                   href="tel:+639123456789"
                   className="text-sm font-light transition-colors"
@@ -190,8 +190,8 @@ export function ContactFooter() {
                   +63 912 345 6789
                 </a>
               </li>
-              <li className="flex items-center gap-3">
-                <MapPin className="w-4 h-4" style={{ color: 'var(--lp-accent)' }} />
+              <li className="flex items-center gap-2.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
                 <span className="text-sm font-light" style={{ color: 'var(--lp-text-secondary)' }}>
                   Manila, Philippines
                 </span>
@@ -201,7 +201,7 @@ export function ContactFooter() {
         </div>
 
         {/* Bottom */}
-        <div className="pt-6" style={{ borderTop: '1px solid var(--lp-border)' }}>
+        <div className="pt-4" style={{ borderTop: '1px solid var(--lp-border)' }}>
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
               © {new Date().getFullYear()} Lilycrest. All rights reserved.

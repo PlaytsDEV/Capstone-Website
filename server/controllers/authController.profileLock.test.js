@@ -15,17 +15,25 @@ describe("tenant application profile updates", () => {
     expect(findLockedTenantProfileFields(attempted, false)).toEqual([]);
   });
 
-  test("identity fields are detected when locked is true", () => {
+  test("identity, contact, and emergency fields are detected when locked is true", () => {
     const attempted = {
       firstName: "UpdatedName",
       lastName: "UpdatedLast",
       occupation: "Engineer",
+      address: "123 Boni Ave",
+      emergencyContact: "Maria Santos",
+      emergencyRelationship: "parent",
+      emergencyPhone: "+639181234567",
       profileImage: "https://example.test/photo.jpg",
     };
     const locked = findLockedTenantProfileFields(attempted, true);
     expect(locked).toContain("firstName");
     expect(locked).toContain("lastName");
     expect(locked).toContain("occupation");
+    expect(locked).toContain("address");
+    expect(locked).toContain("emergencyContact");
+    expect(locked).toContain("emergencyRelationship");
+    expect(locked).toContain("emergencyPhone");
     expect(locked).not.toContain("profileImage");
   });
 
@@ -33,3 +41,4 @@ describe("tenant application profile updates", () => {
     expect(TENANT_APPLICATION_LOCKED_PROFILE_FIELDS).not.toContain("profileImage");
   });
 });
+
