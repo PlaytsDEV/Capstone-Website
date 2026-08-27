@@ -213,24 +213,25 @@ export const archiveContract = async ({
   return { contract: archived, previousStatus, replacement };
 };
 
-// Cascade cleanup for the "cancel reservation, leave its draft Contract
-// behind" defect: a Contract in an early-stage (pre-generation) lifecycle
-// status defaults isCanonical/isCurrent to true at creation, so once its
-// Reservation is cancelled it lingers as an eligible canonical candidate and
-// collides with whatever Contract the tenant's next Reservation produces
-// (tenantContractSelectionService.selectCanonicalTenantContract then throws
-// MULTIPLE_CANONICAL_CONTRACTS for every consumer — Admin Web PDF download,
-// Tenant Web /api/contracts/my, and Mobile /api/m/contracts/current alike).
-//
-// This intentionally does NOT reuse archiveContract()'s replacement-required
-// safety check: that check exists for the "manually retire a canonical
-// Contract in favor of a specific successor" admin action, where a successor
-// is expected to already exist. Here there usually isn't one yet — the
-// Reservation was simply abandoned before its Contract ever left draft — so
-// requiring a replacement would make cascade cleanup impossible for the
-// exact case it exists to handle. Only Contracts still in
-// EARLY_STAGE_STATUSES are eligible, so a Contract that has actually
-// progressed (generated or beyond) is never touched by this path.
+// Cascade cleanup for cancelled Reservations: when a Reservation is cancelled
+// (by the applicant or approved by an admin), any Contract linked to that
+// reservation that has not progressed into an active checked-in stay must be
+// voided and archived so it no longer lingers as a canonical or visible
+// contract.
+const PRE_MOVEIN_CONTRACT_STATUSES = new Set([
+  "draft",
+  "incomplete",
+  "ready_for_generation",
+  "generated",
+  "awaiting_signatures",
+  "partially_signed",
+  "signed",
+  "awaiting_notarization",
+  "notarized",
+  "ready_for_publication",
+  "published",
+]);
+
 export const archiveContractForCancelledReservation = async ({
   reservationId, actorId = null, adapters = {},
 }) => {
@@ -239,10 +240,10 @@ export const archiveContractForCancelledReservation = async ({
   const candidates = await ContractModel.find({ reservationId, archivedAt: null });
   const archivedContracts = [];
   for (const contract of candidates) {
-    if (!EARLY_STAGE_STATUSES.has(contract.status)) continue;
+    if (!PRE_MOVEIN_CONTRACT_STATUSES.has(contract.status)) continue;
     const now = new Date();
     const previousStatus = contract.status;
-    const reason = "Reservation cancelled before this Contract left its early-stage draft lifecycle.";
+    const reason = "Reservation cancelled before move-in.";
     const archived = await ContractModel.findOneAndUpdate(
       { _id: contract._id, archivedAt: null },
       {

@@ -180,26 +180,29 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
       : (reservationsData?.reservations || []);
     return list.some(
       (r) =>
-        r.initialPaymentStatus === "paid" ||
-        r.status === "reserved" ||
-        r.status === "moveIn" ||
-        r.advanceRentPaid === true ||
-        r.paymentStatus === "paid" ||
-        r.paymentStatus === "paid_in_full"
+        r.status !== "cancelled" &&
+        r.status !== "rejected" &&
+        r.status !== "archived" &&
+        (r.initialPaymentStatus === "paid" ||
+          r.advanceRentPaid === true ||
+          r.status === "moveIn")
     );
   }, [isTenant, reservationsData]);
 
-  const hasContract = Boolean(contractData) || hasSettledReservation;
+  const hasContract = isTenant || (hasSettledReservation && Boolean(contractData));
 
   useEffect(() => {
     const handleUpdate = () => {
       queryClient.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
     };
     window.addEventListener("lilycrest:contract-updated", handleUpdate);
     window.addEventListener("lilycrest:payment-updated", handleUpdate);
+    window.addEventListener("lilycrest:reservation-updated", handleUpdate);
     return () => {
       window.removeEventListener("lilycrest:contract-updated", handleUpdate);
       window.removeEventListener("lilycrest:payment-updated", handleUpdate);
+      window.removeEventListener("lilycrest:reservation-updated", handleUpdate);
     };
   }, [queryClient]);
 
