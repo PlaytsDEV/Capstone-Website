@@ -148,6 +148,28 @@ async function runRoomTransferActivation({ successorContractId, actorId, session
     session,
   );
 
+  // A pending lease renewal chained off the predecessor we just replaced is
+  // now meaningless — its frozen currentTerms snapshot still describes the
+  // old room/bed/rate. Left alone it would either dangle forever (caught,
+  // but not resolved, by the renewal cron's predecessor.status check) or,
+  // in the unlikely case the predecessor's status was ever restored, could
+  // still activate with stale data. Cancel it here, synchronously, in the
+  // same transaction as the transfer itself.
+  const danglingRenewal = await Contract.findOne({
+    contractPurpose: "renewal",
+    replacesContractId: predecessor._id,
+    status: { $in: ["published", "renewal_pending"] },
+  }).session(session);
+  if (danglingRenewal) {
+    await transitionContract(
+      danglingRenewal,
+      "cancelled",
+      actorId,
+      "predecessor_transferred",
+      session,
+    );
+  }
+
   return { activated: true, alreadyActive: false, successor, predecessor };
 }
 

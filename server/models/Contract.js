@@ -163,6 +163,18 @@ const contractSchema = new mongoose.Schema(
     },
     initialContractKey: { type: String, default: null, immutable: true },
     initialStayKey: { type: String, default: null, immutable: true },
+    // Set only when contractPurpose === "replacement" — distinguishes a
+    // same-room bed swap from a full room change so Admin/Tenant UI can use
+    // accurate language ("Bed Reassignment" vs "Room Transfer") even though
+    // both currently go through the same full replacement-Contract mechanism
+    // (a bed assignment is part of the legal document; a lighter, non-
+    // Contract bed-swap path was deliberately not built in this pass — see
+    // steady-waddling-metcalfe.md D1).
+    transferType: {
+      type: String,
+      enum: ["room_change", "bed_only", null],
+      default: null,
+    },
     parentContractId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Contract",

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import logger from "../middleware/logger.js";
-import { Contract, Reservation } from "../models/index.js";
+import { Contract, Reservation, Stay } from "../models/index.js";
 import { transitionContract } from "./contractService.js";
 import { notify, notifyBranchAdmins } from "./notifications/notificationService.js";
 import { toManilaStartOfDay } from "../utils/dateUtils.js";
@@ -123,6 +123,35 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
           // contracts for one reservation. Surface, don't guess.
           outcome = { conflict: true };
           return;
+        }
+
+        // Defense-in-depth, independent of whether the Contract-side
+        // cancellation in moveOutStayWorkflow/transferStayWorkflow actually
+        // ran: even when predecessor.status still reads "active", check for
+        // positive evidence the tenant has already departed. A tenant whose
+        // reservation is moveOut/cancelled, or who has a Stay explicitly
+        // marked completed/terminated for this reservation, must never have
+        // a renewal silently activated for them — that would resurrect a
+        // tenancy that has already ended. This only blocks on clear evidence
+        // of departure; it does not require a Stay to exist at all (many
+        // legitimate Contracts have no Stay row — a separate, known gap
+        // tracked by Job 19 — and must not be penalized here for that).
+        const predecessorReservationId = predecessor.reservationId;
+        if (predecessorReservationId) {
+          const [reservationDeparted, hasDepartedStay] = await Promise.all([
+            Reservation.exists({
+              _id: predecessorReservationId,
+              status: { $in: ["moveOut", "cancelled"] },
+            }).session(session),
+            Stay.exists({
+              reservationId: predecessorReservationId,
+              status: { $in: ["completed", "terminated"] },
+            }).session(session),
+          ]);
+          if (reservationDeparted || hasDepartedStay) {
+            outcome = { conflict: true };
+            return;
+          }
         }
 
         successor.isCurrent = true;

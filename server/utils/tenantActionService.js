@@ -163,9 +163,11 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
       ? { ...disabled("Only active stays can be transferred.", "NO_ACTIVE_STAY"), hasAvailableBedsInBranch }
       : tenantIsInactive
         ? { ...disabled("Inactive or moved-out tenants cannot be transferred.", "TENANT_INACTIVE"), hasAvailableBedsInBranch }
-        : hasAvailableBedsInBranch
-          ? { enabled: true, reason: "", blockingCodes: [], hasAvailableBedsInBranch }
-          : { ...disabled("No available same-branch bed is available for transfer.", "NO_AVAILABLE_BED"), hasAvailableBedsInBranch },
+        : renewalExists
+          ? { ...disabled("A future renewal already exists for this tenant. Resolve or cancel it before transferring.", "FUTURE_RENEWAL_EXISTS"), hasAvailableBedsInBranch }
+          : hasAvailableBedsInBranch
+            ? { enabled: true, reason: "", blockingCodes: [], hasAvailableBedsInBranch }
+            : { ...disabled("No available same-branch bed is available for transfer.", "NO_AVAILABLE_BED"), hasAvailableBedsInBranch },
     moveOut: !activeStay
       ? disabled("Only active stays can be moved out.", "NO_ACTIVE_STAY")
       : tenantIsInactive
@@ -495,6 +497,20 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
+      }
+
+      // Hard guard, not just the advisory buildActionAvailability check above
+      // (a stale UI state could otherwise bypass it) — a pending future
+      // renewal must be resolved or cancelled before a room transfer can
+      // proceed, since transferring the predecessor Contract out from under
+      // it would leave the renewal's frozen currentTerms describing a room
+      // the tenant no longer occupies.
+      const pendingRenewalStay = await Stay.exists({
+        reservationId: reservation._id,
+        previousStayId: activeStay._id,
+      }).session(session);
+      if (pendingRenewalStay) {
+        throw Object.assign(new Error("A future renewal already exists for this tenant. Resolve or cancel it before transferring."), { statusCode: 409, code: "FUTURE_RENEWAL_EXISTS" });
       }
 
       if (!payload.targetRoomId || !payload.targetBedId) {

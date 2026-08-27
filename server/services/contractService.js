@@ -670,12 +670,18 @@ export const createReplacementContractForTransfer = async ({
 
   const bedIdentifier = targetBed.id || String(targetBed._id || "");
   const bedName = targetBed.label || targetBed.code || [targetBed.bunkBlock, targetBed.position].filter(Boolean).join("-") || bedIdentifier || "";
+  // Labeling only — both a same-room bed swap and a full room change go
+  // through this same replacement-Contract mechanism; this just lets
+  // Admin/Tenant UI say "Bed Reassignment" instead of "Room Transfer" when
+  // the room itself didn't change.
+  const transferType = String(oldContract.roomId) === String(targetRoom._id) ? "bed_only" : "room_change";
 
   const createdDocs = await Contract.create(
     [
       {
         ...number,
         contractPurpose: "replacement",
+        transferType,
         parentContractId: oldContract.parentContractId || oldContract._id,
         replacesContractId: oldContract._id,
         replacementReason: `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || ""}) -> ${targetRoom.roomNumber} (${bedName})`,
