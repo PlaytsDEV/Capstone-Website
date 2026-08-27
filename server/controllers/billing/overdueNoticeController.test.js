@@ -137,10 +137,16 @@ await jest.unstable_mockModule("./_helpers.js", () => ({
   resolveAdminUserId: jest.fn().mockImplementation((req, admin) => admin?._id || req?.user?._id || new mongoose.Types.ObjectId()),
 }));
 
+const mockMoveOutStayWorkflow = jest.fn().mockResolvedValue({ reservation: {} });
+await jest.unstable_mockModule("../../utils/tenantActionService.js", () => ({
+  moveOutStayWorkflow: mockMoveOutStayWorkflow,
+}));
+
 const {
   getOverdueNoticesAction,
   sendOverdueNoticeAction,
   updateTerminationDecisionAction,
+  executeApprovedTermination,
 } = await import("./overdueNoticeController.js");
 
 describe("OverdueNoticeController Tests", () => {

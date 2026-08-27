@@ -23,6 +23,7 @@ import { archiveContractForCancelledReservation } from "../../services/contractA
 import {
   findDbUser,
   notifyAdminsOfCancellationRequest,
+  assertNoActiveStayOrProgressedContract,
 } from "./_helpers.js";
 
 const APPLICANT_CANCELLABLE_STATUSES = new Set([
@@ -85,6 +86,15 @@ export const cancelReservationByUser = async (req, res, next) => {
       return res.status(409).json({
         error: `A reservation with status "${reservation.status}" cannot be cancelled by the applicant.`,
         code: "CANCELLATION_NOT_ALLOWED",
+      });
+    }
+
+    try {
+      await assertNoActiveStayOrProgressedContract(reservation._id, dbUser._id);
+    } catch (guardErr) {
+      return res.status(guardErr.statusCode || 409).json({
+        error: guardErr.message,
+        code: guardErr.code || "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
       });
     }
 
@@ -193,6 +203,15 @@ export const requestCancellationByUser = async (req, res, next) => {
       return res.status(409).json({
         error: `A reservation with status "${reservation.status}" cannot be cancelled.`,
         code: "CANCELLATION_NOT_ALLOWED",
+      });
+    }
+
+    try {
+      await assertNoActiveStayOrProgressedContract(reservation._id, dbUser._id);
+    } catch (guardErr) {
+      return res.status(guardErr.statusCode || 409).json({
+        error: guardErr.message,
+        code: guardErr.code || "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
       });
     }
 

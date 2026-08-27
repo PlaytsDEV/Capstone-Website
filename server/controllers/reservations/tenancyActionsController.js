@@ -1154,11 +1154,35 @@ export const cancelMoveOutAction = async (req, res, next) => {
 export const earlyTerminationAction = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
-    const { penaltyFee = 0, forfeitureReason = "early_termination" } = req.body;
+    const {
+      penaltyFee = 0,
+      forfeitureReason = "early_termination",
+      moveOutDate,
+      actualVacateTime,
+      finalUtilityReading,
+      finalNotes,
+      keyReturned,
+      damageDeductions,
+      forceOverride,
+    } = req.body;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
     const actor = await findDbUser(req.user.uid);
-    const result = await executeEarlyTerminationWorkflow(reservationId, { penaltyFee, forfeitureReason }, actor?._id);
+    const result = await executeEarlyTerminationWorkflow(
+      reservationId,
+      {
+        penaltyFee,
+        forfeitureReason,
+        moveOutDate,
+        actualVacateTime,
+        finalUtilityReading,
+        finalNotes,
+        keyReturned,
+        damageDeductions,
+        forceOverride,
+      },
+      actor?._id,
+    );
 
     await auditLogger.logModification(
       req,

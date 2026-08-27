@@ -44,7 +44,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   AuditLog: { create: jest.fn() },
   UtilityReading: { findOne: utilityReadingFindOne },
   BedHistory: {},
-  Stay: {},
+  Stay: { exists: jest.fn().mockResolvedValue(false) },
   Contract: {},
   TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
   BusinessSettings: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
@@ -65,6 +65,14 @@ await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
 }));
 await jest.unstable_mockModule("../utils/occupancyManager.js", () => ({
   updateOccupancyOnReservationChange: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/tenantContractSelectionService.js", () => ({
+  CURRENT_STAY_STATUSES: Object.freeze(["active", "ending_soon"]),
+  EARLY_STAGE_STATUSES: new Set(["draft", "incomplete", "ready_for_generation"]),
+  resolveTenantCanonicalContract: jest.fn().mockResolvedValue(null),
+  resolveCurrentStayForReservation: jest.fn().mockResolvedValue(null),
+  resolveCurrentStayForTenant: jest.fn().mockResolvedValue(null),
+  resolveAuthoritativeCurrentContract: jest.fn().mockResolvedValue(null),
 }));
 await jest.unstable_mockModule("../utils/tenantActionService.js", () => ({
   getTenantActionContext: jest.fn(),
