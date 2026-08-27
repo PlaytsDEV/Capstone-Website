@@ -8,12 +8,12 @@ import {
 describe("tenant Contract safe view", () => {
   test("formats raw lifecycle statuses", () => {
     expect(getTenantContractDisplayStatus("awaiting_notarization"))
-      .toBe("Physical signing and in-person notarization are in progress.");
+      .toBe("Finalizing — Awaiting Notarization");
   });
 
   test.each(["draft", "incomplete", "ready_for_generation"])(
     "%s uses the preparation message",
-    (status) => expect(getTenantContractDisplayStatus(status)).toBe("Contract is being prepared."),
+    (status) => expect(getTenantContractDisplayStatus(status)).toBe("Contract Being Prepared"),
   );
 
   test("returns only the current non-superseded prepared document", () => {

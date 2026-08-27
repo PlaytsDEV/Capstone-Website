@@ -58,6 +58,9 @@ export const contractApi = {
     authFetch(`/contracts${queryString(filters)}`),
   getContract: (contractId) => authFetch(`/contracts/${contractId}`),
   getTenantCurrentContract: (tenantId) => authFetch(`/contracts/tenant/${tenantId}/current`),
+  // Read-only — Admin can never acknowledge on the tenant's behalf.
+  getContractAcknowledgement: (contractId) =>
+    authFetch(`/contracts/${contractId}/acknowledgement`, { cache: "no-store" }),
   createContractDraft: ({ reservationId, stayId }) =>
     authFetch("/contracts", {
       method: "POST",

@@ -184,6 +184,7 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getOverdueNoticesAction: noop,
   sendOverdueNoticeAction: noop,
   updateTerminationDecisionAction: noop,
+  executeApprovedTermination: noop,
 }));
 
 await jest.unstable_mockModule("../controllers/announcementsController.js", () => ({

@@ -24,6 +24,7 @@ import logger from "../../middleware/logger.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { sendOverdueNoticeEmail } from "../../config/email.js";
 import notify from "../../services/notifications/notificationService.js";
+import { moveOutStayWorkflow } from "../../utils/tenantActionService.js";
 
 /**
  * Normalizes notice type string/number to 1, 2, or 3
@@ -650,6 +651,14 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
       };
       review.status = targetStatus || (outcome === "case_dismissed" ? "closed" : "resolved");
       review.resolvedAt = new Date();
+      // Deciding "termination_approved" is a board decision, not an
+      // execution — the tenant's Stay/Contract/room must not change until an
+      // admin separately confirms the actual move-out via
+      // executeApprovedTermination. This flag is what makes that gap visible
+      // as an admin to-do instead of a forgotten dead-end record.
+      if (outcome === "termination_approved") {
+        review.executionStatus = "pending_execution";
+      }
     } else if (targetStatus) {
       review.status = targetStatus;
     }
@@ -765,6 +774,108 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
     });
   } catch (error) {
     logger.error("[OverdueNotice] updateTerminationDecisionAction error:", error);
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/billing/termination-reviews/:id/execute
+ *
+ * Executes a board-approved termination. Approving a termination
+ * (decision.outcome = "termination_approved") is only a decision — nothing
+ * about the tenant's Stay/Contract/room changes until an admin explicitly
+ * runs this action, which delegates to the same canonical move-out path
+ * (moveOutStayWorkflow, reason:"terminated") used everywhere else so the
+ * end-state is identical to any other early/administrative termination.
+ */
+export const executeApprovedTermination = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
+    if (!adminUserId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authenticated user record not found in system.",
+      });
+    }
+
+    const { id } = req.params;
+    const {
+      moveOutDate,
+      actualVacateTime,
+      finalUtilityReading,
+      finalNotes,
+      keyReturned,
+      damageDeductions,
+      forceOverride,
+    } = req.body;
+
+    const review = await TerminationReview.findById(id);
+    if (!review) {
+      return res.status(404).json({ success: false, error: "Termination review case not found." });
+    }
+
+    if (req.branchFilter && review.branch !== req.branchFilter) {
+      return res.status(403).json({ success: false, error: "Unauthorized for this branch." });
+    }
+
+    if (review.decision?.outcome !== "termination_approved") {
+      return res.status(409).json({
+        success: false,
+        error: "This review does not have an approved termination decision.",
+        code: "TERMINATION_NOT_APPROVED",
+      });
+    }
+
+    if (review.executionStatus === "executed") {
+      return res.status(409).json({
+        success: false,
+        error: "This approved termination has already been executed.",
+        code: "TERMINATION_ALREADY_EXECUTED",
+      });
+    }
+
+    const result = await moveOutStayWorkflow({
+      reservationId: review.reservationId,
+      payload: {
+        reason: "terminated",
+        confirm: true,
+        moveOutDate,
+        actualVacateTime,
+        finalUtilityReading,
+        finalNotes,
+        keyReturned,
+        damageDeductions,
+        forceOverride,
+      },
+      actorId: adminUserId,
+    });
+
+    review.executionStatus = "executed";
+    review.executedAt = new Date();
+    review.executedBy = adminUserId;
+    review.executedReservationId = review.reservationId;
+    if (review.status !== "resolved" && review.status !== "closed") {
+      review.status = "resolved";
+    }
+    await review.save();
+
+    await logBillingAudit({
+      action: "EXECUTE_APPROVED_TERMINATION",
+      actorId: adminUserId,
+      targetUserId: review.tenantId,
+      branch: review.branch,
+      details: { reviewId: review._id, reservationId: review.reservationId },
+    });
+
+    res.json({
+      success: true,
+      message: "Approved termination executed successfully.",
+      data: review,
+      reservation: result.reservation,
+    });
+  } catch (error) {
+    logger.error("[OverdueNotice] executeApprovedTermination error:", error);
     next(error);
   }
 };

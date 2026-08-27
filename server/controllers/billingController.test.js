@@ -182,6 +182,13 @@ await jest.unstable_mockModule("../utils/utilityFlowRules.js", () => ({
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
   readMoveInDate: (reservation) => reservation.moveInDate || reservation.checkInDate || null,
+  hasReservationStatus: (status, ...targets) =>
+    targets.flat().includes(status),
+  utilityEventTypesForQuery: (...types) => types.flat(),
+}));
+
+await jest.unstable_mockModule("../utils/tenantActionService.js", () => ({
+  moveOutStayWorkflow: jest.fn(),
 }));
 
 await jest.unstable_mockModule("../utils/adminAccess.js", () => ({

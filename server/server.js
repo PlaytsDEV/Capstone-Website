@@ -49,6 +49,7 @@ import reservationRoutes from "./routes/reservationsRoutes.js";
 import inquiryRoutes from "./routes/inquiriesRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
 import billingRoutes from "./routes/billingRoutes.js";
+import moveOutClearanceRoutes from "./routes/moveOutClearanceRoutes.js";
 import announcementRoutes from "./routes/announcementRoutes.js";
 import maintenanceRoutes from "./routes/maintenanceContractRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
@@ -326,6 +327,7 @@ app.use("/api/contracts", contractRoutes);
 app.use("/api/inquiries", publicLimiter, inquiryRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/move-out-clearances", moveOutClearanceRoutes);
 app.use("/api/announcements", announcementRoutes);
 // Mobile app routes use session_token auth. Mount them before the maintenance
 // contract so tenant mobile /api/m/maintenance/* requests are not intercepted

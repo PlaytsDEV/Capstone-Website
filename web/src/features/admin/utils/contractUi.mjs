@@ -1,21 +1,15 @@
-export const CONTRACT_STATUS_META = Object.freeze({
-  draft: { label: "Draft", tone: "neutral" },
-  incomplete: { label: "Incomplete", tone: "neutral" },
-  ready_for_generation: { label: "Ready for Generation", tone: "info" },
-  generated: { label: "Generated", tone: "info" },
-  awaiting_signatures: { label: "Awaiting Signatures", tone: "warning" },
-  partially_signed: { label: "Partially Signed", tone: "warning" },
-  signed: { label: "Signed", tone: "info" },
-  awaiting_notarization: { label: "Awaiting Notarization", tone: "warning" },
-  notarized: { label: "Notarized", tone: "success" },
-  ready_for_publication: { label: "Ready for Publication", tone: "info" },
-  published: { label: "Published", tone: "success" },
-  active: { label: "Active", tone: "success" },
-  expiring_soon: { label: "Expiring Soon", tone: "warning" },
-  expired: { label: "Expired", tone: "error" },
-  terminated: { label: "Terminated", tone: "error" },
-  cancelled: { label: "Cancelled", tone: "error" },
-});
+import { CONTRACT_STATUS_LABELS } from "./contractStatusLabels.js";
+
+// Derived from the canonical table (contractStatusLabels.js) — covers all
+// 22 CONTRACT_STATUSES, not just the subset previously hand-maintained here.
+export const CONTRACT_STATUS_META = Object.freeze(
+  Object.fromEntries(
+    Object.entries(CONTRACT_STATUS_LABELS).map(([status, meta]) => [
+      status,
+      { label: meta.adminLabel, tone: meta.tone },
+    ]),
+  ),
+);
 
 export const formatContractStatus = (status) =>
   CONTRACT_STATUS_META[status]?.label ||
@@ -32,7 +26,14 @@ export const CONTRACT_STAGE_GROUPS = Object.freeze({
   published: { label: "Published", statuses: ["published"] },
   active: { label: "Active", statuses: ["active"] },
   expiring_soon: { label: "Expiring Soon", statuses: ["expiring_soon"] },
-  closed: { label: "Expired / Closed", statuses: ["expired", "terminated", "cancelled", "replaced", "archived", "renewed"] },
+  renewal_pending: { label: "Renewal Pending", statuses: ["renewal_pending"] },
+  closed: {
+    label: "Expired / Closed",
+    statuses: [
+      "expired", "terminated", "cancelled", "replaced", "archived",
+      "renewed", "voided", "rejected",
+    ],
+  },
 });
 
 export const getContractStageKey = (status) =>

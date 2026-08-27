@@ -54,6 +54,10 @@ import {
   resolveTenantUpcomingContract,
 } from "../services/tenantContractSelectionService.js";
 import {
+  acknowledgeContract,
+  getAcknowledgementStatus,
+} from "../services/contractAcknowledgementService.js";
+import {
   archiveContract as archiveContractRecord,
   buildContractDeletionEligibility,
   permanentlyDeleteTestContract,
@@ -1545,6 +1549,47 @@ export const getMyContractDetails = async (req, res) => {
         .catch(() => null);
     }
     res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument }) });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+// Tenant flow: "I confirm that I have viewed this contract." Not a
+// signature, not legal acceptance — see ContractAcknowledgement.js header.
+export const acknowledgeMyContract = async (req, res) => {
+  try {
+    const { user, contract } = await findOwnedContract(req);
+    const record = await acknowledgeContract({ contractId: contract._id, tenantId: user._id, req });
+    res.json({
+      acknowledged: true,
+      acknowledgedAt: record.acknowledgedAt,
+      documentVersion: record.documentVersion,
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getMyContractAcknowledgement = async (req, res) => {
+  try {
+    const { user, contract } = await findOwnedContract(req);
+    const status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: user._id });
+    res.json(status);
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+// Admin-facing, read-only — deliberately no admin action to acknowledge on
+// the tenant's behalf.
+export const getContractAcknowledgementForAdmin = async (req, res) => {
+  try {
+    const contract = await Contract.findById(req.params.id).select("tenantId").lean();
+    if (!contract) {
+      return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    }
+    const status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: contract.tenantId });
+    res.json(status);
   } catch (error) {
     fail(res, error);
   }

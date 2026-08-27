@@ -42,8 +42,8 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   awaiting_notarization: ["notarized", "cancelled"],
   notarized: ["ready_for_publication", "cancelled"],
   ready_for_publication: ["published", "cancelled"],
-  published: ["active", "replaced", "transfer_review_required", "terminated"],
-  active: ["expiring_soon", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
+  published: ["active", "expired", "replaced", "transfer_review_required", "terminated"],
+  active: ["expiring_soon", "expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expiring_soon: ["expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expired: ["renewal_pending", "archived"],
   renewal_pending: ["renewed", "cancelled"],
@@ -55,7 +55,12 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   archived: [],
 });
 
-const terminalStatuses = new Set(["renewed", "terminated", "cancelled", "replaced", "archived"]);
+// A Contract at any of these statuses is done: transitionContract forces
+// isCurrent:false on arrival, so no terminal Contract is ever the tenant's
+// "current" lease. "expired" is here because a completed (full-term)
+// move-out drives the Contract to "expired" via moveOutStayWorkflow — the
+// same way an early exit drives it to "terminated".
+const terminalStatuses = new Set(["expired", "renewed", "terminated", "cancelled", "replaced", "archived"]);
 
 const serviceError = (message, code, statusCode = 400, details = undefined) =>
   Object.assign(new Error(message), { code, statusCode, details });
@@ -670,12 +675,18 @@ export const createReplacementContractForTransfer = async ({
 
   const bedIdentifier = targetBed.id || String(targetBed._id || "");
   const bedName = targetBed.label || targetBed.code || [targetBed.bunkBlock, targetBed.position].filter(Boolean).join("-") || bedIdentifier || "";
+  // Labeling only — both a same-room bed swap and a full room change go
+  // through this same replacement-Contract mechanism; this just lets
+  // Admin/Tenant UI say "Bed Reassignment" instead of "Room Transfer" when
+  // the room itself didn't change.
+  const transferType = String(oldContract.roomId) === String(targetRoom._id) ? "bed_only" : "room_change";
 
   const createdDocs = await Contract.create(
     [
       {
         ...number,
         contractPurpose: "replacement",
+        transferType,
         parentContractId: oldContract.parentContractId || oldContract._id,
         replacesContractId: oldContract._id,
         replacementReason: `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || ""}) -> ${targetRoom.roomNumber} (${bedName})`,

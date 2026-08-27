@@ -75,4 +75,9 @@ export const tenantContractApi = {
   getMyStayProofBlob: getStayProofBlob,
   getMyStayProofData: () => authFetch("/contracts/my/stay-proof-data", { cache: "no-store" }),
   getPublicStayVerification: (referenceId) => fetch(`/api/contracts/verify/${referenceId}`).then(r => r.json()),
+  // "I confirm that I have viewed this contract." — not a signature.
+  getMyContractAcknowledgement: (contractId) =>
+    authFetch(`/contracts/my/${contractId}/acknowledgement`, { cache: "no-store" }),
+  acknowledgeMyContract: (contractId) =>
+    authFetch(`/contracts/my/${contractId}/acknowledge`, { method: "POST" }),
 };

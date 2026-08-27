@@ -592,6 +592,18 @@ router.patch(
   billingController.updateTerminationDecisionAction,
 );
 
+/**
+ * PATCH /api/billing/termination-reviews/:id/execute
+ * Execute a board-approved termination (runs the actual move-out).
+ */
+router.patch(
+  "/termination-reviews/:id/execute",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.executeApprovedTermination,
+);
+
 // ============================================================================
 // EXPORT
 // ============================================================================

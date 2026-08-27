@@ -34,6 +34,7 @@ import {
   resolveCurrentStayForReservation,
   resolveAuthoritativeCurrentContract,
 } from "../services/tenantContractSelectionService.js";
+import { transitionContract } from "../services/contractService.js";
 import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
 import {
   resolveApplicablePrepaidRentForTransfer,
@@ -162,9 +163,11 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
       ? { ...disabled("Only active stays can be transferred.", "NO_ACTIVE_STAY"), hasAvailableBedsInBranch }
       : tenantIsInactive
         ? { ...disabled("Inactive or moved-out tenants cannot be transferred.", "TENANT_INACTIVE"), hasAvailableBedsInBranch }
-        : hasAvailableBedsInBranch
-          ? { enabled: true, reason: "", blockingCodes: [], hasAvailableBedsInBranch }
-          : { ...disabled("No available same-branch bed is available for transfer.", "NO_AVAILABLE_BED"), hasAvailableBedsInBranch },
+        : renewalExists
+          ? { ...disabled("A future renewal already exists for this tenant. Resolve or cancel it before transferring.", "FUTURE_RENEWAL_EXISTS"), hasAvailableBedsInBranch }
+          : hasAvailableBedsInBranch
+            ? { enabled: true, reason: "", blockingCodes: [], hasAvailableBedsInBranch }
+            : { ...disabled("No available same-branch bed is available for transfer.", "NO_AVAILABLE_BED"), hasAvailableBedsInBranch },
     moveOut: !activeStay
       ? disabled("Only active stays can be moved out.", "NO_ACTIVE_STAY")
       : tenantIsInactive
@@ -494,6 +497,20 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
+      }
+
+      // Hard guard, not just the advisory buildActionAvailability check above
+      // (a stale UI state could otherwise bypass it) — a pending future
+      // renewal must be resolved or cancelled before a room transfer can
+      // proceed, since transferring the predecessor Contract out from under
+      // it would leave the renewal's frozen currentTerms describing a room
+      // the tenant no longer occupies.
+      const pendingRenewalStay = await Stay.exists({
+        reservationId: reservation._id,
+        previousStayId: activeStay._id,
+      }).session(session);
+      if (pendingRenewalStay) {
+        throw Object.assign(new Error("A future renewal already exists for this tenant. Resolve or cancel it before transferring."), { statusCode: 409, code: "FUTURE_RENEWAL_EXISTS" });
       }
 
       if (!payload.targetRoomId || !payload.targetBedId) {
@@ -1150,6 +1167,61 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       activeStay.updatedBy = actorId;
       await activeStay.save({ session });
 
+      // ── Contract lifecycle synchronization ──────────────────────────────
+      // Move-out must also formally close the tenant's Contract — otherwise
+      // it is silently left at "active"/"expiring_soon" forever, which lets
+      // stale renewals activate and lets the tenant/admin keep seeing an
+      // "Active Contract" for a tenancy that has already ended. A normal,
+      // full-term move-out drives the Contract to "expired" (move-out is the
+      // sole writer of that status); reason:"terminated" (early exit or
+      // administrative termination) drives it to "terminated" instead. Both
+      // are legal terminal edges from published/active/expiring_soon in
+      // CONTRACT_TRANSITIONS, and transitionContract forces isCurrent:false
+      // for either (see terminalStatuses in contractService.js).
+      const currentContract = await resolveAuthoritativeCurrentContract({
+        reservationId: reservation._id,
+        session,
+      });
+      if (
+        currentContract &&
+        !["terminated", "archived", "expired", "replaced", "cancelled"].includes(
+          currentContract.status,
+        )
+      ) {
+        const targetStatus = payload.reason === "terminated" ? "terminated" : "expired";
+        await transitionContract(
+          currentContract,
+          targetStatus,
+          actorId,
+          payload.reason === "terminated" ? "early_termination_move_out" : "normal_completion_move_out",
+          session,
+        );
+
+        // A dangling lease renewal chained off the Contract we just closed
+        // out is now meaningless — left alone, the daily renewal-activation
+        // cron could otherwise activate it for a tenant who has already
+        // left. Cancel it here, synchronously, in the same transaction.
+        const danglingRenewal = await Contract.findOne({
+          contractPurpose: "renewal",
+          replacesContractId: currentContract._id,
+          status: { $in: ["published", "renewal_pending"] },
+        }).session(session);
+        if (danglingRenewal) {
+          await transitionContract(
+            danglingRenewal,
+            "cancelled",
+            actorId,
+            "predecessor_moved_out",
+            session,
+          );
+        }
+      } else if (!currentContract) {
+        logger.warn(
+          { reservationId: reservation._id },
+          "Move-out completed with no resolvable current Contract — nothing to transition (known gap, tracked separately).",
+        );
+      }
+
       reservation.status = "moveOut";
       reservation.moveOutDate = moveOutAt;
       reservation.currentStayId = activeStay._id;
@@ -1188,6 +1260,17 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       if (payload.keyReturned !== undefined) {
         reservation.keyReturned = Boolean(payload.keyReturned);
         reservation.keyReturnAssessedAt = new Date();
+      }
+
+      // Additive fields for the early-termination call path
+      // (executeEarlyTerminationWorkflow) — do not alter the deposit
+      // forfeiture/settlement formula above, only record the penalty
+      // context alongside it when supplied.
+      if (payload.earlyTerminationPenalty !== undefined) {
+        reservation.earlyTerminationPenalty = Number(payload.earlyTerminationPenalty);
+      }
+      if (payload.forfeitureReason && payload.reason === "terminated") {
+        reservation.depositForfeitureReason = payload.forfeitureReason;
       }
 
       reservation.finalSettlementSummary = {
@@ -1332,36 +1415,39 @@ export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
 
 /**
  * SCENARIO 1 - Case 3: Early Contract Termination
+ *
+ * Delegates to moveOutStayWorkflow (the canonical, transactional, billing-
+ * aware move-out path) with reason:"terminated" rather than maintaining a
+ * second, thinner move-out implementation. Previously this function never
+ * touched Stay or Contract at all and skipped the outstanding-balance check
+ * entirely — a divergence that made "early termination" and "move-out with
+ * reason=terminated" produce two different, inconsistent end-states for what
+ * is conceptually the same real-world event. Callers must now supply the
+ * same required fields moveOutStayWorkflow needs (moveOutDate,
+ * finalUtilityReading, confirm is implied) in addition to the
+ * penalty/forfeiture fields specific to early termination.
  */
 export async function executeEarlyTerminationWorkflow(reservationId, payload = {}, actorId = null) {
-  const { penaltyFee = 0, forfeitureReason = "early_termination" } = payload;
-  const reservation = await Reservation.findById(reservationId).populate("roomId");
-  if (!reservation) {
-    throw new Error("Reservation not found");
-  }
-
-  reservation.status = "moveOut";
-  reservation.moveOutDate = new Date();
-  reservation.depositForfeited = true;
-  reservation.depositForfeitureReason = forfeitureReason;
-  reservation.earlyTerminationPenalty = Number(penaltyFee);
-  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Early termination executed with penalty PHP ${penaltyFee}`;
-  await reservation.save();
-
-  // Free room inventory
-  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
-  if (room && reservation.selectedBed?.id) {
-    const bed = room.beds.find(b => String(b.id) === String(reservation.selectedBed.id));
-    if (bed) {
-      bed.status = "available";
-      await room.save();
-    }
-  }
+  const { penaltyFee = 0, forfeitureReason = "early_termination", ...rest } = payload;
+  const result = await moveOutStayWorkflow({
+    reservationId,
+    payload: {
+      ...rest,
+      reason: "terminated",
+      confirm: true,
+      earlyTerminationPenalty: Number(penaltyFee),
+      forfeitureReason,
+    },
+    actorId,
+  });
 
   return {
     success: true,
     message: "Early termination executed successfully.",
-    reservation
+    reservation: result.reservation,
+    stay: result.stay,
+    billingSummary: result.billingSummary,
+    depositSettlement: result.depositSettlement,
   };
 }
 

@@ -1,32 +1,32 @@
-import { FileText, Eye, Download, Layers } from "lucide-react";
+import { FileText, Eye, Download, Layers, CheckCircle2, Circle } from "lucide-react";
+import { useEffect, useState } from "react";
 import SignedContractUploadSection from "../../SignedContractUploadSection";
 import { formatDate, formatMoney } from "./tenantDetailConstants";
+import { CONTRACT_STATUS_LABELS } from "../../../utils/contractStatusLabels.js";
+import { contractApi } from "../../../../../shared/api/contractApi";
 
-const getContractStatusDot = (status) => {
-  const s = String(status || "").toLowerCase();
-  if (["active", "signed", "generated", "verified"].includes(s)) return "bg-emerald-500";
-  if (["pending", "draft", "review"].includes(s)) return "bg-amber-500";
-  if (["voided", "cancelled", "terminated", "expired", "rejected"].includes(s)) return "bg-rose-500";
-  return "bg-slate-400";
-};
+const TONE_DOT_CLASS = Object.freeze({
+  success: "bg-emerald-500",
+  info: "bg-sky-500",
+  warning: "bg-amber-500",
+  error: "bg-rose-500",
+  neutral: "bg-slate-400",
+});
+
+// Uses the canonical status table (contractStatusLabels.js — shared source
+// of truth with tenant Web/Mobile via server/config/contractStatusLabels.js)
+// instead of a separately hand-maintained status map, so Admin never
+// disagrees with what the tenant sees for the same Contract.
+const getContractStatusDot = (status) =>
+  TONE_DOT_CLASS[CONTRACT_STATUS_LABELS[status]?.tone] || TONE_DOT_CLASS.neutral;
 
 const getContractStatusLabel = (contract) => {
   if (!contract) return "Verified Active Stay";
-  const s = String(contract?.status || "").toLowerCase();
+  const meta = CONTRACT_STATUS_LABELS[contract?.status];
   if (contract?.isCanonical) {
-    if (s === "signed") return "Canonical (Signed)";
-    return "Canonical Contract";
+    return meta ? `Canonical (${meta.adminLabel})` : "Canonical Contract";
   }
-  if (s === "active") return "Active Contract";
-  if (s === "signed") return "Signed Contract";
-  if (s === "generated") return "Generated Contract";
-  if (s === "pending") return "Pending Signature";
-  if (s === "draft") return "Draft Contract";
-  if (s === "voided") return "Voided Duplicate";
-  if (s === "cancelled") return "Cancelled";
-  if (s === "terminated") return "Terminated";
-  if (s === "expired") return "Expired";
-  return "Verified Active Stay";
+  return meta?.adminLabel || "Verified Active Stay";
 };
 
 export default function TenantContractsTab({
@@ -57,6 +57,27 @@ export default function TenantContractsTab({
       : tenant?.reservationCode || "LIL-RES-RECORD";
 
   const hasMultipleContracts = Array.isArray(allTenantContracts) && allTenantContracts.length > 1;
+
+  const displayContractId = displayContract?._id || displayContract?.id;
+  const [acknowledgement, setAcknowledgement] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!displayContractId) {
+      setAcknowledgement(null);
+      return undefined;
+    }
+    contractApi
+      .getContractAcknowledgement(displayContractId)
+      .then((result) => {
+        if (!cancelled) setAcknowledgement(result || null);
+      })
+      .catch(() => {
+        if (!cancelled) setAcknowledgement(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [displayContractId]);
 
   return (
     <div className="space-y-4">
@@ -192,6 +213,29 @@ export default function TenantContractsTab({
                 {formatMoney(displayContract?.approvedMonthlyRate || tenant.monthlyRate)}
               </span>
             </div>
+            {acknowledgement?.required && (
+              <div className="col-span-2">
+                <span className="text-muted-foreground block text-[11px]">Tenant Acknowledgement</span>
+                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                  {acknowledgement.acknowledged ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      <span>
+                        Acknowledged
+                        {acknowledgement.acknowledgedAt
+                          ? ` • ${formatDate(acknowledgement.acknowledgedAt)}`
+                          : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Circle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-muted-foreground">Not Yet Acknowledged</span>
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">

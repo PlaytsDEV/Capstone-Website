@@ -163,6 +163,35 @@ const contractSchema = new mongoose.Schema(
     },
     initialContractKey: { type: String, default: null, immutable: true },
     initialStayKey: { type: String, default: null, immutable: true },
+    // Set only when contractPurpose === "replacement" — distinguishes a
+    // same-room bed swap from a full room change so Admin/Tenant UI can use
+    // accurate language ("Bed Reassignment" vs "Room Transfer") even though
+    // both currently go through the same full replacement-Contract mechanism
+    // (a bed assignment is part of the legal document; a lighter, non-
+    // Contract bed-swap path was deliberately not built in this pass — see
+    // steady-waddling-metcalfe.md D1).
+    transferType: {
+      type: String,
+      enum: ["room_change", "bed_only", null],
+      default: null,
+    },
+    // Lightweight admin-visibility flag for a Contract field that may no
+    // longer match the current authoritative Reservation data (e.g. a
+    // move-in reschedule approved after the Contract already progressed
+    // past early-stage — see approvePreMoveInModification). Never used to
+    // silently mutate a progressed Contract's snapshot fields; the flag is
+    // the record that a human needs to reconcile it.
+    staleDataFlags: {
+      type: [
+        {
+          field: { type: String, required: true },
+          flaggedAt: { type: Date, default: Date.now, required: true },
+          reason: { type: String, required: true },
+          resolvedAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+    },
     parentContractId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Contract",

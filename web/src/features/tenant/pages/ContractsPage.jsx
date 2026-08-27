@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Building2,
   Calendar,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Coins,
@@ -150,6 +151,42 @@ function ContractSummaryBanner({ contract, stayData }) {
   );
 }
 
+function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
+  if (!acknowledgement || !acknowledgement.required) return null;
+
+  if (acknowledgement.acknowledged) {
+    return (
+      <div className="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 flex items-center gap-2.5">
+        <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" strokeWidth={2} />
+        <p className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 font-medium">
+          You acknowledged this contract on{" "}
+          {acknowledgement.acknowledgedAt
+            ? dayjs(acknowledgement.acknowledgedAt).format("MMM D, YYYY [at] h:mm A")
+            : "record"}
+          .
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <p className="text-xs sm:text-sm text-sky-800 dark:text-sky-300 font-medium">
+        Please confirm that you have viewed your final contract.
+      </p>
+      <button
+        type="button"
+        onClick={onAcknowledge}
+        disabled={busy}
+        className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-colors disabled:opacity-50 cursor-pointer shadow-2xs flex-shrink-0"
+      >
+        <CheckCircle2 size={14} strokeWidth={2} />
+        <span>{busy ? "Confirming…" : "Acknowledge Contract"}</span>
+      </button>
+    </div>
+  );
+}
+
 function PreviousContractsSection({ history, onPreview, onDownload, actionBusyId }) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -287,6 +324,8 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionBusyId, setActionBusyId] = useState(null);
+  const [acknowledgement, setAcknowledgement] = useState(null);
+  const [acknowledging, setAcknowledging] = useState(false);
 
   const loadContracts = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -297,8 +336,10 @@ export default function ContractsPage() {
         tenantContractApi.getMyStayProofData(),
         tenantContractApi.getMyContractHistory(),
       ]);
+      let resolvedContract = null;
       if (contractRes.status === "fulfilled") {
-        setContract(contractRes.value?.contract || null);
+        resolvedContract = contractRes.value?.contract || null;
+        setContract(resolvedContract);
       }
       if (stayProofRes.status === "fulfilled") {
         setStayData(stayProofRes.value?.stayProof || null);
@@ -306,12 +347,43 @@ export default function ContractsPage() {
       if (historyRes.status === "fulfilled") {
         setContractHistory(historyRes.value?.contracts || []);
       }
+      const contractId = resolvedContract?.id || resolvedContract?._id;
+      if (contractId) {
+        try {
+          const ackRes = await tenantContractApi.getMyContractAcknowledgement(contractId);
+          setAcknowledgement(ackRes || null);
+        } catch {
+          setAcknowledgement(null);
+        }
+      } else {
+        setAcknowledgement(null);
+      }
     } catch (requestError) {
       setError(getTenantContractError(requestError));
     } finally {
       if (!silent) setLoading(false);
     }
   }, []);
+
+  const handleAcknowledge = async () => {
+    const contractId = contract?.id || contract?._id;
+    if (!contractId || acknowledging) return;
+    setAcknowledging(true);
+    try {
+      const result = await tenantContractApi.acknowledgeMyContract(contractId);
+      setAcknowledgement((prev) => ({
+        ...prev,
+        required: true,
+        acknowledged: true,
+        acknowledgedAt: result?.acknowledgedAt || new Date().toISOString(),
+      }));
+      showNotification("Contract acknowledged.", "success");
+    } catch (ackErr) {
+      showNotification(ackErr?.message || "Failed to acknowledge contract.", "error");
+    } finally {
+      setAcknowledging(false);
+    }
+  };
 
   useEffect(() => {
     loadContracts();
@@ -467,6 +539,12 @@ export default function ContractsPage() {
           {error}
         </div>
       )}
+
+      <AcknowledgeContractBanner
+        acknowledgement={acknowledgement}
+        onAcknowledge={handleAcknowledge}
+        busy={acknowledging}
+      />
 
       {!contract && !stayData ? (
         <div className="contracts-empty rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 sm:p-12 text-center flex flex-col items-center justify-center max-w-xl mx-auto my-8 shadow-xs">

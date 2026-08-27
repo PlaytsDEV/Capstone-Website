@@ -296,6 +296,33 @@ const terminationReviewSchema = new mongoose.Schema(
       default: null,
     },
 
+    // --- Execution (Spec follow-up: decision vs execution are different
+    // events — approving a termination must not silently release occupancy;
+    // an admin must separately confirm the actual move-out took place) ---
+    executionStatus: {
+      type: String,
+      enum: ["not_applicable", "pending_execution", "executed"],
+      default: "not_applicable",
+      index: true,
+      // Set to "pending_execution" the moment decision.outcome becomes
+      // "termination_approved"; flips to "executed" only once an admin runs
+      // the actual move-out via executeApprovedTermination.
+    },
+    executedAt: {
+      type: Date,
+      default: null,
+    },
+    executedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    executedReservationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Reservation",
+      default: null,
+    },
+
     // --- Resolution ---
     resolvedAt: {
       type: Date,

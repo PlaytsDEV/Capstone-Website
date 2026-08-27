@@ -15,6 +15,10 @@ import {
 import { inspectSignedContractDocument } from "../services/contractDocumentStorageService.js";
 import { resolveTenantContractDocument } from "../services/tenantContractDocumentResolver.js";
 import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js";
+import {
+  acknowledgeContract,
+  getAcknowledgementStatus,
+} from "../services/contractAcknowledgementService.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
@@ -115,6 +119,38 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     emptyState: contract ? null : "Contract Not Available Yet",
     upcoming: upcomingView,
   });
+}));
+
+router.post("/contracts/:contractId/acknowledge", mobileTenant, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.contractId)) {
+    return res.status(404).json({ detail: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+  }
+  const contract = await ownedCurrentContract(req.mobileTenant._id);
+  if (!contract || String(contract._id) !== String(req.params.contractId)) {
+    return res.status(404).json({ detail: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+  }
+  const record = await acknowledgeContract({
+    contractId: contract._id,
+    tenantId: req.mobileTenant._id,
+    req,
+  });
+  return res.json({
+    acknowledged: true,
+    acknowledgedAt: record.acknowledgedAt,
+    documentVersion: record.documentVersion,
+  });
+}));
+
+router.get("/contracts/:contractId/acknowledgement", mobileTenant, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.contractId)) {
+    return res.status(404).json({ detail: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+  }
+  const contract = await ownedCurrentContract(req.mobileTenant._id);
+  if (!contract || String(contract._id) !== String(req.params.contractId)) {
+    return res.status(404).json({ detail: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+  }
+  const status = await getAcknowledgementStatus({ contractId: contract._id, tenantId: req.mobileTenant._id });
+  return res.json(status);
 }));
 
 router.get("/contracts/:contractId/documents/prepared", mobileTenant, asyncRoute(async (req, res) => {

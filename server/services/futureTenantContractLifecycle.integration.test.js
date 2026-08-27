@@ -73,10 +73,14 @@ await jest.unstable_mockModule("../services/occupancy/occupancyManager.js", () =
 const { updateReservation } = await import(
   "../controllers/reservations/reservationLifecycleController.js"
 );
-const { createDraftContract, getContractValidation } = await import("./contractService.js");
+const { createDraftContract, getContractValidation, transitionContract } = await import("./contractService.js");
 const { resolveReservationContractEligibility } = await import(
   "./reservationContractEligibilityService.js"
 );
+const {
+  requestPreMoveInModification,
+  approvePreMoveInModification,
+} = await import("../controllers/reservations/cancellationController.js");
 const { default: Reservation } = await import("../models/Reservation.js");
 const { default: Room } = await import("../models/Room.js");
 const { default: User } = await import("../models/User.js");
@@ -292,5 +296,96 @@ describe("Future-tenant acceptance: approval -> eligibility -> Contract creation
     expect(contract.bedId).toBe("");
     const validation = getContractValidation(contract);
     expect(validation.missingFields.map((f) => f.field)).toContain("bedId");
+  });
+
+  describe("P10: move-in reschedule Contract date sync/flag", () => {
+    const tenantRequestFor = (tenant, reservationId, body) => ({
+      id: "reschedule-test",
+      params: { reservationId },
+      body,
+      user: { uid: tenant.firebaseUid },
+    });
+    const adminRequestFor = (reservationId, body) => ({
+      id: "reschedule-approve-test",
+      params: { reservationId },
+      body,
+      user: { uid: admin.firebaseUid },
+    });
+
+    test("reschedule approval on a draft Contract updates its lease-start date in place", async () => {
+      const { tenant, room, reservation } = await seedTenantAndReservation({
+        roomType: "private", capacity: 1,
+      });
+      const approveRes = await approve(reservation);
+      expect(approveRes.statusCode).toBe(200);
+      const approved = await Reservation.findById(reservation._id);
+      const contract = await createDraftContract({ reservationId: approved._id, actorId: admin._id });
+      expect(contract.status).toBe("draft");
+
+      const newMoveIn = new Date("2026-10-15T00:00:00.000Z");
+      const reqReschedule = tenantRequestFor(tenant, String(reservation._id), {
+        requestedMoveInDate: newMoveIn.toISOString(),
+        reason: "Need more time to prepare",
+      });
+      const resReschedule = response();
+      await requestPreMoveInModification(reqReschedule, resReschedule, jest.fn());
+      expect(resReschedule.statusCode).toBe(200);
+
+      const reqApprove = adminRequestFor(String(reservation._id), { note: "OK, rescheduled" });
+      const resApprove = response();
+      await approvePreMoveInModification(reqApprove, resApprove, jest.fn());
+      expect(resApprove.statusCode).toBe(200);
+      expect(resApprove.body.contractDateSync).toMatchObject({
+        contractId: String(contract._id),
+        action: "dates_updated",
+      });
+
+      const updatedContract = await Contract.findById(contract._id).lean();
+      expect(updatedContract.leaseStartDate.toISOString()).toBe(newMoveIn.toISOString());
+      void room;
+    });
+
+    test("reschedule approval on an already-generated Contract sets staleDataFlags instead of mutating it", async () => {
+      const { tenant, room, reservation } = await seedTenantAndReservation({
+        roomType: "private", capacity: 1,
+      });
+      const approveRes = await approve(reservation);
+      expect(approveRes.statusCode).toBe(200);
+      const approved = await Reservation.findById(reservation._id);
+      const contract = await createDraftContract({ reservationId: approved._id, actorId: admin._id });
+      const originalLeaseStart = contract.leaseStartDate;
+      // Advance the Contract past early-stage so it is no longer safe to
+      // silently mutate.
+      await transitionContract(contract, "ready_for_generation", admin._id, "test setup");
+      await transitionContract(contract, "awaiting_signatures", admin._id, "test setup");
+
+      const newMoveIn = new Date("2026-10-15T00:00:00.000Z");
+      const reqReschedule = tenantRequestFor(tenant, String(reservation._id), {
+        requestedMoveInDate: newMoveIn.toISOString(),
+        reason: "Delayed",
+      });
+      const resReschedule = response();
+      await requestPreMoveInModification(reqReschedule, resReschedule, jest.fn());
+      expect(resReschedule.statusCode).toBe(200);
+
+      const reqApprove = adminRequestFor(String(reservation._id), {});
+      const resApprove = response();
+      await approvePreMoveInModification(reqApprove, resApprove, jest.fn());
+      expect(resApprove.statusCode).toBe(200);
+      expect(resApprove.body.contractDateSync).toMatchObject({
+        contractId: String(contract._id),
+        action: "flagged_stale",
+      });
+
+      const updatedContract = await Contract.findById(contract._id).lean();
+      // Progressed Contract's date must NOT have been silently mutated.
+      expect(updatedContract.leaseStartDate.toISOString()).toBe(originalLeaseStart.toISOString());
+      expect(updatedContract.staleDataFlags).toHaveLength(1);
+      expect(updatedContract.staleDataFlags[0]).toMatchObject({
+        field: "leaseStartDate",
+        reason: "movein_rescheduled_after_generation",
+      });
+      void room;
+    });
   });
 });

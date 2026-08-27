@@ -27,6 +27,11 @@ import auditLogger from "../../utils/auditLogger.js";
 import { resolveRoomDiscountPricing } from "../../services/contractPricingResolver.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import { notify } from "../../utils/notificationService.js";
+import {
+  CURRENT_STAY_STATUSES,
+  EARLY_STAGE_STATUSES,
+  resolveTenantCanonicalContract,
+} from "../../services/tenantContractSelectionService.js";
 
 import {
   isValidObjectId,
@@ -786,6 +791,38 @@ export async function ensureRoomReservationCapacity({
     query._id = { $ne: excludeReservationId };
   }
   return await Reservation.countDocuments(query);
+}
+
+// Explicit backend invariant: once a tenant has an active/ending Stay or a
+// Contract that has progressed beyond an early-stage draft, the reservation
+// can no longer go through the normal cancellation workflow — Move-Out or
+// Termination must be used instead. This is deliberately independent of
+// APPLICANT_CANCELLABLE_STATUSES (cancellationController.js) so a future
+// whitelist edit, data-repair script, or admin-only bypass can never silently
+// reopen the "cancel a reservation with an active tenancy" hole.
+export async function assertNoActiveStayOrProgressedContract(reservationId, tenantId) {
+  const hasActiveStay = await Stay.exists({
+    reservationId,
+    status: { $in: CURRENT_STAY_STATUSES },
+  });
+  if (hasActiveStay) {
+    throw new AppError(
+      "This reservation has an active stay and can no longer be cancelled. Use Move-Out or Termination instead.",
+      409,
+      "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
+    );
+  }
+
+  const canonicalContract = await resolveTenantCanonicalContract(tenantId, {
+    includeEarlyStages: true,
+  }).catch(() => null);
+  if (canonicalContract && !EARLY_STAGE_STATUSES.has(canonicalContract.status)) {
+    throw new AppError(
+      "This reservation has a contract that has already progressed and can no longer be cancelled. Use Move-Out or Termination instead.",
+      409,
+      "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
+    );
+  }
 }
 
 export async function notifyAdminsOfCancellationRequest(reservation, dbUser) {
