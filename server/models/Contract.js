@@ -175,6 +175,23 @@ const contractSchema = new mongoose.Schema(
       enum: ["room_change", "bed_only", null],
       default: null,
     },
+    // Lightweight admin-visibility flag for a Contract field that may no
+    // longer match the current authoritative Reservation data (e.g. a
+    // move-in reschedule approved after the Contract already progressed
+    // past early-stage — see approvePreMoveInModification). Never used to
+    // silently mutate a progressed Contract's snapshot fields; the flag is
+    // the record that a human needs to reconcile it.
+    staleDataFlags: {
+      type: [
+        {
+          field: { type: String, required: true },
+          flaggedAt: { type: Date, default: Date.now, required: true },
+          reason: { type: String, required: true },
+          resolvedAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+    },
     parentContractId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Contract",

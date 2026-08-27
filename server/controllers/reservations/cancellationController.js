@@ -6,7 +6,7 @@
  * Handles reservation cancellations, post-payment cancellation requests, and admin approval/rejection.
  */
 
-import { Reservation } from "../../models/index.js";
+import { Reservation, Contract } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import {
@@ -20,6 +20,14 @@ import {
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import { notify } from "../../utils/notificationService.js";
 import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
+import {
+  resolveTenantCanonicalContract,
+  EARLY_STAGE_STATUSES,
+} from "../../services/tenantContractSelectionService.js";
+import {
+  deriveAdvanceCoverageDates,
+  deriveContractLeaseDates,
+} from "../../services/contractLeaseDateService.js";
 import {
   findDbUser,
   notifyAdminsOfCancellationRequest,
@@ -489,7 +497,79 @@ export const approvePreMoveInModification = async (req, res, next) => {
     };
     await reservation.save();
 
-    res.json({ message: "Modification request approved successfully.", reservation });
+    // Reschedule Move-In: if a Contract already exists for this reservation,
+    // its leaseStartDate/advance-coverage dates are derived from the
+    // original move-in date and would go stale the moment the reservation's
+    // move-in date changes. A draft (still pre-generation) is safe to
+    // update in place — it's a plain field mutation, not a status
+    // transition, and nothing has been generated/signed against the old
+    // date yet. A Contract that has already progressed past early-stage
+    // must NOT be silently altered (it may already be generated, signed, or
+    // notarized against the old date) — flag it for admin review instead.
+    let contractDateSync = null;
+    if (details.requestedMoveInDate) {
+      try {
+        const contract = await resolveTenantCanonicalContract(reservation.userId, {
+          includeEarlyStages: true,
+        });
+        if (contract) {
+          if (EARLY_STAGE_STATUSES.has(contract.status)) {
+            const duration = Number(contract.leaseDurationMonths || reservation.leaseDuration || 12);
+            const leaseDates = deriveContractLeaseDates({
+              leaseStartDate: details.requestedMoveInDate,
+              leaseDurationMonths: duration,
+            });
+            const coverageDates = deriveAdvanceCoverageDates(details.requestedMoveInDate);
+            // leaseStartDate/leaseEndDate are schema-immutable (Contract.js)
+            // once set — deliberately, to stop a progressed Contract's dates
+            // from being silently rewritten. A still-draft Contract's dates
+            // are a legitimate, narrow exception (mirrors the same raw
+            // collection.updateOne bypass contractDraftRecoveryService.js
+            // already uses to backfill a draft's dates), gated here on the
+            // same still-draft/early-stage precondition just verified above.
+            await Contract.collection.updateOne(
+              { _id: contract._id },
+              {
+                $set: {
+                  leaseStartDate: leaseDates.leaseStartDate,
+                  leaseEndDate: leaseDates.leaseEndDate,
+                  advanceCoverageStart: coverageDates.advanceCoverageStart,
+                  advanceCoverageEnd: coverageDates.advanceCoverageEnd,
+                  updatedBy: dbUser._id,
+                  updatedAt: now,
+                },
+              },
+            );
+            contractDateSync = { contractId: String(contract._id), action: "dates_updated" };
+          } else {
+            await Contract.updateOne(
+              { _id: contract._id },
+              {
+                $push: {
+                  staleDataFlags: {
+                    field: "leaseStartDate",
+                    flaggedAt: now,
+                    reason: "movein_rescheduled_after_generation",
+                  },
+                },
+              },
+            );
+            contractDateSync = { contractId: String(contract._id), action: "flagged_stale" };
+          }
+        }
+      } catch (contractSyncErr) {
+        logger.warn(
+          { err: contractSyncErr, reservationId: reservation._id },
+          "[ApprovePreMoveInModification] Contract date sync/flag failed (non-fatal)",
+        );
+      }
+    }
+
+    res.json({
+      message: "Modification request approved successfully.",
+      reservation,
+      contractDateSync,
+    });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "approvePreMoveInModification error");
     next(error);

@@ -104,6 +104,7 @@ async function detectOverdueMoveIns() {
   try {
     const now = dayjs();
     let notified = 0;
+    let flagged = 0;
 
     // Find reserved reservations past their move-in deadline
     const overdueReservations = await Reservation.findOverdueMoveIns()
@@ -125,10 +126,34 @@ async function detectOverdueMoveIns() {
 
       notify.overdueMoveIn(reservation.userId?._id, code, roomName, tenantName, daysOverdue);
       notified++;
+
+      // Reservation.js's own findOverdueMoveIns doc comment: "If you are a
+      // background job flagging a no-show, set status = 'move_in_overdue' —
+      // that is the correct action." Only flag, never cancel/release here —
+      // Spec §9.3: "From overdue, admin can reschedule (back to reserved),
+      // confirm move-in, or explicitly cancel. System never auto-transitions
+      // out." Only reservations still at "reserved" are eligible (the model
+      // query already filters to this), so this is always a legal
+      // reserved -> move_in_overdue transition per
+      // ALLOWED_RESERVATION_STATUS_TRANSITIONS.
+      if (reservation.status === "reserved") {
+        try {
+          await Reservation.updateOne(
+            { _id: reservation._id, status: "reserved" },
+            { $set: { status: "move_in_overdue" } },
+          );
+          flagged++;
+        } catch (flagErr) {
+          logger.warn(
+            { err: flagErr, reservationId: reservation._id },
+            "detectOverdueMoveIns: failed to flag move_in_overdue (non-fatal, will retry next run)",
+          );
+        }
+      }
     }
 
     if (notified > 0) {
-      logger.info({ count: notified }, "Overdue move-in alerts sent");
+      logger.info({ count: notified, flagged }, "Overdue move-in alerts sent");
     }
   } catch (error) {
     logger.error({ err: error }, "Overdue move-in detection failed");
