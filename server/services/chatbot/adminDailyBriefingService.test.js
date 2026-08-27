@@ -56,7 +56,14 @@ describe("adminDailyBriefingService", () => {
     mockMoveOutFind.mockReturnValue({
       populate: jest.fn().mockReturnValue({
         populate: jest.fn().mockReturnValue({
-          lean: jest.fn().mockResolvedValue([]),
+          lean: jest.fn().mockResolvedValue([
+            {
+              tenantId: { firstName: "Ana", lastName: "Reyes" },
+              stayId: { roomId: { roomNumber: "305" } },
+              intendedMoveOutDate: new Date(),
+              confirmedMoveOutDate: null,
+            },
+          ]),
         }),
       }),
     });
@@ -120,6 +127,24 @@ describe("adminDailyBriefingService", () => {
     expect(result.data.moveIns[0].name).toBe("Carlos Mendoza");
     expect(result.data.maintenance[0].title).toBe("Water leak in bathroom");
     expect(result.data.announcements.length).toBe(1);
+
+    // Regression: previously this query used status values
+    // ("pending"/"in_progress"/"scheduled") that do not exist in
+    // MoveOutClearance's real enum, so it silently always returned zero
+    // results. Confirm the query now uses real statuses and that the
+    // moveOuts mapping resolves tenant name / room number correctly via
+    // tenantId / stayId.roomId (not the nonexistent userId / roomId /
+    // scheduledInspectionDate fields the old code referenced).
+    const queryArg = mockMoveOutFind.mock.calls[0][0];
+    expect(queryArg.status.$in).toEqual(
+      expect.arrayContaining(["initiated", "inspection_pending", "inspection_complete"]),
+    );
+    expect(queryArg.status.$in).not.toEqual(
+      expect.arrayContaining(["pending", "in_progress", "scheduled"]),
+    );
+    expect(result.data.moveOuts).toHaveLength(1);
+    expect(result.data.moveOuts[0].name).toBe("Ana Reyes");
+    expect(result.data.moveOuts[0].roomNumber).toBe("305");
   });
 
   it("should generate a consolidated briefing for dormitory owner", async () => {

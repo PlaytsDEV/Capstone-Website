@@ -56,19 +56,27 @@ export async function generateDailyShiftBriefing({ branch = "all", userRole = "b
     }
 
     // 2. Scheduled Move-Outs / Clearances Today
+    // Real MoveOutClearance status values (server/models/MoveOutClearance.js):
+    // initiated, inspection_pending, inspection_complete, calculation_pending,
+    // under_review, approved, disputed, refunded, forfeited. The three
+    // non-terminal, still-needs-admin-attention statuses relevant to a daily
+    // briefing are the first three; approved/refunded/forfeited/disputed are
+    // resolved or need a different queue. Date fields are intendedMoveOutDate
+    // (tenant-reported) / confirmedMoveOutDate (admin-set official date) —
+    // there is no roomId field, only tenantId + stayId.
     let moveOutsToday = [];
     try {
       moveOutsToday = await MoveOutClearance.find({
         ...branchQuery,
-        status: { $in: ["pending", "in_progress", "scheduled"] },
+        status: { $in: ["initiated", "inspection_pending", "inspection_complete"] },
         isArchived: { $ne: true },
         $or: [
-          { scheduledInspectionDate: { $gte: todayStart, $lte: todayEnd } },
-          { moveOutDate: { $gte: todayStart, $lte: todayEnd } },
+          { confirmedMoveOutDate: { $gte: todayStart, $lte: todayEnd } },
+          { intendedMoveOutDate: { $gte: todayStart, $lte: todayEnd } },
         ],
       })
-        .populate("userId", "firstName lastName username email phone")
-        .populate("roomId", "roomNumber")
+        .populate("tenantId", "firstName lastName username email phone")
+        .populate({ path: "stayId", select: "roomId bedId", populate: { path: "roomId", select: "roomNumber" } })
         .lean();
     } catch (moErr) {
       console.warn("Could not query move-outs for daily briefing:", moErr?.message);
@@ -192,9 +200,13 @@ export async function generateDailyShiftBriefing({ branch = "all", userRole = "b
           phone: m.phone || "N/A",
         })),
         moveOuts: moveOutsToday.map((mo) => ({
-          name: `${mo.userId?.firstName || ""} ${mo.userId?.lastName || ""}`.trim() || "Tenant",
-          roomNumber: mo.roomId?.roomNumber || "Assigned",
-          inspectionDate: mo.scheduledInspectionDate ? dayjs(mo.scheduledInspectionDate).format("h:mm A") : "Today",
+          name: `${mo.tenantId?.firstName || ""} ${mo.tenantId?.lastName || ""}`.trim() || "Tenant",
+          roomNumber: mo.stayId?.roomId?.roomNumber || "Assigned",
+          inspectionDate: mo.confirmedMoveOutDate
+            ? dayjs(mo.confirmedMoveOutDate).format("h:mm A")
+            : mo.intendedMoveOutDate
+              ? dayjs(mo.intendedMoveOutDate).format("h:mm A")
+              : "Today",
         })),
         maintenance: urgentMaintenance.map((u) => ({
           id: u._id,
