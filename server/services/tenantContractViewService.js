@@ -1,28 +1,13 @@
 import { resolveContractDisplayLifecycle } from "./contractPublicationService.js";
 import { selectCurrentPreparedDocument } from "./preparedContractDocumentService.js";
 import { resolveTenantContractDocument } from "./tenantContractDocumentResolver.js";
+import { getTenantContractLabel } from "../config/contractStatusLabels.js";
 
-const STATUS_LABELS = Object.freeze({
-  draft: "Contract is being prepared.",
-  incomplete: "Contract is being prepared.",
-  ready_for_generation: "Contract is being prepared.",
-  generated: "Prepared Contract Available",
-  awaiting_signatures: "Physical signing and in-person notarization are in progress.",
-  partially_signed: "Physical signing and in-person notarization are in progress.",
-  signed: "Physical signing and in-person notarization are in progress.",
-  awaiting_notarization: "Physical signing and in-person notarization are in progress.",
-  notarized: "Notarization completed. Final Contract is being reviewed.",
-  ready_for_publication: "Notarization completed. Final Contract is being reviewed.",
-  published: "Final Signed and Notarized Contract Available",
-  active: "Final Signed and Notarized Contract Available",
-  expiring_soon: "Final Signed and Notarized Contract Available",
-  expired: "Final Signed and Notarized Contract Available",
-  terminated: "Contract Terminated",
-  cancelled: "Contract Cancelled",
-});
-
-export const getTenantContractDisplayStatus = (status) =>
-  STATUS_LABELS[status] || "Contract Status Unavailable";
+// Thin wrapper over the canonical status-label table (config/contractStatusLabels.js)
+// — kept as its own export here since existing callers already import this
+// name from this module; see that file's header for the full 22-status
+// source of truth and its web/-side mirror.
+export const getTenantContractDisplayStatus = getTenantContractLabel;
 
 export const calculateContractDaysRemaining = (leaseEndDate, now = new Date()) => {
   if (!leaseEndDate) return null;
