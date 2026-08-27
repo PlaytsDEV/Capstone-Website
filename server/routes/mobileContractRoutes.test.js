@@ -39,10 +39,18 @@ describe("mobile Contract route safety", () => {
     expect(legacyGenerator).not.toMatch(/Month-to-month; either party may terminate/);
   });
 
-  test("offers read-only current, prepared, and final endpoints only", () => {
+  test("offers read-only current, prepared, and final endpoints, plus the one deliberate acknowledge mutation", () => {
     expect(routes).toMatch(/router\.get\("\/contracts\/current"/);
     expect(routes).toMatch(/router\.get\("\/contracts\/:contractId\/documents\/prepared"/);
     expect(routes).toMatch(/router\.get\("\/contracts\/:contractId\/documents\/final"/);
-    expect(routes).not.toMatch(/router\.(post|put|patch|delete)\(/);
+    // Acknowledgement ("I confirm that I have viewed this contract" — never a
+    // signature) is the ONE deliberate mutation on this router: it records
+    // a viewing confirmation, never alters Contract lifecycle/document
+    // state. Every other route on this file must remain read-only.
+    expect(routes).toMatch(/router\.post\("\/contracts\/:contractId\/acknowledge"/);
+    const mutatingRouteLines = routes.match(/router\.(post|put|patch|delete)\([^)]*/g) || [];
+    for (const line of mutatingRouteLines) {
+      expect(line).toMatch(/\/contracts\/:contractId\/acknowledge/);
+    }
   });
 });

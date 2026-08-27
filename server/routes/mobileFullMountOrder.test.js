@@ -33,6 +33,12 @@ jest.unstable_mockModule("../utils/auditLogger.js", () => ({ default: { logModif
 jest.unstable_mockModule("../models/index.js", () => ({
   Bill: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn() },
   Reservation: { findById: jest.fn() },
+  Contract: { findById: jest.fn() },
+  ContractAcknowledgement: { findOneAndUpdate: jest.fn(), findOne: jest.fn() },
+}));
+jest.unstable_mockModule("../services/contractAcknowledgementService.js", () => ({
+  acknowledgeContract: jest.fn(),
+  getAcknowledgementStatus: jest.fn(),
 }));
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),
