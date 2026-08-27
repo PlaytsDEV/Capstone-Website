@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "force_recompute_period_69d3d576.mjs" });
+
 import mongoose from "mongoose";
 import {
   Room,

@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "fix_gp201_bed1_stale_pointer.mjs" });
+
  * fix_gp201_bed1_stale_pointer.mjs
  * ─────────────────────────────────────────────────────────────────────────────
  * GP-Room 201, bed-1 has a stale occupiedBy reference pointing to the same

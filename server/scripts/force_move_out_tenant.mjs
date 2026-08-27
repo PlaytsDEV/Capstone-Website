@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "force_move_out_tenant.mjs" });
+
 import dotenv from "dotenv";
 
 import { Reservation, Room, User, UtilityReading } from "../models/index.js";

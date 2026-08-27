@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate-reservation-status.js" });
+
  * Migration Script: Reservation Status Update
  *
  * Safely migrates legacy reservation lifecycle values to the canonical set.

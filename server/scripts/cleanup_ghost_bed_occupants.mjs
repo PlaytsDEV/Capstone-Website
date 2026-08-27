@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "cleanup_ghost_bed_occupants.mjs" });
+
  * cleanup_ghost_bed_occupants.mjs
  * ============================================================================
  * Finds all room beds whose occupiedBy.userId does NOT exist in the User

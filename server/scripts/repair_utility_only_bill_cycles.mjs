@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_utility_only_bill_cycles.mjs" });
+
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";

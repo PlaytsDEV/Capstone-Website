@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate_new_official_contract_templates.mjs" });
+
 import dotenv from "dotenv";
 import { Contract, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";

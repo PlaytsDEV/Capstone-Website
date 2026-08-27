@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "cleanup_seeded_analytics_accounts.mjs" });
+
  * Cleanup seeded analytics tenant accounts.
  *
  * Dry run:

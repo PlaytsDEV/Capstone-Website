@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seed_quad_partial_cycle_tenant.mjs" });
+
  * Seed a quad-room partial-cycle billing scenario.
  *
  * What it does:

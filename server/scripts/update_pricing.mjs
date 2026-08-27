@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "update_pricing.mjs" });
+
  * ============================================================================
  * UPDATE ROOM PRICING
  * ============================================================================

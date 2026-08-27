@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "create-owner.js" });
+
  * One-time script to recreate the owner account.
  * Run with: node --env-file=.env scripts/create-owner.js
  */

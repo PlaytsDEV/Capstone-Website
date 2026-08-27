@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "reconcile_tenant_lifecycle.mjs" });
+
  * ============================================================================
  * RECONCILE USER TENANT LIFECYCLE STATE
  * ============================================================================

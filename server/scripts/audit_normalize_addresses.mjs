@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "audit_normalize_addresses.mjs" });
+
  * audit_normalize_addresses.mjs
  * ============================================================================
  * Scans persisted addresses (User.address, Reservation.address,

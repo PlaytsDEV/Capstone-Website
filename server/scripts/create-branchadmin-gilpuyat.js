@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "create-branchadmin-gilpuyat.js" });
+
  * One-time / idempotent script to create or update the Gil Puyat branch admin account.
  * Run with: node --env-file=.env scripts/create-branchadmin-gilpuyat.js
  */

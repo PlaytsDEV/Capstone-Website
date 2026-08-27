@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate-status-flow.js" });
+
  * ============================================================================
  * MIGRATION: Status-Driven Reservation Flow
  * ============================================================================

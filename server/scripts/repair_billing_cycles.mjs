@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_billing_cycles.mjs" });
+
  * ============================================================================
  * REPAIR BILLING CYCLES AND FIRST-BILL RESERVATION CREDIT
  * ============================================================================

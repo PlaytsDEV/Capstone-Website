@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "cleanup_zero_consumption_segments.mjs" });
+
 import mongoose from "mongoose";
 import { UtilityPeriod } from "../models/index.js";
 

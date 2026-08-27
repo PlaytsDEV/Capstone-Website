@@ -11,6 +11,7 @@ import "../styles/admin-layout.css";
 import "../styles/admin-common.css";
 
 const COLLAPSE_STORAGE_KEY = "sidebar-collapsed";
+const IS_STAGING = import.meta.env.VITE_DEPLOYMENT_ENV === "staging";
 
 export default function AdminLayout() {
  useSocketClient();
@@ -61,6 +62,12 @@ export default function AdminLayout() {
  breadcrumbs={breadcrumbs}
  onOpenSidebar={() => setSidebarOpen(true)}
  />
+
+ {IS_STAGING && (
+ <div className="admin-staging-banner" role="status">
+ LILYCREST ADMIN · STAGING · SYNTHETIC QA DATA ONLY
+ </div>
+ )}
 
  {/* Page Content */}
  <main

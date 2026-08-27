@@ -1,4 +1,7 @@
 import mongoose from 'mongoose';
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_all_rooms_occupancy.mjs" });
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';

@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "delete_unknown_accounts.mjs" });
+
  * Delete user accounts whose identity fields literally contain "unknown".
  *
  * Dry run:

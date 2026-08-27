@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seed_gp_room_201_electricity_cycle.mjs" });
+
  * ============================================================================
  * SEED GP ROOM 201 ELECTRICITY LIFECYCLE
  * ============================================================================

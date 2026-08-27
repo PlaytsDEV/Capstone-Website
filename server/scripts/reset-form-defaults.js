@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "reset-form-defaults.js" });
+
  * One-time script to reset leaseDuration and targetMoveInDate on all reservations.
  * Run: node scripts/reset-form-defaults.js
  */

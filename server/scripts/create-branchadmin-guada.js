@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "create-branchadmin-guada.js" });
+
  * One-time script to create a guadalupe branch admin account.
  * Run with: node --env-file=.env scripts/create-branchadmin-guada.js
  */

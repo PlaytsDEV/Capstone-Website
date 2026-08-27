@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "clear-audit-logs.mjs" });
+
 import dotenv from "dotenv";
 dotenv.config();
 

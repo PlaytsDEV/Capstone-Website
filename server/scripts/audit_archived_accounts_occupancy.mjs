@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "audit_archived_accounts_occupancy.mjs" });
+
  * audit_archived_accounts_occupancy.mjs
  * ============================================================================
  * AUDIT + CLEANUP: Archived / Soft-Deleted Accounts Holding Rooms & Beds

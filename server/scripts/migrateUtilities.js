@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrateUtilities.js" });
+
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";

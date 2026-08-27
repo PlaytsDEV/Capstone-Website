@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate-roles.js" });
+
  * One-time migration script to update user roles from legacy to new hierarchy.
  * 
  * Renames:

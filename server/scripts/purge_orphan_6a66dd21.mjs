@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "purge_orphan_6a66dd21.mjs" });
+
  * purge_orphan_6a66dd21.mjs
  * ============================================================================
  * One-shot: deletes every record linked to the orphaned userId

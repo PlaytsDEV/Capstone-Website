@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate-superadmin-to-owner.mjs" });
+
  * One-time migration: rename role "superadmin" → "owner" in MongoDB + Firebase.
  *
  * Background:
