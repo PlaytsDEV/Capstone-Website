@@ -42,8 +42,8 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   awaiting_notarization: ["notarized", "cancelled"],
   notarized: ["ready_for_publication", "cancelled"],
   ready_for_publication: ["published", "cancelled"],
-  published: ["active", "replaced", "transfer_review_required", "terminated"],
-  active: ["expiring_soon", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
+  published: ["active", "expired", "replaced", "transfer_review_required", "terminated"],
+  active: ["expiring_soon", "expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expiring_soon: ["expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expired: ["renewal_pending", "archived"],
   renewal_pending: ["renewed", "cancelled"],
@@ -55,7 +55,12 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   archived: [],
 });
 
-const terminalStatuses = new Set(["renewed", "terminated", "cancelled", "replaced", "archived"]);
+// A Contract at any of these statuses is done: transitionContract forces
+// isCurrent:false on arrival, so no terminal Contract is ever the tenant's
+// "current" lease. "expired" is here because a completed (full-term)
+// move-out drives the Contract to "expired" via moveOutStayWorkflow — the
+// same way an early exit drives it to "terminated".
+const terminalStatuses = new Set(["expired", "renewed", "terminated", "cancelled", "replaced", "archived"]);
 
 const serviceError = (message, code, statusCode = 400, details = undefined) =>
   Object.assign(new Error(message), { code, statusCode, details });

@@ -21,14 +21,13 @@ import { toManilaStartOfDay } from "../utils/dateUtils.js";
  *   predecessor: active    -> replaced, isCurrent: true  -> false
  *   reservation: monthlyRent -> successor.approvedMonthlyRate
  *
- * "replaced" (not "expired") is the deliberate predecessor terminal status —
- * confirmed by a full-repo audit that "expired" has zero writers anywhere
- * and active->expired isn't even a legal CONTRACT_TRANSITIONS edge (only
- * expiring_soon->expired is), while "replaced" already has real, tested
- * write support for exactly this "superseded by a successor" scenario and
- * is fully wired into HISTORY_VISIBLE_STATUSES / archival / admin display.
- * Introducing "expired" here would mean shipping a brand-new, untested
- * state-machine edge for a cosmetic label difference.
+ * "replaced" (not "expired") is the deliberate predecessor terminal status
+ * for this path: it specifically means "superseded by a successor Contract"
+ * and is what HISTORY_VISIBLE_STATUSES / archival / admin display expect for
+ * a renewal cutover. "expired" is reserved for a tenant who actually reached
+ * the end of their term and moved out (moveOutStayWorkflow) — a different
+ * scenario. Both are legal terminal edges from active now; the distinction
+ * here is semantic, not a state-machine limitation.
  *
  * The main query only matches status: "published" AND finalDocument !=
  * null, so cancelled/voided/rejected/archived/generated-only successors are

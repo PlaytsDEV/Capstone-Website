@@ -1172,10 +1172,12 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       // it is silently left at "active"/"expiring_soon" forever, which lets
       // stale renewals activate and lets the tenant/admin keep seeing an
       // "Active Contract" for a tenancy that has already ended. A normal,
-      // on-schedule move-out drives the Contract to "expired" (nothing else
-      // in the codebase writes this status); reason:"terminated" (early exit
-      // or administrative termination) drives it to "terminated" instead.
-      // Both are already legal edges in CONTRACT_TRANSITIONS.
+      // full-term move-out drives the Contract to "expired" (move-out is the
+      // sole writer of that status); reason:"terminated" (early exit or
+      // administrative termination) drives it to "terminated" instead. Both
+      // are legal terminal edges from published/active/expiring_soon in
+      // CONTRACT_TRANSITIONS, and transitionContract forces isCurrent:false
+      // for either (see terminalStatuses in contractService.js).
       const currentContract = await resolveAuthoritativeCurrentContract({
         reservationId: reservation._id,
         session,
