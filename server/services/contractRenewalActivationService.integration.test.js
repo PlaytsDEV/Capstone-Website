@@ -307,6 +307,82 @@ describe("contractRenewalActivationService.activateDueRenewalContracts", () => {
     expect(reloadedOld.isCurrent).toBe(true);
   });
 
+  test("refuses to activate a renewal successor even when the predecessor Contract.status is stale at 'active' but the tenant has actually moved out (defense-in-depth, independent of the Contract-side write)", async () => {
+    const { tenant, room, reservation } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+
+    const oldContract = await createContract({ tenant, room, reservation, actorId });
+    const successor = await createContract({
+      tenant, room, reservation, actorId,
+      overrides: {
+        contractPurpose: "renewal",
+        replacesContractId: oldContract._id,
+        status: "published",
+        isCurrent: false,
+        leaseStartDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    // Simulate the tenant having actually moved out WITHOUT the
+    // Contract-side cancellation having run (the exact gap this
+    // defense-in-depth check exists for) — predecessor Contract.status is
+    // deliberately left stale at "active".
+    await Reservation.updateOne({ _id: reservation._id }, { $set: { status: "moveOut" } });
+
+    const report = await activateDueRenewalContracts();
+
+    expect(report.scanned).toBe(1);
+    expect(report.activated).toBe(0);
+    expect(report.conflicts).toBe(1);
+
+    const [reloadedOld, reloadedSuccessor] = await Promise.all([
+      Contract.findById(oldContract._id),
+      Contract.findById(successor._id),
+    ]);
+    // Neither side was touched — the predecessor stays exactly as it was
+    // (still "active", still current), and the successor is left published,
+    // not silently activated for a tenant who has already left.
+    expect(reloadedOld.status).toBe("active");
+    expect(reloadedOld.isCurrent).toBe(true);
+    expect(reloadedSuccessor.status).toBe("published");
+    expect(reloadedSuccessor.isCurrent).toBe(false);
+  });
+
+  test("refuses to activate a renewal successor when the predecessor's Stay is completed/terminated even though Reservation.status still reads moveIn", async () => {
+    const { tenant, room, reservation } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+
+    const oldContract = await createContract({ tenant, room, reservation, actorId });
+    const successor = await createContract({
+      tenant, room, reservation, actorId,
+      overrides: {
+        contractPurpose: "renewal",
+        replacesContractId: oldContract._id,
+        status: "published",
+        isCurrent: false,
+        leaseStartDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    await Stay.create([{
+      tenantId: tenant._id, reservationId: reservation._id, branch: room.branch,
+      roomId: room._id, bedId: "bed-1", leaseStartDate: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000),
+      leaseEndDate: new Date(Date.now() - 24 * 60 * 60 * 1000), monthlyRent: 6300,
+      status: "terminated", endedAt: new Date(), endReason: "terminated",
+      createdBy: actorId, updatedBy: actorId,
+    }]);
+
+    const report = await activateDueRenewalContracts();
+
+    expect(report.activated).toBe(0);
+    expect(report.conflicts).toBe(1);
+    const reloadedSuccessor = await Contract.findById(successor._id);
+    expect(reloadedSuccessor.status).toBe("published");
+    void oldContract;
+  });
+
   test("re-running activation is idempotent — no duplicate transitions", async () => {
     const { tenant, room, reservation } = await seedTenantRoomReservation();
     const actorId = new mongoose.Types.ObjectId();
