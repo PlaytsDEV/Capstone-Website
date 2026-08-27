@@ -40,6 +40,7 @@ import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
 import Contract from "./Contract.js";
 import ContractCounter from "./ContractCounter.js";
+import ContractAcknowledgement from "./ContractAcknowledgement.js";
 import BedCheckoutLock from "./BedCheckoutLock.js";
 
 // 3. Reservations & Visit Domain
@@ -138,6 +139,7 @@ export {
   Stay,
   Contract,
   ContractCounter,
+  ContractAcknowledgement,
   BedCheckoutLock,
   BackupConfig,
   BackupRecord,

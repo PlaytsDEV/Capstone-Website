@@ -28,6 +28,9 @@ import {
   getPublicStayVerification,
   getStayProofDataForAdmin,
   downloadStayProofForAdmin,
+  acknowledgeMyContract,
+  getMyContractAcknowledgement,
+  getContractAcknowledgementForAdmin,
 } from "../controllers/contractController.js";
 
 const router = express.Router();
@@ -48,11 +51,14 @@ router.get("/my/:contractId/documents/prepared/:version?", verifyToken, verifyAp
 router.get("/my/:contractId/documents/signed/:version?", verifyToken, verifyApplicant, streamMySignedContract);
 router.get("/my/:contractId/documents/final", verifyToken, verifyApplicant, streamMyFinalContract);
 router.get("/my/:contractId", verifyToken, verifyApplicant, getMyContractDetails);
+router.get("/my/:contractId/acknowledgement", verifyToken, verifyApplicant, getMyContractAcknowledgement);
+router.post("/my/:contractId/acknowledge", verifyToken, verifyApplicant, acknowledgeMyContract);
 
 router.use(verifyToken, verifyAdmin, filterByBranch, requirePermission("manageTenants"));
 
 router.get("/:id/stay-proof", downloadStayProofForAdmin);
 router.get("/:id/stay-proof-data", getStayProofDataForAdmin);
+router.get("/:id/acknowledgement", getContractAcknowledgementForAdmin);
 
 router.post("/", createContract);
 router.get("/", listContracts);
