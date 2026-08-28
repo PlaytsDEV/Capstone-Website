@@ -419,40 +419,87 @@ export default function DigitalContractPaper({
   // document instead (no tenantDocument field), where `finalDocument` is
   // either null or a real populated sub-document, so its own truthiness is
   // already the correct signal there.
-  const hasCanonicalPdf = Boolean(fetchDocumentPdf) && (
+  // A synthetic (Stay-derived) contract carries a human reference string as
+  // `id`, not a Mongo ObjectId — /contracts/my/:id/documents/* 404s on it, so
+  // there is no canonical PDF to print/download; the DOM preview is all we
+  // have. Detect it explicitly so Print/Download never silently fall through
+  // to window.print() (which would print the whole app page).
+  const contractDocId = contract?.id || contract?._id;
+  const hasRealContractId = /^[a-f\d]{24}$/i.test(String(contractDocId || ""));
+  const isSyntheticContract = Boolean(contract?.isSynthetic) || (Boolean(contractDocId) && !hasRealContractId);
+
+  const hasCanonicalPdf = Boolean(fetchDocumentPdf) && !isSyntheticContract && (
     contract?.tenantDocument
       ? Boolean(contract.tenantDocument.available)
       : Boolean(contract?.finalDocument || contract?.generatedStorageKey)
   );
 
+  // Print a PDF blob by loading it into a hidden iframe and invoking the
+  // iframe's own print. Two failure modes this guards against:
+  //  1. onload fires before the browser's built-in PDF viewer has finished
+  //     initializing, so contentWindow.print() is a silent no-op — we poll
+  //     briefly for the document to be ready, then retry.
+  //  2. Some browsers (Firefox) throw on contentWindow.print() for a
+  //     PDF-viewer iframe — we reject so the caller shows a visible error
+  //     ("use Download instead") rather than doing nothing.
   const printBlobViaIframe = (blob) => new Promise((resolve, reject) => {
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      reject(new Error("The contract PDF could not be loaded for printing."));
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
     iframe.style.bottom = "0";
     iframe.style.width = "0";
     iframe.style.height = "0";
     iframe.style.border = "none";
+
+    let settled = false;
+    let watchdog = null;
     const cleanup = () => {
+      if (watchdog) clearTimeout(watchdog);
       URL.revokeObjectURL(url);
-      setTimeout(() => iframe.remove(), 1000);
+      setTimeout(() => iframe.remove(), 1500);
     };
-    iframe.onload = () => {
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      fn(arg);
+      setTimeout(cleanup, 2500);
+    };
+
+    const tryPrint = (attempt = 0) => {
+      if (settled) return;
+      const win = iframe.contentWindow;
+      if (!win) {
+        if (attempt < 20) { setTimeout(() => tryPrint(attempt + 1), 150); return; }
+        finish(reject, new Error("The print dialog could not be opened."));
+        return;
+      }
       try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        resolve();
+        win.focus();
+        win.print();
+        finish(resolve);
       } catch (err) {
-        reject(err);
-      } finally {
-        setTimeout(cleanup, 2000);
+        if (attempt < 20) { setTimeout(() => tryPrint(attempt + 1), 150); return; }
+        finish(reject, err instanceof Error ? err : new Error("The print dialog could not be opened."));
       }
     };
-    iframe.onerror = () => {
-      cleanup();
-      reject(new Error("Failed to load the contract PDF for printing."));
+
+    iframe.onload = () => {
+      // Give the PDF viewer plugin a moment to attach before the first attempt.
+      setTimeout(() => tryPrint(0), 250);
     };
+    iframe.onerror = () => finish(reject, new Error("Failed to load the contract PDF for printing."));
+    // Absolute safety net: never hang the button forever.
+    watchdog = setTimeout(
+      () => finish(reject, new Error("Timed out opening the print dialog. Please use Download instead.")),
+      15000,
+    );
+
     iframe.src = url;
     document.body.appendChild(iframe);
   });
@@ -477,21 +524,40 @@ export default function DigitalContractPaper({
   };
 
   const handlePrintClick = async () => {
+    setDocumentError(null);
+    // No canonical PDF (synthetic contract, or nothing generated yet): the
+    // DOM preview IS the document — print it via the scoped @media print
+    // stylesheet below. This is a genuine preview of the same terms, not a
+    // rebuild of a signed artifact.
     if (!hasCanonicalPdf) {
-      window.print();
+      if (isSyntheticContract) {
+        setDocumentError(
+          "Your lease draft PDF is still being prepared. You can review the details on this page; printing will be available shortly.",
+        );
+        return;
+      }
+      try {
+        window.print();
+      } catch {
+        setDocumentError("Your browser blocked the print dialog. Please try again or use Download.");
+      }
       return;
     }
     setRealPdfBusy(true);
-    setDocumentError(null);
     try {
       const blob = await fetchDocumentPdf(contract);
       await printBlobViaIframe(blob);
     } catch (err) {
       console.error("Failed to print the canonical contract PDF.", err);
+      // Always surface a visible error — never silently window.print() the
+      // whole app page. For a draft we additionally offer the DOM fallback.
       if (isFinalDocument) {
         setDocumentError(friendlyDocumentError(err));
       } else {
-        window.print();
+        setDocumentError(
+          (err?.message || "Couldn't open the print dialog for the contract PDF.") +
+            " You can use Download instead, or try again.",
+        );
       }
     } finally {
       setRealPdfBusy(false);
@@ -499,12 +565,14 @@ export default function DigitalContractPaper({
   };
 
   const handleDownloadClick = async () => {
+    setDocumentError(null);
     if (!hasCanonicalPdf) {
+      // Synthetic / not-yet-generated: fall back to the DOM export (a
+      // faithful preview of the same lease terms).
       await handleInternalDownloadPdf();
       return;
     }
     setRealPdfBusy(true);
-    setDocumentError(null);
     try {
       const blob = await fetchDocumentPdf(contract);
       const url = URL.createObjectURL(blob);
@@ -519,6 +587,7 @@ export default function DigitalContractPaper({
       if (isFinalDocument) {
         setDocumentError(friendlyDocumentError(err));
       } else {
+        // Draft: DOM export is an acceptable equivalent preview.
         await handleInternalDownloadPdf();
       }
     } finally {

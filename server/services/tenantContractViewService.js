@@ -160,5 +160,14 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
         viewUrl: `${documentBasePath}/${id}/documents/signed/${doc.version}`,
         downloadUrl: `${documentBasePath}/${id}/documents/signed/${doc.version}?download=1`,
       })),
+    // Tenant/admin acknowledgement of the current acknowledgeable document
+    // (draft or final) — the ONE canonical state from
+    // contractAcknowledgementService.getAcknowledgementStatus, embedded here
+    // so a plain page load returns it without a second round-trip. Standalone
+    // GET .../acknowledgement endpoints remain for polling/live refetch.
+    // null when the caller did not resolve it (keeps this view pure/sync).
+    acknowledgement: Object.prototype.hasOwnProperty.call(options, "acknowledgement")
+      ? options.acknowledgement
+      : null,
   };
 };

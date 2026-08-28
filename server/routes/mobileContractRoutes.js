@@ -18,6 +18,7 @@ import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth
 import {
   acknowledgeContract,
   getAcknowledgementStatus,
+  getAcknowledgementStatusForContract,
 } from "../services/contractAcknowledgementService.js";
 
 const router = express.Router();
@@ -109,10 +110,23 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     }
   }
 
+  // Canonical acknowledgement state (draft or final) embedded in the same
+  // payload — identical shape to the web endpoint; mobile keeps its
+  // standalone GET .../acknowledgement for live refetch.
+  let acknowledgement = null;
+  if (contract) {
+    try {
+      acknowledgement = await getAcknowledgementStatusForContract(contract, req.mobileTenant._id);
+    } catch (error) {
+      logger.warn({ err: error, contractId: contract?._id }, "Mobile acknowledgement resolution failed (non-fatal)");
+    }
+  }
+
   return res.json({
     contract: toTenantContractView(contract, new Date(), {
       preparedDocument,
       preparedDocumentIssue,
+      acknowledgement,
       documentBasePath: "/api/m/contracts",
     }),
     state: contract ? "CONTRACT_AVAILABLE" : "NO_PUBLISHED_CONTRACT",

@@ -151,15 +151,78 @@ function ContractSummaryBanner({ contract, stayData }) {
   );
 }
 
+function AcknowledgeConfirmModal({ open, isDraft, busy, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ack-modal-title"
+    >
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-950/40 flex items-center justify-center text-sky-600 dark:text-sky-400 flex-shrink-0">
+            <CheckCircle2 size={18} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h3 id="ack-modal-title" className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+              {isDraft ? "Acknowledge Draft Contract" : "Acknowledge Final Contract"}
+            </h3>
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {isDraft ? (
+                <>
+                  This only confirms that you have <strong>received and reviewed</strong> the
+                  generated draft of your lease contract.
+                  <br />
+                  <span className="mt-1.5 block">
+                    It is <strong>not</strong> a signature and does <strong>not</strong> make
+                    the lease binding. Physical signing and notarization still happen at move-in.
+                  </span>
+                </>
+              ) : (
+                <>This confirms that you have <strong>received and reviewed</strong> your final contract document.</>
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <CheckCircle2 size={14} strokeWidth={2} />
+            <span>{busy ? "Confirming…" : isDraft ? "Yes, I have reviewed the draft" : "Confirm"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
   if (!acknowledgement || !acknowledgement.required) return null;
+
+  const isDraft = acknowledgement.documentKind === "draft";
+  const subject = isDraft ? "draft contract" : "final contract";
 
   if (acknowledgement.acknowledged) {
     return (
       <div className="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 flex items-center gap-2.5">
         <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" strokeWidth={2} />
         <p className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 font-medium">
-          You acknowledged this contract on{" "}
+          You acknowledged this {subject}
+          {acknowledgement.documentVersion ? ` (v${acknowledgement.documentVersion})` : ""} on{" "}
           {acknowledgement.acknowledgedAt
             ? dayjs(acknowledgement.acknowledgedAt).format("MMM D, YYYY [at] h:mm A")
             : "record"}
@@ -172,7 +235,9 @@ function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
   return (
     <div className="mb-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <p className="text-xs sm:text-sm text-sky-800 dark:text-sky-300 font-medium">
-        Please confirm that you have viewed your final contract.
+        {isDraft
+          ? "Please confirm that you have received and reviewed the generated draft of your contract. This is not a signature."
+          : "Please confirm that you have received and reviewed your final contract."}
       </p>
       <button
         type="button"
@@ -181,7 +246,7 @@ function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
         className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-colors disabled:opacity-50 cursor-pointer shadow-2xs flex-shrink-0"
       >
         <CheckCircle2 size={14} strokeWidth={2} />
-        <span>{busy ? "Confirming…" : "Acknowledge Contract"}</span>
+        <span>{busy ? "Confirming…" : isDraft ? "Acknowledge Draft" : "Acknowledge Contract"}</span>
       </button>
     </div>
   );
@@ -331,6 +396,11 @@ export default function ContractsPage() {
   const [actionBusyId, setActionBusyId] = useState(null);
   const [acknowledgement, setAcknowledgement] = useState(null);
   const [acknowledging, setAcknowledging] = useState(false);
+  const [ackModalOpen, setAckModalOpen] = useState(false);
+
+  // A synthetic (Stay-derived) contract has a human reference string as `id`,
+  // not a Mongo ObjectId — the document/acknowledgement endpoints 404 on it.
+  const isRealContractId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 
   const loadContracts = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -352,8 +422,13 @@ export default function ContractsPage() {
       if (historyRes.status === "fulfilled") {
         setContractHistory(historyRes.value?.contracts || []);
       }
+      // Prefer the acknowledgement embedded in the current-contract payload
+      // (one round-trip, authoritative). Only fall back to the standalone
+      // endpoint for a real ObjectId contract that didn't carry it.
       const contractId = resolvedContract?.id || resolvedContract?._id;
-      if (contractId) {
+      if (resolvedContract?.acknowledgement) {
+        setAcknowledgement(resolvedContract.acknowledgement);
+      } else if (isRealContractId(contractId)) {
         try {
           const ackRes = await tenantContractApi.getMyContractAcknowledgement(contractId);
           setAcknowledgement(ackRes || null);
@@ -370,19 +445,32 @@ export default function ContractsPage() {
     }
   }, []);
 
-  const handleAcknowledge = async () => {
+  const performAcknowledge = async () => {
     const contractId = contract?.id || contract?._id;
-    if (!contractId || acknowledging) return;
+    if (!isRealContractId(contractId) || acknowledging) return;
     setAcknowledging(true);
     try {
-      const result = await tenantContractApi.acknowledgeMyContract(contractId);
-      setAcknowledgement((prev) => ({
-        ...prev,
-        required: true,
-        acknowledged: true,
-        acknowledgedAt: result?.acknowledgedAt || new Date().toISOString(),
-      }));
-      showNotification("Contract acknowledged.", "success");
+      await tenantContractApi.acknowledgeMyContract(contractId);
+      // Re-fetch authoritative state rather than trusting an optimistic
+      // local write — guarantees reload-parity and idempotency.
+      try {
+        const fresh = await tenantContractApi.getMyContractAcknowledgement(contractId);
+        setAcknowledgement(fresh || null);
+      } catch {
+        setAcknowledgement((prev) => ({
+          ...(prev || {}),
+          required: true,
+          acknowledged: true,
+          acknowledgedAt: new Date().toISOString(),
+        }));
+      }
+      setAckModalOpen(false);
+      showNotification(
+        acknowledgement?.documentKind === "draft"
+          ? "Draft contract acknowledged."
+          : "Contract acknowledged.",
+        "success",
+      );
     } catch (ackErr) {
       showNotification(ackErr?.message || "Failed to acknowledge contract.", "error");
     } finally {
@@ -547,8 +635,16 @@ export default function ContractsPage() {
 
       <AcknowledgeContractBanner
         acknowledgement={acknowledgement}
-        onAcknowledge={handleAcknowledge}
+        onAcknowledge={() => setAckModalOpen(true)}
         busy={acknowledging}
+      />
+
+      <AcknowledgeConfirmModal
+        open={ackModalOpen}
+        isDraft={acknowledgement?.documentKind === "draft"}
+        busy={acknowledging}
+        onConfirm={performAcknowledge}
+        onCancel={() => setAckModalOpen(false)}
       />
 
       {!contract && !stayData ? (

@@ -42,6 +42,8 @@ jest.unstable_mockModule("../models/index.js", () => ({
 jest.unstable_mockModule("../services/contractAcknowledgementService.js", () => ({
   acknowledgeContract: jest.fn(),
   getAcknowledgementStatus: jest.fn(),
+  getAcknowledgementStatusForContract: jest.fn(),
+  resolveAcknowledgeableDocument: jest.fn(),
 }));
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),

@@ -105,6 +105,23 @@ await jest.unstable_mockModule("../services/contractPublicationService.js", () =
 await jest.unstable_mockModule("../services/contractDocumentStorageService.js", () => ({
   inspectSignedContractDocument,
 }));
+// The current-contract endpoint now embeds the canonical acknowledgement
+// state; this suite is about document streaming, so stub it to "nothing to
+// acknowledge" (no DB in this behavior test).
+const getAcknowledgementStatusForContract = jest.fn(async () => ({
+  required: false,
+  acknowledged: false,
+  acknowledgedAt: null,
+  documentVersion: null,
+  documentKind: null,
+  documentLabel: null,
+}));
+await jest.unstable_mockModule("../services/contractAcknowledgementService.js", () => ({
+  acknowledgeContract: jest.fn(),
+  getAcknowledgementStatus: jest.fn(),
+  getAcknowledgementStatusForContract,
+  resolveAcknowledgeableDocument: jest.fn(),
+}));
 await jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
   mobileTenantAuth: (req, _res, next) => {
     req.mobileTenant = { _id: TENANT_ID };
