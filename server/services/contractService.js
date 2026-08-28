@@ -35,7 +35,18 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   draft: ["incomplete", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
   incomplete: ["draft", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
   ready_for_generation: ["draft", "incomplete", "generated", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
-  generated: ["awaiting_signatures", "partially_signed", "signed", "notarized", "cancelled"],
+  // Terminal edges from "generated": Phase 8 — a Room Transfer Addendum
+  // becomes the tenant's CURRENT Contract while still "generated"
+  // (wet-signing pending). So a generated addendum must be closable the same
+  // ways a published/active lease is:
+  //   - "replaced"   : a subsequent room transfer supersedes it (Phase 8).
+  //   - "expired"    : the tenant reaches full-term move-out (Phase 10 —
+  //                    moveOutStayWorkflow closes the current Contract).
+  //   - "terminated" : early / administrative move-out (Phase 10).
+  // A fresh move-in Draft never reaches these edges — it is only ever
+  // superseded/closed once it has progressed past "generated" (which the
+  // published/active rows already allow).
+  generated: ["awaiting_signatures", "partially_signed", "signed", "notarized", "cancelled", "replaced", "expired", "terminated"],
   awaiting_signatures: ["partially_signed", "signed", "notarized", "cancelled"],
   partially_signed: ["awaiting_signatures", "signed", "notarized", "cancelled"],
   signed: ["awaiting_notarization", "notarized", "cancelled"],
@@ -548,6 +559,13 @@ export const findCurrentContract = ({ tenantId, includeEarlyStages = true }) =>
 // createReplacementContractForTransfer below).
 export const ABANDONED_TRANSFER_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
 
+// A room-transfer successor Contract is a Room Transfer Addendum
+// (contractPurpose: "amendment") for transfers created from Phase 8 onward,
+// and a full replacement Contract (contractPurpose: "replacement") for
+// legacy transfers. Both are resolved/idempotency-checked the same way
+// (replacesContractId + one of these purposes).
+export const ROOM_TRANSFER_SUCCESSOR_PURPOSES = Object.freeze(["amendment", "replacement"]);
+
 export const createReplacementContractForTransfer = async ({
   reservationId,
   stayId = null,
@@ -572,7 +590,7 @@ export const createReplacementContractForTransfer = async ({
   // see the module-level comment below.
   const existingSuccessors = await Contract.find({
     replacesContractId: oldContract._id,
-    contractPurpose: "replacement",
+    contractPurpose: { $in: [...ROOM_TRANSFER_SUCCESSOR_PURPOSES] },
     status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
   }).session(session);
   if (existingSuccessors.length > 1) {
@@ -602,15 +620,26 @@ export const createReplacementContractForTransfer = async ({
 
   // The predecessor is a historical legal record and must NOT be mutated
   // here — it stays ACTIVE/current until the real room transfer executes
-  // and explicitly calls contractRoomTransferActivationService.
-  // activateRoomTransferSuccessor. Its room, rate, and lease dates are
-  // untouched; status/isCurrent/supersededByContractId are set only by that
-  // cutover, not at successor-creation time.
-  const leaseStartDate = effectiveTransferDate;
-  const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate;
+  // and explicitly calls contractRoomTransferActivationService. Its room,
+  // rate, and lease dates are untouched; status/isCurrent/
+  // supersededByContractId are set only by that cutover.
+  //
+  // PHASE 8 — a Room Transfer is an AMENDMENT to the continuing lease, not a
+  // new lease. The lease term is CARRIED OVER VERBATIM from the tenant's
+  // current Contract (which itself carried it from the original). The
+  // transfer date is recorded separately as amendmentEffectiveDate. It must
+  // NEVER become leaseStartDate.
+  const leaseStartDate = oldContract.leaseStartDate || stay?.leaseStartDate || null;
+  const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate || null;
   const leaseDurationMonths = oldContract.leaseDurationMonths || (
     leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1
   );
+  const amendmentEffectiveDate = effectiveTransferDate;
+  // The root lease Contract — the original signed/notarized lease that every
+  // addendum in the chain amends. oldContract.parentContractId already points
+  // there (set on the previous addendum, if any); else oldContract IS the
+  // root (or its own initial predecessor).
+  const rootLeaseContractId = oldContract.parentContractId || oldContract._id;
 
   const settings = await getBusinessSettings();
   // The destination Contract must snapshot the room-type + approved-term
@@ -681,15 +710,35 @@ export const createReplacementContractForTransfer = async ({
   // the room itself didn't change.
   const transferType = String(oldContract.roomId) === String(targetRoom._id) ? "bed_only" : "room_change";
 
+  const amendmentReason =
+    `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || "—"}) ` +
+    `-> ${targetRoom.roomNumber} (${bedName || "—"}), effective ${dayjs(amendmentEffectiveDate).format("YYYY-MM-DD")}. ` +
+    `The room and rental terms listed in this addendum change on the effective date; ` +
+    `all other terms of the original lease (${dayjs(leaseStartDate).format("YYYY-MM-DD")} - ${dayjs(leaseEndDate).format("YYYY-MM-DD")}) remain in effect.`;
+  const amendmentFields = [
+    "roomId", "roomNumber", "roomType", "bedId", "bedLabel",
+    "approvedMonthlyRate", "regularMonthlyRate", "securityDepositAmount",
+  ];
+
   const createdDocs = await Contract.create(
     [
       {
         ...number,
-        contractPurpose: "replacement",
+        // PHASE 8: a Room Transfer is an ADDENDUM to the continuing lease,
+        // not a replacement lease. contractPurpose:"amendment" +
+        // parentContractId -> the root lease Contract. replacesContractId
+        // still points at the immediately-preceding current Contract so the
+        // existing lineage / idempotency queries (replacesContractId +
+        // contractPurpose) keep working, and the cutover supersedes exactly
+        // that record.
+        contractPurpose: "amendment",
         transferType,
-        parentContractId: oldContract.parentContractId || oldContract._id,
+        parentContractId: rootLeaseContractId,
         replacesContractId: oldContract._id,
-        replacementReason: `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || ""}) -> ${targetRoom.roomNumber} (${bedName})`,
+        amendmentReason,
+        amendmentFields,
+        amendmentEffectiveDate,
+        replacementReason: amendmentReason,
         initialContractKey: null,
         initialStayKey: null,
         tenantId: tenant._id,
@@ -722,7 +771,13 @@ export const createReplacementContractForTransfer = async ({
         discountAmount: pricing.discountAmount || 0,
         approvedMonthlyRate: pricing.approvedMonthlyRate,
         advanceRentAmount: 0,
-        securityDepositAmount: oldContract.securityDepositAmount || 0,
+        // Successor Contract shows the DESTINATION room's REQUIRED deposit
+        // (canonical 1x-approved-monthly-rate rule — same figure
+        // structuredInitialPaymentPolicy / depositUtils use at move-in), NOT
+        // the predecessor's deposit verbatim. How much of that is actually
+        // held vs. still owed is tracked on reservation.securityDepositHeld
+        // and the transfer_settlement Bill's charges.securityDeposit line.
+        securityDepositAmount: Number(pricing.approvedMonthlyRate) || 0,
         reservationFeeAmount: 0,
         reservationFeeCreditAmount: 0,
         pricingApprovalId: reservation._id,
@@ -733,7 +788,7 @@ export const createReplacementContractForTransfer = async ({
         advanceCoverageEnd: oldContract.advanceCoverageEnd || (leaseStartDate ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate() : null),
         status: "draft",
         statusHistory: [
-          { status: "draft", changedBy: actorId, reason: `Room transfer replacement draft created (${oldContract.roomNumber} -> ${targetRoom.roomNumber})` },
+          { status: "draft", changedBy: actorId, reason: `Room transfer addendum draft created (${oldContract.roomNumber} -> ${targetRoom.roomNumber})` },
         ],
         createdBy: actorId,
         updatedBy: actorId,
@@ -906,7 +961,20 @@ export const createSuccessorContractForRenewal = async ({
 
   // Deposit is carried forward, not automatically recharged (spec §R/§AC) —
   // this is an informational/audit snapshot only, no Bill/charge is created.
-  const heldDeposit = Number(oldContract.securityDepositAmount || 0);
+  // The renewal Contract's REQUIRED deposit is the predecessor's required
+  // deposit carried forward unchanged (no re-charge policy).
+  const carriedForwardRequiredDeposit = Number(oldContract.securityDepositAmount || 0);
+  // PHASE 10 — the depositAdjustment snapshot's "held" figure must be the
+  // ACTUAL cash held for the tenancy (reservation.securityDepositHeld, kept
+  // authoritative by the room-transfer + payment flows), NOT a Contract
+  // field — those diverge for a transferred tenant (transferred to a
+  // costlier room without paying the difference, or holding an excess after
+  // a cheaper-room transfer). Fall back to the carried-forward required
+  // amount only for a legacy tenancy predating securityDepositHeld.
+  const actualHeld = Number(reservation.securityDepositHeld);
+  const heldDepositActual = Number.isFinite(actualHeld) && actualHeld >= 0
+    ? actualHeld
+    : carriedForwardRequiredDeposit;
   const requiredDeposit = Number(resolveSecurityDeposit({ ...reservation, monthlyRent: newRate })) || newRate;
 
   const createdDocs = await Contract.create(
@@ -949,7 +1017,7 @@ export const createSuccessorContractForRenewal = async ({
         discountAmount: pricing.discountAmount || 0,
         approvedMonthlyRate: pricing.approvedMonthlyRate,
         advanceRentAmount: 0,
-        securityDepositAmount: heldDeposit,
+        securityDepositAmount: carriedForwardRequiredDeposit,
         reservationFeeAmount: 0,
         reservationFeeCreditAmount: 0,
         pricingApprovalId: reservation._id,
@@ -961,9 +1029,9 @@ export const createSuccessorContractForRenewal = async ({
         advanceCoverageStart: leaseStartDate,
         advanceCoverageEnd: leaseStartDate ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate() : null,
         depositAdjustment: {
-          heldAmount: heldDeposit,
+          heldAmount: heldDepositActual,
           requiredAmount: requiredDeposit,
-          adjustmentAmount: requiredDeposit - heldDeposit,
+          adjustmentAmount: requiredDeposit - heldDepositActual,
           computedAt: new Date(),
         },
         status: "draft",

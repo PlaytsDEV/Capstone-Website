@@ -313,26 +313,73 @@ export default function TenantBillingTab({
               </div>
             </div>
 
-            {/* 2. Security Deposit */}
-            <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground text-[11px] font-medium">
-                  Security Deposit
-                </span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                  <span>Held (Refundable)</span>
-                </span>
-              </div>
-              <div>
-                <div className="text-base font-bold text-foreground font-mono">
-                  {formatMoney(tenant.securityDeposit)}
+            {/* 2. Security Deposit — REQUIRED vs HELD are shown separately so
+                   the "required" figure is never mistaken for money already
+                   collected (e.g. after a room transfer to a costlier room). */}
+            {(() => {
+              const held = tenant.securityDepositHeld;                  // null on legacy records
+              const heldKnown = held !== null && held !== undefined;
+              const required = Number(tenant.securityDeposit || 0);
+              const balanceDue = Number(tenant.securityDepositBalanceDue || 0);
+              const excessHeld = Number(tenant.securityDepositExcessHeld || 0);
+              const settled = heldKnown && balanceDue <= 0;
+              return (
+                <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground text-[11px] font-medium">Security Deposit</span>
+                    {balanceDue > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>Balance Due</span>
+                      </span>
+                    ) : settled ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                        <span>Held (Refundable)</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        <span>Held Unknown</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground">Required</span>
+                      <span className="text-sm font-bold text-foreground font-mono">{formatMoney(required)}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground">Held</span>
+                      <span className="text-sm font-semibold text-foreground font-mono">
+                        {heldKnown ? formatMoney(held) : "Unavailable"}
+                      </span>
+                    </div>
+                    {balanceDue > 0 && (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Balance Due</span>
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400 font-mono">{formatMoney(balanceDue)}</span>
+                      </div>
+                    )}
+                    {excessHeld > 0 && (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Excess Held</span>
+                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 font-mono">{formatMoney(excessHeld)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {balanceDue > 0
+                      ? "Additional deposit is billed on the transfer settlement — held rises only when it is paid."
+                      : excessHeld > 0
+                        ? "Excess held stays refundable at move-out clearance. Not auto-refunded."
+                        : heldKnown
+                          ? "Held in escrow for checkout clearance."
+                          : "This tenancy predates deposit tracking — held amount is not recorded."}
+                  </div>
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
-                  Held in escrow for checkout clearance
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* 3. Reservation Fee */}
             <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">

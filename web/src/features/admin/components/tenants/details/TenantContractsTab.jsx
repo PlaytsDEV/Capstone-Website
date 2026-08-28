@@ -238,12 +238,44 @@ export default function TenantContractsTab({
               <span className="text-muted-foreground block text-[11px]">Stay Reference</span>
               <span className="font-semibold font-mono text-foreground">{stayReference}</span>
             </div>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Monthly Rent Rate</span>
-              <span className="font-semibold text-foreground">
-                {formatMoney(displayContract?.approvedMonthlyRate || tenant.monthlyRate)}
-              </span>
-            </div>
+            {(() => {
+              // The tenant's CURRENT operational rent (backend resolves this
+              // from recurringRentRate after a transfer). Historical / non-
+              // current contract documents keep their own snapshot rate.
+              const isHistoricalDoc =
+                displayContract && displayContract.isCurrent === false;
+              const isAddendum =
+                displayContract?.contractPurpose === "amendment" ||
+                displayContract?.purpose === "amendment";
+              const docRate = displayContract?.approvedMonthlyRate;
+              const currentRate = tenant.monthlyRate;
+              return (
+                <>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">
+                      {isHistoricalDoc ? "Rate on This Document (historical)" : "Current Monthly Rent"}
+                    </span>
+                    <span className="font-semibold text-foreground">
+                      {formatMoney(isHistoricalDoc ? docRate : (currentRate ?? docRate))}
+                    </span>
+                  </div>
+                  {isHistoricalDoc && currentRate != null && Number(currentRate) !== Number(docRate) && (
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Current Monthly Rent (in effect now)</span>
+                      <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                        {formatMoney(currentRate)}
+                      </span>
+                    </div>
+                  )}
+                  {isAddendum && !isHistoricalDoc && (
+                    <div className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                      This is a Room Transfer Addendum under the continuing lease — the lease dates above are the
+                      original lease's dates and are unchanged by the transfer.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {acknowledgement?.required && (
               <div className="col-span-2">
                 <span className="text-muted-foreground block text-[11px]">

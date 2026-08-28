@@ -1255,14 +1255,19 @@ async function buildSettlementDoc(data) {
     : data.branch === "guadalupe" ? "Guadalupe"
     : data.branch || "Lilycrest";
 
+  // Room-transfer PDFs are driven ENTIRELY by the canonical server preview
+  // (data.transferPreview) so the printed figures match what Admin sees on
+  // screen. There is no separate frontend proration.
+  const xfer = isTransfer ? (data.transferPreview || null) : null;
+
   const totalAmt = isTransfer
-    ? (data.estimatedTotal || 0)
+    ? Number(xfer?.totalImmediateDue || 0)
     : data.isEarlyVacancy
       ? 0
       : (data.netSettlement || 0);
 
   const statusLabel = isTransfer
-    ? "ESTIMATE"
+    ? "SETTLEMENT ESTIMATE"
     : data.isEarlyVacancy
       ? "DEPOSIT FORFEITED"
       : data.remainingDebt > 0
@@ -1292,8 +1297,8 @@ async function buildSettlementDoc(data) {
   const rightFields = isTransfer
     ? [
         { value: `Target: ${safeString(data.toRoom)} (${safeString(data.toBed)})`, isHeader: true },
-        { label: "Current Rent", value: data.currentRent ? `PHP ${fmtAmt(data.currentRent)}/mo` : "—" },
-        { label: "New Room Rent", value: data.newRent ? `PHP ${fmtAmt(data.newRent)}/mo` : "—" },
+        { label: "Old / Current Rent", value: (xfer?.rent?.sourceEffectiveRate ?? data.currentRent) ? `PHP ${fmtAmt(xfer?.rent?.sourceEffectiveRate ?? data.currentRent)}/mo` : "—" },
+        { label: "Destination Rent", value: (xfer?.rent?.destinationApprovedRate ?? data.newRent) ? `PHP ${fmtAmt(xfer?.rent?.destinationApprovedRate ?? data.newRent)}/mo` : "—" },
         { label: "Branch", value: branchLabel },
       ]
     : [
@@ -1315,28 +1320,92 @@ async function buildSettlementDoc(data) {
   // 3. Itemized Table
   const tableItems = [];
   if (isTransfer) {
-    if (data.proRataPreview != null) {
+    const r = xfer?.rent || {};
+    const d = xfer?.deposit || {};
+
+    // ── RENT ADJUSTMENT — a distinct category (never netted with deposit) ──
+    tableItems.push({
+      title: "Rent Adjustment (current cycle)",
+      subtext: `${r.destinationDays ?? 0}d destination-room prorated (PHP ${fmtAmt(r.destinationProratedValue)}) less unused prepaid rent (PHP ${fmtAmt(r.unusedPrepaidCredit)}).`,
+      qty: 1,
+      unitPrice: Number(r.adjustmentDue || 0),
+      amount: Number(r.adjustmentDue || 0),
+    });
+    if (Number(r.excessCredit || 0) > 0) {
       tableItems.push({
-        title: `Prorated Old Room Rent (${data.daysSinceCycleStart || 0} of ${data.daysInMonth || 30} days)`,
-        subtext: `Current room rate PHP ${fmtAmt(data.currentRent)}/mo prorated for active days.`,
+        title: "Excess Prepaid Rent -> Rent Credit",
+        subtext: "Applied automatically to future rent bills. Not a refund, not netted against the deposit.",
         qty: 1,
-        unitPrice: data.proRataPreview,
-        amount: data.proRataPreview,
+        unitPrice: Number(r.excessCredit || 0),
+        amount: Number(r.excessCredit || 0),
+        isCredit: true,
       });
     }
-    if (data.estimatedElectricityCost != null) {
+
+    // ── SECURITY DEPOSIT — a distinct category ──
+    tableItems.push({
+      title: "Security Deposit Required (destination room)",
+      subtext: "One month's rent at the destination rate.",
+      qty: 1,
+      unitPrice: Number(d.required || 0),
+      amount: Number(d.required || 0),
+    });
+    tableItems.push({
+      title: "Less: Security Deposit Already Held",
+      subtext: d.heldKnown
+        ? "Deposit cash currently on file, credited against the destination requirement."
+        : "Legacy record — held deposit amount unavailable; verify manually before settlement.",
+      qty: 1,
+      unitPrice: d.heldKnown ? Number(d.held || 0) : 0,
+      amount: d.heldKnown ? Number(d.held || 0) : 0,
+      isCredit: true,
+    });
+    if (Number(d.balanceDue || 0) > 0) {
       tableItems.push({
-        title: `Prorated Electricity Usage (${fmtAmt(data.kwhPreview)} kWh)`,
-        subtext: `Estimated power charge up to transfer date.`,
+        title: "Additional Security Deposit Due",
+        subtext: "Difference between the destination requirement and the deposit already held.",
         qty: 1,
-        unitPrice: data.estimatedElectricityCost,
-        amount: data.estimatedElectricityCost,
+        unitPrice: Number(d.balanceDue || 0),
+        amount: Number(d.balanceDue || 0),
       });
     }
+    if (Number(d.excessHeld || 0) > 0) {
+      tableItems.push({
+        title: "Excess Deposit Held",
+        subtext: "Destination requires a smaller deposit. The excess stays as refundable held deposit — not auto-refunded, not converted to a rent credit.",
+        qty: 1,
+        unitPrice: Number(d.excessHeld || 0),
+        amount: Number(d.excessHeld || 0),
+        isCredit: true,
+      });
+    }
+
+    // ── ELECTRICITY — informational only, NOT in Total Immediate Due ──
+    tableItems.push({
+      title: "Estimated Source-Room Electricity (informational)",
+      subtext:
+        data.estimatedElectricityCost != null
+          ? `Approx. PHP ${fmtAmt(data.estimatedElectricityCost)} for ~${fmtAmt(data.kwhPreview)} kWh. Final charge is generated during the normal utility period close — NOT included in Total Immediate Due.`
+          : "The final charge is generated during the normal utility period close — NOT included in Total Immediate Due.",
+      qty: 1,
+      unitPrice: 0,
+      amount: 0,
+    });
+
+    // ── WATER — follows existing policy, never an immediate transfer charge ──
+    tableItems.push({
+      title: "Water (informational)",
+      subtext:
+        "Follows the current room/branch water policy and is settled at its normal period close (or not billed separately where included in rent). NOT included in Total Immediate Due.",
+      qty: 1,
+      unitPrice: 0,
+      amount: 0,
+    });
+
     if (data.outstandingBalance > 0) {
       tableItems.push({
-        title: "Prior Outstanding Balance",
-        subtext: "Carried forward unpaid prior charges.",
+        title: "Prior Outstanding Balance (existing, unrelated)",
+        subtext: "Carried-forward unpaid prior charges. Shown for context; not part of the transfer settlement total.",
         qty: 1,
         unitPrice: data.outstandingBalance,
         amount: data.outstandingBalance,
@@ -1397,9 +1466,12 @@ async function buildSettlementDoc(data) {
   // 4. Totals
   const totals = [];
   if (isTransfer) {
-    totals.push({ label: "Estimated Settlement Total:", amount: totalAmt });
-    totals.mainTotal = totalAmt;
-    y = drawAccountingTotals(doc, y, totals, "ESTIMATED SETTLEMENT TOTAL:");
+    const r = xfer?.rent || {};
+    const d = xfer?.deposit || {};
+    totals.push({ label: "Rent Adjustment:", amount: Number(r.adjustmentDue || 0) });
+    totals.push({ label: "Additional Security Deposit:", amount: Number(d.balanceDue || 0) });
+    totals.mainTotal = totalAmt; // = rent adjustment + additional deposit (server canonical)
+    y = drawAccountingTotals(doc, y, totals, "TOTAL IMMEDIATE DUE:");
   } else {
     if (data.isEarlyVacancy) {
       totals.push({ label: "Deposit Status:", amount: 0 });
@@ -1417,17 +1489,29 @@ async function buildSettlementDoc(data) {
   }
 
   // 5. Settlement Notice & Sign-off
-  const auditFields = [
-    { label: "Estimate Status", value: "Preliminary calculation only" },
-    { label: "Final Confirmation", value: "Confirmed upon billing cycle generation" },
-    { label: "Action Effective", value: formatDate(data.effectiveDate) },
-    { label: "Processing Office", value: `${branchLabel} Branch Administration` },
-  ];
+  const auditFields = isTransfer
+    ? [
+        { label: "Total Basis", value: "Rent Adjustment + Additional Security Deposit only" },
+        { label: "Electricity / Water", value: "Informational — billed at normal utility period close" },
+        { label: "Action Effective", value: formatDate(data.effectiveDate) },
+        { label: "Processing Office", value: `${branchLabel} Branch Administration` },
+      ]
+    : [
+        { label: "Estimate Status", value: "Preliminary calculation only" },
+        { label: "Final Confirmation", value: "Confirmed upon billing cycle generation" },
+        { label: "Action Effective", value: formatDate(data.effectiveDate) },
+        { label: "Processing Office", value: `${branchLabel} Branch Administration` },
+      ];
 
   drawAuditAndSignOff(doc, y, auditFields, "Authorized Representative", "Lilycrest Dormitory Management Office");
 
   // 6. Footer
-  drawOfficialFooter(doc, "All amounts shown are preliminary estimates. Final charges are confirmed at billing generation time.");
+  drawOfficialFooter(
+    doc,
+    isTransfer
+      ? "Total Immediate Due = Rent Adjustment + Additional Security Deposit, using the canonical server settlement preview. Electricity and water are shown for information only and are billed once during their normal utility period close."
+      : "All amounts shown are preliminary estimates. Final charges are confirmed at billing generation time.",
+  );
 
   return doc;
 }

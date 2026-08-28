@@ -36,6 +36,7 @@ const allModels = {
   MaintenanceRequest: genericModel(),
   Notification: genericModel(),
   Payment: genericModel(),
+  TenantCredit: genericModel(),
   LoginLog: genericModel(),
   UserSession: genericModel(),
   AcknowledgmentAccount: genericModel(),

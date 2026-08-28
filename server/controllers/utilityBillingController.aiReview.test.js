@@ -112,6 +112,8 @@ await jest.unstable_mockModule("../utils/utilityFlowRules.js", () => ({
     missingMoveOutReadings: [],
   })),
   isWaterBillableRoom: jest.fn(() => true),
+  readRoomScopedMoveInDate: jest.fn((r) => r?._roomScopedMoveInDate ?? r?.moveInDate ?? null),
+  readRoomScopedMoveOutDate: jest.fn((r) => r?._roomScopedMoveOutDate ?? r?.moveOutDate ?? null),
 }));
 
 await jest.unstable_mockModule("../utils/billingPolicy.js", () => ({

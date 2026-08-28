@@ -61,6 +61,16 @@ export const reservationApi = {
   getTenantActionContext: (reservationId) =>
     authFetch(`/reservations/${reservationId}/tenant-actions/context`),
 
+  // Same endpoint, additionally returning `transferPreview` — the canonical
+  // rent-adjustment / additional-deposit / required-vs-held numbers for a
+  // candidate destination room. Additive: base callers pass no params.
+  getRoomTransferPreview: (reservationId, { targetRoomId, effectiveTransferDate } = {}) => {
+    const qs = new URLSearchParams();
+    if (targetRoomId) qs.set("targetRoomId", String(targetRoomId));
+    if (effectiveTransferDate) qs.set("effectiveTransferDate", String(effectiveTransferDate));
+    return authFetch(`/reservations/${reservationId}/tenant-actions/context?${qs.toString()}`);
+  },
+
   getVisitAvailability: (params = {}) => {
     const queryString = new URLSearchParams(
       Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""),

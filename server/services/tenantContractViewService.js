@@ -94,6 +94,18 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     propertyName: contract.propertyName || "",
     roomNumber: contract.roomNumber || "",
     bedLabel: isPrivate ? "" : (contract.bedLabel || ""),
+    // Contract type — so the UI can label a Room Transfer Addendum
+    // ("amendment") vs. a legacy transfer replacement vs. the original lease
+    // ("initial") vs. a renewal, and can explain that an addendum's lease
+    // dates are the ORIGINAL lease's dates.
+    contractPurpose: contract.contractPurpose || "initial",
+    transferType: contract.transferType || null,
+    amendmentEffectiveDate: contract.amendmentEffectiveDate || null,
+    amendmentReason: contract.amendmentReason || "",
+    amendmentFields: Array.isArray(contract.amendmentFields) ? contract.amendmentFields : [],
+    parentContractId: contract.parentContractId ? String(contract.parentContractId) : null,
+    replacesContractId: contract.replacesContractId ? String(contract.replacesContractId) : null,
+    isCurrent: contract.isCurrent !== false,
     leaseStartDate: contract.leaseStartDate || null,
     leaseEndDate: contract.leaseEndDate || null,
     leaseDurationMonths: contract.leaseDurationMonths ?? null,

@@ -194,7 +194,7 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
       Contract.findById(predecessor._id),
       Reservation.findById(reservation._id),
       BedHistory.findById(bedHistory._id),
-      Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: "replacement" }),
+      Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: { $in: ["amendment", "replacement"] } }),
       Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" }),
     ]);
 
@@ -251,7 +251,7 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
 
     expect(result.contractCutover.successorStatus).toBe("generated");
     const [successor, reloadedRoomA, reloadedStay] = await Promise.all([
-      Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: "replacement" }),
+      Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: { $in: ["amendment", "replacement"] } }),
       Room.findById(roomA._id),
       Stay.findOne({ reservationId: reservation._id, status: "active" }),
     ]);
@@ -334,7 +334,7 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
     });
 
     const [successors, settlementBills] = await Promise.all([
-      Contract.find({ replacesContractId: predecessor._id, contractPurpose: "replacement" }),
+      Contract.find({ replacesContractId: predecessor._id, contractPurpose: { $in: ["amendment", "replacement"] } }),
       Bill.find({ reservationId: reservation._id, billType: "transfer_settlement" }),
     ]);
     expect(successors).toHaveLength(1);

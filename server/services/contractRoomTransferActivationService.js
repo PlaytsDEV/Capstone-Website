@@ -1,6 +1,13 @@
 import mongoose from "mongoose";
 import { Contract } from "../models/index.js";
-import { transitionContract, ABANDONED_TRANSFER_SUCCESSOR_STATUSES } from "./contractService.js";
+import {
+  transitionContract,
+  ABANDONED_TRANSFER_SUCCESSOR_STATUSES,
+  ROOM_TRANSFER_SUCCESSOR_PURPOSES,
+} from "./contractService.js";
+
+const isRoomTransferSuccessorPurpose = (purpose) =>
+  ROOM_TRANSFER_SUCCESSOR_PURPOSES.includes(purpose);
 
 const error = (message, code, statusCode = 400, details) =>
   Object.assign(new Error(message), { code, statusCode, details });
@@ -17,7 +24,7 @@ const error = (message, code, statusCode = 400, details) =>
 export async function resolveRoomTransferSuccessor({ predecessorContractId, session = null }) {
   const successors = await Contract.find({
     replacesContractId: predecessorContractId,
-    contractPurpose: "replacement",
+    contractPurpose: { $in: [...ROOM_TRANSFER_SUCCESSOR_PURPOSES] },
     status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
   }).session(session);
 
@@ -31,8 +38,8 @@ export async function resolveRoomTransferSuccessor({ predecessorContractId, sess
   }
   if (successors.length === 0) {
     throw error(
-      "No prepared room-transfer replacement Contract was found for this tenancy. " +
-      "Prepare and finalize a replacement Contract before executing the transfer.",
+      "No prepared room-transfer addendum was found for this tenancy. " +
+      "Prepare the transfer addendum before executing the transfer.",
       "ROOM_TRANSFER_CONTRACT_NOT_PREPARED",
       409,
       { predecessorId: String(predecessorContractId) },
@@ -85,9 +92,9 @@ async function runRoomTransferActivation({ successorContractId, actorId, session
   if (!successor) {
     throw error("Room-transfer successor Contract not found.", "TRANSFER_SUCCESSOR_NOT_FOUND", 404);
   }
-  if (successor.contractPurpose !== "replacement") {
+  if (!isRoomTransferSuccessorPurpose(successor.contractPurpose)) {
     throw error(
-      "Contract is not a room-transfer replacement successor.",
+      "Contract is not a room-transfer successor (addendum or legacy replacement).",
       "NOT_A_TRANSFER_SUCCESSOR",
       409,
     );
@@ -225,8 +232,8 @@ async function runRoomTransferDraftActivation({ successorContractId, actorId, se
   if (!successor) {
     throw error("Room-transfer successor Contract not found.", "TRANSFER_SUCCESSOR_NOT_FOUND", 404);
   }
-  if (successor.contractPurpose !== "replacement") {
-    throw error("Contract is not a room-transfer replacement successor.", "NOT_A_TRANSFER_SUCCESSOR", 409);
+  if (!isRoomTransferSuccessorPurpose(successor.contractPurpose)) {
+    throw error("Contract is not a room-transfer successor (addendum or legacy replacement).", "NOT_A_TRANSFER_SUCCESSOR", 409);
   }
 
   if (successor.isCurrent === true) {
@@ -264,11 +271,22 @@ async function runRoomTransferDraftActivation({ successorContractId, actorId, se
     );
   }
   const predecessor = await Contract.findById(successor.replacesContractId).session(session);
-  const validPredecessorStatuses = ["active", "published", "expiring_soon"];
-  if (!predecessor || !validPredecessorStatuses.includes(predecessor.status) || predecessor.isCurrent !== true) {
+  // The predecessor of a Room Transfer Addendum is the tenant's CURRENT
+  // Contract — a wet-signed lease, OR a prior Room Transfer Addendum that is
+  // current (isCurrent:true) but whose own wet-signing is still pending
+  // (status "generated"). Phase 8: a second transfer must not be blocked by
+  // an unfinished document-signing step on the first addendum.
+  const finalPredecessorStatuses = ["active", "published", "expiring_soon"];
+  const predecessorIsValid =
+    predecessor &&
+    predecessor.isCurrent === true &&
+    (finalPredecessorStatuses.includes(predecessor.status) ||
+      (predecessor.status === "generated" &&
+        isRoomTransferSuccessorPurpose(predecessor.contractPurpose)));
+  if (!predecessorIsValid) {
     throw error(
-      "The predecessor Contract is not active/current — the relationship is ambiguous or " +
-      "was already superseded by something else. Admin review required.",
+      "The predecessor Contract is not the tenant's current lease — the relationship is " +
+      "ambiguous or was already superseded by something else. Admin review required.",
       "TRANSFER_PREDECESSOR_NOT_ACTIVE",
       409,
       { predecessorId: String(successor.replacesContractId) },

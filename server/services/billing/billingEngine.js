@@ -18,6 +18,10 @@ import {
   readMoveOutDate,
 } from "../../utils/lifecycleNaming.js";
 import {
+  readRoomScopedMoveInDate,
+  readRoomScopedMoveOutDate,
+} from "../../utils/utilityFlowRules.js";
+import {
   toCents,
   toPesos,
   hamiltonAllocate,
@@ -50,13 +54,20 @@ function formatDurationRange(checkInDate, checkOutDate) {
 }
 
 function getReservationOverlapDays(reservation, cycleStart, cycleEnd) {
-  const moveInDate = readMoveInDate(reservation);
+  // Room-scoped: for a tenant who transferred into/out of THIS room, the
+  // occupancy window that counts for the room's water proration is their
+  // BedHistory boundary for the room, not the whole-dorm tenancy dates. The
+  // reader falls back to the global reservation dates for a normal tenant
+  // (no _roomScopedMove* stamp), so non-transfer water billing is unchanged.
+  // The allocation formula (coveredDays / totalCoveredDays) is untouched —
+  // only the per-tenant occupancy window is corrected.
+  const moveInDate = readRoomScopedMoveInDate(reservation);
   if (!moveInDate) return 0;
 
   const cycleStartDay = dayjs(cycleStart).startOf("day");
   const cycleEndDay = dayjs(cycleEnd).startOf("day");
   const moveInDay = dayjs(moveInDate).startOf("day");
-  const moveOutDay = dayjs(readMoveOutDate(reservation) || cycleEnd).startOf("day");
+  const moveOutDay = dayjs(readRoomScopedMoveOutDate(reservation) || cycleEnd).startOf("day");
 
   const effectiveStart = moveInDay.isAfter(cycleStartDay)
     ? moveInDay
@@ -108,6 +119,12 @@ function buildWaterOccupancyBilling({
     );
     if (!tenantKey) continue;
 
+    // Room-scoped occupancy dates for the display/metadata window too, so the
+    // per-tenant range shown for a transferred tenant reflects their time in
+    // THIS room. Falls back to the global dates for a normal tenant.
+    const scopedIn = readRoomScopedMoveInDate(reservation);
+    const scopedOut = readRoomScopedMoveOutDate(reservation);
+
     const bucket = buckets.get(tenantKey) || {
       tenantId: tenantKey,
       reservationId: reservation._id || null,
@@ -117,30 +134,26 @@ function buildWaterOccupancyBilling({
       tenantEmail:
         reservation.userId?.email || reservation.billingEmail || null,
       coveredDays: 0,
-      firstCheckInDate: readMoveInDate(reservation),
-      lastCheckOutDate: readMoveOutDate(reservation),
-      overlapStart: readMoveInDate(reservation),
-      overlapEnd: readMoveOutDate(reservation),
+      firstCheckInDate: scopedIn,
+      lastCheckOutDate: scopedOut,
+      overlapStart: scopedIn,
+      overlapEnd: scopedOut,
     };
 
     bucket.coveredDays += coveredDays;
     if (
       bucket.overlapStart === null ||
-      (readMoveInDate(reservation) &&
-        new Date(readMoveInDate(reservation)) < new Date(bucket.overlapStart))
+      (scopedIn && new Date(scopedIn) < new Date(bucket.overlapStart))
     ) {
-      bucket.overlapStart = readMoveInDate(reservation) || bucket.overlapStart;
-      bucket.firstCheckInDate =
-        readMoveInDate(reservation) || bucket.firstCheckInDate;
+      bucket.overlapStart = scopedIn || bucket.overlapStart;
+      bucket.firstCheckInDate = scopedIn || bucket.firstCheckInDate;
     }
     if (
       !bucket.overlapEnd ||
-      (readMoveOutDate(reservation) &&
-        new Date(readMoveOutDate(reservation)) > new Date(bucket.overlapEnd))
+      (scopedOut && new Date(scopedOut) > new Date(bucket.overlapEnd))
     ) {
-      bucket.overlapEnd = readMoveOutDate(reservation) || bucket.overlapEnd;
-      bucket.lastCheckOutDate =
-        readMoveOutDate(reservation) || bucket.lastCheckOutDate;
+      bucket.overlapEnd = scopedOut || bucket.overlapEnd;
+      bucket.lastCheckOutDate = scopedOut || bucket.lastCheckOutDate;
     }
 
     buckets.set(tenantKey, bucket);
@@ -465,8 +478,9 @@ export function buildProratedShareAmounts(
 
   const tenantDaysArray = reservations.map((res) =>
     calculateOverlapDays(
-      readMoveInDate(res),
-      readMoveOutDate(res),
+      // Room-scoped when a transfer stamped it; global dates otherwise.
+      readRoomScopedMoveInDate(res),
+      readRoomScopedMoveOutDate(res),
       cycleStart,
       cycleEnd,
     ),
@@ -552,14 +566,31 @@ export function computeBilling({
       // Fallback for gap segments: if a segment has consumption but 0 native active
       // tenants, attribute it to all tenants present in the period (e.g., tenant moved
       // in between two readings without a dedicated move-in reading event).
+      //
+      // EXCEPTION (room transfer): a tenant carrying an explicit room-scoped
+      // occupancy boundary must not be pulled into a segment OUTSIDE that
+      // boundary — a segment before they transferred INTO this room, or after
+      // they transferred OUT. `roomScopedFromReading` / `roomScopedToReading`
+      // are set by buildTenantEventsForPeriod only for such tenants; they are
+      // null for everyone else, so the classic gap-fallback is unchanged for
+      // non-transfer billing.
+      const eligibleForGapFallback = tenantEvents.filter((t) => {
+        if (t.roomScopedFromReading != null && seg.readingFrom < t.roomScopedFromReading) {
+          return false; // consumption before they transferred in
+        }
+        if (t.roomScopedToReading != null && seg.readingFrom >= t.roomScopedToReading) {
+          return false; // consumption after they transferred out
+        }
+        return true;
+      });
       if (
         seg.unitsConsumed > 0 &&
         activeTenantCount === 0 &&
-        allPeriodTenantIds.length > 0
+        eligibleForGapFallback.length > 0
       ) {
-        activeTenantIds = allPeriodTenantIds;
-        activeTenantCount = allPeriodTenantIds.length;
-        coveredTenantNames = tenantEvents.map((t) => t.tenantName);
+        activeTenantIds = eligibleForGapFallback.map((t) => t.tenantId);
+        activeTenantCount = eligibleForGapFallback.length;
+        coveredTenantNames = eligibleForGapFallback.map((t) => t.tenantName);
       }
 
       // Plan 1 (D1): Truly vacant segment — no tenants in this segment OR anywhere

@@ -138,10 +138,18 @@ describe("createReplacementContractForTransfer", () => {
     expect(successor.roomNumber).toBe("101");
     expect(successor.approvedMonthlyRate).toBe(13500);
     expect(successor.regularMonthlyRate).toBe(15000);
-    expect(successor.leaseStartDate.toISOString()).toBe(transferDate.toISOString());
+    // PHASE 8: a Room Transfer is an ADDENDUM to the continuing lease. The
+    // lease term is CARRIED OVER from the predecessor verbatim; the transfer
+    // date is recorded separately as amendmentEffectiveDate and NEVER as
+    // leaseStartDate.
+    expect(successor.contractPurpose).toBe("amendment");
+    expect(successor.leaseStartDate.toISOString()).toBe(oldContract.leaseStartDate.toISOString());
     expect(successor.leaseEndDate.toISOString()).toBe(oldContract.leaseEndDate.toISOString());
-    expect(successor.contractPurpose).toBe("replacement");
+    expect(successor.amendmentEffectiveDate.toISOString()).toBe(transferDate.toISOString());
+    expect(successor.amendmentFields).toEqual(expect.arrayContaining(["roomId", "approvedMonthlyRate", "securityDepositAmount"]));
+    expect(successor.amendmentReason).toContain("Room transfer");
     expect(String(successor.replacesContractId)).toBe(String(oldContract._id));
+    // parentContractId -> the ROOT lease Contract (here oldContract is the root).
     expect(String(successor.parentContractId)).toBe(String(oldContract._id));
     expect(successor.isCurrent).toBe(false);
 
@@ -196,7 +204,7 @@ describe("createReplacementContractForTransfer", () => {
     const second = await createReplacementContractForTransfer({ ...params, oldContract });
 
     expect(String(second._id)).toBe(String(first._id));
-    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: "replacement" });
+    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: { $in: ["amendment", "replacement"] } });
     expect(count).toBe(1);
   });
 
@@ -230,7 +238,7 @@ describe("createReplacementContractForTransfer", () => {
     const retried = await createReplacementContractForTransfer({ ...params, oldContract });
     expect(String(retried._id)).toBe(String(successor._id));
 
-    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: "replacement" });
+    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: { $in: ["amendment", "replacement"] } });
     expect(count).toBe(1);
   });
 
@@ -254,7 +262,7 @@ describe("createReplacementContractForTransfer", () => {
     const fresh = await createReplacementContractForTransfer({ ...params, oldContract });
     expect(String(fresh._id)).not.toBe(String(cancelled._id));
 
-    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: "replacement" });
+    const count = await Contract.countDocuments({ replacesContractId: oldContract._id, contractPurpose: { $in: ["amendment", "replacement"] } });
     expect(count).toBe(2);
   });
 });

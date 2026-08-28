@@ -151,7 +151,16 @@ export function resolveTenantFinancialSummary({
   const rawRoomType = String(room.type || reservation.preferredRoomType || reservation.roomType || "").toLowerCase();
   const isPrivate = rawRoomType.includes("private") || room.capacity === 1;
 
+  // A completed Room Transfer records the destination room's approved rate on
+  // reservation.recurringRentRate — this is what the rent generator bills for
+  // every future cycle (see rentGenerator.resolveReservationRentAmount), so
+  // it MUST win over the original room's immutable pricingSnapshot and the
+  // (now historical) predecessor Contract rate. Without this the admin
+  // summary shows the OLD room's rent as "current" for a structured tenant
+  // after a transfer.
+  const transferOverrideRate = Number(reservation.recurringRentRate);
   let monthlyRate = firstValue(
+    Number.isFinite(transferOverrideRate) && transferOverrideRate > 0 ? transferOverrideRate : null,
     reservation.contract?.approvedMonthlyRate,
     reservation.pricingSnapshot?.finalMonthlyRate,
     reservation.pricingDisplay?.finalMonthlyRate,

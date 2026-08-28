@@ -369,7 +369,13 @@ export const getTenantActionContext = async (req, res) => {
       });
     }
 
-    const context = await loadTenantActionContext(reservationId);
+    const previewParams = req.query?.targetRoomId
+      ? {
+          targetRoomId: String(req.query.targetRoomId),
+          effectiveTransferDate: req.query.effectiveTransferDate || null,
+        }
+      : null;
+    const context = await loadTenantActionContext(reservationId, previewParams);
     if (!context) {
       return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
     }

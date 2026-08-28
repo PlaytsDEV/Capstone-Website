@@ -356,6 +356,11 @@ export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown
     rent: charges.rent || 0,
     electricity: charges.electricity || 0,
     water: charges.water || 0,
+    // Security-deposit component — non-zero only on a transfer_settlement
+    // Bill (the additional deposit due because a room transfer raised the
+    // required deposit). Its own line so the mobile app never shows it as
+    // rent; already included in `total`/`gross_amount` via sumBillCharges.
+    security_deposit: charges.securityDeposit || 0,
     penalties: (charges.penalty || 0) + (charges.applianceFees || 0) + (charges.corkageFees || 0),
     amount: visible.totalAmount,
     total: visible.totalAmount,

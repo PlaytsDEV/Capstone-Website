@@ -6,16 +6,27 @@
  * room, so roomTransferSettlement.js's pure math never has to guess them:
  *
  *   resolveSourceEffectiveRentForTransfer — what rate values the days
- *   already consumed in the source room. A Contract's approvedMonthlyRate
- *   can drift from the tenant's actual approved rent over time (e.g. a
- *   renewal successor Contract re-resolving pricing from the current
- *   Room/BusinessSettings list price instead of the tenant's originally
- *   approved discount — see the Phase 4C investigation notes below), so for
- *   a structured reservation with an approved pricingSnapshot, the
- *   snapshot's finalMonthlyRate (the tenant's actual approved, POSSIBLY
- *   DISCOUNTED rent — the same figure rentGenerator.resolveReservationRentAmount
- *   already treats as authoritative for ongoing billing) is preferred over
- *   the Contract field.
+ *   already consumed in the source room. This MUST mirror
+ *   rentGenerator.resolveReservationRentAmount's own precedence, because
+ *   "the rate the tenant was being billed in the source room" is exactly
+ *   what that resolver returns:
+ *
+ *     1. reservation.recurringRentRate — set by a PRIOR room transfer's
+ *        cutover to the then-destination approved rate. On a SECOND transfer
+ *        this is the tenant's current effective recurring rent (e.g. after
+ *        Quad->Double it holds 8000), and it must be the SOURCE rate for the
+ *        next transfer — NOT the original pricingSnapshot, which still
+ *        describes the very first room (5400) and is intentionally immutable.
+ *        This is the B9 fix: reuse the one field the rent generator already
+ *        treats as authoritative rather than inventing another rate source.
+ *     2. structured pricingSnapshot.finalMonthlyRate — the tenant's actual
+ *        approved (possibly discounted) first-room rent. A Contract's
+ *        approvedMonthlyRate can drift from this over time (e.g. a renewal
+ *        successor Contract re-resolving pricing from the current
+ *        Room/BusinessSettings list price instead of the originally approved
+ *        discount), so for a structured reservation with an approved
+ *        snapshot it is preferred over the Contract field.
+ *     3. predecessorContract.approvedMonthlyRate — flat-rate fallback.
  *
  *   resolveApplicablePrepaidRentForTransfer — how much rent value has
  *   actually been funded for the CURRENT rental period, and is therefore
@@ -59,7 +70,7 @@ import { usesStructuredInitialPayment } from "../../config/structuredInitialPaym
 // present — otherwise there is no way to know how much of a partial payment
 // applied to rent specifically (the schema has no per-component allocation),
 // so we must not guess (see prepaidRentSource: "current_bill_partial_mixed_unallocated").
-const NON_RENT_CHARGE_FIELDS = ["electricity", "water", "applianceFees", "corkageFees", "penalty", "discount"];
+const NON_RENT_CHARGE_FIELDS = ["electricity", "water", "applianceFees", "corkageFees", "penalty", "securityDeposit", "discount"];
 
 function hasOnlyRentCharge(charges = {}) {
   return NON_RENT_CHARGE_FIELDS.every((field) => !Number(charges?.[field]));
@@ -79,6 +90,17 @@ function hasApprovedStructuredSnapshot(reservation) {
  * @returns {{sourceEffectiveRate: number, sourceRateSource: string}}
  */
 export function resolveSourceEffectiveRentForTransfer({ reservation, predecessorContract } = {}) {
+  // (1) A prior transfer already set the tenant's current effective recurring
+  // rent here — this is what rentGenerator.resolveReservationRentAmount bills
+  // TODAY, so on a subsequent transfer it is the correct SOURCE rate. Wins
+  // over the immutable original pricingSnapshot (B9).
+  const priorTransferRate = Number(reservation?.recurringRentRate);
+  if (Number.isFinite(priorTransferRate) && priorTransferRate > 0) {
+    return {
+      sourceEffectiveRate: roundMoney(priorTransferRate),
+      sourceRateSource: "prior_transfer_recurring_rate",
+    };
+  }
   if (hasApprovedStructuredSnapshot(reservation)) {
     const finalMonthlyRate = Number(reservation.pricingSnapshot.finalMonthlyRate);
     if (Number.isFinite(finalMonthlyRate) && finalMonthlyRate > 0) {

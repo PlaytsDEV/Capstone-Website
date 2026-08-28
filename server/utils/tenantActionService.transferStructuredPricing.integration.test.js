@@ -123,7 +123,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
 
     const number = await generateContractNumber(roomB.branch, new Date());
     const successor = await Contract.create({
-      ...number, contractPurpose: "replacement", replacesContractId: predecessor._id,
+      ...number, contractPurpose: "amendment", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,

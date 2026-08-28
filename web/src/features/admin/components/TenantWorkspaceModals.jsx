@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import { useRoomTransferPreview } from "../../../shared/hooks/queries/useReservations";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
@@ -787,6 +788,17 @@ export function TransferTenantModal({
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
+  // ── Canonical transfer financial preview (server-computed) ────────────────
+  // The same rent-settlement + deposit-settlement math the executed transfer
+  // runs. Fetched only once a destination room is selected.
+  const reservationId = tenant?.reservationId || detail?.reservationId || null;
+  const { data: previewResp, isFetching: previewLoading } = useRoomTransferPreview(
+    reservationId,
+    { targetRoomId: roomId || null, effectiveTransferDate: effectiveTransferDate || null },
+    { enabled: !!reservationId && !!roomId && step === 3 },
+  );
+  const preview = previewResp?.data?.transferPreview ?? previewResp?.transferPreview ?? null;
+
   // ── Meter delta & anomaly guards ──────────────────────────────────────────
   const sourceBaseline = sourceRoomLatestReading?.reading != null
     ? Number(sourceRoomLatestReading.reading)
@@ -803,33 +815,13 @@ export function TransferTenantModal({
   const targetEntered = targetRoomMeterReading !== "" ? Number(targetRoomMeterReading) : null;
   const targetBelowBaseline = targetBaseline !== null && targetEntered !== null && targetEntered < targetBaseline;
 
-  // ── Live settlement preview math ──────────────────────────────────────────
-  const cycleStart = detail?.billingInfo?.cycleStart || detail?.billingInfo?.billingCycleStart || null;
-  const transferDateObj = effectiveTransferDate ? new Date(effectiveTransferDate) : new Date();
-  const daysInMonth = new Date(
-    transferDateObj.getFullYear(),
-    transferDateObj.getMonth() + 1,
-    0,
-  ).getDate();
-  const daysSinceCycleStart = cycleStart
-    ? Math.max(1, Math.ceil((transferDateObj - new Date(cycleStart)) / 86400000))
-    : null;
-  const proRataPreview =
-    daysSinceCycleStart != null && currentPrice > 0
-      ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
-      : null;
-  // ── Electricity cost estimate (live, using rate from active UtilityPeriod) ─
+  // ── Electricity kWh delta (informational only) ────────────────────────────
+  // The authoritative transfer settlement is the server `preview`
+  // (transferPreview). The only thing computed here is the source-room meter
+  // delta, shown as an informational "estimated electricity" figure — it is
+  // NEVER part of Total Immediate Due (electricity is billed at period close).
   const kwhPreview =
     sourceDelta !== null && sourceDelta > 0 ? Math.round(sourceDelta * 100) / 100 : null;
-  const rate = electricityRatePerUnit != null ? Number(electricityRatePerUnit) : null;
-  const estimatedElectricityCost =
-    kwhPreview !== null && rate !== null && rate > 0
-      ? Math.round(kwhPreview * rate * 100) / 100
-      : null;
-  const estimatedTotal =
-    (proRataPreview || 0) +
-    (estimatedElectricityCost || 0) +
-    (outstandingBalance || 0);
 
   // ── Step gate validation ──────────────────────────────────────────────────
   const handleFloatKeyDown = (e) => {
@@ -913,30 +905,40 @@ export function TransferTenantModal({
     : bedId || "—";
 
   // -- PDF download handler (lazy-import -- jsPDF only loaded on demand) ------
+  // The PDF MUST mirror the on-screen canonical server `preview` (transferPreview)
+  // exactly — no separate frontend proration. If the server preview has not
+  // resolved yet the button is disabled, so `preview` is always present here.
   const [pdfLoading, setPdfLoading] = useState(false);
   const handleDownloadTransferPDF = async () => {
+    if (!preview) {
+      showNotification("Settlement preview is still loading — please wait.", "warning");
+      return;
+    }
     setPdfLoading(true);
     try {
       const { generateSettlementReceiptPDF } = await import("../../../shared/utils/receiptGenerator.js");
+      const estElectricity =
+        kwhPreview != null && preview.electricity?.ratePerUnit
+          ? Math.round(kwhPreview * preview.electricity.ratePerUnit * 100) / 100
+          : null;
       await generateSettlementReceiptPDF({
         type: "transfer",
         tenantName: tenant?.tenantName || "",
         branch: detail?.basicInfo?.branch || tenant?.branch || "",
-        fromRoom: tenant?.room || "",
+        fromRoom: preview.fromRoom?.name || tenant?.room || "",
         fromBed: formatBedPosition(tenant?.bed) || "",
-        toRoom: selectedRoom?.name || selectedRoom?.roomNumber || "",
+        toRoom: preview.toRoom?.name || selectedRoom?.name || selectedRoom?.roomNumber || "",
         toBed: selectedBedLabel,
-        effectiveDate: effectiveTransferDate,
-        daysSinceCycleStart,
-        daysInMonth,
-        currentRent: currentPrice,
-        newRent: newPrice,
-        proRataPreview,
+        effectiveDate: preview.effectiveTransferDate || effectiveTransferDate,
+        // ── Canonical server settlement preview (identical to what Admin sees) ──
+        transferPreview: preview,
+        currentRent: preview.rent?.sourceEffectiveRate ?? currentPrice,
+        newRent: preview.rent?.destinationApprovedRate ?? newPrice,
+        // Electricity is informational only (billed at period close).
         kwhPreview,
-        electricityRate: rate,
-        estimatedElectricityCost,
+        electricityRate: preview.electricity?.ratePerUnit ?? null,
+        estimatedElectricityCost: estElectricity,
         outstandingBalance,
-        estimatedTotal,
       });
     } catch (err) {
       console.error("Settlement PDF generation failed:", err);
@@ -1142,16 +1144,16 @@ export function TransferTenantModal({
 
           {roomId && priceDiff !== 0 && (
             <div className="twm-callout twm-callout--price">
-              Monthly Rent Adjustment:{" "}
+              Estimated Monthly Rent Change:{" "}
               <strong>
                 {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
               </strong>{" "}
-              (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
-              {isCrossTypeTransfer && (
-                <span style={{ display: "block", marginTop: 4, fontSize: 12 }}>
-                  Final rate is resolved server-side from the destination room type and lease term.
-                </span>
-              )}
+              (Now: {fmtMoney(currentPrice)}/mo → New room: ~{fmtMoney(newPrice)}/mo)
+              <span style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+                Exact new rent is confirmed on the next step from the destination room type &amp; lease term,
+                and then applies to every future bill automatically.
+                {isCrossTypeTransfer ? " This transfer also changes the room type." : ""}
+              </span>
             </div>
           )}
 
@@ -1286,19 +1288,25 @@ export function TransferTenantModal({
               <span className="twm-review-field__value">{fmtDate(effectiveTransferDate)}</span>
             </div>
             <div className="twm-review-field">
-              <span className="twm-review-field__label">New Rent</span>
+              <span className="twm-review-field__label">New Monthly Rent</span>
               <span className="twm-review-field__value">
-                {fmtMoney(newPrice)}/mo
-                {priceDiff !== 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 400, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
-                    {" "}({priceDiff > 0 ? `+${fmtMoney(priceDiff)}` : `-${fmtMoney(Math.abs(priceDiff))}`})
-                  </span>
-                )}
-                {isCrossTypeTransfer && (
-                  <span style={{ display: "block", fontSize: 11, fontWeight: 400 }}>
-                    Final rate resolved server-side from the destination room type & lease term.
-                  </span>
-                )}
+                {/* Authoritative destination rate from the server preview when
+                    available (room-type + lease-term table), else the room
+                    master price as a rough hint. */}
+                {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
+                {(() => {
+                  const shownNew = Number(preview?.rent?.destinationApprovedRate ?? newPrice);
+                  const diff = shownNew - currentPrice;
+                  if (!diff) return null;
+                  return (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: diff > 0 ? "var(--danger)" : "var(--success)" }}>
+                      {" "}({diff > 0 ? `+${fmtMoney(diff)}` : `-${fmtMoney(Math.abs(diff))}`} from {fmtMoney(currentPrice)}/mo)
+                    </span>
+                  );
+                })()}
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                  Applies to every future rent bill automatically — no manual change needed. The original lease term is unchanged.
+                </span>
               </span>
             </div>
             <div className="twm-review-field twm-review-field--wide">
@@ -1309,71 +1317,131 @@ export function TransferTenantModal({
 
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
-              <p className="twm-settlement-card__title">Transfer Settlement Estimate</p>
+              <p className="twm-settlement-card__title">Transfer Financial Summary</p>
               <button
                 type="button"
                 className="twm-settlement-card__download-btn"
-                disabled={pdfLoading}
+                disabled={pdfLoading || !preview}
                 onClick={handleDownloadTransferPDF}
-                title="Download printable settlement estimate"
+                title={preview ? "Download printable settlement estimate" : "Preview still loading…"}
               >
                 <Download size={13} />
                 <span>{pdfLoading ? "Generating..." : "Download Estimate PDF"}</span>
               </button>
             </div>
-            <div className="twm-settlement-card__body">
-              {daysSinceCycleStart != null && (
+
+            {previewLoading && !preview ? (
+              <div className="twm-settlement-card__body">
                 <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">Days in old room this cycle</span>
-                  <span className="twm-settlement-row__value">{daysSinceCycleStart} day{daysSinceCycleStart !== 1 ? "s" : ""}</span>
+                  <span className="twm-settlement-row__label">Calculating settlement…</span>
                 </div>
-              )}
-              {proRataPreview != null && (
-                <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">
-                    Prorated Old Room Rent
-                    {daysSinceCycleStart != null && <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                      {daysSinceCycleStart}d / {daysInMonth}d × {fmtMoney(currentPrice)}
-                    </span>}
-                  </span>
-                  <span className="twm-settlement-row__value">{fmtMoney(proRataPreview)}</span>
-                </div>
-              )}
-              {kwhPreview != null && (
-                <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">
-                    Estimated Electricity Usage
-                    <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                      {estimatedElectricityCost !== null
-                        ? `${kwhPreview.toLocaleString()} kWh × ₱${rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh`
-                        : `${kwhPreview.toLocaleString()} kWh — rate applied at generation`}
+              </div>
+            ) : preview ? (
+              <>
+                <div className="twm-settlement-card__body">
+                  {/* ── RENT ADJUSTMENT — a separate category ── */}
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">
+                      Rent Adjustment
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        {preview.rent.destinationDays}d new-room prorated ({fmtMoney(preview.rent.destinationProratedValue)}) − unused prepaid ({fmtMoney(preview.rent.unusedPrepaidCredit)})
+                      </span>
                     </span>
-                  </span>
-                  <span className="twm-settlement-row__value">
-                    {estimatedElectricityCost !== null
-                      ? fmtMoney(estimatedElectricityCost)
-                      : `${kwhPreview.toLocaleString()} kWh`}
-                  </span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.rent.adjustmentDue)}</span>
+                  </div>
+                  {preview.rent.excessCredit > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--success">
+                      <span className="twm-settlement-row__label">
+                        Excess Prepaid Rent → Rent Credit
+                        <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                          Applied automatically to future rent bills. Not a refund.
+                        </span>
+                      </span>
+                      <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
+                    </div>
+                  )}
+
+                  {/* ── SECURITY DEPOSIT — a separate category, never netted with rent ── */}
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Security Deposit — Required (new room)</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.required)}</span>
+                  </div>
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Security Deposit — Currently Held</span>
+                    <span className="twm-settlement-row__value">
+                      {preview.deposit.heldKnown ? fmtMoney(preview.deposit.held) : "Unavailable (legacy record)"}
+                    </span>
+                  </div>
+                  {preview.deposit.balanceDue > 0 && (
+                    <div className="twm-settlement-row">
+                      <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
+                      <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
+                    </div>
+                  )}
+                  {preview.deposit.excessHeld > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--success">
+                      <span className="twm-settlement-row__label">
+                        Excess Held Deposit
+                        <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                          Stays as refundable held deposit. Not auto-refunded, not a rent credit.
+                        </span>
+                      </span>
+                      <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
+                    </div>
+                  )}
+
+                  {/* ── ELECTRICITY — informational only, NOT in the immediate total ── */}
+                  <div className="twm-settlement-row twm-settlement-row--muted">
+                    <span className="twm-settlement-row__label">
+                      Estimated source-room electricity
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        Final charge is generated during the normal utility period close — not charged here.
+                      </span>
+                    </span>
+                    <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
+                      {kwhPreview != null && preview.electricity.ratePerUnit
+                        ? fmtMoney(kwhPreview * preview.electricity.ratePerUnit)
+                        : "billed at period close"}
+                    </span>
+                  </div>
+                  <div className="twm-settlement-row twm-settlement-row--muted">
+                    <span className="twm-settlement-row__label">
+                      Water
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        Follows the current room/branch policy; settled at its normal period close (or not billed separately where included in rent).
+                      </span>
+                    </span>
+                    <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>—</span>
+                  </div>
+
+                  {outstandingBalance > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--danger">
+                      <span className="twm-settlement-row__label">Prior Outstanding Balance (existing, unrelated)</span>
+                      <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
+                    </div>
+                  )}
+
+                  {/* ── THE ONE IMMEDIATE FIGURE: rent adjustment + additional deposit only ── */}
+                  <div className="twm-settlement-row twm-settlement-row--total">
+                    <span className="twm-settlement-row__label">Total Immediate Due</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.totalImmediateDue)}</span>
+                  </div>
                 </div>
-              )}
-              {outstandingBalance > 0 && (
-                <div className="twm-settlement-row twm-settlement-row--danger">
-                  <span className="twm-settlement-row__label">Prior Outstanding Balance</span>
-                  <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
-                </div>
-              )}
-              {proRataPreview != null && (
-                <div className="twm-settlement-row twm-settlement-row--total">
-                  <span className="twm-settlement-row__label">Estimated Settlement Total</span>
-                  <span className="twm-settlement-row__value">{fmtMoney(estimatedTotal)}</span>
-                </div>
-              )}
-            </div>
-            <p className="twm-settlement-card__note">
-              {estimatedElectricityCost !== null
-                ? `Rate: ₱${rate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh (active billing period). Final amount confirmed at billing generation.`
-                : "Final electricity amount is calculated at billing generation time using the current room rate."}
-            </p>
+                <p className="twm-settlement-card__note">
+                  Total Immediate Due = Rent Adjustment + Additional Security Deposit. Electricity and water are
+                  billed once, during their normal utility period close, following the new room's billing setup.
+                  No manual rent/meter changes are needed after this transfer.
+                </p>
+              </>
+            ) : (
+              <div className="twm-settlement-card__body">
+                <p className="twm-settlement-card__note">
+                  Settlement preview unavailable — the exact figures will be computed server-side when the
+                  transfer is confirmed. Rent and deposit adjustments are billed separately; electricity and
+                  water follow the new room at their normal period close.
+                </p>
+              </div>
+            )}
           </div>
 
           {hasOutstanding && forceOverride && (

@@ -233,7 +233,7 @@ describe("transferStayWorkflow — cross-room-type transfers", () => {
         Room.findById(roomB._id),
         Contract.findById(predecessor._id),
         Reservation.findById(reservation._id),
-        Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: "replacement" }),
+        Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: { $in: ["amendment", "replacement"] } }),
         Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" }),
         Contract.countDocuments({ tenantId: tenant._id, isCurrent: true }),
         Stay.countDocuments({ tenantId: tenant._id, status: "active" }),

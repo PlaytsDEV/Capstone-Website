@@ -34,6 +34,17 @@ await jest.unstable_mockModule("../models/index.js", () => {
       find: reservationFind,
     },
     User: {},
+    // No rent credit in these unit fixtures — return an empty active set so
+    // applyRentCreditToBill is a no-op.
+    TenantCredit: {
+      find: jest.fn(() => ({
+        sort: jest.fn().mockReturnThis(),
+        session: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([]),
+      })),
+      findOne: jest.fn(() => ({ session: jest.fn().mockResolvedValue(null) })),
+      create: jest.fn(),
+    },
   };
 });
 

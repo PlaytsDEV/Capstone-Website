@@ -34,7 +34,7 @@ await jest.unstable_mockModule("../services/contractRoomTransferActivationServic
     const { ABANDONED_TRANSFER_SUCCESSOR_STATUSES } = await import("../services/contractService.js");
     const successors = await Contract.find({
       replacesContractId: predecessorContractId,
-      contractPurpose: "replacement",
+      contractPurpose: { $in: ["amendment", "replacement"] },
       status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
     }).session(session);
     if (successors.length !== 1) {
@@ -137,7 +137,7 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
     });
     const numberB = await generateContractNumber(roomB.branch, new Date());
     const successor = await Contract.create({
-      ...numberB, contractPurpose: "replacement", replacesContractId: predecessor._id,
+      ...numberB, contractPurpose: "amendment", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
