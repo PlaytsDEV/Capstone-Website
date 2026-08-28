@@ -1019,6 +1019,10 @@ export const prepareRoomTransferContract = async (req, res, next) => {
       });
     }
 
+    reservation.pendingTransferRoomId = targetRoomDoc._id;
+    reservation.pendingTransferBedId = targetBed.id || String(targetBed._id);
+    await reservation.save();
+
     await auditLogger.logModification(
       req,
       "reservation",

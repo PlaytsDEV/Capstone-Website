@@ -1244,6 +1244,22 @@ const reservationSchema = new mongoose.Schema(
       },
     },
 
+    // --- Room Transfer Tracking ---
+    pendingTransferRoomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room",
+      default: null,
+    },
+    pendingTransferBedId: {
+      type: String,
+      default: null,
+    },
+    transferStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "completed", "cancelled", null],
+      default: null,
+    },
+
     // --- Soft Delete ---
     isArchived: {
       type: Boolean,
