@@ -36,7 +36,10 @@ await jest.unstable_mockModule("./billing/billingPolicy.js", () => ({
   syncBillAmounts,
 }));
 
-const { createStructuredInitialPaymentBill } = await import("./structuredInitialPaymentService.js");
+const {
+  createStructuredInitialPaymentBill,
+  getStructuredMoveInBlockers,
+} = await import("./structuredInitialPaymentService.js");
 
 describe("structured initial-payment release metadata", () => {
   beforeEach(() => {
@@ -80,5 +83,23 @@ describe("structured initial-payment release metadata", () => {
     expect(syncBillAmounts).toHaveBeenCalledWith(result.bill, { now });
     expect(result.bill.releasedAt).toEqual(now);
     expect(syncBillAmounts.mock.invocationCallOrder[0]).toBeLessThan(saveBill.mock.invocationCallOrder[0]);
+  });
+});
+
+describe("getStructuredMoveInBlockers", () => {
+  test("blocks move-in when cancellation request is pending", async () => {
+    const reservation = {
+      _id: "reservation-1",
+      financialWorkflowVersion: "structured-initial-payment-v1",
+      cancellationRequested: true,
+      cancellationStatus: "pending",
+      reservationFeePaymentStatus: "verified",
+      pricingSnapshot: { approvedAt: new Date() },
+    };
+
+    const blockers = await getStructuredMoveInBlockers(reservation);
+    expect(blockers).toContain(
+      "A pending cancellation request must be resolved (approved or rejected) before moving in the tenant.",
+    );
   });
 });

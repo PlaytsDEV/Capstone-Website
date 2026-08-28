@@ -54,12 +54,28 @@ export function ServiceProviderAssignmentPanel({
   onAssign,
   onSuggest,
   onUseSuggestion,
+  onClearSuggestion,
   embedded = false,
   hideActions = false,
 }) {
   const [isCopied, setIsCopied] = useState(false);
   const [showAllCandidates, setShowAllCandidates] = useState(false);
   const [isDeckCollapsed, setIsDeckCollapsed] = useState(false);
+
+  const handleClearSuggestions = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsDeckCollapsed(false);
+    setShowAllCandidates(false);
+    if (onClearSuggestion) {
+      onClearSuggestion();
+    }
+    if (onUseSuggestion) {
+      onUseSuggestion(null);
+    }
+  };
 
   // Determine active dispatch mode: 'in_house' | 'manual' | 'directory'
   const [dispatchMode, setDispatchMode] = useState(() => {
@@ -547,11 +563,10 @@ export function ServiceProviderAssignmentPanel({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onUseSuggestion) onUseSuggestion(null);
-                      }}
-                      className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-0.5 cursor-pointer font-medium"
+                      onClick={handleClearSuggestions}
+                      className="inline-flex items-center gap-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition cursor-pointer active:scale-95"
                       title="Clear search results"
+                      aria-label="Clear AI provider search results"
                     >
                       <X size={12} />
                       <span>Clear</span>
@@ -646,11 +661,10 @@ export function ServiceProviderAssignmentPanel({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onUseSuggestion) onUseSuggestion(null);
-                      }}
-                      className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-0.5 cursor-pointer font-medium"
+                      onClick={handleClearSuggestions}
+                      className="inline-flex items-center gap-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition cursor-pointer active:scale-95"
                       title="Clear search results"
+                      aria-label="Clear AI provider search results"
                     >
                       <X size={12} />
                       <span>Clear</span>

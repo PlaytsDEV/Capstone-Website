@@ -428,15 +428,38 @@ describe("getMoveInBlockers", () => {
     expect(blockers[0]).toMatch(/Reservation must be in "Reserved" state/);
   });
 
-  test("flags blocker when reservation is unpaid", () => {
+  test("flags blocker when reservation has a pending cancellation request", () => {
     const blockers = getMoveInBlockers({
       status: "reserved",
-      paymentStatus: "pending",
+      paymentStatus: "paid",
+      cancellationRequested: true,
+      cancellationStatus: "pending",
     });
-    expect(blockers).toHaveLength(1);
-    expect(blockers[0]).toBe(
-      "Payment must be confirmed (status: Paid) before move-in.",
+    expect(blockers).toContain(
+      "A pending cancellation request must be resolved (approved or rejected) before moving in the tenant.",
     );
+  });
+
+  test("allows move-in when cancellation request was rejected", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid",
+        cancellationRequested: true,
+        cancellationStatus: "rejected",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when cancellation was not requested", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid",
+        cancellationRequested: false,
+        cancellationStatus: "none",
+      }),
+    ).toEqual([]);
   });
 });
 

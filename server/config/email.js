@@ -369,6 +369,8 @@ export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, p
     },
   });
 
+export const sendPaymentConfirmedEmail = sendPaymentApprovedEmail;
+
 // =============================================================================
 // PAYMENT REJECTED EMAIL
 // =============================================================================

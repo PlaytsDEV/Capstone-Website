@@ -185,6 +185,24 @@ const runBackupSchedulerStartup = async () => {
   }
 };
 
+const runCancellationMoveInSelfHealStartup = async () => {
+  try {
+    const { healDanglingMovedInCancellations } = await import(
+      "./services/cancellationMoveInSelfHealService.js"
+    );
+    const result = await healDanglingMovedInCancellations();
+
+    if (result?.healedCount > 0) {
+      logger.info(
+        { count: result.healedCount },
+        "Startup cancellation move-in self-heal completed",
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, "Startup cancellation move-in self-heal failed");
+  }
+};
+
 // Heap cap from --max-old-space-size (384 MB). Warn at 78% (~300 MB) so
 // there is time to investigate before an OOM crash terminates the process.
 const HEAP_CAP_MB = Number(process.env.HEAP_CAP_MB ?? 384);
@@ -224,7 +242,12 @@ const startBackgroundServices = (mongoConnected) => {
   startMemoryMonitor();
 
   setImmediate(() => {
-    void Promise.allSettled([runPermissionBackfill(), runSchedulerStartup(), runBackupSchedulerStartup()]);
+    void Promise.allSettled([
+      runPermissionBackfill(),
+      runSchedulerStartup(),
+      runBackupSchedulerStartup(),
+      runCancellationMoveInSelfHealStartup(),
+    ]);
   });
 };
 

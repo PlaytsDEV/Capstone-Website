@@ -1,4 +1,5 @@
 import { chromium } from "playwright-core";
+import { PDFDocument } from "pdf-lib";
 import {
   browserUnavailableError,
   resolveContractChromium,
@@ -112,27 +113,27 @@ export const buildContractHtml = (data) => {
     ? `The LESSOR, however, shall grant a promo rate or discount of <strong>${f.discountPercentage} (${Number(data.fields.discountPercentage)}%) percent</strong>, which brings the basic monthly rental fee to <strong>Php ${f.approvedMonthlyRate}</strong>, exclusive of any tax and net of discount.`
     : `The basic monthly rental fee is <strong>Php ${f.approvedMonthlyRate}</strong>, exclusive of any tax.`;
 
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
-@page{size:8.5in 13in;margin:.25in .35in}
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Contract of Lease - ${f.tenantLegalName} (${propertyName})</title><style>
+@page{size:8.5in 13in;margin:.26in .35in}
 *{box-sizing:border-box}
 html,body{width:100%;margin:0;padding:0;background:#fff;color:#000}
-.contract-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;font-family:"Times New Roman",serif;font-size:8.75pt;line-height:1.15}
-.prepared{text-align:center;color:#000;font-size:8pt;margin:0 0 14pt;text-transform:uppercase;letter-spacing:.3pt}
+.contract-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;font-family:"Times New Roman",serif;font-size:8.35pt;line-height:1.18}
+.prepared{text-align:center;color:#000;font-size:7.5pt;margin:0 0 5pt;text-transform:uppercase;letter-spacing:.3pt}
 h1{font-size:12.5pt;text-align:center;margin:0 0 2pt;letter-spacing:.3pt;font-weight:bold}
-h2{font-size:9.5pt;text-align:center;margin:0 0 8pt;letter-spacing:.3pt;font-weight:bold}
-.contract-paragraph{display:block;width:100%;margin:0 0 3.5pt;padding:0;white-space:normal;word-break:normal;overflow-wrap:normal;text-align:justify;text-indent:18pt}
+h2{font-size:9.5pt;text-align:center;margin:0 0 4pt;letter-spacing:.3pt;font-weight:bold}
+.contract-paragraph{display:block;width:100%;margin:0 0 3.2pt;padding:0;white-space:normal;word-break:normal;overflow-wrap:normal;text-align:justify;text-indent:16pt}
 .no-indent{text-indent:0}
-.gap{margin-top:4pt}.center{text-align:center}.terms{font-weight:bold;font-size:9pt;margin:4pt 0 3pt;text-align:center}
+.gap{margin-top:2.5pt}.center{text-align:center}.terms{font-weight:bold;font-size:8.75pt;margin:3.5pt 0 2.5pt;text-align:center}
 strong{font-weight:700}
-.signature-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:10pt}
-.signature-cell{width:50%;text-align:center;vertical-align:bottom;padding-left:16pt;padding-right:16pt}
-.signature-header-row{height:32pt}.signature-header-spacer,.company-name,.by-label{line-height:1.15}
-.company-name{font-weight:700;font-size:9pt}.by-label{font-style:italic;font-size:8.5pt;margin-top:1pt;margin-bottom:12pt}
+.signature-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:6pt}
+.signature-cell{width:50%;text-align:center;vertical-align:bottom;padding-left:14pt;padding-right:14pt}
+.signature-header-row{height:26pt}.signature-header-spacer,.company-name,.by-label{line-height:1.18}
+.company-name{font-weight:700;font-size:8.5pt}.by-label{font-style:italic;font-size:7.75pt;margin-top:1.5pt;margin-bottom:6pt}
 .signature-line-row{height:1px}.signature-line{width:100%;border-top:.7pt solid #000;margin:0;padding:0}
-.signature-label-row td{padding-top:2.5pt;vertical-align:top}.signatory-name{font-weight:700;font-size:8.75pt;line-height:1.15}.signatory-role{font-size:8pt;color:#000;line-height:1.15}
-.witness-signatures{display:grid;grid-template-columns:1fr 1fr;gap:32pt;margin-top:20pt;text-align:center}
-.witness-signature-line{border-bottom:.7pt solid #000;height:0}.witness{margin-top:10pt;font-size:8.5pt;font-weight:bold}.ack{margin-top:10pt}
-.ack h3{text-align:center;font-size:9pt;margin:0 0 4pt}.notary-stack{font-size:8.5pt;margin-top:4pt;line-height:1.3}
+.signature-label-row td{padding-top:2.5pt;vertical-align:top}.signatory-name{font-weight:700;font-size:8.5pt;line-height:1.18}.signatory-role{font-size:7.75pt;color:#000;line-height:1.18}
+.witness-signatures{display:grid;grid-template-columns:1fr 1fr;gap:28pt;margin-top:16pt;text-align:center}
+.witness-signature-line{border-bottom:.7pt solid #000;height:0}.witness{margin-top:6pt;font-size:8pt;font-weight:bold}.ack{margin-top:8pt}
+.ack h3{text-align:center;font-size:8.75pt;margin:0 0 2.5pt}.notary-stack{font-size:8pt;margin-top:3pt;line-height:1.25}
 </style></head><body><main class="contract-page">
 <p class="prepared no-indent">PREPARED COPY — NOT YET SIGNED OR NOTARIZED</p>
 <h1>CONTRACT OF LEASE</h1><h2>${room} — ${term} LEASE</h2>
@@ -197,7 +198,20 @@ export const renderContractHtmlPdf = async (data) => {
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
         preferCSSPageSize: true,
       });
-      return Buffer.from(bytes);
+
+      const doc = await PDFDocument.load(bytes);
+      const tenantName = data.fields?.tenantLegalName || "Tenant";
+      const contractNumber = data.contractNumber || data.fields?.contractNumber || "";
+      const docTitle = contractNumber
+        ? `Contract of Lease - ${tenantName} (${contractNumber})`
+        : `Contract of Lease - ${tenantName}`;
+      doc.setTitle(docTitle);
+      doc.setSubject(`Contract of Lease - ${data.property?.propertyName || "Lilycrest Dormitory"}`);
+      doc.setAuthor("Lilycrest Dormitory Management System");
+      doc.setCreator("Lilycrest Dormitory");
+      doc.setProducer("Lilycrest Dormitory");
+      const stampedBytes = await doc.save();
+      return Buffer.from(stampedBytes);
     } finally {
       await page.close().catch(() => {});
     }

@@ -172,7 +172,7 @@ describe("Phase 2 canonical event persistence and mobile feed", () => {
     feed = await feedFor(tenantGil);
     expect(feed).toHaveLength(1);
     expect(feed[0]).toMatchObject({
-      type: "payment_approved",
+      type: "payment_confirmed",
       billing_id: String(billId),
     });
     expect(await Notification.countDocuments({ userId: tenantGil._id })).toBe(2);

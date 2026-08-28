@@ -104,6 +104,15 @@ export const getMoveInBlockers = (reservation) => {
     );
   }
 
+  if (
+    reservation.cancellationRequested === true &&
+    reservation.cancellationStatus === "pending"
+  ) {
+    blockers.push(
+      "A pending cancellation request must be resolved (approved or rejected) before moving in the tenant."
+    );
+  }
+
   const isPaid =
     reservation.paymentStatus === "paid" ||
     reservation.paymentStatus === "paid_in_full" ||

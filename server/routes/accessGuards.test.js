@@ -159,6 +159,7 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getRentBillableTenants: noop,
   getRentBillPreview: noop,
   generateRentBill: noop,
+  generateBatchRentBills: noop,
   generateAllRentBills: noop,
   sendRentBill: noop,
   sendBillReminder: noop,

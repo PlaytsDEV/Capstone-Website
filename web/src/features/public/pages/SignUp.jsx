@@ -109,6 +109,9 @@ function SignUp() {
     if (e.getModifierState) {
       setCapsLockActive(e.getModifierState("CapsLock"));
     }
+    if (e.key === " ") {
+      e.preventDefault();
+    }
   };
   const [passwordStrength, setPasswordStrength] = useState({
     score: 0,
@@ -786,7 +789,17 @@ function SignUp() {
                   onKeyUp={handlePasswordKey}
                   onBlur={() => handleBlur("password")}
                   maxLength={FIELD_LIMITS.password}
-                  onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData("text") || "";
+                    if (/\s/.test(text)) {
+                      e.preventDefault();
+                      showNotification("Spaces are not permitted in passwords", "warning", 3000);
+                    } else if (text.length > FIELD_LIMITS.password) {
+                      e.preventDefault();
+                      setFormData((prev) => ({ ...prev, password: text.slice(0, FIELD_LIMITS.password) }));
+                      showNotification(`Password input was limited to ${FIELD_LIMITS.password} characters`, "warning", 3000);
+                    }
+                  }}
                   disabled={loading}
                   error={touched.password ? validationErrors.password : null}
                   valid={touched.password && fieldValid.password}
@@ -907,7 +920,17 @@ function SignUp() {
                 onKeyUp={handlePasswordKey}
                 onBlur={() => handleBlur("confirmPassword")}
                 maxLength={FIELD_LIMITS.confirmPassword}
-                onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text") || "";
+                  if (/\s/.test(text)) {
+                    e.preventDefault();
+                    showNotification("Spaces are not permitted in passwords", "warning", 3000);
+                  } else if (text.length > FIELD_LIMITS.confirmPassword) {
+                    e.preventDefault();
+                    setFormData((prev) => ({ ...prev, confirmPassword: text.slice(0, FIELD_LIMITS.confirmPassword) }));
+                    showNotification(`Password input was limited to ${FIELD_LIMITS.confirmPassword} characters`, "warning", 3000);
+                  }
+                }}
                 disabled={loading}
                 error={
                   touched.confirmPassword

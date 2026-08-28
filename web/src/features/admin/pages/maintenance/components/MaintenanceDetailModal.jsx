@@ -96,6 +96,7 @@ import { ProviderRatingCard } from "./ProviderRatingCard";
 import { CostAttributionCard } from "./CostAttributionCard";
 import { MaintenanceTimeline } from "./MaintenanceTimeline";
 import { ModernDateTimePicker } from "./ModernDateTimePicker";
+import { handleExportSingleMaintenanceVoucherPDF } from "../../../utils/maintenanceVoucherPdf";
 
 function getTypeIcon(type) {
   const t = String(type || "").toLowerCase();
@@ -490,6 +491,7 @@ export function MaintenanceDetailModal({
   onAssignProvider,
   onSuggestProvider,
   onUseProviderSuggestion,
+  onClearSuggestion,
   onRateProvider,
   isAssigningProvider = false,
   isSuggestingProvider = false,
@@ -498,16 +500,34 @@ export function MaintenanceDetailModal({
   onRemoveAttachment,
   canRemoveAttachments = false,
   onGenerateReport,
+  onDownloadReport,
 }) {
   const [localRequestOverride, setLocalRequestOverride] = useState(null);
-  const [forceShowActiveWork, setForceShowActiveWork] = useState(false);
-  const [isStartingWork, setIsStartingWork] = useState(false);
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+
+  const handleDownloadReport = async () => {
+    if (!request || isDownloadingReport) return;
+    try {
+      setIsDownloadingReport(true);
+      if (onDownloadReport) {
+        await onDownloadReport(request);
+      } else {
+        await handleExportSingleMaintenanceVoucherPDF({ request });
+      }
+    } catch (err) {
+      showNotification({
+        title: "Download Failed",
+        message: err?.message || "Failed to generate completion report PDF.",
+        type: "error",
+      });
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
 
   // Clear override when modal closes or switches to a different request
   useEffect(() => {
     setLocalRequestOverride(null);
-    setForceShowActiveWork(false);
-    setIsStartingWork(false);
     setStaffSignOffConfirmed(false);
     setIsSubmittingStage4(false);
   }, [open, incomingRequest?.request_id, incomingRequest?._id]);
@@ -721,8 +741,8 @@ export function MaintenanceDetailModal({
   const providerRatingRef = useRef(null);
   const saveProofMutation = useSaveMaintenanceProof();
   const sendReplyMutation = useSendMaintenanceReply();
-  const [proofFile, setProofFile] = useState(null);
-  const [proofPreviewUrl, setProofPreviewUrl] = useState(null);
+  const MAX_PROOF_FILES = 5;
+  const [proofFiles, setProofFiles] = useState([]);
   const [proofNote, setProofNote] = useState("");
   const [proofTouched, setProofTouched] = useState(false);
   const [isDraggingProof, setIsDraggingProof] = useState(false);
@@ -942,54 +962,22 @@ export function MaintenanceDetailModal({
     }
   };
 
-  const handleStartRepairWork = async () => {
-    if (rescheduleRequestData?.status === "pending") {
-      showNotification({
-        title: "Pending Reschedule Request",
-        message: "Please accept, propose an alternate date, or decline the tenant's reschedule request before starting repair work.",
-        type: "warning",
-      });
-      return;
-    }
-    const rawReqId = request?.request_id || request?.id || request?._id;
-    try {
-      setIsStartingWork(true);
-      const res = await onQuickStatusChange?.(rawReqId, "in_progress");
-      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
-      if (updatedReq) {
-        setLocalRequestOverride(updatedReq);
-      } else {
-        setLocalRequestOverride((prev) => ({
-          ...(prev || request),
-          status: "in_progress",
-          in_progress_at: new Date().toISOString(),
-        }));
-      }
-      setForceShowActiveWork(true);
-      showNotification({
-        title: "Repair Work Started",
-        message: "Status updated to In Progress. Technician is now actively working on site.",
-        type: "success",
-      });
-    } catch (err) {
-      showNotification({
-        title: "Failed to Start Work",
-        message: err?.response?.data?.message || err?.message || "Failed to start repair work.",
-        type: "error",
-      });
-    } finally {
-      setIsStartingWork(false);
-    }
-  };
-
   const [showAlternatePanel, setShowAlternatePanel] = useState(false);
   const [alternateDate, setAlternateDate] = useState("");
   const [alternateTime, setAlternateTime] = useState("");
   const [alternateNote, setAlternateNote] = useState("");
   const [isSubmittingAlternate, setIsSubmittingAlternate] = useState(false);
   const [isAcceptingReschedule, setIsAcceptingReschedule] = useState(false);
+  const [showDeclinePanel, setShowDeclinePanel] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [isSubmittingDecline, setIsSubmittingDecline] = useState(false);
 
-  const isRespondingToReschedule = Boolean(isRespondingProp || isAcceptingReschedule);
+  const isAnyRescheduleActionPending = Boolean(
+    isRespondingProp ||
+    isAcceptingReschedule ||
+    isSubmittingAlternate ||
+    isSubmittingDecline
+  );
 
   const handleAcceptReschedule = async (proposedDate) => {
     if (!proposedDate) return;
@@ -1102,9 +1090,7 @@ export function MaintenanceDetailModal({
     }
   };
 
-  const [showDeclinePanel, setShowDeclinePanel] = useState(false);
-  const [declineReason, setDeclineReason] = useState("");
-  const [isSubmittingDecline, setIsSubmittingDecline] = useState(false);
+
 
   const handleDeclineReschedule = async () => {
     if (!declineReason || declineReason.trim().length < 5) {
@@ -1318,47 +1304,111 @@ export function MaintenanceDetailModal({
     setTimeout(() => setCopiedPhone(false), 2000);
   };
 
-  const handleProcessProofFile = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
+  const handleProcessProofFiles = (incomingFiles) => {
+    if (!incomingFiles || incomingFiles.length === 0) return;
+    const fileList = Array.from(incomingFiles);
+
+    const validFiles = [];
+    let invalidTypeCount = 0;
+    let oversizedCount = 0;
+
+    fileList.forEach((file) => {
+      if (!file.type.startsWith("image/")) {
+        invalidTypeCount += 1;
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        oversizedCount += 1;
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (invalidTypeCount > 0) {
       showNotification({
         title: "Invalid File Type",
-        message: "Please upload an image file (PNG, JPG, JPEG, WEBP).",
-        type: "error",
+        message: `${invalidTypeCount} file(s) were skipped because only images (PNG, JPG, JPEG, WEBP) are supported.`,
+        type: "warning",
       });
-      return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+
+    if (oversizedCount > 0) {
       showNotification({
         title: "File Too Large",
-        message: "Maximum file size is 5MB.",
-        type: "error",
+        message: `${oversizedCount} file(s) exceeded the 5MB size limit.`,
+        type: "warning",
       });
-      return;
     }
-    setProofFile(file);
-    setProofPreviewUrl(URL.createObjectURL(file));
+
+    if (validFiles.length === 0) return;
+
+    setProofFiles((prev) => {
+      const remainingQuota = MAX_PROOF_FILES - prev.length;
+      if (remainingQuota <= 0) {
+        showNotification({
+          title: "Maximum Limit Reached",
+          message: `You can only attach up to ${MAX_PROOF_FILES} resolution proof photos.`,
+          type: "warning",
+        });
+        return prev;
+      }
+
+      const filesToAdd = validFiles.slice(0, remainingQuota);
+      if (validFiles.length > remainingQuota) {
+        showNotification({
+          title: "Photo Limit Reached",
+          message: `Only ${remainingQuota} photo(s) added. Maximum limit is ${MAX_PROOF_FILES} photos.`,
+          type: "warning",
+        });
+      }
+
+      const newEntries = filesToAdd.map((file) => ({
+        id: `${file.name}-${file.lastModified || Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: file.name,
+        size: file.size,
+      }));
+
+      return [...prev, ...newEntries];
+    });
+
     setProofTouched(false);
   };
 
-  const handleSelectProofFile = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleProcessProofFile(file);
-    }
-  };
-
-  const handleClearProofFile = () => {
-    setProofFile(null);
-    if (proofPreviewUrl) {
-      URL.revokeObjectURL(proofPreviewUrl);
-      setProofPreviewUrl(null);
+  const handleSelectProofFiles = (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleProcessProofFiles(files);
     }
     if (proofFileInputRef.current) {
       proofFileInputRef.current.value = "";
     }
   };
 
+  const handleRemoveProofFile = (idToRemove) => {
+    setProofFiles((prev) => {
+      const target = prev.find((item) => item.id === idToRemove);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((item) => item.id !== idToRemove);
+    });
+  };
+
+  const handleClearAllProofFiles = () => {
+    setProofFiles((prev) => {
+      prev.forEach((item) => {
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+      });
+      return [];
+    });
+    if (proofFileInputRef.current) {
+      proofFileInputRef.current.value = "";
+    }
+  };
 
   // Unified Multi-Card Next Action for Stage 3 (In Progress -> Resolved)
   const handleUnifiedCompleteAndResolve = async () => {
@@ -1373,11 +1423,20 @@ export function MaintenanceDetailModal({
 
     setProofTouched(true);
 
-    // 1. Validate proof photo
-    if (!proofFile) {
+    // 1. Validate proof photo(s)
+    if (!proofFiles || proofFiles.length === 0) {
       showNotification({
         title: "Proof Photo Required",
-        message: "Please attach a photo proof of the completed repair before resolving.",
+        message: "Please attach at least one photo proof of the completed repair before resolving.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (proofFiles.length > MAX_PROOF_FILES) {
+      showNotification({
+        title: "Too Many Photos",
+        message: `You can upload a maximum of ${MAX_PROOF_FILES} resolution photos.`,
         type: "warning",
       });
       return;
@@ -1402,38 +1461,42 @@ export function MaintenanceDetailModal({
         await costCardRef.current.saveCost();
       }
 
-      // 4. Upload Proof & Resolve Request
+      // 4. Concurrently Upload All Proof Files & Resolve Request
       const reqId = request?.request_id || request?.id || request?._id;
-      const uploadRes = await maintenanceApi.uploadAdminMaintenanceAttachment(
-        reqId,
-        proofFile,
-        { visibility: "tenant_admin" },
+      const uploadedAttachments = await Promise.all(
+        proofFiles.map(async ({ file }) => {
+          const uploadRes = await maintenanceApi.uploadAdminMaintenanceAttachment(
+            reqId,
+            file,
+            { visibility: "tenant_admin" },
+          );
+
+          const rawAttachment =
+            uploadRes?.data?.attachment || uploadRes?.attachment || uploadRes?.data || uploadRes;
+          const fileUrl =
+            rawAttachment?.url || rawAttachment?.downloadUrl || rawAttachment?.uri || rawAttachment?.src;
+
+          return {
+            id: rawAttachment?.id || rawAttachment?.storagePath || fileUrl,
+            name: rawAttachment?.name || rawAttachment?.originalName || file.name,
+            uri: fileUrl,
+            url: fileUrl,
+            downloadUrl: fileUrl,
+            type: rawAttachment?.type || rawAttachment?.mimeType || file.type || "image/png",
+            mimeType: rawAttachment?.mimeType || rawAttachment?.type || file.type || "image/png",
+            size: rawAttachment?.size || file.size,
+            visibility: "tenant_admin",
+            storagePath: rawAttachment?.storagePath || null,
+            provider: rawAttachment?.provider || null,
+          };
+        }),
       );
-
-      const rawAttachment =
-        uploadRes?.data?.attachment || uploadRes?.attachment || uploadRes?.data || uploadRes;
-      const fileUrl =
-        rawAttachment?.url || rawAttachment?.downloadUrl || rawAttachment?.uri || rawAttachment?.src;
-
-      const attachment = {
-        id: rawAttachment?.id || rawAttachment?.storagePath || fileUrl,
-        name: rawAttachment?.name || rawAttachment?.originalName || proofFile.name,
-        uri: fileUrl,
-        url: fileUrl,
-        downloadUrl: fileUrl,
-        type: rawAttachment?.type || rawAttachment?.mimeType || proofFile.type || "image/png",
-        mimeType: rawAttachment?.mimeType || rawAttachment?.type || proofFile.type || "image/png",
-        size: rawAttachment?.size || proofFile.size,
-        visibility: "tenant_admin",
-        storagePath: rawAttachment?.storagePath || null,
-        provider: rawAttachment?.provider || null,
-      };
 
       const result = await saveProofMutation.mutateAsync({
         requestId: reqId,
         payload: {
           note: proofNote.trim() || "Resolution proof verified and uploaded.",
-          attachments: [attachment],
+          attachments: uploadedAttachments,
           status: "resolved",
         },
       });
@@ -1452,7 +1515,7 @@ export function MaintenanceDetailModal({
             ...((prev || request)?.work_log || []),
             {
               note: proofNote.trim() || "Resolution proof verified and uploaded.",
-              attachments: [attachment],
+              attachments: uploadedAttachments,
               logged_at: new Date().toISOString(),
             },
           ],
@@ -1461,12 +1524,12 @@ export function MaintenanceDetailModal({
 
       showNotification({
         title: "Work Marked as Done",
-        message: "Resolution proof and repair details saved. The tenant has been notified to inspect and confirm.",
+        message: `${uploadedAttachments.length} resolution proof photo(s) and repair details saved. The tenant has been notified to inspect and confirm.`,
         type: "success",
       });
 
       // 2. NOW safely reset local form data
-      handleClearProofFile();
+      handleClearAllProofFiles();
       setProofNote("");
       setProofTouched(false);
     } catch (err) {
@@ -1486,7 +1549,7 @@ export function MaintenanceDetailModal({
       setActiveTab("overview");
       setLightboxImage(null);
       setLightboxZoom(1);
-      handleClearProofFile();
+      handleClearAllProofFiles();
       setProofTouched(false);
       setIsDraggingProof(false);
       setCopiedPhone(false);
@@ -1583,16 +1646,7 @@ export function MaintenanceDetailModal({
   const isResolvedStage = status === "resolved";
   const isCompletedStage = ["completed", "closed"].includes(status);
 
-  const isAwaitingVisitPhase =
-    !forceShowActiveWork &&
-    (status === "scheduled" || status === "provider_assigned") &&
-    !isReopened;
-
-  const isActiveWorkPhase =
-    forceShowActiveWork ||
-    status === "in_progress" ||
-    status === "waiting_tenant" ||
-    isReopened;
+  const isExecutionView = isExecutionStage || isReopened;
 
   // Attachment Collections
   const initialAttachments = Array.isArray(request?.attachments)
@@ -1821,7 +1875,7 @@ export function MaintenanceDetailModal({
         </div>
 
         {/* ================= BODY ================= */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 pb-16 space-y-4">
           {!request && isLoading ? (
             <div className="space-y-4 animate-pulse">
               <div className="h-28 rounded-xl bg-slate-100 dark:bg-slate-800" />
@@ -2129,23 +2183,27 @@ export function MaintenanceDetailModal({
                             )}
                           </div>
                         </div>
-                        {onGenerateReport && (
-                          <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            <button
-                              type="button"
-                              onClick={() => onGenerateReport("admin")}
-                              title="Generate or view official maintenance completion report"
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm"
-                            >
-                              <Sparkles size={13} />
-                              <span>
-                                {request?.completionReport
-                                  ? "View / Edit Completion Report"
-                                  : "Generate AI Completion Report"}
-                              </span>
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <button
+                            type="button"
+                            onClick={handleDownloadReport}
+                            disabled={isDownloadingReport}
+                            title="Download official maintenance completion voucher PDF"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {isDownloadingReport ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" />
+                                <span>Generating PDF...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download size={13} />
+                                <span>Download Completion Report</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2191,6 +2249,7 @@ export function MaintenanceDetailModal({
                           onAssign={handleConfirmProviderAndSchedule}
                           onSuggest={onSuggestProvider}
                           onUseSuggestion={onUseProviderSuggestion}
+                          onClearSuggestion={onClearSuggestion}
                           embedded={true}
                           hideActions={true}
                         />
@@ -2301,507 +2360,9 @@ export function MaintenanceDetailModal({
                     </div>
                   )}
 
-                  {/* STAGE 3: PROGRESSIVE 2-PHASE HUB (Phase 3A: Awaiting Visit vs Phase 3B: Active Work) */}
+                  {/* STAGE 3: EXECUTION & RESOLUTION (Unified Continuous View) */}
                   {(isExecutionStage || isReopened) && (
                     <div id="maintenance-stage3-actions" className="space-y-4">
-                      {/* ─────────────────────────────────────────────────────────────
-                          PHASE 3A: SCHEDULED & AWAITING VISIT (Triage & Reschedule Hub)
-                          ───────────────────────────────────────────────────────────── */}
-                      {isAwaitingVisitPhase && (
-                        <div className="space-y-4">
-                          {/* Confirmed Visit & Schedule Management Card */}
-                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-4">
-                            {/* Phase 3A Header */}
-                            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                              <div className="flex items-center gap-2">
-                                <Calendar size={16} className="text-sky-600 dark:text-sky-400" />
-                                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                                  Scheduled &amp; Awaiting Repair Visit
-                                </h3>
-                              </div>
-                              <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700">
-                                Stage 3: Awaiting Visit
-                              </span>
-                            </div>
-
-                            {/* Grid: Technician Summary (Left) & Scheduled Arrival Details (Right) */}
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {/* Left: Assigned Provider Box */}
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-2.5">
-                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
-                                  Assigned Service Provider
-                                </span>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                                    {assignedProviderName || "LilyCrest Facilities Team"}
-                                  </span>
-                                  {assignedProviderCategory && (
-                                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                      {assignedProviderCategory}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {assignedProviderContact && (
-                                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
-                                    <a
-                                      href={`tel:${assignedProviderContact}`}
-                                      className="text-slate-700 dark:text-slate-300 font-semibold hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-1.5"
-                                    >
-                                      <PhoneCall size={12} className="text-slate-500" />
-                                      <span>{assignedProviderContact}</span>
-                                    </a>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCopyPhone(assignedProviderContact)}
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
-                                    >
-                                      {copiedPhone ? (
-                                        <Check size={12} className="text-emerald-600" />
-                                      ) : (
-                                        <Copy size={12} />
-                                      )}
-                                      <span>{copiedPhone ? "Copied" : "Copy"}</span>
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Right: Confirmed Schedule Box with Relative Arrival Badge */}
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-2.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
-                                    Confirmed Arrival
-                                  </span>
-                                  {currentScheduledDate && (
-                                    <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400">
-                                      {(() => {
-                                        const d = new Date(currentScheduledDate);
-                                        if (Number.isNaN(d.getTime())) return null;
-                                        const diffHours = Math.round((d.getTime() - Date.now()) / (1000 * 60 * 60));
-                                        if (diffHours < 0) return "Visit slot has arrived";
-                                        if (diffHours === 0) return "Arriving in less than 1 hr";
-                                        if (diffHours < 24) return `In ~${diffHours} hours`;
-                                        const diffDays = Math.round(diffHours / 24);
-                                        return `In ${diffDays} day${diffDays > 1 ? "s" : ""}`;
-                                      })()}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                  <Clock size={14} className="text-sky-600 dark:text-sky-400 shrink-0" />
-                                  <span>{currentScheduledDate ? fmtDateTime(currentScheduledDate) : "No date set"}</span>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
-                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
-                                    {request?.schedule?.notes || "Standard room access"}
-                                  </span>
-                                  {rescheduleRequestData?.status !== "pending" && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowScheduler((v) => !v)}
-                                      className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
-                                    >
-                                      {showScheduler ? "Hide Calendar" : "Reschedule / Update"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Tenant Reschedule Request Alert Banner (High Priority) */}
-                            {rescheduleRequestData?.status === "pending" && (
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/60 p-4 space-y-3.5 text-xs shadow-2xs">
-                                <div className="flex items-center justify-between flex-wrap gap-2">
-                                  <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
-                                    <Clock size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                                    <span className="text-xs">Tenant Requested Schedule Adjustment</span>
-                                  </div>
-                                  {currentScheduledDate && rescheduleRequestData?.proposedDate && (
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 bg-transparent">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                                      <span>
-                                        {(() => {
-                                          const d1 = new Date(currentScheduledDate).getTime();
-                                          const d2 = new Date(rescheduleRequestData.proposedDate).getTime();
-                                          if (Number.isNaN(d1) || Number.isNaN(d2)) return null;
-                                          const diffHours = Math.round((d2 - d1) / (1000 * 60 * 60));
-                                          if (diffHours === 0) return "Same Day / Time Shift";
-                                          if (Math.abs(diffHours) < 24) {
-                                            return diffHours > 0 ? `+${diffHours}h Later` : `${diffHours}h Earlier`;
-                                          }
-                                          const diffDays = Math.round(diffHours / 24);
-                                          return diffDays > 0 ? `+${diffDays} Day${diffDays > 1 ? "s" : ""} Later` : `${diffDays} Day${Math.abs(diffDays) > 1 ? "s" : ""} Earlier`;
-                                        })()}
-                                      </span>
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Side-by-Side Comparison Grid */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                  {/* Left: Currently Scheduled */}
-                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                                      Current Scheduled Arrival
-                                    </span>
-                                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                      {currentScheduledDate ? fmtDateTime(currentScheduledDate) : "Not yet set"}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                      Provider: {assignedProviderName || "LilyCrest Facilities Team"}
-                                    </div>
-                                  </div>
-
-                                  {/* Right: Tenant Requested */}
-                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                                      Tenant Requested Slot
-                                    </span>
-                                    <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                                      {fmtDateTime(rescheduleRequestData.proposedDate)}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                      {rescheduleRequestData.reason ? (
-                                        <span className="italic text-slate-600 dark:text-slate-300">
-                                          &ldquo;{rescheduleRequestData.reason}&rdquo;
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-400">No specific reason provided</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Quick Action Button Grid (3 Balanced Columns) */}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
-                                  {/* Accept New Date CTA */}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleAcceptReschedule(
-                                        rescheduleRequestData.proposedDate,
-                                      )
-                                    }
-                                    disabled={isRespondingToReschedule || isSubmittingAlternate || isSubmittingDecline}
-                                    title="Accept tenant's requested date & time adjustment"
-                                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-2xs cursor-pointer disabled:opacity-50"
-                                  >
-                                    {isRespondingToReschedule ? (
-                                      <Loader2 size={13} className="animate-spin" />
-                                    ) : (
-                                      <Check size={13} />
-                                    )}
-                                    <span>
-                                      {isRespondingToReschedule
-                                        ? "Accepting..."
-                                        : "Accept New Date"}
-                                    </span>
-                                  </button>
-
-                                  {/* Propose Alternate Date */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setShowAlternatePanel((v) => !v);
-                                      setShowDeclinePanel(false);
-                                    }}
-                                    title="Pick an alternate date/time and send explanation note to tenant"
-                                    className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
-                                      showAlternatePanel
-                                        ? "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-300 dark:ring-slate-600"
-                                        : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600"
-                                    }`}
-                                  >
-                                    <Calendar size={13} />
-                                    <span>Propose Alternate</span>
-                                    {showAlternatePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
-                                  </button>
-
-                                  {/* Decline Request */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setShowDeclinePanel((v) => !v);
-                                      setShowAlternatePanel(false);
-                                    }}
-                                    title="Decline this reschedule request and keep the current schedule"
-                                    className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
-                                      showDeclinePanel
-                                        ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800"
-                                        : "border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-900"
-                                    }`}
-                                  >
-                                    <X size={13} />
-                                    <span>Decline Request</span>
-                                    {showDeclinePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
-                                  </button>
-                                </div>
-
-                                {/* Expandable Decline Request Panel */}
-                                {showDeclinePanel && (
-                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                                        Decline Tenant Reschedule Request
-                                      </span>
-                                      <span className="text-[10px] text-slate-500">Current schedule will remain active</span>
-                                    </div>
-
-                                    <div>
-                                      <div className="flex justify-between items-center mb-1">
-                                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                                          Reason for Declining * (Min 5 chars)
-                                        </label>
-                                        <span className="text-[10px] text-slate-400">{declineReason.length}/300</span>
-                                      </div>
-                                      <textarea
-                                        rows={2}
-                                        maxLength={300}
-                                        placeholder="e.g. Technician already dispatched and en route; cannot postpone."
-                                        value={declineReason}
-                                        onChange={(e) => setDeclineReason(e.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 resize-none transition"
-                                      />
-                                      {declineReason.length > 0 && declineReason.trim().length < 5 && (
-                                        <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1 mt-1 font-medium">
-                                          <AlertCircle size={12} />
-                                          Please enter at least 5 characters ({5 - declineReason.trim().length} more needed).
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setShowDeclinePanel(false);
-                                          setDeclineReason("");
-                                        }}
-                                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={handleDeclineReschedule}
-                                        disabled={!declineReason || declineReason.trim().length < 5 || isSubmittingDecline}
-                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
-                                      >
-                                        {isSubmittingDecline ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
-                                        <span>{isSubmittingDecline ? "Declining..." : "Confirm Decline"}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Expandable Alternate Date & Explanation Note Panel */}
-                                {showAlternatePanel && (
-                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                                        Propose Alternate Visit Date &amp; Reason
-                                      </span>
-                                      <span className="text-[10px] text-slate-500">Operating hours: 8 AM – 6 PM</span>
-                                    </div>
-
-                                    <ModernDateTimePicker
-                                      dateValue={alternateDate}
-                                      timeValue={alternateTime}
-                                      onDateChange={setAlternateDate}
-                                      onTimeChange={setAlternateTime}
-                                      disabled={isSubmittingAlternate}
-                                    />
-
-                                    <div>
-                                      <div className="flex justify-between items-center mb-1">
-                                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                                          Staff Explanation Note to Tenant * (Min 5 chars)
-                                        </label>
-                                        <span className="text-[10px] text-slate-400">{alternateNote.length}/300</span>
-                                      </div>
-                                      <textarea
-                                        rows={2}
-                                        maxLength={300}
-                                        placeholder="e.g. Technician fully booked in the morning; available at 2:00 PM."
-                                        value={alternateNote}
-                                        onChange={(e) => setAlternateNote(e.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 resize-none transition"
-                                      />
-                                      {alternateNote.length > 0 && alternateNote.trim().length < 5 && (
-                                        <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1 font-medium">
-                                          <AlertCircle size={12} />
-                                          Please enter at least 5 characters ({5 - alternateNote.trim().length} more needed).
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowAlternatePanel(false)}
-                                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={handleSetAlternateSchedule}
-                                        disabled={!alternateDate || !alternateTime || alternateNote.trim().length < 5 || isSubmittingAlternate}
-                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
-                                      >
-                                        {isSubmittingAlternate ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                                        <span>{isSubmittingAlternate ? "Updating..." : "Submit Alternate Schedule"}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Interactive Rescheduler if opened */}
-                            {showScheduler && (
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 block">
-                                    Update Repair Visit Date &amp; Time
-                                  </span>
-                                  <span className="text-[10px] text-slate-500">Operating hours: 8 AM – 6 PM</span>
-                                </div>
-
-                                <ModernDateTimePicker
-                                  dateValue={scheduleDate}
-                                  timeValue={scheduleTime}
-                                  onDateChange={setScheduleDate}
-                                  onTimeChange={setScheduleTime}
-                                  disabled={isSubmittingSchedule}
-                                />
-
-                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex-wrap">
-                                  <div className="text-[11px] text-slate-500">
-                                    {scheduleDate && scheduleTime ? (
-                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                                        <Check size={12} />
-                                        <span>Selected: {scheduleDate} at {scheduleTime}</span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                        Please pick both visit date and arrival time.
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex gap-2 items-center flex-wrap">
-                                    {currentScheduledDate && (
-                                      <button
-                                        type="button"
-                                        onClick={handleClearSchedule}
-                                        disabled={isSubmittingSchedule}
-                                        title="Reject and remove the planned schedule date without cancelling the maintenance request"
-                                        className="px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg active:scale-[0.98] cursor-pointer transition border border-rose-200 dark:border-rose-900/40"
-                                      >
-                                        Reject Planned Schedule
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowScheduler(false)}
-                                      className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-[0.98] cursor-pointer"
-                                    >
-                                      Close
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={handleScheduleVisit}
-                                      disabled={
-                                        !scheduleDate ||
-                                        !scheduleTime ||
-                                        isSubmittingSchedule
-                                      }
-                                      title={
-                                        !scheduleDate || !scheduleTime
-                                          ? "Select date and time first"
-                                          : "Save updated visit schedule"
-                                      }
-                                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer shadow-xs transition"
-                                    >
-                                      {isSubmittingSchedule ? (
-                                        <Loader2 size={13} className="animate-spin" />
-                                      ) : (
-                                        <Check size={13} />
-                                      )}
-                                      <span>
-                                        {isSubmittingSchedule
-                                          ? "Saving..."
-                                          : "Save Schedule"}
-                                      </span>
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Phase 3A Primary Action Footer Bar */}
-                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                            {rescheduleRequestData?.status === "pending" && (
-                              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2.5 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
-                                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
-                                <span>
-                                  <strong>Pending Reschedule Request:</strong> Please accept, propose an alternate date, or decline the tenant's reschedule request above before starting repair work.
-                                </span>
-                              </div>
-                            )}
-
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
-                                {rescheduleRequestData?.status === "pending" ? (
-                                  <span className="text-slate-500 dark:text-slate-400">
-                                    Start action locked until the pending reschedule request is resolved above.
-                                  </span>
-                                ) : isStartingWork ? (
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                    <Loader2 size={13} className="animate-spin text-sky-600" />
-                                    Starting repair work and dispatching active status...
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                                    <Sparkles size={13} className="text-sky-600 shrink-0" />
-                                    <span>
-                                      Technician on site? Click <strong>Start Repair Work</strong> to unlock resolution proof &amp; expense accounting.
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setForceShowActiveWork(true)}
-                                  className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline font-medium px-2 py-1 cursor-pointer"
-                                >
-                                  Jump to Proof Form
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleStartRepairWork}
-                                  disabled={isLocked || isStartingWork || rescheduleRequestData?.status === "pending"}
-                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white px-5 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
-                                >
-                                  {isStartingWork ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
-                                  <span>{isStartingWork ? "Starting Work..." : "Start Repair Work"}</span>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ─────────────────────────────────────────────────────────────
-                          PHASE 3B: ACTIVE WORK & RESOLUTION (Technician On-Site, Proof, Expenses)
-                          ───────────────────────────────────────────────────────────── */}
-                      {isActiveWorkPhase && (
                         <div className="space-y-4">
                           <div className="grid gap-4 md:grid-cols-2 items-stretch">
                             {/* Left Column: Active Technician & Work Order Info */}
@@ -2810,10 +2371,10 @@ export function MaintenanceDetailModal({
                                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                                   <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                                     <PlayCircle size={16} className="text-emerald-600 dark:text-emerald-500" />
-                                    <span>Active Work In Progress</span>
+                                    <span>{status === "in_progress" ? "Active Work In Progress" : "Stage 3: Scheduled & Execution"}</span>
                                   </h3>
                                   <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
-                                    Active on site
+                                    {status === "in_progress" ? "Active on site" : "Stage 3: Scheduled"}
                                   </span>
                                 </div>
 
@@ -2963,17 +2524,17 @@ export function MaintenanceDetailModal({
                                             rescheduleRequestData.proposedDate,
                                           )
                                         }
-                                        disabled={isRespondingToReschedule || isSubmittingAlternate || isSubmittingDecline}
+                                        disabled={isAnyRescheduleActionPending}
                                         title="Accept tenant's requested date & time adjustment"
                                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-2xs cursor-pointer disabled:opacity-50"
                                       >
-                                        {isRespondingToReschedule ? (
+                                        {isAcceptingReschedule ? (
                                           <Loader2 size={13} className="animate-spin" />
                                         ) : (
                                           <Check size={13} />
                                         )}
                                         <span>
-                                          {isRespondingToReschedule
+                                          {isAcceptingReschedule
                                             ? "Accepting..."
                                             : "Accept New Date"}
                                         </span>
@@ -2986,8 +2547,9 @@ export function MaintenanceDetailModal({
                                           setShowAlternatePanel((v) => !v);
                                           setShowDeclinePanel(false);
                                         }}
+                                        disabled={isAnyRescheduleActionPending}
                                         title="Pick an alternate date/time and send explanation note to tenant"
-                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] disabled:opacity-50 ${
                                           showAlternatePanel
                                             ? "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-300 dark:ring-slate-600"
                                             : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600"
@@ -3005,8 +2567,9 @@ export function MaintenanceDetailModal({
                                           setShowDeclinePanel((v) => !v);
                                           setShowAlternatePanel(false);
                                         }}
+                                        disabled={isAnyRescheduleActionPending}
                                         title="Decline this reschedule request and keep the current schedule"
-                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] disabled:opacity-50 ${
                                           showDeclinePanel
                                             ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800"
                                             : "border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-900"
@@ -3041,7 +2604,7 @@ export function MaintenanceDetailModal({
                                             placeholder="e.g. Technician already dispatched and en route; cannot postpone."
                                             value={declineReason}
                                             onChange={(e) => setDeclineReason(e.target.value)}
-                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 resize-none transition"
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 dark:focus:border-slate-100 focus:ring-1 focus:ring-slate-900/10 resize-none transition"
                                           />
                                           {declineReason.length > 0 && declineReason.trim().length < 5 && (
                                             <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1 mt-1 font-medium">
@@ -3058,14 +2621,15 @@ export function MaintenanceDetailModal({
                                               setShowDeclinePanel(false);
                                               setDeclineReason("");
                                             }}
-                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                            disabled={isAnyRescheduleActionPending}
+                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition disabled:opacity-50"
                                           >
                                             Cancel
                                           </button>
                                           <button
                                             type="button"
                                             onClick={handleDeclineReschedule}
-                                            disabled={!declineReason || declineReason.trim().length < 5 || isSubmittingDecline}
+                                            disabled={!declineReason || declineReason.trim().length < 5 || isAnyRescheduleActionPending}
                                             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
                                           >
                                             {isSubmittingDecline ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
@@ -3090,7 +2654,7 @@ export function MaintenanceDetailModal({
                                           timeValue={alternateTime}
                                           onDateChange={setAlternateDate}
                                           onTimeChange={setAlternateTime}
-                                          disabled={isSubmittingAlternate}
+                                          disabled={isAnyRescheduleActionPending}
                                         />
 
                                         <div>
@@ -3106,7 +2670,7 @@ export function MaintenanceDetailModal({
                                             placeholder="e.g. Technician fully booked in the morning; available at 2:00 PM."
                                             value={alternateNote}
                                             onChange={(e) => setAlternateNote(e.target.value)}
-                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 resize-none transition"
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 dark:focus:border-slate-100 focus:ring-1 focus:ring-slate-900/10 resize-none transition"
                                           />
                                           {alternateNote.length > 0 && alternateNote.trim().length < 5 && (
                                             <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1 font-medium">
@@ -3120,14 +2684,15 @@ export function MaintenanceDetailModal({
                                           <button
                                             type="button"
                                             onClick={() => setShowAlternatePanel(false)}
-                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                            disabled={isAnyRescheduleActionPending}
+                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition disabled:opacity-50"
                                           >
                                             Cancel
                                           </button>
                                           <button
                                             type="button"
                                             onClick={handleSetAlternateSchedule}
-                                            disabled={!alternateDate || !alternateTime || alternateNote.trim().length < 5 || isSubmittingAlternate}
+                                            disabled={!alternateDate || !alternateTime || alternateNote.trim().length < 5 || isAnyRescheduleActionPending}
                                             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
                                           >
                                             {isSubmittingAlternate ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
@@ -3153,25 +2718,35 @@ export function MaintenanceDetailModal({
                                     <ShieldCheck size={16} className="text-slate-700 dark:text-slate-300" />
                                     <span>Upload Resolution Proof</span>
                                   </h3>
-                                  <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                                    Required *
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    {proofFiles.length > 0 && (
+                                      <span className="rounded bg-transparent px-2 py-0.5 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                                        <ImageIcon size={12} className="text-slate-500 shrink-0" />
+                                        <span>{proofFiles.length}/{MAX_PROOF_FILES} Photos</span>
+                                      </span>
+                                    )}
+                                    <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                      <span>Required Proof *</span>
+                                    </span>
+                                  </div>
                                 </div>
 
                                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                  Upload photo proof of the completed repair. This will notify the tenant to inspect and verify the resolution.
+                                  Upload photo proof of the completed repair. This will advance the ticket to Stage 4 and prompt the tenant to inspect and confirm the resolution.
                                 </p>
 
                                 {/* Custom File Upload Dropzone / Trigger */}
                                 <input
                                   ref={proofFileInputRef}
                                   type="file"
+                                  multiple
                                   accept="image/png,image/jpeg,image/webp"
-                                  onChange={handleSelectProofFile}
+                                  onChange={handleSelectProofFiles}
                                   className="hidden"
                                 />
 
-                                {!proofFile ? (
+                                {proofFiles.length === 0 ? (
                                   <div
                                     onDragOver={(e) => {
                                       e.preventDefault();
@@ -3181,62 +2756,116 @@ export function MaintenanceDetailModal({
                                     onDrop={(e) => {
                                       e.preventDefault();
                                       setIsDraggingProof(false);
-                                      const file = e.dataTransfer.files?.[0];
-                                      if (file) handleProcessProofFile(file);
+                                      const files = e.dataTransfer.files;
+                                      if (files && files.length > 0) handleProcessProofFiles(files);
                                     }}
                                     onClick={() => proofFileInputRef.current?.click()}
-                                    className={`flex flex-col items-center justify-center rounded-xl border border-dashed p-4 text-center cursor-pointer transition ${
+                                    className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition ${
                                       isDraggingProof
                                         ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20"
-                                        : proofTouched && !proofFile
-                                          ? "border-rose-500 bg-rose-50/30 dark:bg-rose-950/20"
-                                          : "border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30"
+                                        : proofTouched && proofFiles.length === 0
+                                          ? "border-rose-500 bg-rose-50/40 dark:bg-rose-950/30"
+                                          : "border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/60 dark:bg-slate-800/40"
                                     }`}
                                   >
                                     <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400 mb-2">
                                       <Upload size={22} />
                                     </div>
                                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                      Click to upload photo proof or drag &amp; drop
+                                      Click to browse photos or drag &amp; drop here
                                     </span>
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                      Supports PNG, JPG, JPEG, WEBP (Max 5MB)
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                                      Supports PNG, JPG, JPEG, WEBP (Max 5MB each) • 1 to 5 photos allowed
                                     </span>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 p-2.5">
-                                    {proofPreviewUrl && (
-                                      <div className="relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700">
-                                        <img
-                                          src={proofPreviewUrl}
-                                          alt="Proof Preview"
-                                          className="h-full w-full object-cover"
-                                        />
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                        Attached Photos ({proofFiles.length} of {MAX_PROOF_FILES})
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={handleClearAllProofFiles}
+                                        className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                                      >
+                                        Clear All
+                                      </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      {proofFiles.map((item, index) => (
+                                        <div
+                                          key={item.id}
+                                          className="group relative flex items-center gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/70 p-2 transition hover:border-slate-300 dark:hover:border-slate-600"
+                                        >
+                                          {item.previewUrl && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setLightboxImage({ uri: item.previewUrl, name: item.name, label: `Resolution Proof Photo ${index + 1}` })}
+                                              className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer group-hover:opacity-95"
+                                              title="Click to preview full size"
+                                            >
+                                              <img
+                                                src={item.previewUrl}
+                                                alt={item.name}
+                                                className="h-full w-full object-cover"
+                                              />
+                                            </button>
+                                          )}
+                                          <div className="min-w-0 flex-1 space-y-0.5">
+                                            <div className="flex items-center gap-1">
+                                              <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                              <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate" title={item.name}>
+                                                {item.name}
+                                              </p>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                              {(item.size / (1024 * 1024)).toFixed(2)} MB • Photo {index + 1}
+                                            </p>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveProofFile(item.id)}
+                                            className="rounded p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer shrink-0"
+                                            title={`Remove ${item.name}`}
+                                            aria-label={`Remove ${item.name}`}
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {proofFiles.length < MAX_PROOF_FILES && (
+                                      <div
+                                        onDragOver={(e) => {
+                                          e.preventDefault();
+                                          setIsDraggingProof(true);
+                                        }}
+                                        onDragLeave={() => setIsDraggingProof(false)}
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          setIsDraggingProof(false);
+                                          const files = e.dataTransfer.files;
+                                          if (files && files.length > 0) handleProcessProofFiles(files);
+                                        }}
+                                        onClick={() => proofFileInputRef.current?.click()}
+                                        className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center cursor-pointer transition"
+                                      >
+                                        <Plus size={14} className="text-slate-600 dark:text-slate-400" />
+                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                          Add More Photos ({proofFiles.length}/{MAX_PROOF_FILES})
+                                        </span>
                                       </div>
                                     )}
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                                        {proofFile.name}
-                                      </p>
-                                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                                        {(proofFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit
-                                      </p>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={handleClearProofFile}
-                                      className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                                      title="Remove photo"
-                                    >
-                                      <X size={16} />
-                                    </button>
                                   </div>
                                 )}
 
-                                {proofTouched && !proofFile && (
+                                {proofTouched && proofFiles.length === 0 && (
                                   <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
                                     <AlertCircle size={11} className="shrink-0" />
-                                    <span>Resolution proof photo is required to mark resolved.</span>
+                                    <span>At least one resolution proof photo is required to mark resolved.</span>
                                   </p>
                                 )}
 
@@ -3271,7 +2900,7 @@ export function MaintenanceDetailModal({
                           <CostAttributionCard
                             ref={costCardRef}
                             request={request}
-                            disabled={isLocked}
+                            disabled={isLocked || Boolean(request?.costBreakdown?.billId)}
                             hideStandaloneAction={true}
                             defaultSummaryMode={false}
                           />
@@ -3289,18 +2918,17 @@ export function MaintenanceDetailModal({
 
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
-                                {isSubmittingUnified ? (
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                    <Loader2 size={13} className="animate-spin text-emerald-600" />
-                                    Saving repair details and submitting proof...
-                                  </span>
-                                ) : rescheduleRequestData?.status === "pending" ? (
+                                {rescheduleRequestData?.status === "pending" ? (
                                   <span className="text-slate-500 dark:text-slate-400">
                                     Action locked until the pending reschedule request is resolved.
                                   </span>
+                                ) : proofFiles.length === 0 ? (
+                                  <span className="text-slate-600 dark:text-slate-400 font-medium">
+                                    Attach 1 to 5 photo proofs of the completed repair above to enable resolution.
+                                  </span>
                                 ) : (
-                                  <span>
-                                    Ready to finish? This saves the repair details, logs the proof, and lets the tenant know the repair is done.
+                                  <span className={isSubmittingUnified ? "opacity-60 transition-opacity" : "font-medium text-slate-700 dark:text-slate-300"}>
+                                    {proofFiles.length} photo proof(s) ready. Saving will log the proofs, record costs, and notify the tenant to inspect.
                                   </span>
                                 )}
                               </div>
@@ -3308,11 +2936,13 @@ export function MaintenanceDetailModal({
                               <button
                                 type="button"
                                 onClick={handleUnifiedCompleteAndResolve}
-                                disabled={isLocked || isSubmittingUnified || rescheduleRequestData?.status === "pending"}
+                                disabled={isLocked || isSubmittingUnified || rescheduleRequestData?.status === "pending" || proofFiles.length === 0}
                                 title={
                                   rescheduleRequestData?.status === "pending"
                                     ? "Resolve the pending reschedule request first before marking work as done"
-                                    : "Mark work as done and submit proof"
+                                    : proofFiles.length === 0
+                                      ? "Attach photo proof of the repair above to proceed (up to 5 photos)"
+                                      : `Upload ${proofFiles.length} proof photo(s), save repair details, and advance to Stage 4`
                                 }
                                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-[0.98]"
                               >
@@ -3323,14 +2953,15 @@ export function MaintenanceDetailModal({
                                 )}
                                 <span>
                                   {isSubmittingUnified
-                                    ? "Marking as Done..."
-                                    : "Mark Work Done & Upload Proof"}
+                                    ? `Uploading Proof (${proofFiles.length}) & Advancing...`
+                                    : proofFiles.length > 1
+                                      ? `Upload ${proofFiles.length} Proofs & Advance to Stage 4 (Tenant Verification)`
+                                      : "Upload Proof & Advance to Stage 4 (Tenant Verification)"}
                                 </span>
                               </button>
                             </div>
                           </div>
                         </div>
-                      )}
                     </div>
                   )}
 
@@ -3496,7 +3127,7 @@ export function MaintenanceDetailModal({
                               <span>Awaiting tenant feedback &amp; rating on web/mobile app...</span>
                               <button
                                 type="button"
-                                onClick={() => setActiveTab("conversation")}
+                                onClick={() => handleTabChange("conversation")}
                                 className="text-xs text-sky-600 dark:text-sky-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                               >
                                 <Send size={11} />
@@ -3598,9 +3229,9 @@ export function MaintenanceDetailModal({
                         <CostAttributionCard
                           ref={costCardRef}
                           request={request}
-                          disabled={isLocked}
+                          disabled={isLocked || Boolean(request?.costBreakdown?.billId)}
                           hideStandaloneAction={false}
-                          defaultSummaryMode={false}
+                          defaultSummaryMode={true}
                         />
 
                         {/* 5. Stage 4 Waiting Action Footer Bar */}
@@ -3608,14 +3239,14 @@ export function MaintenanceDetailModal({
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
                               <span>
-                                Stage 4 resolution is active. The ticket will advance to <strong>Stage 5 (Completed)</strong> when the tenant confirms on mobile/web, or auto-complete after <strong>7 days</strong>.
+                                Stage 4 resolution is active. The ticket will advance to <strong>Stage 5 (Completed)</strong> when the tenant confirms on mobile/web, auto-complete after <strong>7 days</strong>, or immediately via <strong>Staff Direct Sign-Off</strong>.
                               </span>
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0 flex-wrap">
                               <button
                                 type="button"
-                                onClick={() => setActiveTab("conversation")}
+                                onClick={() => handleTabChange("conversation")}
                                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-[0.98] shadow-2xs"
                               >
                                 <Send size={13} className="text-sky-600 dark:text-sky-400" />
@@ -3637,7 +3268,7 @@ export function MaintenanceDetailModal({
                                 type="button"
                                 onClick={() => setShowForceFinalizeModal(true)}
                                 disabled={isLocked || isForceFinalizing}
-                                title="Staff on-site verification and direct sign-off"
+                                title="Bypass tenant wait: Officially complete and finalize this ticket immediately if staff inspected the unit on-site."
                                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
                               >
                                 <CheckCircle2 size={14} />
@@ -3883,7 +3514,7 @@ export function MaintenanceDetailModal({
                           <div className="flex items-center gap-3">
                             <button
                               type="button"
-                              onClick={() => setActiveTab("conversation")}
+                              onClick={() => handleTabChange("timeline")}
                               className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 font-semibold flex items-center gap-1.5 cursor-pointer transition"
                             >
                               <History size={13} />
@@ -3903,21 +3534,25 @@ export function MaintenanceDetailModal({
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            {onGenerateReport && (
-                              <button
-                                type="button"
-                                onClick={() => onGenerateReport("admin")}
-                                title="Generate or view official maintenance completion report"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm"
-                              >
-                                <Sparkles size={13} />
-                                <span>
-                                  {request?.completionReport?.summary
-                                    ? "View Official Completion Report"
-                                    : "Generate AI Completion Report"}
-                                </span>
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={handleDownloadReport}
+                              disabled={isDownloadingReport}
+                              title="Download official maintenance completion voucher PDF"
+                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {isDownloadingReport ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Generating PDF...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Download size={13} />
+                                  <span>Download Completion Report</span>
+                                </>
+                              )}
+                            </button>
                           </div>
                         </div>
                       </div>

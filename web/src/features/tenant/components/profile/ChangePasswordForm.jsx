@@ -302,19 +302,37 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             name="currentPassword"
             value={currentPassword}
             onChange={(e) => {
-              setCurrentPassword(e.target.value);
+              if (/\s/.test(e.target.value)) return;
+              const val = e.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH);
+              setCurrentPassword(val);
               if (fieldErrors.current) {
                 setFieldErrors((prev) => ({ ...prev, current: null }));
               }
             }}
             onBlur={() => handleBlur("current")}
-            onKeyDown={handleKeyModifier}
+            onKeyDown={(e) => {
+              handleKeyModifier(e);
+              if (e.key === " ") e.preventDefault();
+            }}
             onKeyUp={handleKeyModifier}
+            onPaste={(e) => {
+              const text = e.clipboardData.getData("text") || "";
+              if (/\s/.test(text)) {
+                e.preventDefault();
+                showNotification("Spaces are not permitted in passwords", "warning", 3000);
+              } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+                e.preventDefault();
+                const trimmed = text.slice(0, NEW_PASSWORD_MAX_LENGTH);
+                setCurrentPassword(trimmed);
+                showNotification(`Password input was limited to ${NEW_PASSWORD_MAX_LENGTH} characters`, "warning", 3000);
+              }
+            }}
             placeholder="Enter your current password"
             disabled={submitting}
             aria-invalid={Boolean(touched.current && fieldErrors.current)}
             aria-describedby={fieldErrors.current ? "current-pw-error" : undefined}
             autoComplete="current-password"
+            maxLength={NEW_PASSWORD_MAX_LENGTH}
             className="st-input"
             style={{
               backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",
@@ -379,7 +397,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             value={newPassword}
             onChange={(e) => {
               if (/\s/.test(e.target.value)) return;
-              setNewPassword(e.target.value);
+              setNewPassword(e.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH));
               if (fieldErrors.new) {
                 setFieldErrors((prev) => ({ ...prev, new: null }));
               }
@@ -391,10 +409,15 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             }}
             onKeyUp={handleKeyModifier}
             onPaste={(e) => {
-              const text = e.clipboardData.getData("text");
+              const text = e.clipboardData.getData("text") || "";
               if (/\s/.test(text)) {
                 e.preventDefault();
                 showNotification("Spaces are not permitted in passwords", "warning", 3000);
+              } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+                e.preventDefault();
+                const trimmed = text.slice(0, NEW_PASSWORD_MAX_LENGTH);
+                setNewPassword(trimmed);
+                showNotification(`Password input was limited to ${NEW_PASSWORD_MAX_LENGTH} characters`, "warning", 3000);
               }
             }}
             placeholder="Create a strong new password"
@@ -566,7 +589,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             value={confirmPassword}
             onChange={(e) => {
               if (/\s/.test(e.target.value)) return;
-              setConfirmPassword(e.target.value);
+              setConfirmPassword(e.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH));
               if (fieldErrors.confirm) {
                 setFieldErrors((prev) => ({ ...prev, confirm: null }));
               }
@@ -578,8 +601,16 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             }}
             onKeyUp={handleKeyModifier}
             onPaste={(e) => {
-              const text = e.clipboardData.getData("text");
-              if (/\s/.test(text)) e.preventDefault();
+              const text = e.clipboardData.getData("text") || "";
+              if (/\s/.test(text)) {
+                e.preventDefault();
+                showNotification("Spaces are not permitted in passwords", "warning", 3000);
+              } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+                e.preventDefault();
+                const trimmed = text.slice(0, NEW_PASSWORD_MAX_LENGTH);
+                setConfirmPassword(trimmed);
+                showNotification(`Password input was limited to ${NEW_PASSWORD_MAX_LENGTH} characters`, "warning", 3000);
+              }
             }}
             placeholder="Re-type your new password"
             disabled={submitting}

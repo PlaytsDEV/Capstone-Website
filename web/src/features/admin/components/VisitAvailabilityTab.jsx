@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarCheck,
   Clock,
@@ -19,6 +19,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Pencil,
   Check,
   X,
@@ -99,6 +100,101 @@ function formatRemainingSlots(slot) {
   return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
 }
 
+function BranchSelectDropdown({
+  value,
+  options,
+  onChange,
+  disabled = false,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  if (disabled) {
+    return (
+      <div className="visit-branch-badge" title={`Assigned to ${selectedOption?.label}`}>
+        <Building2 size={14} className="visit-branch-trigger-icon" />
+        <span className="visit-branch-trigger-label">{selectedOption?.label || "Select Branch"}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="visit-branch-dropdown-wrapper" ref={containerRef}>
+      <button
+        type="button"
+        className={`visit-branch-dropdown-trigger ${isOpen ? "visit-branch-dropdown-trigger--open" : ""}`}
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        title="Select dormitory branch to configure availability"
+      >
+        <div className="visit-branch-trigger-content">
+          <Building2 size={14} className="visit-branch-trigger-icon" />
+          <span className="visit-branch-trigger-label">{selectedOption?.label || "Select Branch"}</span>
+        </div>
+        <ChevronDown
+          size={14}
+          className={`visit-branch-chevron ${isOpen ? "visit-branch-chevron--open" : ""}`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="visit-branch-dropdown-menu" role="listbox">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`visit-branch-dropdown-item ${isSelected ? "visit-branch-dropdown-item--selected" : ""}`}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="visit-branch-item-left">
+                  <Building2 size={14} className={isSelected ? "text-primary" : "text-muted-foreground"} />
+                  <span className="visit-branch-item-label">{option.label}</span>
+                </div>
+                {isSelected && (
+                  <Check size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VisitAvailabilityTab() {
   const { data: currentUser } = useCurrentUser();
   const isBranchAdmin = currentUser?.role === "branch_admin";
@@ -164,9 +260,12 @@ function VisitAvailabilityTab() {
   const updateSettings = useUpdateVisitAvailabilitySettings();
   const preflightCheck = useVisitAvailabilityPreflight();
 
+  const prevBranchRef = useRef(branch);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
   // Check if draft has unsaved modifications
   const isDirty = useMemo(() => {
-    if (!settings) return false;
+    if (!settings || isLoading || prevBranchRef.current !== branch) return false;
     const origWeekdays = settings.enabledWeekdays || [1, 2, 3, 4, 5];
     const origSlots = settings.slots || [];
     const origBlackouts = settings.blackoutDates || [];
@@ -184,7 +283,7 @@ function VisitAvailabilityTab() {
       if (!o || d.enabled !== o.enabled || Number(d.capacity) !== Number(o.capacity)) return true;
     }
     return false;
-  }, [draft, settings]);
+  }, [draft, settings, isLoading, branch]);
 
   useEffect(() => {
     if (isBranchAdmin && currentUser?.branch && branch !== currentUser.branch) {
@@ -192,11 +291,10 @@ function VisitAvailabilityTab() {
     }
   }, [branch, currentUser?.branch, isBranchAdmin]);
 
-  const [hasInitialized, setHasInitialized] = useState(false);
-
   useEffect(() => {
     if (!settings) return;
-    if (!hasInitialized || !isDirty) {
+    if (!hasInitialized || prevBranchRef.current !== branch) {
+      prevBranchRef.current = branch;
       setDraft({
         enabledWeekdays: settings.enabledWeekdays || [1, 2, 3, 4, 5],
         slots: settings.slots?.length ? settings.slots : createDefaultDraft().slots,
@@ -205,7 +303,7 @@ function VisitAvailabilityTab() {
       });
       setHasInitialized(true);
     }
-  }, [settings, isDirty, hasInitialized]);
+  }, [settings, branch, hasInitialized]);
 
   const activeSlots = draft.slots.filter((slot) => slot.enabled);
   const totalCapacity = activeSlots.reduce(
@@ -647,134 +745,136 @@ function VisitAvailabilityTab() {
 
   return (
     <div className="visit-avail-redesign">
-      {/* TOOLBAR CONTROLS BAR */}
-      <div className="visit-avail-toolbar">
-        <div className="visit-avail-toolbar__left">
-          <div className="visit-avail-branch-picker" title="Select dormitory branch to configure availability">
-            <Building2 size={15} className="text-slate-600 dark:text-slate-300" />
-            <select
-              value={branch}
-              disabled={isBranchAdmin}
-              onChange={(event) => setBranch(event.target.value)}
-              aria-label="Select branch for availability rules"
-            >
-              {branchOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {isDirty && (
-            <div className="visit-avail-dirty-group">
-              <div className="visit-avail-dirty-badge" title="You have unsaved changes in your schedule settings">
-                <span className="visit-avail-dirty-dot" />
-                <span>Unsaved Changes</span>
-              </div>
-              <button
-                type="button"
-                className="visit-discard-btn"
-                onClick={discardChanges}
-                title="Discard unsaved changes and revert to last saved state"
-              >
-                <X size={13} />
-                <span>Discard</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="visit-avail-toolbar__actions">
-          <button
-            type="button"
-            className="res-action-btn res-action-btn--secondary"
-            onClick={() => setHistoryOpen(true)}
-            title="View audit logs & rule change history"
-          >
-            <History size={15} />
-            <span>History</span>
-          </button>
-
-          <button
-            type="button"
-            className="res-action-btn res-action-btn--secondary"
-            onClick={resetToDefault}
-            title="Reset form values to standard system defaults"
-          >
-            <RotateCcw size={15} />
-            <span>Reset</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={!isDirty || updateSettings.isPending || isSavingBlackout || isLoading}
-            className={`res-action-btn visit-avail-save-btn ${isDirty ? "visit-avail-save-btn--active" : "visit-avail-save-btn--clean"}`}
-            onClick={save}
-            title={
-              !isDirty
-                ? "No unsaved changes to save"
-                : updateSettings.isPending
-                  ? "Saving changes in progress..."
-                  : "Save operating schedule and blackout settings"
-            }
-          >
-            {updateSettings.isPending ? (
-              <RefreshCw size={15} className="animate-spin" />
-            ) : (
-              <Save size={15} />
-            )}
-            <span>{updateSettings.isPending ? "Saving..." : "Save Changes"}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* UNIFIED DAY-SELECTOR PANEL */}
+      {/* UNIFIED OPERATING SCHEDULE & CONTROLS PANEL */}
       <section className="visit-card visit-card--full">
         <div className="visit-card__header">
-          <div className="visit-card__header-icon">
-            <CalendarCheck size={18} />
-          </div>
-          <div className="visit-card__header-text">
-            <h3>Operating Schedule Configuration</h3>
-            <p>Set operating days, configure time slots and visitor caps, and manage per-day slot exceptions.</p>
-          </div>
-          <div className="visit-card__header-actions">
-            <div className="visit-cap-quick-set" title="Set uniform visitor capacity across all time slots">
-              <span className="visit-cap-label">Quick Cap:</span>
-              <div className="visit-cap-pills">
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(3)} title="Set 3 visitors per slot">3</button>
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(5)} title="Set 5 visitors per slot">5</button>
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(10)} title="Set 10 visitors per slot">10</button>
-              </div>
+          <div className="visit-card__header-main">
+            <div className="visit-card__header-icon">
+              <CalendarCheck size={18} />
             </div>
-            <div className="visit-header-divider" />
+            <div className="visit-card__header-text">
+              <div className="visit-card__title-row">
+                <h3>Operating Schedule Configuration</h3>
+                <BranchSelectDropdown
+                  value={branch}
+                  options={branchOptions}
+                  onChange={setBranch}
+                  disabled={isBranchAdmin}
+                />
+              </div>
+              <p>Set operating days, configure time slots and visitor caps, and manage per-day slot exceptions.</p>
+            </div>
+          </div>
+
+          <div className="visit-card__header-actions">
+            {isDirty && (
+              <div className="visit-avail-dirty-group">
+                <div className="visit-avail-dirty-badge" title="You have unsaved changes in your schedule settings">
+                  <span className="visit-avail-dirty-dot" />
+                  <span>Unsaved Changes</span>
+                </div>
+                <button
+                  type="button"
+                  className="visit-discard-btn"
+                  onClick={discardChanges}
+                  title="Discard unsaved changes and revert to last saved state"
+                >
+                  <X size={13} />
+                  <span>Discard</span>
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
-              className="visit-mini-btn"
-              onClick={() => {
-                const activeDay = selectedDay ?? draft.enabledWeekdays[0] ?? 1;
-                toggleAllSlotsForDay(activeDay, true);
-              }}
-              title="Enable all time slots for the selected day"
+              className="res-action-btn res-action-btn--secondary"
+              onClick={() => setHistoryOpen(true)}
+              title="View audit logs & rule change history"
             >
-              Enable All
+              <History size={15} />
+              <span>History</span>
             </button>
+
             <button
               type="button"
-              className="visit-mini-btn"
-              onClick={() => {
-                const activeDay = selectedDay ?? draft.enabledWeekdays[0] ?? 1;
-                toggleAllSlotsForDay(activeDay, false);
-              }}
-              title="Disable all time slots for the selected day"
+              className="res-action-btn res-action-btn--secondary"
+              onClick={resetToDefault}
+              title="Reset form values to standard system defaults"
             >
-              Disable All
+              <RotateCcw size={15} />
+              <span>Reset</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={!isDirty || updateSettings.isPending || isSavingBlackout || isLoading}
+              className={`res-action-btn visit-avail-save-btn ${isDirty ? "visit-avail-save-btn--active" : "visit-avail-save-btn--clean"}`}
+              onClick={save}
+              title={
+                !isDirty
+                  ? "No unsaved changes to save"
+                  : updateSettings.isPending
+                    ? "Saving changes in progress..."
+                    : "Save operating schedule and blackout settings"
+              }
+            >
+              {updateSettings.isPending ? (
+                <RefreshCw size={15} className="animate-spin" />
+              ) : (
+                <Save size={15} />
+              )}
+              <span>{updateSettings.isPending ? "Saving..." : "Save Changes"}</span>
             </button>
           </div>
         </div>
 
         <div className="visit-card__body">
+          {/* SUB-TOOLBAR: QUICK CAP & DAY SHORTCUTS */}
+          <div className="visit-schedule-subtoolbar">
+            <div className="visit-subtoolbar-left">
+              <div className="visit-cap-quick-set" title="Set uniform visitor capacity across all time slots">
+                <span className="visit-cap-label">Quick Cap:</span>
+                <div className="visit-cap-pills">
+                  <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(3)} title="Set 3 visitors per slot">3</button>
+                  <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(5)} title="Set 5 visitors per slot">5</button>
+                  <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(10)} title="Set 10 visitors per slot">10</button>
+                </div>
+              </div>
+
+              <div className="visit-header-divider" />
+
+              <div className="visit-subtoolbar-slot-actions">
+                <button
+                  type="button"
+                  className="visit-mini-btn"
+                  onClick={() => {
+                    const activeDay = selectedDay ?? draft.enabledWeekdays[0] ?? 1;
+                    toggleAllSlotsForDay(activeDay, true);
+                  }}
+                  title="Enable all time slots for the selected day"
+                >
+                  Enable All
+                </button>
+                <button
+                  type="button"
+                  className="visit-mini-btn"
+                  onClick={() => {
+                    const activeDay = selectedDay ?? draft.enabledWeekdays[0] ?? 1;
+                    toggleAllSlotsForDay(activeDay, false);
+                  }}
+                  title="Disable all time slots for the selected day"
+                >
+                  Disable All
+                </button>
+              </div>
+            </div>
+
+            <div className="visit-day-tab-presets">
+              <button type="button" className="visit-mini-btn" onClick={selectWeekdaysOnly} title="Set Monday to Friday as operating days">Mon – Fri</button>
+              <button type="button" className="visit-mini-btn" onClick={selectAllDays} title="Set all 7 days as operating days">All 7 Days</button>
+            </div>
+          </div>
+
           {/* DAY TABS ROW */}
           <div className="visit-day-tabs-container">
             <div className="visit-day-tabs">
@@ -822,10 +922,6 @@ function VisitAvailabilityTab() {
                   </div>
                 );
               })}
-            </div>
-            <div className="visit-day-tab-presets">
-              <button type="button" className="visit-mini-btn" onClick={selectWeekdaysOnly} title="Set Monday to Friday as operating days">Mon – Fri</button>
-              <button type="button" className="visit-mini-btn" onClick={selectAllDays} title="Set all 7 days as operating days">All 7 Days</button>
             </div>
           </div>
 

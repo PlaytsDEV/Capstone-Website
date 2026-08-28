@@ -107,17 +107,22 @@
 }
 
 /* ── Tier 2: Tabs Row (Full-width underneath Title) ── */
+.admin-page-header--with-tabs {
+  border-bottom: none;
+}
+
 .admin-page-header-tabs-row {
   width: 100%;
+  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .admin-page-header-tabs {
-  border-bottom: none;
-  min-height: 44px;
+  min-height: 38px;
   width: 100%;
 }
 
-/* When header has tabs, reduce top row bottom padding for optimal spacing */
+/* When header has tabs, optimize top row bottom padding */
 .admin-page-header--with-tabs .admin-page-header-top {
   padding-bottom: 0.5rem;
 }

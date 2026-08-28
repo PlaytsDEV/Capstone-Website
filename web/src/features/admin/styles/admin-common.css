@@ -275,9 +275,9 @@
 }
 
 .admin-tab.active {
-  color: var(--primary, #d4af37);
-  border-bottom-color: var(--primary, #d4af37);
-  font-weight: 500;
+  color: var(--foreground, #0f172a);
+  border-bottom-color: var(--foreground, #0f172a);
+  font-weight: 700;
 }
 
 /* Badge */

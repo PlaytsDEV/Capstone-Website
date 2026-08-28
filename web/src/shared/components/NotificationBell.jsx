@@ -46,6 +46,7 @@ function NotificationBellIcon({ type }) {
     case "reservation_confirmed":
     case "payment_verified":
     case "payment_approved":
+    case "payment_confirmed":
     case "visit_approved":
     case "account_reactivated":
     case "renewal_effective":

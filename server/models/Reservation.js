@@ -1199,10 +1199,10 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
-    // "pending" | "approved" | "rejected"
+    // "pending" | "approved" | "rejected" | "dismissed_on_movein"
     cancellationStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected", "dismissed_on_movein"],
       default: null,
     },
     cancellationReviewedAt: {

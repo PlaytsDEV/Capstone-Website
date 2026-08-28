@@ -23,6 +23,7 @@ import {
   Plus,
   Printer,
   RefreshCcw,
+  ShieldCheck,
   Star,
   Trash2,
   UploadCloud,
@@ -757,6 +758,14 @@ function MaintenanceStageCardWindow({
             <p style={{ fontSize: "0.76rem", color: "var(--muted-foreground)", margin: "6px 0 0 0", lineHeight: 1.4 }}>
               Please inspect the completed repair in your room and submit your feedback/rating. This request will automatically finalize in <strong>7 days</strong> if no issues are reported.
             </p>
+            {getResolutionProofAttachments(request).length ? (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.76rem", color: "var(--foreground)" }}>
+                <ShieldCheck size={14} style={{ color: "#16A34A", flexShrink: 0 }} />
+                <span>
+                  <strong>{getResolutionProofAttachments(request).length}</strong> repair proof photo{getResolutionProofAttachments(request).length === 1 ? "" : "s"} attached below for your inspection.
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <div className="stage-actions-bar" style={{ marginTop: 0 }}>
@@ -968,6 +977,32 @@ const getTenantVisibleAttachments = (attachments = []) =>
   Array.isArray(attachments)
     ? attachments.filter((attachment) => !attachment?.isRemoved)
     : [];
+
+const getResolutionProofAttachments = (request) => {
+  if (!request) return [];
+  const proofObj = request.resolutionProof || request.resolution_proof;
+  const directProofAtts = Array.isArray(proofObj?.attachments)
+    ? proofObj.attachments
+    : Array.isArray(request.proofAttachments || request.proof_attachments)
+      ? (request.proofAttachments || request.proof_attachments)
+      : [];
+
+  const workLogAtts = (Array.isArray(request.workLog || request.work_log) ? (request.workLog || request.work_log) : [])
+    .flatMap((entry) => (Array.isArray(entry?.attachments) ? entry.attachments : []));
+
+  const combined = [...directProofAtts, ...workLogAtts];
+  const seen = new Set();
+  return combined.filter((att) => {
+    if (!att || att?.isRemoved) return false;
+    if (att?.removedScope === "tenant_only" || att?.removedScope === "request") return false;
+    if (att?.visibility === "admin_only") return false;
+    const uri = getMaintenanceAttachmentUri(att) || att.url || att.uri;
+    if (!uri) return false;
+    if (seen.has(uri)) return false;
+    seen.add(uri);
+    return true;
+  });
+};
 
 const getLatestTenantReply = (request) => {
   const conversation = Array.isArray(request?.conversation) ? request.conversation : [];
@@ -2734,7 +2769,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   type="button"
                   className="btn btn-secondary"
                   onClick={handleRequestModalClose}
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  disabled={createMutation.isPending || updateMutation.isPending || pendingSubmitConfirmation}
                   style={{ padding: "5px 14px", fontSize: 12, minHeight: 30, borderRadius: 8 }}
                 >
                   Cancel
@@ -2746,22 +2781,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     uploadingAttachment ||
                     createMutation.isPending ||
                     updateMutation.isPending ||
+                    pendingSubmitConfirmation ||
                     descriptionTooShort ||
                     descriptionLength === 0 ||
                     !hasRequiredAttachment
                   }
                   style={{ padding: "5px 14px", fontSize: 12, minHeight: 30, borderRadius: 8, display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
-                  {createMutation.isPending || updateMutation.isPending ? (
-                    <LoaderCircle size={14} className="admin-announcements-spin" />
-                  ) : null}
-                  {createMutation.isPending || updateMutation.isPending
-                    ? isEditing
-                      ? "Saving Changes..."
-                      : "Submitting..."
-                    : isEditing
-                    ? "Save Changes"
-                    : "Submit Request"}
+                  {isEditing ? "Save Changes" : "Submit Request"}
                 </button>
               </div>
             </form>
@@ -2945,7 +2972,80 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         onViewReport={() => setViewingReportRequest(selectedRequest)}
                       />
 
-                      {/* 2. Reported Issue & Evidence */}
+                      {/* 2. Work Completion Proof & Resolution Evidence */}
+                      {getResolutionProofAttachments(selectedRequest).length > 0 ||
+                      (["resolved", "completed", "closed"].includes(selectedRequest.status) &&
+                        (selectedRequest.resolutionProof?.note || selectedRequest.resolution_note)) ? (
+                        <section className="maintenance-detail-section" style={{ marginTop: 16 }}>
+                          <div className="detail-section-header">
+                            <ShieldCheck size={16} style={{ color: "#16A34A" }} />
+                            <h3>Work Completion Proof &amp; Resolution Evidence</h3>
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                fontSize: "0.72rem",
+                                fontWeight: 600,
+                                color: "#16A34A",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                padding: "2px 8px",
+                                borderRadius: 9999,
+                                border: "1px solid var(--border)",
+                                background: "transparent",
+                              }}
+                            >
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16A34A", display: "inline-block" }} />
+                              <span>Repairs Concluded</span>
+                            </span>
+                          </div>
+
+                          {selectedRequest.resolutionProof?.note || selectedRequest.resolution_note ? (
+                            <div className="maintenance-description-card" style={{ marginBottom: 12 }}>
+                              <p>{selectedRequest.resolutionProof?.note || selectedRequest.resolution_note}</p>
+                              {selectedRequest.resolutionProof?.resolvedAt || selectedRequest.resolved_at ? (
+                                <span style={{ display: "block", marginTop: 6, fontSize: "0.74rem", color: "var(--muted-foreground)" }}>
+                                  Resolved on {fmtDateTime(selectedRequest.resolutionProof?.resolvedAt || selectedRequest.resolved_at)}
+                                  {selectedRequest.resolutionProof?.resolvedByName ? ` by ${selectedRequest.resolutionProof.resolvedByName}` : ""}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {getResolutionProofAttachments(selectedRequest).length ? (
+                            <div style={{ marginTop: 10 }}>
+                              <span
+                                style={{
+                                  fontSize: "0.78rem",
+                                  fontWeight: 700,
+                                  color: "var(--muted-foreground)",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.03em",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <Paperclip size={13} />
+                                <span>Resolution Photos &amp; Proof Files ({getResolutionProofAttachments(selectedRequest).length})</span>
+                              </span>
+                              <div className="maintenance-attachments-grid">
+                                {getResolutionProofAttachments(selectedRequest).map((attachment, index) => (
+                                  <AttachmentLink
+                                    key={`res-proof-${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                                    attachment={attachment}
+                                    index={index}
+                                    onPreview={setPreviewAttachment}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </section>
+                      ) : null}
+
+                      {/* 3. Reported Issue & Evidence */}
                       <section className="maintenance-detail-section" style={{ marginTop: 16 }}>
                         <div className="detail-section-header">
                           <ClipboardList size={16} />

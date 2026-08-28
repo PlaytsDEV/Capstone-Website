@@ -147,13 +147,13 @@ export const buildPaymentApprovedEmail = ({
   BRANCH_NAME,
 }) =>
   renderLilycrestEmail({
-    title: "Payment Approved - Lilycrest Dormitory",
+    title: "Payment Confirmed - Lilycrest Dormitory",
     branchName: BRANCH_NAME,
-    heading: "Payment Approved",
+    heading: "Payment Confirmed",
     body:
       p(`Hi <strong>${escapeHtml(TENANT_NAME)}</strong>,`) +
-      badge("Payment verified", "success") +
-      p(`Your payment of <strong>${escapeHtml(amount(PAID_AMOUNT))}</strong> for <strong>${escapeHtml(BILLING_MONTH)}</strong> has been verified.`) +
+      badge("Payment Confirmed", "success") +
+      p(`Your payment of <strong>${escapeHtml(amount(PAID_AMOUNT))}</strong> for <strong>${escapeHtml(BILLING_MONTH)}</strong> has been received and confirmed.`) +
       button("View Billing", billingUrl()) +
       p("Thank you for your payment.", { margin: "0" }),
   });

@@ -76,7 +76,7 @@ function matchesFilter(notification, filter) {
 			notification.title?.toLowerCase().includes("visit");
 	}
 	if (filter === "payment") {
-		return notification.type === "payment_approved" || notification.type === "payment_rejected";
+		return notification.type === "payment_approved" || notification.type === "payment_confirmed" || notification.type === "payment_rejected";
 	}
 	if (filter === "billing") {
 		return ["bill_generated", "bill_due_reminder", "penalty_applied",
@@ -126,7 +126,8 @@ const TYPE_CONFIG = {
 	visit_requested: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Scheduled" },
 	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
 	visit_rejected: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
-	payment_approved: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
+	payment_approved: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
+	payment_confirmed: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
 	payment_rejected: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
 	bill_generated: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Bill Issued" },
 	bill_due_reminder: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Due Soon" },

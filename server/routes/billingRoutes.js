@@ -209,6 +209,18 @@ router.post(
 );
 
 /**
+ * POST /api/billing/rent/generate-batch
+ * Generate batch monthly rent bills for selected reservations (Admin only)
+ */
+router.post(
+  "/rent/generate-batch",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.generateBatchRentBills,
+);
+
+/**
  * POST /api/billing/rent/generate-all
  * Generate all ready monthly rent bills for a branch + billing month (Admin only)
  */

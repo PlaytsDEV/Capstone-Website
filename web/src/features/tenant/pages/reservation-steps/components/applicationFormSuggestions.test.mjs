@@ -125,12 +125,12 @@ test("CSS rules suppress native datalist dropdown arrows across global and reser
 
   assert.match(
     globalCss,
-    /input::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
+    /input(\[list\])?::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
     "Global index.css must suppress native calendar/datalist picker indicator",
   );
   assert.match(
     reservationCss,
-    /\.form-input::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
+    /\.form-input(\[list\])?::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
     "Reservation flow CSS must explicitly suppress native calendar/datalist picker indicator",
   );
 });

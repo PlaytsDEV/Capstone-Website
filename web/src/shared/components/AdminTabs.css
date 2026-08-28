@@ -1,21 +1,29 @@
 /* =============================================================================
-   ADMIN TABS - Unified Underline Navigation Tab Standard (Lilycrest DMS)
+   ADMIN TABS - Inset Segmented Pill Design System (Lilycrest DMS Standard)
    Solid HSL tokens, high-contrast, zero-gradient design system
    ============================================================================= */
 
 .admin-tabs-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
-  border-bottom: 1px solid var(--border, #e2e8f0);
-  min-height: 42px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+  min-height: 38px;
   position: relative;
   overflow: visible;
+  width: 100%;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tabs-bar {
+  background: transparent;
+  border-bottom-color: var(--border, #334155);
 }
 
 .admin-tabs-scroll-area {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -32,7 +40,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 8px 16px 10px;
   font-size: var(--font-size-sm, 13px);
   font-weight: 600;
   color: var(--muted-foreground, #64748b);
@@ -40,6 +48,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  border-radius: 0;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -49,8 +58,16 @@
     border-color var(--duration-fast, 150ms) var(--ease-out, ease-out);
 }
 
-.admin-tab-btn:hover:not(:disabled) {
+.admin-tab-btn:hover:not(:disabled):not(.admin-tab-btn--active) {
   color: var(--foreground, #0f172a);
+  border-bottom-color: var(--border, #cbd5e1);
+  background: transparent;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-btn:hover:not(:disabled):not(.admin-tab-btn--active) {
+  background: transparent;
+  color: #f8fafc;
+  border-bottom-color: var(--border, #475569);
 }
 
 .admin-tab-btn:focus-visible {
@@ -59,20 +76,39 @@
   border-radius: 4px 4px 0 0;
 }
 
-.admin-tab-btn--active {
-  color: var(--foreground, #0f172a);
-  border-bottom: 2px solid var(--foreground, #0f172a);
-  font-weight: 800;
+:is(.dark, [data-theme="dark"]) .admin-tab-btn:focus-visible {
+  outline-color: var(--foreground, #f8fafc);
 }
 
-.admin-tab-btn--disabled {
-  opacity: 0.5;
+.admin-tab-btn--active {
+  background: transparent;
+  color: var(--foreground, #0f172a);
+  border-bottom: 2px solid var(--foreground, #0f172a);
+  font-weight: 700;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-btn--active {
+  background: transparent;
+  color: #f8fafc;
+  border-bottom-color: #f8fafc;
+  box-shadow: none;
+}
+
+.admin-tab-btn--disabled,
+.admin-tab-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .admin-tab-icon {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
@@ -80,26 +116,41 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 7px;
+  padding: 1px 6px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
-  line-height: 1;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .admin-tab-badge--warning {
   background: var(--warning-light, #fef3c7);
-  color: var(--warning-dark, #b45309);
+  color: var(--warning-dark, #92400e);
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-badge--warning {
+  background: var(--warning-light, #78350f);
+  color: var(--warning-dark, #fde68a);
 }
 
 .admin-tab-badge--danger {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--danger-light, #fee2e2);
+  color: var(--danger-dark, #991b1b);
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-badge--danger {
+  background: var(--danger-light, #7f1d1d);
+  color: var(--danger-dark, #fca5a5);
 }
 
 .admin-tab-badge--info {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--info-light, #dbeafe);
+  color: var(--info-dark, #1e40af);
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-badge--info {
+  background: var(--info-light, #1e3a8a);
+  color: var(--info-dark, #93c5fd);
 }
 
 .admin-tab-badge--success {
@@ -107,12 +158,25 @@
   color: var(--success-dark, #166534);
 }
 
-.admin-tab-badge--default {
-  background: var(--muted, #f1f5f9);
-  color: var(--muted-foreground, #475569);
+:is(.dark, [data-theme="dark"]) .admin-tab-badge--success {
+  background: var(--success-light, #14532d);
+  color: var(--success-dark, #86efac);
 }
 
-/* More Dropdown */
+.admin-tab-badge--default {
+  background: var(--muted, #f1f5f9);
+  color: var(--muted-foreground, #64748b);
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tab-badge--default {
+  background: var(--muted, #334155);
+  color: var(--muted-foreground, #94a3b8);
+}
+
+/* =============================================================================
+   More Dropdown Standard
+   ============================================================================= */
+
 .admin-tabs-more-wrapper {
   position: relative;
   display: inline-flex;
@@ -138,18 +202,24 @@
 
 .admin-tabs-more-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 50;
   min-width: 190px;
   background: var(--bg-card, #ffffff);
   border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1));
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tabs-more-menu {
+  background: var(--bg-card, #1e293b);
+  border-color: var(--border, #334155);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
 }
 
 .admin-tabs-more-item {
@@ -157,25 +227,39 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
   background: transparent;
   font-size: var(--font-size-sm, 13px);
   font-weight: 500;
   color: var(--text-primary, #0f172a);
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--duration-fast, 150ms) ease;
+  transition:
+    background-color var(--duration-fast, 150ms) ease,
+    color var(--duration-fast, 150ms) ease;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tabs-more-item {
+  color: var(--foreground, #f8fafc);
 }
 
 .admin-tabs-more-item:hover:not(:disabled) {
-  background: var(--bg-hover, #f8fafc);
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tabs-more-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .admin-tabs-more-item:focus-visible {
   outline: 2px solid var(--foreground, #0f172a);
-  outline-offset: -2px;
+  outline-offset: -1px;
+}
+
+:is(.dark, [data-theme="dark"]) .admin-tabs-more-item:focus-visible {
+  outline-color: var(--foreground, #f8fafc);
 }
 
 .admin-tabs-more-item--active {
@@ -184,7 +268,12 @@
   color: var(--foreground, #0f172a);
 }
 
+:is(.dark, [data-theme="dark"]) .admin-tabs-more-item--active {
+  background: var(--muted, #334155);
+  color: var(--foreground, #f8fafc);
+}
+
 .admin-tabs-more-item:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
