@@ -71,70 +71,78 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
     ]);
   });
 
-  test("Room/Bed/Stay/BedHistory/Reservation all remain unchanged when the cutover throws", async () => {
+  // Seed a moved-in tenant + a pre-prepared "generated" replacement Draft
+  // for the given source/destination room types (so Stage A reuses the
+  // Draft and no PDF generation is needed here).
+  async function seedForRollback({ sourceType, destType, sourceBed, destBed }) {
     const tenant = await User.create({
       firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
       email: `tenant-${new mongoose.Types.ObjectId()}@example.test`,
       username: `tenant_${new mongoose.Types.ObjectId().toString().slice(-10)}`,
       firstName: "Test", lastName: "Tenant", role: "tenant", tenantStatus: "active",
     });
-    // Same room type both sides — a transfer, not a room-type change.
+    const needsBed = (t) => t === "double-sharing" || t === "quadruple-sharing";
+    const cap = { private: 1, "double-sharing": 2, "quadruple-sharing": 4 };
+
     const roomA = await Room.create({
       name: "Room 301", roomNumber: "301", branch: "gil-puyat",
-      type: "double-sharing", capacity: 2, currentOccupancy: 1, price: 5400,
-      beds: [
-        { id: "bed-a1", position: "lower", status: "occupied", occupiedBy: { userId: tenant._id, reservationId: null } },
-        { id: "bed-a2", position: "upper", status: "available" },
-      ],
+      type: sourceType, capacity: cap[sourceType], currentOccupancy: 1, price: 6300,
+      beds: needsBed(sourceType)
+        ? [{ id: sourceBed, position: "lower", status: "occupied", occupiedBy: { userId: tenant._id, reservationId: null } }]
+        : [],
     });
     const roomB = await Room.create({
       name: "Room 305", roomNumber: "305", branch: "gil-puyat",
-      type: "double-sharing", capacity: 2, currentOccupancy: 0, price: 6300,
-      beds: [
-        { id: "bed-b1", position: "lower", status: "available" },
-        { id: "bed-b2", position: "upper", status: "available" },
-      ],
+      type: destType, capacity: cap[destType], currentOccupancy: 0, price: 14400,
+      beds: needsBed(destType) ? [{ id: destBed, position: "lower", status: "available" }] : [],
     });
+
+    const srcStayBedId = needsBed(sourceType) ? sourceBed : `room-${roomA._id}`;
     const reservation = await Reservation.create({
       userId: tenant._id, roomId: roomA._id, status: "moveIn", leaseDuration: 6,
-      reservationFeeAmount: 2000, preferredRoomType: "double-sharing",
-      agreedToPrivacy: true, agreedToCertification: true, totalPrice: 5400,
-      selectedBed: { id: "bed-a1" }, moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+      reservationFeeAmount: 2000, preferredRoomType: sourceType,
+      agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
+      selectedBed: { id: needsBed(sourceType) ? sourceBed : "" },
+      moveInDate: new Date("2026-08-01T00:00:00.000Z"),
     });
-    roomA.beds[0].occupiedBy.reservationId = reservation._id;
-    await roomA.save();
+    if (needsBed(sourceType)) {
+      roomA.beds[0].occupiedBy.reservationId = reservation._id;
+      await roomA.save();
+    }
     const stay = await Stay.create({
       tenantId: tenant._id, reservationId: reservation._id, branch: roomA.branch,
-      roomId: roomA._id, bedId: "bed-a1",
+      roomId: roomA._id, bedId: srcStayBedId,
       leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
-      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), monthlyRent: 5400, status: "active",
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), monthlyRent: 6300, status: "active",
     });
-    const bedHistory = await BedHistory.create({
-      bedId: "bed-a1", roomId: roomA._id, tenantId: tenant._id, reservationId: reservation._id,
-      stayId: stay._id, branch: roomA.branch, moveInDate: new Date("2026-08-01T00:00:00.000Z"), status: "active",
-    });
+    let bedHistory = null;
+    if (needsBed(sourceType)) {
+      bedHistory = await BedHistory.create({
+        bedId: sourceBed, roomId: roomA._id, tenantId: tenant._id, reservationId: reservation._id,
+        stayId: stay._id, branch: roomA.branch, moveInDate: new Date("2026-08-01T00:00:00.000Z"), status: "active",
+      });
+    }
     const actorId = new mongoose.Types.ObjectId();
     const numberA = await generateContractNumber(roomA.branch, new Date());
     const predecessor = await Contract.create({
       ...numberA, contractPurpose: "initial", tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomA._id, branch: roomA.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomA.roomNumber,
-      roomType: "double-sharing", leaseType: "long_term", approvedMonthlyRate: 5400,
+      roomType: sourceType, leaseType: "long_term", approvedMonthlyRate: 6300,
       leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
       leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
       status: "active", isCurrent: true,
       statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
       createdBy: actorId, updatedBy: actorId,
     });
-    // Pre-seed the replacement Contract as an already-prepared generated
-    // Draft so Stage A reuses it (no PDF generation needed in this test).
     const numberB = await generateContractNumber(roomB.branch, new Date());
     const successor = await Contract.create({
       ...numberB, contractPurpose: "replacement", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
-      roomType: "double-sharing", leaseType: "long_term", approvedMonthlyRate: 6300,
+      roomType: destType, leaseType: "long_term", approvedMonthlyRate: 14400,
+      bedId: needsBed(destType) ? destBed : "",
       leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),
       leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
       status: "generated", isCurrent: false, tenantVisible: true,
@@ -142,9 +150,16 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
       createdBy: actorId, updatedBy: actorId,
     });
 
+    return { tenant, roomA, roomB, reservation, stay, bedHistory, predecessor, successor, actorId, srcStayBedId };
+  }
+
+  test("cross-type Double -> Private: cutover failure rolls back every physical mutation", async () => {
+    const { roomA, roomB, reservation, stay, bedHistory, predecessor, successor, actorId } =
+      await seedForRollback({ sourceType: "double-sharing", destType: "private", sourceBed: "bed-a1" });
+
     await expect(transferStayWorkflow({
       reservationId: reservation._id,
-      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
+      payload: { confirm: true, targetRoomId: roomB._id, effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
       actorId,
     })).rejects.toMatchObject({ code: "FORCED_TEST_FAILURE" });
 
@@ -162,17 +177,48 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
       BedHistory.find({ stayId: stay._id, status: "active" }),
     ]);
 
-    // Physical state fully rolled back.
     expect(String(reloadedStay.roomId)).toBe(String(roomA._id));
     expect(reloadedStay.bedId).toBe("bed-a1");
     expect(reloadedRoomA.beds.find((b) => b.id === "bed-a1").status).toBe("occupied");
-    expect(reloadedRoomB.beds.find((b) => b.id === "bed-b1").status).toBe("available");
+    expect(reloadedRoomA.currentOccupancy).toBe(1);
+    expect(reloadedRoomB.currentOccupancy).toBe(0);
     expect(String(reloadedReservation.roomId)).toBe(String(roomA._id));
     expect(reloadedBedHistory.status).toBe("active");
     expect(activeBedHistories).toHaveLength(1);
     expect(settlementBills).toHaveLength(0);
+    expect(reloadedPredecessor.status).toBe("active");
+    expect(reloadedPredecessor.isCurrent).toBe(true);
+    expect(reloadedSuccessor.status).toBe("generated");
+    expect(reloadedSuccessor.isCurrent).toBe(false);
+  });
 
-    // Contracts: predecessor still active/current, successor Draft untouched.
+  test("cross-type Private -> Double: cutover failure rolls back every physical mutation", async () => {
+    const { roomA, roomB, reservation, stay, predecessor, successor, actorId, srcStayBedId } =
+      await seedForRollback({ sourceType: "private", destType: "double-sharing", destBed: "bed-b1" });
+
+    await expect(transferStayWorkflow({
+      reservationId: reservation._id,
+      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
+      actorId,
+    })).rejects.toMatchObject({ code: "FORCED_TEST_FAILURE" });
+
+    const [reloadedStay, reloadedRoomA, reloadedRoomB, reloadedReservation, reloadedPredecessor, reloadedSuccessor, settlementBills] = await Promise.all([
+      Stay.findById(stay._id),
+      Room.findById(roomA._id),
+      Room.findById(roomB._id),
+      Reservation.findById(reservation._id),
+      Contract.findById(predecessor._id),
+      Contract.findById(successor._id),
+      Bill.find({ reservationId: reservation._id, billType: "transfer_settlement" }),
+    ]);
+
+    expect(String(reloadedStay.roomId)).toBe(String(roomA._id));
+    expect(reloadedStay.bedId).toBe(srcStayBedId); // private sentinel, unchanged
+    expect(reloadedRoomA.currentOccupancy).toBe(1);
+    expect(reloadedRoomB.beds.find((b) => b.id === "bed-b1").status).toBe("available");
+    expect(reloadedRoomB.currentOccupancy).toBe(0);
+    expect(String(reloadedReservation.roomId)).toBe(String(roomA._id));
+    expect(settlementBills).toHaveLength(0);
     expect(reloadedPredecessor.status).toBe("active");
     expect(reloadedPredecessor.isCurrent).toBe(true);
     expect(reloadedSuccessor.status).toBe("generated");

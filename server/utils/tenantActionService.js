@@ -475,11 +475,15 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
   return result;
 }
 
-// Room types that require a specific bed assignment. Mirrors the shared-room
-// business rule used at reservation/move-in: a private room has no bed to
-// pick, a double/quadruple-sharing room does. Derived from the DESTINATION
-// Room.type — never a stale preferredRoomType.
+// Canonical bed-required room types (same set the reservation/move-in flow
+// uses): a private room has no bed to pick, a double/quadruple-sharing room
+// does. Applied INDEPENDENTLY to the source room (does a bed get released?)
+// and the destination room (is a bed required/occupied?) — a room transfer
+// may cross room types, so the two sides can differ. Always read from the
+// live Room.type of the actual source/destination room, never a stale
+// reservation preferredRoomType.
 const BED_REQUIRED_ROOM_TYPES = new Set(["double-sharing", "quadruple-sharing"]);
+const roomTypeRequiresBed = (roomType) => BED_REQUIRED_ROOM_TYPES.has(String(roomType || ""));
 
 /**
  * Prepare the room-transfer replacement Contract as a tenant-visible Draft,
@@ -584,32 +588,24 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
   if (String(prepTargetRoom.branch) !== String(prepReservation.roomId?.branch || "")) {
     throw Object.assign(new Error("Transfers are limited to rooms within the same branch."), { statusCode: 400, code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED" });
   }
-  // Same-room-type only — matches the admin UI. A room-type change is a
-  // different lease (contract termination + new booking), not a transfer.
-  const prepSourceType = prepReservation.roomId?.type || "";
-  if (prepSourceType && prepTargetRoom.type && prepSourceType !== prepTargetRoom.type) {
-    throw Object.assign(
-      new Error(
-        `Room transfers must stay within the same room type (${prepSourceType.replace(/-/g, " ")}). ` +
-        "Moving to a different room type requires a contract termination and a new lease booking.",
-      ),
-      { statusCode: 409, code: "CROSS_TYPE_TRANSFER_NOT_ALLOWED" },
-    );
-  }
-  // Bed requirement is driven by the DESTINATION room type.
-  const prepBedRequired = BED_REQUIRED_ROOM_TYPES.has(prepTargetRoom.type);
-  if (prepBedRequired && !payload.targetBedId) {
+  // A room transfer MAY change room type (Private <-> Double <-> Quadruple).
+  // The destination Contract, pricing, template and bed handling below all
+  // key off the DESTINATION Room.type; nothing here blocks a type change.
+  // Bed requirement is driven independently by the destination room type; a
+  // bed id supplied for a private destination is IGNORED, never rejected.
+  const prepDestinationNeedsBed = roomTypeRequiresBed(prepTargetRoom.type);
+  if (prepDestinationNeedsBed && !payload.targetBedId) {
     throw Object.assign(
       new Error("A specific bed must be selected for a shared room."),
       { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" },
     );
   }
-  const prepTargetBed = payload.targetBedId
+  const prepTargetBed = prepDestinationNeedsBed
     ? prepTargetRoom.beds.find(
         (bed) => String(bed.id) === String(payload.targetBedId) || String(bed._id) === String(payload.targetBedId),
       )
     : null;
-  if (payload.targetBedId && !prepTargetBed) {
+  if (prepDestinationNeedsBed && !prepTargetBed) {
     throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
   }
 
@@ -721,20 +717,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       if (String(targetRoom.branch) !== String(reservation.roomId?.branch || "")) {
         throw Object.assign(new Error("Transfers are limited to rooms within the same branch."), { statusCode: 400, code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED" });
       }
-      // Same-room-type only (re-checked inside the transaction; Stage A
-      // already rejected a cross-type request before preparing anything).
-      const sourceRoomType = reservation.roomId?.type || "";
-      if (sourceRoomType && targetRoom.type && sourceRoomType !== targetRoom.type) {
-        throw Object.assign(
-          new Error("Room transfers must stay within the same room type."),
-          { statusCode: 409, code: "CROSS_TYPE_TRANSFER_NOT_ALLOWED" },
-        );
+      // A room transfer MAY cross room types — nothing here blocks a
+      // Private<->Double<->Quadruple change. Bed handling is decided
+      // independently for the source and the destination from their own
+      // live Room.type.
+      const currentRoom = await Room.findById(activeStay.roomId).session(session);
+      if (!currentRoom) {
+        throw Object.assign(new Error("Current room not found."), { statusCode: 404, code: "CURRENT_ROOM_NOT_FOUND" });
       }
+      const sourceNeedsBed = roomTypeRequiresBed(currentRoom.type);
+      const destinationNeedsBed = roomTypeRequiresBed(targetRoom.type);
 
-      // Bed requirement is driven by the DESTINATION room type: a shared
-      // room needs a specific bed, a private room does not.
-      const bedRequired = BED_REQUIRED_ROOM_TYPES.has(targetRoom.type);
-      if (bedRequired && !payload.targetBedId) {
+      if (destinationNeedsBed && !payload.targetBedId) {
         throw Object.assign(new Error("A specific bed must be selected for a shared room."), { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" });
       }
       if (
@@ -744,13 +738,29 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Transfer target must differ from the current room and bed."), { statusCode: 400, code: "SAME_TRANSFER_TARGET" });
       }
 
-      const targetBed = payload.targetBedId
+      // Resolve the destination bed only when the destination room needs one.
+      // A bed id supplied for a private destination is ignored, never
+      // occupied. A bed must belong to the destination room and be available.
+      const targetBed = destinationNeedsBed
         ? targetRoom.beds.find(
             (bed) => String(bed.id) === String(payload.targetBedId) || String(bed._id) === String(payload.targetBedId),
           )
         : null;
-      if (bedRequired && (!targetBed || targetBed.status !== "available")) {
+      if (destinationNeedsBed && !targetBed) {
+        throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
+      }
+      if (destinationNeedsBed && targetBed.status !== "available") {
         throw Object.assign(new Error("Selected target bed is not available."), { statusCode: 409, code: "BED_NOT_AVAILABLE" });
+      }
+      // Destination room capacity guard — only when actually changing rooms
+      // (a same-room bed reshuffle does not add an occupant). Independent of
+      // bed-level status, so it also covers a private destination.
+      const changingRooms = String(activeStay.roomId) !== String(targetRoom._id);
+      if (
+        changingRooms &&
+        Number(targetRoom.currentOccupancy || 0) >= Number(targetRoom.capacity || 0)
+      ) {
+        throw Object.assign(new Error("The destination room is full."), { statusCode: 409, code: "DESTINATION_ROOM_FULL" });
       }
 
       // ── Contract cutover readiness — the replacement Contract Draft was
@@ -789,20 +799,23 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         );
       }
 
-      const currentRoom = await Room.findById(activeStay.roomId).session(session);
-      if (!currentRoom) {
-        throw Object.assign(new Error("Current room not found."), { statusCode: 404, code: "CURRENT_ROOM_NOT_FOUND" });
-      }
-      // Vacate current bed immediately — bed is available for the next tenant.
-      // A private source room has no per-bed record; occupancy still decrements.
-      if (activeStay.bedId) currentRoom.vacateBed(activeStay.bedId);
+      // ── Source room: release the bed only if the SOURCE room type has
+      // per-bed assignment. Private source rooms have no bed to release;
+      // occupancy still decrements. `activeStay.bedId` may be "" for a
+      // tenant already in a private room.
+      if (sourceNeedsBed && activeStay.bedId) currentRoom.vacateBed(activeStay.bedId);
       currentRoom.currentOccupancy = Math.max(0, Number(currentRoom.currentOccupancy || 0) - 1);
       currentRoom.updateAvailability();
       await currentRoom.save({ session });
 
-      // Occupy the destination bed only for a shared room; a private
-      // destination has no bed to occupy, just the occupancy count.
-      const targetBedIdentifier = targetBed ? (targetBed.id || String(targetBed._id)) : null;
+      // ── Destination room: occupy the bed only if the DESTINATION room
+      // type has per-bed assignment. A private destination has no bed to
+      // occupy — just the occupancy count. (targetBed is null unless
+      // destinationNeedsBed, so this also covers a stale bed id sent for a
+      // private destination: ignored.)
+      const targetBedIdentifier = destinationNeedsBed && targetBed
+        ? (targetBed.id || String(targetBed._id))
+        : null;
       if (targetBedIdentifier) {
         targetRoom.occupyBed(targetBedIdentifier, reservation.userId?._id || reservation.userId, reservation._id);
       }
@@ -1134,14 +1147,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         await activeHistory.save({ session });
       }
 
-      // For a private destination there is no per-bed record; BedHistory.bedId
-      // is required, so store a stable room-scoped sentinel. The close-out
-      // lookup below is by reservation/tenant/status, never bed-scoped.
-      const bedHistoryBedId = targetBedIdentifier || `room-${targetRoom._id}`;
+      // A private destination has no per-bed record. BedHistory.bedId and
+      // Stay.bedId are both required String fields (Mongoose rejects ""), so
+      // use one stable room-scoped sentinel for both — the canonical
+      // private-room bed representation for this flow. All close-out /
+      // resolution lookups here are by reservation/tenant/room/status, never
+      // bed-scoped, so the sentinel is inert.
+      const privateBedSentinel = `room-${targetRoom._id}`;
+      const stayBedId = targetBedIdentifier || privateBedSentinel;
       await BedHistory.create(
         [
           {
-            bedId: bedHistoryBedId,
+            bedId: stayBedId,
             roomId: targetRoom._id,
             branch: targetRoom.branch,
             tenantId: reservation.userId?._id || reservation.userId,
@@ -1160,14 +1177,16 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       );
 
       activeStay.roomId = targetRoom._id;
-      // Private room: no bed identity (matches contractService's private
-      // convention of an empty bedId).
-      activeStay.bedId = targetBedIdentifier || "";
+      // Shared destination -> the real bed id; private destination -> the
+      // room-scoped sentinel (Stay.bedId is a required String).
+      activeStay.bedId = stayBedId;
       activeStay.transferNotes = payload.notes || payload.reason || "";
       activeStay.updatedBy = actorId;
       await activeStay.save({ session });
 
       reservation.roomId = targetRoom._id;
+      // Reservation.selectedBed.id follows the existing convention of "" for
+      // a private room (it is not a required field).
       reservation.selectedBed = {
         id: targetBedIdentifier || "",
         position: targetBed?.position || null,

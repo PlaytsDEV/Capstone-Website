@@ -759,24 +759,30 @@ export function TransferTenantModal({
     tenant?.roomType ||
     tenant?.roomId?.type ||
     "";
+  // A room transfer MAY cross room types — the only destination filter is
+  // "not the tenant's current room" and (implicitly, from the query) same
+  // branch. Room-type differences are allowed; the backend and the bed
+  // selector below adapt to the DESTINATION room type.
   const targetRooms = useMemo(
     () =>
       rooms.filter(
-        (r) =>
-          String(r._id || r.id) !== String(tenant?.roomId) &&
-          (!currentRoomType || (r.type || r.roomType) === currentRoomType),
+        (r) => String(r._id || r.id) !== String(tenant?.roomId),
       ),
-    [rooms, tenant?.roomId, currentRoomType],
+    [rooms, tenant?.roomId],
   );
   const selectedRoom = targetRooms.find(
     (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
   // Bed selection is required only for shared destination rooms — a private
-  // room has no bed to pick (matches the backend rule in transferStayWorkflow).
+  // room has no bed to pick (matches the backend rule in transferStayWorkflow,
+  // which keys off the DESTINATION Room.type, independent of the source).
   const selectedRoomType = selectedRoom?.type || selectedRoom?.roomType || "";
   const destinationNeedsBed =
     selectedRoomType === "double-sharing" || selectedRoomType === "quadruple-sharing";
+  const isCrossTypeTransfer =
+    !!selectedRoomType && !!currentRoomType && selectedRoomType !== currentRoomType;
+  const prettyRoomType = (t) => String(t || "").replace(/-/g, " ") || "—";
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
@@ -1030,7 +1036,9 @@ export function TransferTenantModal({
       {step === 1 && (
         <>
           <div className="twm-callout twm-callout--info">
-            Transfers are restricted to available same-branch rooms of the same room type{currentRoomType ? ` (${currentRoomType.replace(/-/g, " ")})` : ""}. To change room types, a contract termination and new lease booking is required.
+            Transfer to any available room in the same branch{currentRoomType ? ` (currently ${prettyRoomType(currentRoomType)})` : ""}. The
+            room type may change &mdash; a shared destination requires a bed, a private one does not, and the monthly rate follows the
+            destination room type.
           </div>
 
           {hasOutstanding && (
@@ -1118,6 +1126,20 @@ export function TransferTenantModal({
             )}
           </div>
 
+          {roomId && (
+            <div className="twm-callout twm-callout--info">
+              Destination:{" "}
+              <strong>{selectedRoom?.name || selectedRoom?.roomNumber || "—"}</strong>
+              {" · "}
+              <strong>{prettyRoomType(selectedRoomType)}</strong>
+              {isCrossTypeTransfer && (
+                <span> (was {prettyRoomType(currentRoomType)} — room type changes with this transfer)</span>
+              )}
+              {" · "}
+              {destinationNeedsBed ? "bed required" : "no bed (private room)"}
+            </div>
+          )}
+
           {roomId && priceDiff !== 0 && (
             <div className="twm-callout twm-callout--price">
               Monthly Rent Adjustment:{" "}
@@ -1125,6 +1147,11 @@ export function TransferTenantModal({
                 {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
               </strong>{" "}
               (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
+              {isCrossTypeTransfer && (
+                <span style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+                  Final rate is resolved server-side from the destination room type and lease term.
+                </span>
+              )}
             </div>
           )}
 
@@ -1240,7 +1267,19 @@ export function TransferTenantModal({
             </div>
             <div className="twm-review-field">
               <span className="twm-review-field__label">To</span>
-              <span className="twm-review-field__value">{selectedRoom?.name || selectedRoom?.roomNumber || "—"} • {selectedBedLabel}</span>
+              <span className="twm-review-field__value">
+                {selectedRoom?.name || selectedRoom?.roomNumber || "—"}
+                {destinationNeedsBed ? ` • ${selectedBedLabel}` : " • (private — no bed)"}
+              </span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Room Type</span>
+              <span className="twm-review-field__value">
+                {prettyRoomType(selectedRoomType)}
+                {isCrossTypeTransfer && (
+                  <span style={{ fontSize: 11, fontWeight: 400 }}> (changed from {prettyRoomType(currentRoomType)})</span>
+                )}
+              </span>
             </div>
             <div className="twm-review-field">
               <span className="twm-review-field__label">Effective Date</span>
@@ -1253,6 +1292,11 @@ export function TransferTenantModal({
                 {priceDiff !== 0 && (
                   <span style={{ fontSize: 11, fontWeight: 400, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
                     {" "}({priceDiff > 0 ? `+${fmtMoney(priceDiff)}` : `-${fmtMoney(Math.abs(priceDiff))}`})
+                  </span>
+                )}
+                {isCrossTypeTransfer && (
+                  <span style={{ display: "block", fontSize: 11, fontWeight: 400 }}>
+                    Final rate resolved server-side from the destination room type & lease term.
                   </span>
                 )}
               </span>

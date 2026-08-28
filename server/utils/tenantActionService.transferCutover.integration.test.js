@@ -230,25 +230,36 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
       .toBeCloseTo(5400, 2);
   });
 
-  test("rejects a cross-room-type transfer before preparing anything", async () => {
+  test("a cross-room-type transfer (Double -> Private) is allowed and completes", async () => {
+    // Room-type differences no longer block a transfer. Full cross-type
+    // matrix coverage lives in
+    // tenantActionService.transferCrossType.integration.test.js; this is a
+    // smoke check that the same-type-focused fixtures here don't accidentally
+    // depend on a same-type guard.
     const { roomA, reservation, predecessor, actorId } = await seedScenario();
     const privateRoom = await Room.create({
       name: "Room 101", roomNumber: "101", branch: "gil-puyat",
       type: "private", capacity: 1, currentOccupancy: 0, price: 14400,
-      beds: [{ id: "bed-p1", position: "single", status: "available" }],
+      beds: [],
     });
 
-    await expect(transferStayWorkflow({
+    const result = await transferStayWorkflow({
       reservationId: reservation._id,
       payload: { confirm: true, targetRoomId: privateRoom._id, effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
       actorId,
-    })).rejects.toMatchObject({ code: "CROSS_TYPE_TRANSFER_NOT_ALLOWED" });
+    });
 
-    // Nothing was prepared, predecessor untouched.
-    const successorCount = await Contract.countDocuments({ replacesContractId: predecessor._id });
-    expect(successorCount).toBe(0);
-    const reloadedRoomA = await Room.findById(roomA._id);
-    expect(reloadedRoomA.beds.find((b) => b.id === "bed-a1").status).toBe("occupied");
+    expect(result.contractCutover.successorStatus).toBe("generated");
+    const [successor, reloadedRoomA, reloadedStay] = await Promise.all([
+      Contract.findOne({ replacesContractId: predecessor._id, contractPurpose: "replacement" }),
+      Room.findById(roomA._id),
+      Stay.findOne({ reservationId: reservation._id, status: "active" }),
+    ]);
+    expect(successor.roomType).toBe("private");
+    expect(String(successor.roomId)).toBe(String(privateRoom._id));
+    expect(reloadedRoomA.beds.find((b) => b.id === "bed-b1")?.status).not.toBe("occupied");
+    expect(String(reloadedStay.roomId)).toBe(String(privateRoom._id));
+    expect(reloadedStay.bedId).toBe(`room-${privateRoom._id}`);
   });
 
   test("requires a target bed for a shared destination room", async () => {
