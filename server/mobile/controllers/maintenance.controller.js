@@ -1548,21 +1548,44 @@ async function confirmMaintenanceResolved(req, res) {
 
     const action = String(req.body?.action || '').trim().toLowerCase();
     const isExplicitReopen = req.body?.confirmed === false || action === 'reopen' || action === 'still_an_issue' || action === 'no';
+    const isExplicitConfirm = req.body?.confirmed === true || action === 'confirm' || action === 'resolved' || action === 'yes';
 
     if (isExplicitReopen) {
       return reopenMaintenance(req, res);
     }
 
+    if (!isExplicitConfirm) {
+      return res.status(400).json({
+        detail: 'Choose whether the maintenance issue is resolved or still needs work.',
+        code: 'RESOLUTION_CHOICE_REQUIRED',
+      });
+    }
+
+    if (located.request.resolutionConfirmation?.confirmedAt || located.request.tenant_confirmed_resolved === true) {
+      return res.status(409).json({
+        detail: 'A rating has already been submitted for this maintenance request.',
+        code: 'MAINTENANCE_RATING_ALREADY_SUBMITTED',
+      });
+    }
+
     if ((located.request.status || '').toLowerCase() !== 'resolved') {
-      return res.status(400).json({ detail: 'Only resolved requests can be confirmed.' });
+      return res.status(409).json({
+        detail: 'Only resolved maintenance requests can receive resolution confirmation.',
+        code: 'INVALID_CONFIRMATION_STATE',
+      });
     }
 
     const now = new Date();
     const feedback = typeof req.body?.feedback === 'string'
       ? req.body.feedback.trim()
       : (typeof req.body?.notes === 'string' ? req.body.notes.trim() : (typeof req.body?.note === 'string' ? req.body.note.trim() : null));
-    const rawRating = Number(req.body?.rating);
-    const rating = Number.isFinite(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating * 10) / 10 : null;
+    const rating = req.body?.rating;
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        detail: 'Rating must be an integer from 1 to 5.',
+        code: rating == null ? 'MAINTENANCE_RATING_REQUIRED' : 'INVALID_MAINTENANCE_RATING',
+      });
+    }
 
     const ratingNote = rating ? ` (${rating} / 5 stars)` : '';
     const statusHistory = Array.isArray(located.request.statusHistory)

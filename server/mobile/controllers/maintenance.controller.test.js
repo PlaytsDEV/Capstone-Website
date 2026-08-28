@@ -132,7 +132,7 @@ describe('maintenance.controller confirmMaintenanceResolved', () => {
   test('a resolved request can be confirmed and completed with tenant_confirmed_resolved=true', async () => {
     const requests = { r1: { request_id: 'r1', user_id: 't1', status: 'resolved', __collection: 'maintenance_requests' } };
     mockGetDb.mockReturnValue(makeDb({ requests }));
-    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' } };
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' }, body: { action: 'confirm', confirmed: true, rating: 5 } };
     const res = response();
     await confirmMaintenanceResolved(req, res);
     expect(res.statusCode).toBe(200);
@@ -143,10 +143,11 @@ describe('maintenance.controller confirmMaintenanceResolved', () => {
   test.each(['pending', 'viewed', 'in_progress', 'completed', 'cancelled', 'rejected'])('a %s request cannot be confirmed (only resolved can)', async (status) => {
     const requests = { r1: { request_id: 'r1', user_id: 't1', status, __collection: 'maintenance_requests' } };
     mockGetDb.mockReturnValue(makeDb({ requests }));
-    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' } };
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' }, body: { action: 'confirm', confirmed: true, rating: 5 } };
     const res = response();
     await confirmMaintenanceResolved(req, res);
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('INVALID_CONFIRMATION_STATE');
   });
 
   test('a tenant cannot confirm another tenant\'s request', async () => {
@@ -164,5 +165,49 @@ describe('maintenance.controller confirmMaintenanceResolved', () => {
     const res = response();
     await confirmMaintenanceResolved(req, res);
     expect(res.statusCode).toBe(404);
+  });
+
+  test.each([1, 2, 3, 4, 5])('accepts integer rating %i', async (rating) => {
+    const requests = { r1: { request_id: 'r1', user_id: 't1', status: 'resolved', __collection: 'maintenance_requests' } };
+    mockGetDb.mockReturnValue(makeDb({ requests }));
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' }, body: { action: 'confirm', confirmed: true, rating } };
+    const res = response();
+
+    await confirmMaintenanceResolved(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.resolutionConfirmation.rating).toBe(rating);
+  });
+
+  test.each([0, 6, -1, 2.5, '5', undefined])('rejects invalid or missing rating %p', async (rating) => {
+    const requests = { r1: { request_id: 'r1', user_id: 't1', status: 'resolved', __collection: 'maintenance_requests' } };
+    mockGetDb.mockReturnValue(makeDb({ requests }));
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' }, body: { action: 'confirm', confirmed: true, rating } };
+    const res = response();
+
+    await confirmMaintenanceResolved(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.code).toBe(rating == null ? 'MAINTENANCE_RATING_REQUIRED' : 'INVALID_MAINTENANCE_RATING');
+    expect(requests.r1.status).toBe('resolved');
+  });
+
+  test('rejects malformed and duplicate confirmation bodies', async () => {
+    const requests = {
+      malformed: { request_id: 'malformed', user_id: 't1', status: 'resolved', __collection: 'maintenance_requests' },
+      rated: { request_id: 'rated', user_id: 't1', status: 'completed', tenant_confirmed_resolved: true, resolutionConfirmation: { confirmedAt: new Date(), rating: 4 }, __collection: 'maintenance_requests' },
+    };
+    mockGetDb.mockReturnValue(makeDb({ requests }));
+
+    const malformed = response();
+    await confirmMaintenanceResolved({ user: { user_id: 't1' }, params: { requestId: 'malformed' }, body: {} }, malformed);
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.body.code).toBe('RESOLUTION_CHOICE_REQUIRED');
+
+    const duplicate = response();
+    await confirmMaintenanceResolved({ user: { user_id: 't1' }, params: { requestId: 'rated' }, body: { action: 'confirm', rating: 5 } }, duplicate);
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.body.code).toBe('MAINTENANCE_RATING_ALREADY_SUBMITTED');
+    expect(requests.rated.resolutionConfirmation.rating).toBe(4);
   });
 });

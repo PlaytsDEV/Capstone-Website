@@ -3883,7 +3883,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             {/* Star Rating Selector */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--foreground)" }}>
-                How satisfied are you with the repair? <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
+                How satisfied are you with the repair? <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Required)</span>
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 4 }}>
@@ -3896,6 +3896,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         onClick={() => setVerifyRating(star)}
                         onMouseEnter={() => setVerifyHoverRating(star)}
                         onMouseLeave={() => setVerifyHoverRating(0)}
+                        aria-label={`${star} star${star > 1 ? "s" : ""}`}
+                        aria-pressed={verifyRating === star}
                         style={{
                           background: "none",
                           border: "none",

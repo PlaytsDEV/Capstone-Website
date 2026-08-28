@@ -88,7 +88,7 @@ describe('Mobile API Parity & Lifecycle Audits (sk-mobile-api-parity-checker)', 
       const req = {
         user: { user_id: 't1', _id: 'mongo1' },
         params: { requestId: 'm1' },
-        body: { confirmed: true, feedback: 'Air conditioner is working great now!' },
+        body: { confirmed: true, rating: 5, feedback: 'Air conditioner is working great now!' },
       };
       const res = response();
       await confirmMaintenanceResolved(req, res);
@@ -99,6 +99,7 @@ describe('Mobile API Parity & Lifecycle Audits (sk-mobile-api-parity-checker)', 
       expect(res.body.resolutionConfirmation).toEqual(
         expect.objectContaining({
           tenantFeedback: 'Air conditioner is working great now!',
+          rating: 5,
           action: 'confirm',
         })
       );

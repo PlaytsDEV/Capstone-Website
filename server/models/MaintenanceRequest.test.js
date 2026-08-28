@@ -57,3 +57,21 @@ describe("MaintenanceRequest attachment compatibility", () => {
     );
   });
 });
+
+describe("MaintenanceRequest tenant resolution rating", () => {
+  test.each([1, 2, 3, 4, 5])("accepts integer rating %i", async (rating) => {
+    const request = buildRequest({ resolutionConfirmation: { rating } });
+
+    await expect(request.validate()).resolves.toBeUndefined();
+  });
+
+  test.each([0, 6, -1, 2.5])("rejects out-of-contract rating %s", async (rating) => {
+    const request = buildRequest({ resolutionConfirmation: { rating } });
+
+    await expect(request.validate()).rejects.toThrow();
+  });
+
+  test("allows an unrated request before tenant confirmation", async () => {
+    await expect(buildRequest().validate()).resolves.toBeUndefined();
+  });
+});
