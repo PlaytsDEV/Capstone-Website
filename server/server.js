@@ -44,6 +44,7 @@ import { globalErrorHandler } from "./middleware/errorHandler.js";
 import mongoSanitize from "./middleware/mongoSanitize.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/usersRoutes.js";
+import tenantRoutes from "./routes/tenantRoutes.js";
 import roomRoutes from "./routes/roomsRoutes.js";
 import reservationRoutes from "./routes/reservationsRoutes.js";
 import inquiryRoutes from "./routes/inquiriesRoutes.js";
@@ -321,6 +322,7 @@ app.use(requestLogger);
 
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/tenants", tenantRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/reservations", reservationRoutes);
 app.use("/api/contracts", contractRoutes);

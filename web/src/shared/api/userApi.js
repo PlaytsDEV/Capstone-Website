@@ -119,4 +119,13 @@ export const userApi = {
       method: "PATCH",
       body: JSON.stringify({ permissions }),
     }),
+
+  /**
+   * Update declared appliance add-ons for a tenant
+   */
+  updateAppliances: (tenantId, payload) =>
+    authFetch(`/tenants/${tenantId}/appliances`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 };

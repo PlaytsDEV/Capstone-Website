@@ -142,7 +142,7 @@ const RoomCard = React.memo(({
     const availLabel = availableBedsCount === 0 && lockedBedsCount > 0 ? "Unavailable" : "Full";
 
     const privateType = String(room.type || "").toLowerCase().includes("private");
-    const minMonthsVal = room.longTermLeaseMinMonths ?? 6;
+    const minMonthsVal = 6;
 
     // Flyer calculation logic
     const norm = String(room.type || "").toLowerCase();

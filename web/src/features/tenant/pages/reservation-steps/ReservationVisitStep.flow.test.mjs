@@ -39,3 +39,13 @@ test("formats visit slot label safely without undefined references", () => {
   assert.match(source, /formatVisitSlotLabel/);
   assert.match(source, /import\s*\{[^}]*formatVisitSlotLabel[^}]*\}\s*from/);
 });
+
+test("confirmation modal uses dynamic icons, next-step guidance, and contextual buttons", () => {
+  assert.match(source, /getVisitConfirmButtonLabel/);
+  assert.match(source, /getViewingNextStepGuidance/);
+  assert.match(source, /getViewingConfirmationSubtitle/);
+  assert.match(source, /ConfirmIcon/);
+  assert.match(source, /formatRoomType/);
+  assert.match(source, /chosenBedCode/);
+});
+

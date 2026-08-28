@@ -560,7 +560,7 @@ export default function MoveInSettlementCard({
                   }}
                 >
                   <Download size={13} />
-                  {downloading ? "Preparing PDF..." : "Download Schedule"}
+                  {downloading ? "Preparing Statement..." : "Download Statement"}
                 </button>
               </>
             ) : (

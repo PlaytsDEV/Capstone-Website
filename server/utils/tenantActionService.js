@@ -392,6 +392,27 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
 
       reservation.currentStayId = newStay._id;
       reservation.latestStayStatus = "active";
+
+      // Ensure declared appliance add-ons cleanly carry over during lease renewals within Guadalupe
+      const renewalBranch = String(reservation.roomId?.branch || reservation.branch || "").toLowerCase();
+      if (renewalBranch === "guadalupe") {
+        reservation.selectedAppliances = reservation.selectedAppliances || [];
+        reservation.applianceFees = Number(reservation.applianceFees || 0);
+        if (payload?.successorReservationId) {
+          const succRes = await Reservation.findById(payload.successorReservationId).session(session);
+          if (succRes) {
+            succRes.selectedAppliances = Array.isArray(reservation.selectedAppliances)
+              ? JSON.parse(JSON.stringify(reservation.selectedAppliances))
+              : [];
+            succRes.applianceFees = Number(reservation.applianceFees || 0);
+            if (succRes.monthlyRent != null) {
+              succRes.totalPrice = Number(succRes.monthlyRent) + Number(succRes.applianceFees);
+            }
+            await succRes.save({ session });
+          }
+        }
+      }
+
       // Deliberately NOT updating reservation.monthlyRent here — it remains
       // the billing source of truth for the CURRENT (pre-renewal) period.
       // rentGenerator.resolveReservationRentAmount reads it live at bill
@@ -954,6 +975,29 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // recurring due-date/billing-cycle anchor itself (movein-based) is
       // deliberately left untouched, this only updates which rate applies.
       reservation.monthlyRent = Number(successorContract.approvedMonthlyRate) || reservation.monthlyRent;
+
+      // Ensure declared appliance add-ons cleanly carry over during room transfers within Guadalupe
+      const targetBranch = String(targetRoom.branch || "").toLowerCase();
+      if (targetBranch === "guadalupe") {
+        reservation.selectedAppliances = reservation.selectedAppliances || [];
+        reservation.applianceFees = Number(reservation.applianceFees || 0);
+        reservation.totalPrice = Number(reservation.monthlyRent || 0) + Number(reservation.applianceFees || 0);
+
+        if (payload?.successorReservationId) {
+          const succRes = await Reservation.findById(payload.successorReservationId).session(session);
+          if (succRes) {
+            succRes.selectedAppliances = Array.isArray(reservation.selectedAppliances)
+              ? JSON.parse(JSON.stringify(reservation.selectedAppliances))
+              : [];
+            succRes.applianceFees = Number(reservation.applianceFees || 0);
+            if (succRes.monthlyRent != null) {
+              succRes.totalPrice = Number(succRes.monthlyRent) + Number(succRes.applianceFees);
+            }
+            await succRes.save({ session });
+          }
+        }
+      }
+
       await reservation.save({ session });
 
       // ── Contract cutover — last step before commit. Participates in this
@@ -1605,5 +1649,40 @@ export async function validateContractExtensionWorkflow(reservationId, requested
     message: "No pre-booking conflict found. Lease extension can proceed."
   };
 }
+
+/**
+ * Utility helper to copy declared appliance add-ons and recalculate fees
+ * from a source reservation to a successor reservation within Guadalupe.
+ *
+ * @param {Object} sourceReservation
+ * @param {Object} targetReservation
+ */
+export function copyApplianceAddOns(sourceReservation, targetReservation) {
+  if (!sourceReservation || !targetReservation) return;
+  const branch = String(
+    targetReservation.roomId?.branch ||
+      targetReservation.branch ||
+      sourceReservation.roomId?.branch ||
+      sourceReservation.branch ||
+      "",
+  ).toLowerCase();
+
+  if (branch === "guadalupe") {
+    targetReservation.selectedAppliances = Array.isArray(
+      sourceReservation.selectedAppliances,
+    )
+      ? JSON.parse(JSON.stringify(sourceReservation.selectedAppliances))
+      : [];
+    targetReservation.applianceFees = Number(
+      sourceReservation.applianceFees || 0,
+    );
+    if (targetReservation.monthlyRent != null) {
+      targetReservation.totalPrice =
+        Number(targetReservation.monthlyRent) +
+        Number(targetReservation.applianceFees);
+    }
+  }
+}
+
 
 

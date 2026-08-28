@@ -34,6 +34,7 @@ export {
 export {
   cancelReservationByUser,
   requestCancellationByUser,
+  withdrawCancellationRequestByUser,
   approveCancellationRequest,
   rejectCancellationRequest,
   requestPreMoveInModification,

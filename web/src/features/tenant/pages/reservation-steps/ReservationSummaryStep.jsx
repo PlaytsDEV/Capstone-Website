@@ -33,13 +33,19 @@ import {
   Info,
 } from "lucide-react";
 import { formatBranch, formatRoomType, formatDate } from "../../../../shared/utils/formatDate";
-import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
-import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
+import {
+  getResolvedMonthlyRate,
+  isPricingDisplayUsable,
+  getEffectiveMonthlyStayRate,
+} from "../../utils/pricingDisplayHelpers";
 import { getAvailableLeaseOptions, getMoveInDateConstraints } from "./applicationFormConstants";
 import { validateTargetMoveInDate } from "../../utils/reservationValidation";
 import { showNotification } from "../../../../shared/utils/notification";
 import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
+import { calculatePaymentBreakdown } from "../../utils/roomDetailsPricing";
+import { getRoomImages } from "../check-availability/checkAvailabilityConstants";
+
 
 
 
@@ -123,8 +129,8 @@ const getSummaryRoomImages = (room) => {
     ? room.images.filter((image) => typeof image === "string" && image.trim())
     : [];
   if (typeof room?.image === "string" && room.image.trim()) images.unshift(room.image);
-  const fallbackImages = getFallbackRoomImages(room?.type, room?.branch);
-  return Array.from(new Set([...images, ...fallbackImages]));
+  const fallbackImages = getRoomImages(room?.type, room?.branch) || [];
+  return Array.from(new Set([...images, ...fallbackImages])).filter(Boolean);
 };
 
 const formatSelectedAppliance = (item) => {
@@ -133,6 +139,18 @@ const formatSelectedAppliance = (item) => {
   const quantity = toFiniteNumber(item?.quantity, 0);
   return `${name}${quantity > 0 ? ` x${quantity}` : ""}`;
 };
+
+const formatSelectedApplianceDetailed = (item) => {
+  if (typeof item === "string") return item;
+  const name = toDisplayString(item?.name, "Appliance");
+  const quantity = toFiniteNumber(item?.quantity, 1);
+  const price = toFiniteNumber(item?.price ?? item?.monthlyFee ?? item?.fee, 0);
+  if (price > 0 && quantity > 0) {
+    return `${name} (${quantity}x) (+${formatCurrency(price * quantity)}/mo)`;
+  }
+  return `${name}${quantity > 0 ? ` (${quantity}x)` : ""}`;
+};
+
 
 const getAmenityIcon = (name) => {
   const normalized = String(name).toLowerCase();
@@ -248,25 +266,41 @@ const ReservationSummaryStep = ({
   };
 
   const selectedBed = reservationData?.selectedBed;
-  const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
-  const pricingDisplay = reservationData?.pricingDisplay;
-  const rawMonthlyRate = getResolvedMonthlyRate(pricingDisplay);
-  const fallbackMonthlyRate = Number.isFinite(Number(reservationData?.monthlyRent))
-    ? Number(reservationData.monthlyRent)
-    : null;
-  const monthlyRent = rawMonthlyRate ?? fallbackMonthlyRate;
-  const hasResolvedMonthlyRate = monthlyRent !== null;
-  const estimatedMonthlyTotal = hasResolvedMonthlyRate ? monthlyRent + applianceFees : null;
+  const activeLease = leaseDuration || reservationData?.leaseDuration || room?.leaseDuration;
+  const pricingInfo = getEffectiveMonthlyStayRate(
+    reservationData,
+    activeLease ? { leaseDuration: activeLease } : {},
+  );
+  const monthlyRent = pricingInfo.baseMonthlyRent;
+  const applianceFees = pricingInfo.applianceFees;
+  const hasResolvedMonthlyRate = pricingInfo.hasResolvedRate;
+  const estimatedMonthlyTotal = pricingInfo.estimatedMonthlyTotal;
   const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
+
+  const selectedAppliances = Array.isArray(reservationData?.selectedAppliances)
+    ? reservationData.selectedAppliances
+    : reservationData?.selectedAppliances && typeof reservationData.selectedAppliances === "object"
+    ? reservationData.selectedAppliances
+    : [];
+
+  const paymentBreakdown = React.useMemo(() => {
+    return calculatePaymentBreakdown({
+      monthlyRent: monthlyRent || 0,
+      applianceFees: applianceFees || 0,
+      selectedAppliances,
+      reservationFeeAmount: reservationFeeAmount || 2000,
+      room,
+    });
+  }, [monthlyRent, applianceFees, selectedAppliances, reservationFeeAmount, room]);
+
   const availabilityLabel = getAvailabilityLabel(room, selectedBed);
+
   const amenities = Array.isArray(room.amenities)
     ? room.amenities.map((amenity) => toDisplayString(amenity)).filter(Boolean)
     : [];
   const roomImages = getSummaryRoomImages(room);
-  const selectedAppliances = Array.isArray(reservationData?.selectedAppliances)
-    ? reservationData.selectedAppliances
-    : [];
   const activePhoto = roomImages[activePhotoIndex] || roomImages[0];
+
   const floorLabel = toDisplayString(room.floor);
   const capacityLabel = Number.isFinite(Number(room.capacity))
     ? Number(room.capacity)
@@ -639,109 +673,170 @@ const ReservationSummaryStep = ({
           )}
         </section>
 
-        {/* Pricing Breakdown Card (Full Width with Balanced Desktop Grid) */}
-        <section className="content-card rf-summary-panel m-0 w-full border border-slate-200 dark:border-slate-700 shadow-sm">
+        {/* Payment Breakdown Section (3-Card Chronological Roadmap) */}
+        <section className="content-card rf-summary-panel m-0 w-full border border-slate-200 dark:border-slate-700 shadow-xs">
           <div className="card-section-title">
             <Wallet size={16} className="text-slate-700 dark:text-slate-300 flex-shrink-0" />
-            <span>Pricing & Financial Breakdown</span>
+            <span>Payment Breakdown</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-1 items-start">
-            {/* Left Column: Monthly Rent & Breakdown */}
-            <div className="md:col-span-6 space-y-4">
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 dark:text-slate-400">Monthly Rent</span>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)} / mo` : "Calculated upon review"}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 items-stretch">
+            {/* Card 1: Initial Reservation Deposit */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xs">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Initial Reservation Deposit
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-transparent text-emerald-700 dark:text-emerald-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    100% Credited
                   </span>
                 </div>
 
-                {selectedAppliances.length > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 dark:text-slate-400">Add-on Appliances</span>
-                    <span className="text-slate-700 dark:text-slate-300 text-right text-xs font-medium">
-                      {selectedAppliances.map(formatSelectedAppliance).join(", ")}
-                    </span>
-                  </div>
-                )}
-
-                {applianceFees > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 dark:text-slate-400">Appliance Monthly Fee</span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      {formatCurrency(applianceFees)} / mo
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <span className="font-medium text-slate-800 dark:text-slate-200">Reservation Fee Deposit</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(reservationFeeAmount)}
-                  </span>
+                <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 my-1">
+                  {formatCurrency(paymentBreakdown.reservationDeposit)}
                 </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-2">
+                  Paid in Step 4 after application review to secure your room. This deposit holds your bed and is 100% deducted from your pre-move-in balance.
+                </p>
               </div>
 
-              {/* Estimated Monthly Total Highlight */}
-              <div className="p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-3 shadow-none">
-                <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wider font-bold text-slate-800 dark:text-slate-200">
-                    Estimated Monthly Total
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Excludes shared water/electricity submeter
-                  </span>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    {hasResolvedMonthlyRate ? formatCurrency(estimatedMonthlyTotal) : "To be confirmed"}
-                  </span>
-                  {hasResolvedMonthlyRate && (
-                    <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                      / month
-                    </span>
-                  )}
-                </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Locks your bed exclusively</span>
               </div>
             </div>
 
-            {/* Right Column: Move-In Cash Out Requirement Box */}
-            <div className="md:col-span-6">
-              <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-4 border border-slate-200 dark:border-slate-700/80">
-                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                  <span>Move-In Requirement Summary</span>
+            {/* Card 2: Pre-Move-In Balance */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 shadow-xs">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Pre-Move-In Balance
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-transparent text-slate-600 dark:text-slate-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                    Before Check-In
+                  </span>
                 </div>
 
-                <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
-                  <div className="flex justify-between">
-                    <span>1 Month Advance Rent:</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {hasResolvedMonthlyRate ? formatCurrency(monthlyRent) : "TBD"}
+                <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400 my-2">
+                  <div>
+                    <div className="flex justify-between font-medium text-slate-800 dark:text-slate-200">
+                      <span>1 Month Advance Rent</span>
+                      <span>{hasResolvedMonthlyRate ? formatCurrency(paymentBreakdown.advanceRent) : "TBD"}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Pre-pays your first 30 days of stay</span>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between font-medium text-slate-800 dark:text-slate-200">
+                      <span>1 Month Security Deposit</span>
+                      <span>{hasResolvedMonthlyRate ? formatCurrency(paymentBreakdown.securityDeposit) : "TBD"}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block">100% refundable upon checkout clearance</span>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex justify-between text-slate-700 dark:text-slate-300 font-medium">
+                      <span>Less: Credited Reservation Deposit</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        -{formatCurrency(paymentBreakdown.reservationDeposit)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Paid during Step 4 reservation</span>
+                  </div>
+
+                  {paymentBreakdown.applianceFees > 0 && (
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 leading-tight">
+                      Appliance fees (+{formatCurrency(paymentBreakdown.applianceFees)}/mo) start on Month 2 regular billing.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-700 flex justify-between items-end">
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                    Net Pre-Move-In Cashout
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Settled before key turnover</span>
+                </div>
+                <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                  {hasResolvedMonthlyRate ? formatCurrency(paymentBreakdown.preMoveInNetCashout) : "To be confirmed"}
+                </span>
+              </div>
+            </div>
+
+            {/* Card 3: Monthly Stay Rate */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xs">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Monthly Stay Rate
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-transparent text-slate-600 dark:text-slate-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                    Starts Month 2
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400 my-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 dark:text-slate-400">Base Room Rent</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      {hasResolvedMonthlyRate ? `${formatCurrency(paymentBreakdown.baseMonthlyRent)} / mo` : "Calculated upon review"}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>1 Month Security Deposit:</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {hasResolvedMonthlyRate ? formatCurrency(monthlyRent) : "TBD"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between pt-1.5 border-t border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200">
-                    <span>Total Move-In Requirements:</span>
-                    <span>{hasResolvedMonthlyRate ? formatCurrency(monthlyRent * 2) : "TBD"}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 leading-relaxed">
-                    Note: Your {formatCurrency(reservationFeeAmount)} reservation fee (due in the next step) will be credited toward your move-in balance once paid.
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-sm">
-                    <span>Remaining Balance (Due Before Move-In):</span>
-                    <span className="text-slate-900 dark:text-slate-100 font-bold">
-                      {hasResolvedMonthlyRate
-                        ? formatCurrency(monthlyRent * 2)
-                        : "Calculated upon review"}
-                    </span>
-                  </div>
+
+                  {paymentBreakdown.applianceBreakdown?.items?.length > 0 ? (
+                    <div className="pt-0.5 space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 dark:text-slate-400">Add-On Appliances (Total)</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          +{formatCurrency(paymentBreakdown.applianceFees)} / mo
+                        </span>
+                      </div>
+                      <div className="space-y-1 pl-2.5 border-l-2 border-slate-200 dark:border-slate-700 py-0.5">
+                        {paymentBreakdown.applianceBreakdown.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between"
+                          >
+                            <span>
+                              • {item.name} ({item.quantity}x) · {formatCurrency(item.unitPrice)}/mo each
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[11px]">
+                      <span>Add-On Appliances</span>
+                      <span className="italic">None selected</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                    Regular monthly billing starts on your second month. Excludes shared water and electricity submeter readings.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex justify-between items-end">
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                    Estimated Monthly Total
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Recurring stay rate</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                    {hasResolvedMonthlyRate ? formatCurrency(paymentBreakdown.monthlyStayRate) : "To be confirmed"}
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-normal">/ month</span>
                 </div>
               </div>
             </div>

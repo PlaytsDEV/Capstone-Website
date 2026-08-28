@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ChevronDown,
   DollarSign,
+  Zap,
 } from "lucide-react";
 import {
   formatBillingCycle,
@@ -353,6 +354,34 @@ export default function TenantBillingTab({
                 </div>
               </div>
             </div>
+
+            {/* 4. Declared Appliances (Guadalupe / Active Add-ons) */}
+            {(String(tenant?.branch || tenant?.roomId?.branch || "").toLowerCase().includes("guadalupe") ||
+              Number(tenant?.applianceFees || 0) > 0 ||
+              (Array.isArray(tenant?.selectedAppliances) && tenant.selectedAppliances.length > 0)) && (
+              <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground text-[11px] font-medium flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                    Appliance Add-on
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                    <span>Monthly Add-on</span>
+                  </span>
+                </div>
+                <div>
+                  <div className="text-base font-bold text-foreground font-mono">
+                    {formatMoney(tenant?.applianceFees || 0)}/mo
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    {Array.isArray(tenant?.selectedAppliances) && tenant.selectedAppliances.reduce((sum, a) => sum + (Number(a.quantity) || 0), 0) > 0
+                      ? `${tenant.selectedAppliances.reduce((sum, a) => sum + (Number(a.quantity) || 0), 0)} declared unit(s) (Cycle 2+)`
+                      : "No declared units (₱0/mo)"}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

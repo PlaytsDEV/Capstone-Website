@@ -79,3 +79,11 @@ test("reserved applicant detail page remains applicant-mode, not tenant-mode", (
     true,
   );
 });
+
+test("ReservationSidePanel renders clear move-in label and accurate remote viewing banner", () => {
+  const sidePanel = readTenantSource("components/profile/ReservationSidePanel.jsx");
+  assert.equal(sidePanel.includes("Admin will arrange a remote viewing for your room"), false);
+  assert.equal(sidePanel.includes("Remote viewing confirmed. Please complete your tenant application."), true);
+  assert.equal(sidePanel.includes("Target Move-in"), true);
+});
+

@@ -87,6 +87,7 @@ const createReservation = (overrides = {}) => ({
   monthlyRent: null,
   totalPrice: null,
   customCharges: [],
+  selectedAppliances: [],
   applianceFees: 0,
   paymentStatus: "pending",
   save: jest.fn(async function save() {
@@ -202,9 +203,73 @@ describe("ensureCurrentCycleRentBill", () => {
     ]);
   });
 
-  test("falls back to the legacy applianceFees field when recurring custom charges are absent", async () => {
+  test("includes declared selectedAppliances as itemized additionalCharges with accurate totals", async () => {
+    const reservation = createReservation({
+      selectedAppliances: [
+        { name: "Electric Fan", quantity: 1, price: 200 },
+        { name: "Laptop", quantity: 2, price: 200 },
+      ],
+    });
+
+    billFindOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-02-05T00:00:00.000Z"),
+      dryRun: false,
+      notifyTenant: false,
+      requireGenerationDateMatch: false,
+    });
+
+    expect(result.status).toBe("created");
+    expect(billInstances[0].charges.applianceFees).toBe(600);
+    expect(billInstances[0].charges.rent).toBe(5500);
+    expect(billInstances[0].grossAmount).toBe(6100);
+    expect(billInstances[0].totalAmount).toBe(6100);
+    expect(billInstances[0].additionalCharges).toEqual([
+      { name: "Electric Fan (1x)", amount: 200 },
+      { name: "Laptop (2x)", amount: 400 },
+    ]);
+  });
+
+  test("coexists customCharges and selectedAppliances on generated bills without conflict", async () => {
+    const reservation = createReservation({
+      customCharges: [
+        { name: "Locker", amount: 150 },
+      ],
+      selectedAppliances: [
+        { name: "Electric Fan", quantity: 1, price: 200 },
+      ],
+    });
+
+    billFindOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-02-05T00:00:00.000Z"),
+      dryRun: false,
+      notifyTenant: false,
+      requireGenerationDateMatch: false,
+    });
+
+    expect(result.status).toBe("created");
+    expect(billInstances[0].charges.applianceFees).toBe(350);
+    expect(billInstances[0].grossAmount).toBe(5850);
+    expect(billInstances[0].totalAmount).toBe(5850);
+    expect(billInstances[0].additionalCharges).toEqual([
+      { name: "Locker", amount: 150 },
+      { name: "Electric Fan (1x)", amount: 200 },
+    ]);
+  });
+
+  test("falls back to the legacy applianceFees field when recurring custom charges and selectedAppliances are absent", async () => {
     const reservation = createReservation({
       customCharges: [],
+      selectedAppliances: [],
       applianceFees: 900,
     });
 

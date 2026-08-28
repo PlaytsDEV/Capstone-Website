@@ -5,6 +5,7 @@ import {
   Home,
   Calendar,
   CreditCard,
+  Wallet,
   Printer,
   CheckCircle,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Download,
 } from "lucide-react";
 import { getReservationConfirmationState } from "../../utils/reservationConfirmationState";
+import { getEffectiveMonthlyStayRate } from "../../utils/pricingDisplayHelpers";
 import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 
 const REDIRECT_SECONDS = 15;
@@ -63,6 +65,8 @@ const ReservationConfirmationStep = ({
   const room = reservationData?.room || {};
   const roomName = toDisplayString(room.roomNumber || room.name || room.title, "N/A");
   const reservationFeeAmount = reservationData?.reservationFeeAmount || 2000;
+  const activeLease = leaseDuration || reservationData?.leaseDuration || room?.leaseDuration || "6";
+  const pricingInfo = getEffectiveMonthlyStayRate(reservationData, { leaseDuration: activeLease });
   const effectiveReservation = {
     ...reservationData,
     reservationCode: reservationCode || reservationData?.reservationCode || "",
@@ -208,7 +212,7 @@ const ReservationConfirmationStep = ({
             </div>
           ) : null}
 
-          {/* Summary Grid (3 spacious cards) */}
+          {/* Summary Grid (4 spacious cards) */}
           <div className="rf-summary-grid m-0">
             <div className="rf-summary-card">
               <div className="rf-summary-icon">
@@ -229,6 +233,19 @@ const ReservationConfirmationStep = ({
                 {leaseDuration
                   ? (Number(leaseDuration) === 12 ? "12-month lease (1 year)" : `${leaseDuration}-month lease`)
                   : "Selected lease term"}
+              </div>
+            </div>
+
+            <div className="rf-summary-card">
+              <div className="rf-summary-icon">
+                <Wallet size={20} />
+              </div>
+              <div className="rf-summary-label">Monthly Stay Rate</div>
+              <div className="rf-summary-value">
+                {pricingInfo.formattedMonthlyRate}
+              </div>
+              <div className="rf-summary-meta">
+                {pricingInfo.applianceNote || "Regular monthly rent starts Month 2"}
               </div>
             </div>
 

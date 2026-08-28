@@ -268,6 +268,20 @@ const notify = {
       });
   },
 
+  cancellationRequestWithdrawnAlert: (adminUserId, tenantName, reservationCode, reservationId = null) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` for reservation ${code}` : " for reservation";
+    return createNotification(adminUserId, "reservation_cancellation_withdrawn", "Cancellation Request Withdrawn",
+      `${tenantName} has withdrawn their cancellation request${codeStr}. The reservation remains active.`,
+      {
+        entityType: "reservation",
+        entityId: reservationId ? String(reservationId) : null,
+        actionUrl: reservationId
+          ? `/admin/reservations?reservationId=${String(reservationId)}`
+          : "/admin/reservations",
+      });
+  },
+
   visitScheduledAlert: (
     adminUserId,
     {

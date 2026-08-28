@@ -39,6 +39,20 @@ import {
 } from "../config/accessControl.js";
 export { ALL_PERMISSIONS, DEFAULT_PERMISSIONS, PERMISSION_LABELS };
 
+const PERMISSION_ALIAS_MAP = Object.freeze({
+  manage_tenants: "manageTenants",
+  manage_reservations: "manageReservations",
+  manage_billing: "manageBilling",
+  manage_rooms: "manageRooms",
+  manage_maintenance: "manageMaintenance",
+  manage_announcements: "manageAnnouncements",
+  view_reports: "viewReports",
+  manage_users: "manageUsers",
+});
+
+const resolveCanonicalPermission = (key) =>
+  PERMISSION_ALIAS_MAP[key] || key;
+
 /**
  * Middleware factory: checks if the user has the required permission.
  * Must be used AFTER verifyToken + verifyAdmin.
@@ -78,7 +92,11 @@ export const requirePermission = (permission) => {
         });
       }
 
-      if (userPermissions.includes(permission)) {
+      const canonicalRequired = resolveCanonicalPermission(permission);
+      if (
+        userPermissions.includes(permission) ||
+        userPermissions.includes(canonicalRequired)
+      ) {
         return next();
       }
 

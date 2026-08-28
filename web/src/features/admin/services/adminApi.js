@@ -22,37 +22,50 @@
 
 import axios from "axios";
 import { API_BASE_URL } from "../../../shared/api/baseUrl";
+import { authFetch } from "../../../shared/api/httpClient.js";
 
 /**
  * Admin API methods.
- * WARNING: These methods lack proper Firebase token authentication.
- * @deprecated Use apiClient.js inquiryApi, reservationApi, userApi instead
+ * WARNING: Legacy methods lack proper Firebase token authentication.
+ * For new methods, authFetch is used with Firebase token authentication.
  */
 export const adminApi = {
- /**
- * Get all inquiries for admin's branch
- * @deprecated Use inquiryApi.getAll() from apiClient.js
- */
- getInquiries: async () => {
- const response = await axios.get(`${API_BASE_URL}/inquiries`);
- return response.data;
- },
+  /**
+   * Get all inquiries for admin's branch
+   * @deprecated Use inquiryApi.getAll() from apiClient.js
+   */
+  getInquiries: async () => {
+    const response = await axios.get(`${API_BASE_URL}/inquiries`);
+    return response.data;
+  },
 
- /**
- * Get all reservations for admin's branch
- * @deprecated Use reservationApi.getAll() from apiClient.js
- */
- getReservations: async () => {
- const response = await axios.get(`${API_BASE_URL}/reservations`);
- return response.data;
- },
+  /**
+   * Get all reservations for admin's branch
+   * @deprecated Use reservationApi.getAll() from apiClient.js
+   */
+  getReservations: async () => {
+    const response = await axios.get(`${API_BASE_URL}/reservations`);
+    return response.data;
+  },
 
- /**
- * Get all tenants/users for admin's branch
- * @deprecated Use userApi.getAll() from apiClient.js
- */
- getTenants: async () => {
- const response = await axios.get(`${API_BASE_URL}/users`);
- return response.data;
- },
+  /**
+   * Get all tenants/users for admin's branch
+   * @deprecated Use userApi.getAll() from apiClient.js
+   */
+  getTenants: async () => {
+    const response = await axios.get(`${API_BASE_URL}/users`);
+    return response.data;
+  },
+
+  /**
+   * Update declared appliance add-ons for a tenant
+   * @param {string} tenantId - Tenant user ID
+   * @param {{ selectedAppliances: Array<{ id: string, name?: string, quantity: number }> }} payload
+   * @returns {Promise<any>}
+   */
+  updateTenantAppliances: (tenantId, payload) =>
+    authFetch(`/tenants/${tenantId}/appliances`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 };

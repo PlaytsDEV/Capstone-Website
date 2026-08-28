@@ -188,6 +188,7 @@ const {
   manageReservationVisit,
   moveOutReservation,
   requestCancellationByUser,
+  withdrawCancellationRequestByUser,
   updateReservation,
   updateReservationByUser,
   updateVisitAvailabilityRules,
@@ -432,6 +433,95 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.body.code).toBe("NOT_PAID_USE_DIRECT_CANCEL");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows tenant to withdraw a pending cancellation request", async () => {
+    const reservationDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      reservationCode: "RES-WITHDRAW",
+      status: "reserved",
+      paymentStatus: "paid",
+      cancellationRequested: true,
+      cancellationStatus: "pending",
+      cancellationReason: "Change of plans",
+      cancellationRequestedAt: new Date(),
+      cancellationRequestedBy: "user-1",
+      toObject() {
+        return { ...this };
+      },
+      save: jest.fn().mockResolvedValue(true),
+    };
+
+    reservationFindById.mockResolvedValue(reservationDoc);
+    userFindOne.mockResolvedValue({ _id: "user-1", firstName: "Juan", lastName: "Dela Cruz" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-withdraw" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await withdrawCancellationRequestByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.message).toBe("Cancellation request withdrawn. Your reservation remains active.");
+    expect(reservationDoc.cancellationRequested).toBe(false);
+    expect(reservationDoc.cancellationStatus).toBeNull();
+    expect(reservationDoc.cancellationReason).toBeNull();
+    expect(reservationDoc.cancellationRequestedAt).toBeNull();
+    expect(reservationDoc.cancellationRequestedBy).toBeNull();
+    expect(reservationDoc.save).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects cancellation withdrawal if request is not pending", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "reserved",
+      cancellationRequested: false,
+      cancellationStatus: null,
+    });
+    userFindOne.mockResolvedValue({ _id: "user-1" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-withdraw" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await withdrawCancellationRequestByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("NO_PENDING_CANCELLATION_REQUEST");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects cancellation withdrawal by unauthorized user", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "reserved",
+      cancellationRequested: true,
+      cancellationStatus: "pending",
+    });
+    userFindOne.mockResolvedValue({ _id: "user-2" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-intruder" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await withdrawCancellationRequestByUser(req, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe("UNAUTHORIZED");
     expect(next).not.toHaveBeenCalled();
   });
 

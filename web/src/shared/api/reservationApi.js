@@ -264,6 +264,11 @@ export const reservationApi = {
       body: JSON.stringify({ reason }),
     }),
 
+  withdrawCancellationRequest: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/cancel-request/withdraw`, {
+      method: "POST",
+    }),
+
   approveCancellationRequest: (reservationId, note = "") =>
     authFetch(`/reservations/${reservationId}/cancel-request/approve`, {
       method: "POST",

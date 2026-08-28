@@ -197,6 +197,7 @@ function ReservationFlowPage() {
             <ReservationVisitStep
               {...{
                 targetMoveInDate: flow.targetMoveInDate,
+                leaseDuration: flow.leaseDuration,
                 viewingType: flow.viewingType,
                 setViewingType: flow.setViewingType,
                 remoteViewingAcknowledged: flow.remoteViewingAcknowledged,
@@ -324,20 +325,26 @@ function ReservationFlowPage() {
                 if (viewingPreference === "physical_visit") {
                   flow.setVisitCompleted(false);
                   flow.setHighestStageReached((prev) => Math.max(prev, 2));
+                  flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
+                  flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                  flow.returnToDashboardAfterViewingPreference({
+                    viewingPreference,
+                    visitCode,
+                    visitDate,
+                    visitTime,
+                  });
                 } else {
                   flow.setVisitCompleted(false);
-                  flow.setHighestStageReached((prev) => Math.max(prev, 2));
+                  flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                  flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
+                  flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                  showNotification(
+                    "Viewing preference confirmed. You can now complete your tenant application.",
+                    "success",
+                    4000,
+                  );
+                  flow.handleNextStage();
                 }
-                // Background re-fetch to sync with authoritative server state.
-                flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
-                flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-                flow.returnToDashboardAfterViewingPreference({
-                  viewingPreference,
-                  visitCode,
-                  visitDate,
-                  visitTime,
-
-                });
               }}
               onReturnToDashboard={flow.returnToDashboardAfterViewingPreference}
             />

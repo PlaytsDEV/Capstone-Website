@@ -779,6 +779,8 @@ export function buildTenantWorkspaceEntry({
     advanceRent: financialSummary.advanceRent,
     securityDeposit: financialSummary.securityDeposit,
     reservationFee: financialSummary.reservationFee,
+    selectedAppliances: Array.isArray(reservation.selectedAppliances) ? reservation.selectedAppliances : [],
+    applianceFees: Number(reservation.applianceFees || 0),
     currentBalance: billingSummary.currentBalance,
     currentStayId: currentStay?._id ? String(currentStay._id) : String(reservation.currentStayId || ""),
     tenantStatus: normalizeTenantStatus(tenantStatus),

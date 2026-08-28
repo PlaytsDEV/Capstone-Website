@@ -532,6 +532,8 @@ export default function ReservationDashboard({
   const [isCancelling, setIsCancelling] = React.useState(false);
   const [showRequestCancelModal, setShowRequestCancelModal] = React.useState(false);
   const [isRequesting, setIsRequesting] = React.useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = React.useState(false);
+  const [isWithdrawing, setIsWithdrawing] = React.useState(false);
 
   const [isMobile, setIsMobile] = React.useState(
     () => typeof window !== "undefined" && window.innerWidth <= 768
@@ -1211,16 +1213,29 @@ export default function ReservationDashboard({
             {isConfirmed ? (
               reservation.cancellationRequested &&
               reservation.cancellationStatus === "pending" ? (
-                <span
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onGoToReservation) {
+                      onGoToReservation();
+                    } else {
+                      setShowWithdrawModal(true);
+                    }
+                  }}
                   style={{
                     ...styles.footerLinkDanger,
-                    opacity: 0.7,
-                    cursor: "default",
                     fontSize: "0.8rem",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--surface-hover, #F8FAFC)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
                   }}
                 >
-                  Cancellation pending review
-                </span>
+                  Withdraw Cancellation Request
+                </button>
               ) : (
                 <button
                   onClick={() => {
@@ -1371,6 +1386,53 @@ export default function ReservationDashboard({
           Your reservation fee for <strong>{roomName}</strong> is{" "}
           <strong>non-refundable</strong>. Submitting this request will
           place it under admin review. Your bed will only be released once an admin approves.
+        </p>
+      </BaseModal>
+
+      <BaseModal
+        isOpen={showWithdrawModal}
+        onClose={() => {
+          if (!isWithdrawing) setShowWithdrawModal(false);
+        }}
+        title="Withdraw Cancellation Request?"
+        subtitle={`Room: ${roomName}`}
+        variant="info"
+        size="sm"
+        cancelText="Keep Pending"
+        confirmText={isWithdrawing ? "Withdrawing..." : "Confirm Withdrawal"}
+        loading={isWithdrawing}
+        onConfirm={async () => {
+          setIsWithdrawing(true);
+          try {
+            const { reservationApi } = await import(
+              "../../../shared/api/reservationApi"
+            );
+            await reservationApi.withdrawCancellationRequest(reservation._id);
+            setShowWithdrawModal(false);
+            showNotification(
+              "Cancellation request withdrawn. Your reservation remains active.",
+              "success",
+              4000,
+            );
+            queryClient.invalidateQueries({
+              queryKey: ["reservations"],
+            });
+          } catch (err) {
+            console.error("Withdraw cancellation request failed:", err);
+            setShowWithdrawModal(false);
+            showNotification(
+              "Failed to withdraw cancellation request. Please try again.",
+              "error",
+              4000,
+            );
+          } finally {
+            setIsWithdrawing(false);
+          }
+        }}
+      >
+        <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+          Withdrawing will cancel your pending cancellation request. Your reservation for{" "}
+          <strong>{roomName}</strong> and held bed will remain active and secure.
         </p>
       </BaseModal>
     </div>

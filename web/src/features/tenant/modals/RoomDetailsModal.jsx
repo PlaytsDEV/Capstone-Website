@@ -7,7 +7,10 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
+
   Info,
   MapPin,
   Minus,
@@ -29,6 +32,8 @@ import {
 } from "../pages/reservation-steps/applicationFormConstants";
 import { validateTargetMoveInDate } from "../utils/reservationValidation";
 import { getOptimizedUrl, getThumbnailUrl } from "../../../shared/utils/imageOptimizer";
+import { calculateRoomDetailsCost, getFlyerRates, calculatePaymentBreakdown } from "../utils/roomDetailsPricing";
+
 
 // Global cache of preloaded image URLs to prevent duplicate instances
 const PRELOADED_URLS = new Set();
@@ -76,50 +81,6 @@ function isPrivateRoomType(type) {
   return normalized === "private" || normalized.includes("private");
 }
 
-function getFlyerRates(roomType, targetRoom = {}) {
-  const norm = String(roomType || "").toLowerCase();
-  let regularLong = targetRoom.regularLongRate ?? 6000;
-  let regularShort = targetRoom.regularShortRate ?? 7000;
-  let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
-
-  if (norm.includes("double")) {
-    regularLong = targetRoom.regularLongRate ?? 9000;
-    regularShort = targetRoom.regularShortRate ?? 10000;
-    defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
-  } else if (norm.includes("private")) {
-    regularLong = targetRoom.regularLongRate ?? 15000;
-    regularShort = targetRoom.regularShortRate ?? 16000;
-    defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
-  } else {
-    regularLong = targetRoom.regularLongRate ?? 6000;
-    regularShort = targetRoom.regularShortRate ?? 7000;
-    defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
-  }
-
-  const discountPercent =
-    typeof targetRoom.longTermDiscountPercent === "number"
-      ? targetRoom.longTermDiscountPercent
-      : defaultDiscount;
-
-  let longTerm =
-    typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
-      ? targetRoom.monthlyPrice
-      : Math.round(regularLong * (1 - discountPercent / 100));
-
-  let shortTerm =
-    typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
-      ? targetRoom.shortTermRate
-      : typeof targetRoom.price === "number" && targetRoom.price > 0
-      ? targetRoom.price
-      : Math.round(regularShort * (1 - discountPercent / 100));
-
-  if (discountPercent > 0 && discountPercent < 100) {
-    regularLong = Math.round(longTerm / (1 - discountPercent / 100));
-    regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
-  }
-
-  return { regularShort, shortTerm, regularLong, longTerm, discountPercent };
-}
 
 // ─── Small presentational pieces ─────────────────────────────
 
@@ -180,7 +141,9 @@ export default function RoomDetailsModal({
   const [hdLoadedMap, setHdLoadedMap] = useState({});
   const [internalLeaseDuration, setInternalLeaseDuration] = useState("");
   const [internalMoveInDate, setInternalMoveInDate] = useState("");
+  const [isBreakdownExpanded, setIsBreakdownExpanded] = useState(false);
   const datePickerRef = React.useRef(null);
+
 
   useEscapeClose(isOpen && !!room, onClose);
 
@@ -249,17 +212,20 @@ export default function RoomDetailsModal({
     return validation.valid;
   }, [activeMoveInDate]);
 
-  const flyer = useMemo(
-    () => (room ? getFlyerRates(room.type, room) : { regularShort: 0, shortTerm: 0, regularLong: 0, longTerm: 0, discountPercent: 0 }),
-    [room?.type, room?.regularLongRate, room?.regularShortRate, room?.monthlyPrice, room?.shortTermRate, room?.price, room?.longTermDiscountPercent, room?.quadrupleDiscountPercent, room?.doubleDiscountPercent, room?.privateDiscountPercent]
+  const cost = useMemo(
+    () =>
+      calculateRoomDetailsCost({
+        room,
+        roomType: room?.type,
+        activeLeaseDuration,
+        calculateApplianceFees,
+      }),
+    [room, activeLeaseDuration, calculateApplianceFees],
   );
 
-  const isDiscountEnabled = room?.isDiscountEnabled !== false;
-  const minMonths = room?.longTermLeaseMinMonths ?? 6;
-  const leaseMonths = parseInt(activeLeaseDuration, 10) || minMonths;
-  const isLongTerm = leaseMonths >= minMonths;
-
   const {
+    isLongTerm,
+    leaseMonths,
     activeRegularRate,
     activeMonthlyRate,
     activeFlyerDiscount,
@@ -268,39 +234,22 @@ export default function RoomDetailsModal({
     securityDepositAmount,
     calculatedUpfrontTotal,
     totalSavingsAmount,
-  } = useMemo(() => {
-    const regularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
-    const monthlyRate = isDiscountEnabled
-      ? isLongTerm
-        ? flyer.longTerm
-        : flyer.shortTerm
-      : regularRate;
-    const flyerDiscount =
-      isDiscountEnabled && regularRate > monthlyRate
-        ? regularRate - monthlyRate
-        : 0;
-    const discPct =
-      isDiscountEnabled && regularRate > 0 && flyerDiscount > 0
-        ? Math.round((flyerDiscount / regularRate) * 100)
-        : 0;
-    const applianceFees = calculateApplianceFees ? calculateApplianceFees() : 0;
-    const secDeposit = monthlyRate;
-    const upfrontTotal = monthlyRate + secDeposit + applianceFees;
-    const contractTotal = (monthlyRate + applianceFees) * leaseMonths;
-    const savings = flyerDiscount * leaseMonths;
+  } = cost;
 
-    return {
-      activeRegularRate: regularRate,
-      activeMonthlyRate: monthlyRate,
-      activeFlyerDiscount: flyerDiscount,
-      discountPercent: discPct,
-      applianceFeesAmount: applianceFees,
-      securityDepositAmount: secDeposit,
-      calculatedUpfrontTotal: upfrontTotal,
-      calculatedContractTotal: contractTotal,
-      totalSavingsAmount: savings,
-    };
-  }, [flyer, isLongTerm, isDiscountEnabled, calculateApplianceFees, leaseMonths]);
+  const paymentBreakdown = useMemo(() => {
+    return calculatePaymentBreakdown({
+      monthlyRent: activeMonthlyRate || 0,
+      applianceFees: applianceFeesAmount || 0,
+      selectedAppliances,
+      reservationFeeAmount: room?.reservationFeeAmount || 2000,
+      room,
+    });
+  }, [activeMonthlyRate, applianceFeesAmount, selectedAppliances, room]);
+
+
+  const isDiscountEnabled = room?.isDiscountEnabled !== false;
+
+  const minMonths = 6;
 
   const requiresBedSelection = useMemo(
     () => Boolean(room?.beds && room.beds.length > 1 && !isPrivateRoomType(room.type)),
@@ -788,14 +737,14 @@ export default function RoomDetailsModal({
                 </div>
               )}
 
-              {/* Cost summary */}
+              {/* Payment Breakdown */}
               <div className="rounded-2xl border border-border/70 overflow-hidden">
                 <div className="p-5 pb-0">
                   <SectionHeading
                     icon={Calculator}
                     tone="primary"
-                    title="Cost summary"
-                    subtitle="Estimated charges based on your selection"
+                    title="Payment Breakdown"
+                    subtitle="Clear summary of your reservation, move-in balance, and monthly rate"
                     action={
                       hasLeaseSelected ? (
                         <div
@@ -849,96 +798,146 @@ export default function RoomDetailsModal({
                   </div>
                 ) : (
                   <div className="px-5 pb-5 space-y-3">
-                    <div className="rounded-xl border border-border/70 overflow-hidden divide-y divide-border/60">
-                      <div className="p-3 flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Regular rate <span className="text-xs opacity-70">({isLongTerm ? "long-term" : "short-term"})</span>
-                        </span>
-                        <span className={`font-medium tabular-nums ${activeFlyerDiscount > 0 ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                          ₱{activeRegularRate.toLocaleString()}/mo
-                        </span>
-                      </div>
-
-                      {activeFlyerDiscount > 0 && (
-                        <div className="p-3 flex items-center justify-between text-sm">
-                          <span className="flex items-center gap-1.5 font-medium" style={{ color: "var(--success-dark)" }}>
-                            <Tag className="w-3.5 h-3.5" /> Promo discount
-                            <span
-                              className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
-                              style={{ backgroundColor: "var(--success)", color: "var(--success-foreground)" }}
-                            >
-                              -{discountPercent}%
-                            </span>
-                          </span>
-                          <span className="font-semibold tabular-nums" style={{ color: "var(--success-dark)" }}>
-                            -₱{activeFlyerDiscount.toLocaleString()}/mo
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="p-3 flex items-center justify-between text-sm font-semibold bg-muted/40">
-                        <span className="text-foreground">Effective monthly rent</span>
-                        <span className="text-base font-bold tabular-nums" style={{ color: "var(--primary)" }}>
-                          ₱{activeMonthlyRate.toLocaleString()}
+                    {/* Flat Summary Container (No nested boxes) */}
+                    <div className="space-y-2.5 text-sm pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Base room rent</span>
+                        <span className="font-semibold text-foreground tabular-nums">
+                          ₱{paymentBreakdown.baseMonthlyRent.toLocaleString()}
                           <span className="text-xs font-normal text-muted-foreground"> /mo</span>
                         </span>
                       </div>
 
-                      {applianceFeesAmount > 0 && (
-                        <div className="p-3 flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Appliance add-ons</span>
-                          <span className="font-medium tabular-nums" style={{ color: "var(--primary)" }}>
-                            +₱{applianceFeesAmount.toLocaleString()}/mo
+                      {paymentBreakdown.applianceFees > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Add-on appliances (Total)</span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            +₱{paymentBreakdown.applianceFees.toLocaleString()}/mo
                           </span>
                         </div>
                       )}
 
-                      <div className="p-3 flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-1.5">
-                          <ShieldCheck className="w-4 h-4" style={{ color: "var(--success)" }} />
-                          Security deposit
-                          <span className="text-xs opacity-80">(1 mo, refundable)</span>
-                        </span>
-                        <span className="font-medium text-foreground tabular-nums">
-                          ₱{securityDepositAmount.toLocaleString()}
+                      <div className="flex items-center justify-between pt-1 border-t border-border/60">
+                        <span className="text-muted-foreground">Est. Net Pre-Move-In Balance</span>
+                        <span className="font-bold tabular-nums text-foreground">
+                          ₱{paymentBreakdown.preMoveInNetCashout.toLocaleString()}
                         </span>
                       </div>
 
-                      {/* Prominent Estimated Upfront Move-In Total Card */}
-                      <div
-                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                        style={{
-                          backgroundColor: "var(--primary)",
-                          color: "var(--primary-foreground)",
-                        }}
-                      >
+                      <div className="flex items-center justify-between pt-1.5 border-t border-border/60">
                         <div>
-                          <p className="text-[11px] font-bold tracking-wider uppercase opacity-90">
-                            Estimated Upfront Move-In Total
-                          </p>
-                          <p className="text-[11px] opacity-85 mt-0.5">
-                            Includes 1st Month Rent + Refundable Deposit{applianceFeesAmount > 0 ? " + Appliances" : ""}
-                          </p>
+                          <span className="font-bold text-foreground block">Estimated Monthly Total</span>
+                          <span className="text-[11px] text-muted-foreground">Recurring starting Month 2</span>
                         </div>
-                        <div className="sm:text-right">
-                          <span className="text-2xl font-extrabold tracking-tight tabular-nums">
-                            ₱{calculatedUpfrontTotal.toLocaleString()}
+                        <div className="text-right">
+                          <span className="text-xl font-extrabold tabular-nums" style={{ color: "var(--primary)" }}>
+                            ₱{paymentBreakdown.monthlyStayRate.toLocaleString()}
                           </span>
+                          <span className="text-xs font-normal text-muted-foreground"> /mo</span>
                         </div>
                       </div>
                     </div>
 
-                    {totalSavingsAmount > 0 && (
-                      <div
-                        className="px-1 text-xs font-medium"
-                        style={{ color: "var(--success-dark)" }}
+                    {/* Collapsible Breakdown Dropdown Toggle Button */}
+                    <div className="pt-2 border-t border-border/60">
+                      <button
+                        type="button"
+                        onClick={() => setIsBreakdownExpanded((prev) => !prev)}
+                        className="w-full py-2 px-2.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors flex items-center justify-between"
+                        aria-expanded={isBreakdownExpanded}
                       >
-                        <span>
-                          <strong>Total savings:</strong> ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month term.
+                        <span className="flex items-center gap-1.5">
+                          <Calculator className="w-3.5 h-3.5" style={{ color: "var(--primary)" }} />
+                          {isBreakdownExpanded ? "Hide detailed breakdown" : "View detailed breakdown & move-in math"}
                         </span>
-                      </div>
-                    )}
+                        {isBreakdownExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </button>
+
+                      {/* Expanded Math Section (Flat, clean dividers, zero inner boxes) */}
+                      {isBreakdownExpanded && (
+                        <div className="mt-2.5 pt-2.5 border-t border-dashed border-border/70 space-y-2.5 text-xs text-muted-foreground animate-in fade-in duration-200">
+                          {/* Regular Rate & Discount */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span>Regular rate ({isLongTerm ? "long-term" : "short-term"}):</span>
+                              <span className={`tabular-nums ${activeFlyerDiscount > 0 ? "line-through" : "text-foreground font-medium"}`}>
+                                ₱{activeRegularRate.toLocaleString()}/mo
+                              </span>
+                            </div>
+                            {activeFlyerDiscount > 0 && (
+                              <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-medium">
+                                <span className="flex items-center gap-1">
+                                  <Tag className="w-3 h-3" /> Promo discount (-{discountPercent}%):
+                                </span>
+                                <span className="tabular-nums">-₱{activeFlyerDiscount.toLocaleString()}/mo</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Itemized Appliances */}
+                          {paymentBreakdown.applianceBreakdown?.items?.length > 0 && (
+                            <div className="pt-2 border-t border-border/40 space-y-1">
+                              <span className="font-semibold text-foreground block">Appliance details:</span>
+                              {paymentBreakdown.applianceBreakdown.items.map((item) => (
+                                <div key={item.id} className="flex justify-between pl-2 border-l border-border">
+                                  <span>• {item.name} ({item.quantity}x) · ₱{item.unitPrice.toLocaleString()}/mo each</span>
+                                  <span className="font-medium text-foreground">+₱{item.subtotal.toLocaleString()}/mo</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Move-In Breakdown */}
+                          <div className="pt-2 border-t border-border/40 space-y-1.5">
+                            <div className="flex justify-between text-foreground">
+                              <span className="font-semibold">1. Initial Reservation Deposit:</span>
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                ₱{paymentBreakdown.reservationDeposit.toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground pl-2">
+                              Paid in Step 4 to secure your room. 100% credited toward your pre-move-in balance.
+                            </p>
+
+                            <div className="pt-1.5 space-y-1 text-[11px]">
+                              <div className="flex justify-between">
+                                <span>1 Month Advance Rent:</span>
+                                <span className="text-foreground font-medium">₱{paymentBreakdown.advanceRent.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>1 Month Security Deposit (Refundable):</span>
+                                <span className="text-foreground font-medium">₱{paymentBreakdown.securityDeposit.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-medium">
+                                <span>Less: Credited Reservation Deposit:</span>
+                                <span>-₱{paymentBreakdown.reservationDeposit.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between font-bold text-foreground text-xs pt-1 border-t border-border/60">
+                                <span>2. Net Pre-Move-In Cashout:</span>
+                                <span style={{ color: "var(--primary)" }}>₱{paymentBreakdown.preMoveInNetCashout.toLocaleString()}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-1.5 border-t border-border/40 flex justify-between text-foreground font-semibold">
+                              <span>3. Monthly Stay Rate (Starts Month 2):</span>
+                              <span>₱{paymentBreakdown.monthlyStayRate.toLocaleString()} / mo</span>
+                            </div>
+                          </div>
+
+                          {totalSavingsAmount > 0 && (
+                            <div className="pt-2 border-t border-border/40 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                              Total savings: ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month term.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
+
                 )}
               </div>
             </div>
@@ -952,15 +951,19 @@ export default function RoomDetailsModal({
               <CreditCard className="w-5 h-5 shrink-0" style={{ color: "var(--primary)" }} />
               {hasLeaseSelected ? (
                 <div>
-                  <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Est. upfront move-in total</p>
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Est. Net Pre-Move-In Balance</p>
                   <p className="text-xl font-bold tabular-nums leading-tight" style={{ color: "var(--primary)" }}>
-                    ₱{calculatedUpfrontTotal.toLocaleString()}
+                    ₱{paymentBreakdown.preMoveInNetCashout.toLocaleString()}
+                    <span className="text-xs font-normal text-muted-foreground ml-1.5">
+                      (+₱{paymentBreakdown.reservationDeposit.toLocaleString()} deposit to reserve)
+                    </span>
                   </p>
                 </div>
               ) : (
                 <p className="text-sm font-medium text-muted-foreground">Select a lease term to see your total.</p>
               )}
             </div>
+
 
             <button
               type="button"

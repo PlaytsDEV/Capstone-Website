@@ -262,6 +262,8 @@ export const TENANT_WORKSPACE_FIELDS = [
   "companyIDUrl",
   "userId",
   "roomId",
+  "selectedAppliances",
+  "applianceFees",
   "isViewedByAdmin",
   "lastAdminViewedAt",
   "createdAt",
@@ -816,9 +818,9 @@ export async function assertNoActiveStayOrProgressedContract(reservationId, tena
   const canonicalContract = await resolveTenantCanonicalContract(tenantId, {
     includeEarlyStages: true,
   }).catch(() => null);
-  if (canonicalContract && !EARLY_STAGE_STATUSES.has(canonicalContract.status)) {
+  if (canonicalContract && ["active", "expiring_soon"].includes(canonicalContract.status)) {
     throw new AppError(
-      "This reservation has a contract that has already progressed and can no longer be cancelled. Use Move-Out or Termination instead.",
+      "This reservation has an active contract and can no longer be cancelled. Use Move-Out or Termination instead.",
       409,
       "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
     );
@@ -847,6 +849,40 @@ export async function notifyAdminsOfCancellationRequest(reservation, dbUser) {
   await Promise.all(
     adminUsers.map(async (admin) => {
       const notification = await notify.cancellationRequestAlert(
+        admin._id,
+        tenantName,
+        reservation.reservationCode,
+        reservation._id,
+      );
+      if (notification) {
+        emitToUser(admin._id, "notification:new", notification);
+      }
+    }),
+  );
+}
+
+export async function notifyAdminsOfCancellationWithdrawal(reservation, dbUser) {
+  const room = await Room.findById(reservation.roomId).select("branch").lean();
+  const adminRecipients = room?.branch
+    ? [
+        { role: "branch_admin", branch: room.branch },
+        { role: "owner" },
+      ]
+    : [
+        { role: "branch_admin" },
+        { role: "owner" },
+      ];
+
+  const adminUsers = await User.find({
+    $or: adminRecipients,
+    accountStatus: "active",
+    isArchived: { $ne: true },
+  }).select("_id").lean();
+
+  const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+  await Promise.all(
+    adminUsers.map(async (admin) => {
+      const notification = await notify.cancellationRequestWithdrawnAlert(
         admin._id,
         tenantName,
         reservation.reservationCode,

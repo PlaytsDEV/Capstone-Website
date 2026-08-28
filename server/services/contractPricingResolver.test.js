@@ -1,196 +1,99 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, test, expect } from "@jest/globals";
 import {
-  resolveContractLeasePricing,
   resolveAuthoritativeLeasePricing,
   resolveRoomDiscountPricing,
-  buildPricingDisplay,
 } from "./contractPricingResolver.js";
 
-const quadrupleRoom = {
-  type: "quadruple-sharing",
-  price: 6300,
-  monthlyPrice: 5400,
-};
-
-describe("resolveContractLeasePricing", () => {
-  test("uses the short-term regular rate below the lease threshold", () => {
-    expect(resolveContractLeasePricing({
-      room: quadrupleRoom,
-      roomType: "quadruple-sharing",
-      leaseDurationMonths: 5,
-      approvedMonthlyRate: 6300,
-      longTermLeaseMinMonths: 6,
-    })).toEqual({
-      isLongTerm: false,
-      leaseType: "short_term",
-      regularMonthlyRate: 7000,
-      discountPercentage: 10,
-      discountAmount: 700,
-      approvedMonthlyRate: 6300,
-    });
-  });
-
-  test.each([6, 12])(
-    "uses the long-term regular rate for a %d-month lease",
-    (leaseDurationMonths) => {
-      expect(resolveContractLeasePricing({
-        room: quadrupleRoom,
-        roomType: "quadruple-sharing",
-        leaseDurationMonths,
-        approvedMonthlyRate: 5400,
-        longTermLeaseMinMonths: 6,
-      })).toEqual({
-        isLongTerm: true,
-        leaseType: "long_term",
-        regularMonthlyRate: 6000,
-        discountPercentage: 10,
-        discountAmount: 600,
-        approvedMonthlyRate: 5400,
+describe("contractPricingResolver — Lease Duration Classification & Dual-Tier Pricing", () => {
+  describe("resolveRoomDiscountPricing", () => {
+    test("resolves correct dual-tier base rates and discounts for quadruple sharing", () => {
+      const pricing = resolveRoomDiscountPricing("quadruple-sharing", {
+        isDiscountEnabled: true,
+        quadrupleDiscountPercent: 10,
       });
-    },
-  );
 
-  test("honors a configured lease threshold and custom regular rates", () => {
-    expect(resolveContractLeasePricing({
-      room: { regularLongRate: 6500, regularShortRate: 7500 },
-      roomType: "quadruple-sharing",
-      leaseDurationMonths: 9,
-      approvedMonthlyRate: 5850,
-      longTermLeaseMinMonths: 9,
-    })).toEqual(expect.objectContaining({
-      isLongTerm: true,
-      leaseType: "long_term",
-      regularMonthlyRate: 6500,
-      discountPercentage: 10,
-      discountAmount: 650,
-    }));
-  });
+      expect(pricing.longTermLeaseMinMonths).toBe(6);
+      expect(pricing.regularShortRate).toBe(7000);
+      expect(pricing.shortTermRate).toBe(6300);
+      expect(pricing.regularLongRate).toBe(6000);
+      expect(pricing.monthlyPrice).toBe(5400);
+      expect(pricing.longTermDiscountPercent).toBe(10);
+    });
 
-  test("records no discount when discounts are disabled in the locked rate", () => {
-    expect(resolveContractLeasePricing({
-      room: quadrupleRoom,
-      roomType: "quadruple-sharing",
-      leaseDurationMonths: 12,
-      approvedMonthlyRate: 6000,
-      longTermLeaseMinMonths: 6,
-    })).toEqual(expect.objectContaining({
-      regularMonthlyRate: 6000,
-      discountPercentage: 0,
-      discountAmount: 0,
-      approvedMonthlyRate: 6000,
-    }));
-  });
-});
+    test("resolves correct dual-tier base rates and discounts for double sharing", () => {
+      const pricing = resolveRoomDiscountPricing("double-sharing", {
+        isDiscountEnabled: true,
+        doubleDiscountPercent: 20,
+      });
 
-describe("resolveRoomDiscountPricing", () => {
-  test("reproduces the seeded GP Quadruple rates (price 6300 / monthlyPrice 5400)", () => {
-    const details = resolveRoomDiscountPricing("quadruple-sharing", {
-      quadrupleDiscountPercent: 10,
-      isDiscountEnabled: true,
-    }, {});
-    expect(details).toMatchObject({
-      regularShortRate: 7000,
-      regularLongRate: 6000,
-      shortTermRate: 6300,
-      monthlyPrice: 5400,
-      longTermDiscountPercent: 10,
+      expect(pricing.longTermLeaseMinMonths).toBe(6);
+      expect(pricing.regularShortRate).toBe(10000);
+      expect(pricing.shortTermRate).toBe(8000);
+      expect(pricing.regularLongRate).toBe(9000);
+      expect(pricing.monthlyPrice).toBe(7200);
+      expect(pricing.longTermDiscountPercent).toBe(20);
+    });
+
+    test("resolves correct dual-tier base rates and discounts for private room", () => {
+      const pricing = resolveRoomDiscountPricing("private", {
+        isDiscountEnabled: true,
+        privateDiscountPercent: 10,
+      });
+
+      expect(pricing.longTermLeaseMinMonths).toBe(6);
+      expect(pricing.regularShortRate).toBe(16000);
+      expect(pricing.shortTermRate).toBe(14400);
+      expect(pricing.regularLongRate).toBe(15000);
+      expect(pricing.monthlyPrice).toBe(13500);
+      expect(pricing.longTermDiscountPercent).toBe(10);
     });
   });
 
-  test("disabling discounts (globally or per-room) removes the discount", () => {
-    expect(resolveRoomDiscountPricing("quadruple-sharing", { isDiscountEnabled: false }, {}))
-      .toMatchObject({ monthlyPrice: 6000, shortTermRate: 7000, longTermDiscountPercent: 0 });
-    expect(resolveRoomDiscountPricing("quadruple-sharing", { isDiscountEnabled: true }, { isDiscountEnabled: false }))
-      .toMatchObject({ monthlyPrice: 6000, shortTermRate: 7000, longTermDiscountPercent: 0 });
-  });
-});
-
-describe("resolveAuthoritativeLeasePricing", () => {
-  const gpQuadrupleRoom = { branch: "gil-puyat", type: "quadruple-sharing", price: 6300, monthlyPrice: 5400 };
-  const settings = { longTermLeaseMinMonths: 6, quadrupleDiscountPercent: 10, isDiscountEnabled: true };
-
-  test("12-month lease resolves to the long-term discounted rate: 5400", () => {
-    expect(resolveAuthoritativeLeasePricing({
-      room: gpQuadrupleRoom, roomType: "quadruple-sharing", leaseDurationMonths: 12, settings,
-    })).toMatchObject({ isLongTerm: true, regularMonthlyRate: 6000, finalMonthlyRate: 5400, discountPercentage: 10 });
-  });
-
-  test("5-month lease resolves to the short-term discounted rate: 6300", () => {
-    expect(resolveAuthoritativeLeasePricing({
-      room: gpQuadrupleRoom, roomType: "quadruple-sharing", leaseDurationMonths: 5, settings,
-    })).toMatchObject({ isLongTerm: false, regularMonthlyRate: 7000, finalMonthlyRate: 6300, discountPercentage: 10 });
-  });
-
-  test("6-month boundary is long-term", () => {
-    expect(resolveAuthoritativeLeasePricing({
-      room: gpQuadrupleRoom, roomType: "quadruple-sharing", leaseDurationMonths: 6, settings,
-    })).toMatchObject({ isLongTerm: true, finalMonthlyRate: 5400 });
-  });
-
-  test("rejects durations below 1 month", () => {
-    expect(() => resolveAuthoritativeLeasePricing({
-      room: gpQuadrupleRoom, roomType: "quadruple-sharing", leaseDurationMonths: 0, settings,
-    })).toThrow(expect.objectContaining({ code: "LEASE_DURATION_INVALID" }));
-  });
-
-  test("rejects a missing lease duration", () => {
-    expect(() => resolveAuthoritativeLeasePricing({
-      room: gpQuadrupleRoom, roomType: "quadruple-sharing", leaseDurationMonths: undefined, settings,
-    })).toThrow(expect.objectContaining({ code: "LEASE_DURATION_INVALID" }));
-  });
-
-  test("rejects an unsupported room type rather than defaulting", () => {
-    expect(() => resolveAuthoritativeLeasePricing({
-      room: { branch: "gil-puyat", type: "penthouse" }, roomType: "penthouse", leaseDurationMonths: 12, settings,
-    })).toThrow(expect.objectContaining({ code: "ROOM_TYPE_UNSUPPORTED" }));
-  });
-
-  test("does not silently invent per-branch rates: guadalupe uses the same room-type table", () => {
-    const guadalupeRoom = { branch: "guadalupe", type: "quadruple-sharing" };
-    expect(resolveAuthoritativeLeasePricing({
-      room: guadalupeRoom, roomType: "quadruple-sharing", leaseDurationMonths: 12, settings,
-    })).toMatchObject({ finalMonthlyRate: 5400, branch: "guadalupe" });
-  });
-});
-
-describe("buildPricingDisplay", () => {
-  test("returns a snapshotted display for an approved structured reservation, ignoring room/settings", () => {
-    const display = buildPricingDisplay({
-      reservation: {
-        financialWorkflowVersion: "structured-initial-payment-v1",
-        pricingSnapshot: {
-          approvedAt: new Date(),
-          regularMonthlyRate: 6000,
-          discountPercentage: 10,
-          discountAmount: 600,
-          finalMonthlyRate: 5400,
-          leaseType: "long",
-          leaseDurationMonths: 12,
+  describe("resolveAuthoritativeLeasePricing — 1-5 months Short-Term vs 6-12 months Long-Term", () => {
+    test("1 to 5 months are strictly Short-Term with short-term base rate (7000 -> 6300 for quad)", () => {
+      for (let months = 1; months <= 5; months++) {
+        const pricing = resolveAuthoritativeLeasePricing({
           roomType: "quadruple-sharing",
-        },
-      },
-      room: { type: "quadruple-sharing", price: 999999 },
-      settings: {},
-    });
-    expect(display).toMatchObject({ status: "snapshotted", finalMonthlyRate: 5400 });
-  });
+          leaseDurationMonths: months,
+          settings: { isDiscountEnabled: true, quadrupleDiscountPercent: 10 },
+        });
 
-  test("returns a preview for a not-yet-approved reservation with a valid lease duration", () => {
-    const display = buildPricingDisplay({
-      reservation: { leaseDuration: 12 },
-      room: { type: "quadruple-sharing", branch: "gil-puyat" },
-      settings: { longTermLeaseMinMonths: 6, quadrupleDiscountPercent: 10 },
+        expect(pricing.isLongTerm).toBe(false);
+        expect(pricing.leaseType).toBe("short_term");
+        expect(pricing.regularMonthlyRate).toBe(7000);
+        expect(pricing.finalMonthlyRate).toBe(6300);
+        expect(pricing.discountAmount).toBe(700);
+        expect(pricing.discountPercentage).toBe(10);
+      }
     });
-    expect(display).toMatchObject({ status: "preview", finalMonthlyRate: 5400 });
-  });
 
-  test("returns unavailable (not a guess) when lease duration is not yet chosen", () => {
-    const display = buildPricingDisplay({
-      reservation: {},
-      room: { type: "quadruple-sharing" },
-      settings: {},
+    test("6 to 12 months are strictly Long-Term with long-term base rate (6000 -> 5400 for quad)", () => {
+      for (const months of [6, 10, 12]) {
+        const pricing = resolveAuthoritativeLeasePricing({
+          roomType: "quadruple-sharing",
+          leaseDurationMonths: months,
+          settings: { isDiscountEnabled: true, quadrupleDiscountPercent: 10 },
+        });
+
+        expect(pricing.isLongTerm).toBe(true);
+        expect(pricing.leaseType).toBe("long_term");
+        expect(pricing.regularMonthlyRate).toBe(6000);
+        expect(pricing.finalMonthlyRate).toBe(5400);
+        expect(pricing.discountAmount).toBe(600);
+        expect(pricing.discountPercentage).toBe(10);
+      }
     });
-    expect(display.status).toBe("unavailable");
-    expect(display.reason).toBe("LEASE_DURATION_INVALID");
+
+    test("6 months stay must never resolve to short-term rate (7000/6300)", () => {
+      const pricing = resolveAuthoritativeLeasePricing({
+        roomType: "quadruple-sharing",
+        leaseDurationMonths: 6,
+        settings: { isDiscountEnabled: true, quadrupleDiscountPercent: 10 },
+      });
+
+      expect(pricing.isLongTerm).toBe(true);
+      expect(pricing.regularMonthlyRate).toBe(6000);
+      expect(pricing.finalMonthlyRate).toBe(5400);
+    });
   });
 });

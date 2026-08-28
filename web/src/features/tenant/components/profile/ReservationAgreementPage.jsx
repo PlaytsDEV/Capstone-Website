@@ -99,6 +99,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const [selectedImage, setSelectedImage] = useState(0);
  const [showCancellationModal, setShowCancellationModal] = useState(false);
  const [isRequestingCancellation, setIsRequestingCancellation] = useState(false);
+ const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+ const [isWithdrawingCancellation, setIsWithdrawingCancellation] = useState(false);
  const [cancellationReason, setCancellationReason] = useState("");
  const [acknowledgedCancellationPolicy, setAcknowledgedCancellationPolicy] = useState(false);
  const [isMoveInScheduleOpen, setIsMoveInScheduleOpen] = useState(false);
@@ -260,6 +262,38 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  setIsRequestingCancellation(false);
  }
  };
+
+  const handleWithdrawCancellation = async () => {
+    if (!reservation?._id || isWithdrawingCancellation) return;
+
+    setIsWithdrawingCancellation(true);
+    try {
+      await reservationApi.withdrawCancellationRequest(reservation._id);
+      setShowWithdrawModal(false);
+      showNotification(
+        "Cancellation request withdrawn. Your reservation remains active.",
+        "success",
+        5000,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+        queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] }),
+      ]);
+      await onReservationUpdated?.();
+    } catch (error) {
+      console.error("Withdraw cancellation request failed:", error);
+      showNotification(
+        getFriendlyError(error, "Failed to withdraw cancellation request. Please try again."),
+        "error",
+        5000,
+      );
+      await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      await onReservationUpdated?.();
+      setShowWithdrawModal(false);
+    } finally {
+      setIsWithdrawingCancellation(false);
+    }
+  };
 
  return (
  <div style={{ width: "100%" }}>
@@ -741,7 +775,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
            }}
            onMouseEnter={(e) => {
              e.currentTarget.style.background = "var(--muted)";
-             e.currentTarget.style.borderColor = "var(--ring)";
+             e.currentTarget.style.borderColor = "var(--border)";
              e.currentTarget.style.color = "var(--foreground)";
            }}
            onMouseLeave={(e) => {
@@ -763,9 +797,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  {/* Cancellation Request Card */}
  {cancellationUi.visible && (
-   <div style={{ ...card, padding: "14px 18px", marginBottom: 12, borderColor: cancellationUi.isPending ? "var(--warning)" : "var(--danger)" }}>
+   <div style={{ ...card, padding: "14px 18px", marginBottom: 12, borderColor: "var(--border-card, #CBD5E1)" }}>
      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-       <AlertCircle size={16} color={cancellationUi.isPending ? "var(--warning)" : "var(--danger)"} style={{ marginTop: 1, flexShrink: 0 }} />
+       <AlertCircle size={16} color={cancellationUi.isPending ? "#D97706" : "#DC2626"} style={{ marginTop: 1, flexShrink: 0 }} />
        <div>
          <h3 style={{ ...sectionTitle, margin: 0, fontSize: 13 }}>
            {cancellationUi.isPending ? "Cancellation Request Pending" : "Request Reservation Cancellation"}
@@ -778,20 +812,62 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
        </div>
      </div>
 
-     {cancellationUi.isPending ? (
-       <div
-         style={{
-           borderRadius: 6,
-           background: "var(--warning-light)",
-           color: "var(--warning-dark)",
-           padding: "8px 10px",
-           fontSize: 12,
-           fontWeight: 600,
-         }}
-       >
-         Pending admin review
-       </div>
-     ) : (
+      {cancellationUi.isPending ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--warning-dark, #B45309)",
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#D97706", display: "inline-block" }} />
+            Pending admin review
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowWithdrawModal(true)}
+            disabled={isWithdrawingCancellation}
+            style={{
+              padding: "7px 14px",
+              background: "var(--surface-card, #FFFFFF)",
+              color: "var(--text-heading, #0F172A)",
+              border: "1px solid var(--border-card, #CBD5E1)",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: isWithdrawingCancellation ? "default" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (!isWithdrawingCancellation) {
+                e.currentTarget.style.background = "var(--surface-hover, #F8FAFC)";
+                e.currentTarget.style.borderColor = "var(--text-secondary, #94A3B8)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
+              e.currentTarget.style.borderColor = "var(--border-card, #CBD5E1)";
+            }}
+          >
+            Withdraw Request
+          </button>
+        </div>
+      ) : (
         <button
           type="button"
           onClick={() => setShowCancellationModal(true)}
@@ -1040,6 +1116,109 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
             }}
           >
             {isRequestingCancellation ? "Submitting..." : "Submit Request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Withdraw Cancellation Request Modal */}
+  {showWithdrawModal && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        backdropFilter: "blur(2px)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 1050,
+        padding: 16,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isWithdrawingCancellation) {
+          setShowWithdrawModal(false);
+        }
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface-card, #FFFFFF)",
+          borderRadius: 14,
+          border: "1px solid var(--border-card, #E2E8F0)",
+          width: "100%",
+          maxWidth: 440,
+          boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+          padding: 24,
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
+          <ShieldCheck size={26} color="#059669" style={{ marginTop: 2, flexShrink: 0 }} />
+          <div>
+            <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "var(--text-heading, #0F172A)" }}>
+              Withdraw Cancellation Request?
+            </h3>
+            <p style={{ margin: 0, color: "var(--text-secondary, #64748B)", fontSize: 13, lineHeight: 1.5 }}>
+              Withdrawing will cancel your pending cancellation request. Your reservation for <strong>{room.name || "your selected room"}</strong> and held bed will remain active and secure.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={() => setShowWithdrawModal(false)}
+            disabled={isWithdrawingCancellation}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 8,
+              border: "1px solid var(--border-card, #CBD5E1)",
+              background: "var(--surface-card, #FFFFFF)",
+              color: "var(--text-heading, #0F172A)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isWithdrawingCancellation ? "default" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (!isWithdrawingCancellation) {
+                e.currentTarget.style.background = "var(--surface-hover, #F8FAFC)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
+            }}
+          >
+            Keep Pending
+          </button>
+          <button
+            type="button"
+            onClick={handleWithdrawCancellation}
+            disabled={isWithdrawingCancellation}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 8,
+              border: "none",
+              background: "#059669",
+              color: "#FFFFFF",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isWithdrawingCancellation ? "not-allowed" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (!isWithdrawingCancellation) {
+                e.currentTarget.style.background = "#047857";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "#059669";
+            }}
+          >
+            {isWithdrawingCancellation ? "Withdrawing..." : "Confirm Withdrawal"}
           </button>
         </div>
       </div>

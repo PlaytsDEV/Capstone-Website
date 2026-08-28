@@ -31,6 +31,7 @@ import {
 import {
   findDbUser,
   notifyAdminsOfCancellationRequest,
+  notifyAdminsOfCancellationWithdrawal,
   assertNoActiveStayOrProgressedContract,
 } from "./_helpers.js";
 
@@ -264,6 +265,62 @@ export const requestCancellationByUser = async (req, res, next) => {
     res.json({ message: "Cancellation request submitted. Pending admin review.", reservation });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "requestCancellationByUser error");
+    next(error);
+  }
+};
+
+export const withdrawCancellationRequestByUser = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (String(reservation.userId) !== String(dbUser._id))
+      return res.status(403).json({ error: "Unauthorized.", code: "UNAUTHORIZED" });
+
+    if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending cancellation request found to withdraw.",
+        code: "NO_PENDING_CANCELLATION_REQUEST",
+      });
+    }
+
+    const oldData = reservation.toObject();
+    reservation.cancellationRequested = false;
+    reservation.cancellationStatus = null;
+    reservation.cancellationReason = null;
+    reservation.cancellationRequestedAt = null;
+    reservation.cancellationRequestedBy = null;
+    await reservation.save();
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request withdrawn by applicant",
+    );
+
+    try {
+      await notifyAdminsOfCancellationWithdrawal(reservation, dbUser);
+    } catch (notifyErr) {
+      logger.warn({ err: notifyErr }, "[CancelRequestWithdraw] Admin notification failed (non-fatal)");
+    }
+
+    return res.json({
+      message: "Cancellation request withdrawn. Your reservation remains active.",
+      reservation,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "withdrawCancellationRequestByUser error");
     next(error);
   }
 };
