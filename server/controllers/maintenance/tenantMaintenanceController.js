@@ -557,10 +557,35 @@ export const confirmResolution = async (req, res, next) => {
 
     const action = String(req.body?.action || "").trim().toLowerCase();
     const isConfirmed = req.body?.confirmed === true || action === "confirm" || action === "resolved" || action === "yes";
+    const isReopen = req.body?.confirmed === false || action === "reopen" || action === "still_an_issue" || action === "no";
 
-    if (!REOPENABLE_MAINTENANCE_STATUSES.includes(request.status) && request.status !== "closed") {
+    if (!isConfirmed && !isReopen) {
       throw new AppError(
-        "Only completed or resolved maintenance requests can receive resolution confirmation.",
+        "Choose whether the maintenance issue is resolved or still needs work.",
+        400,
+        "RESOLUTION_CHOICE_REQUIRED",
+      );
+    }
+
+    if (isConfirmed && request.resolutionConfirmation?.confirmedAt) {
+      throw new AppError(
+        "A rating has already been submitted for this maintenance request.",
+        409,
+        "MAINTENANCE_RATING_ALREADY_SUBMITTED",
+      );
+    }
+
+    if (isConfirmed && request.status !== "resolved") {
+      throw new AppError(
+        "Only resolved maintenance requests can receive resolution confirmation.",
+        409,
+        "INVALID_CONFIRMATION_STATE",
+      );
+    }
+
+    if (isReopen && !REOPENABLE_MAINTENANCE_STATUSES.includes(request.status) && request.status !== "closed") {
+      throw new AppError(
+        "Only completed or resolved maintenance requests can be reopened.",
         409,
         "INVALID_CONFIRMATION_STATE",
       );
@@ -569,8 +594,14 @@ export const confirmResolution = async (req, res, next) => {
     if (isConfirmed) {
       const confirmedAt = new Date();
       const feedback = toOptionalText(req.body?.feedback || req.body?.notes || req.body?.note);
-      const rawRating = Number(req.body?.rating);
-      const rating = Number.isFinite(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating * 10) / 10 : null;
+      const rating = req.body?.rating;
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        throw new AppError(
+          "Rating must be an integer from 1 to 5.",
+          400,
+          rating == null ? "MAINTENANCE_RATING_REQUIRED" : "INVALID_MAINTENANCE_RATING",
+        );
+      }
       
       request.status = "completed";
       request.resolved_at = request.resolved_at || confirmedAt;

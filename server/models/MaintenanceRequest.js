@@ -553,6 +553,10 @@ const resolutionConfirmationSchema = new mongoose.Schema(
       min: 1,
       max: 5,
       default: null,
+      validate: {
+        validator: (value) => value == null || Number.isInteger(value),
+        message: "Tenant maintenance rating must be an integer from 1 to 5.",
+      },
     },
     action: {
       type: String,
