@@ -772,6 +772,11 @@ export function TransferTenantModal({
     (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
+  // Bed selection is required only for shared destination rooms — a private
+  // room has no bed to pick (matches the backend rule in transferStayWorkflow).
+  const selectedRoomType = selectedRoom?.type || selectedRoom?.roomType || "";
+  const destinationNeedsBed =
+    selectedRoomType === "double-sharing" || selectedRoomType === "quadruple-sharing";
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
@@ -836,7 +841,10 @@ export function TransferTenantModal({
     !isNaN(Number(targetRoomMeterReading)) &&
     Number(targetRoomMeterReading) >= 0;
 
-  const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
+  const step1Valid =
+    !!roomId &&
+    (!destinationNeedsBed || !!bedId) &&
+    (!hasOutstanding || forceOverride);
   const step2Valid =
     sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
 
@@ -847,7 +855,7 @@ export function TransferTenantModal({
       showNotification("Please select a target room for the transfer.", "warning");
       return;
     }
-    if (!bedId) {
+    if (destinationNeedsBed && !bedId) {
       showNotification("Please select an available bed in the target room.", "warning");
       return;
     }
@@ -1075,28 +1083,39 @@ export function TransferTenantModal({
               />
             </div>
 
-            <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
-              <span>New Bed</span>
-              <select
-                value={bedId}
-                onChange={(event) => setBedId(event.target.value)}
-                disabled={!roomId}
-                className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
-              >
-                <option value="">Select a bed</option>
-                {roomBeds.map((bed, index) => {
-                  const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
-                  const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
-                  const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
-                  const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
-                  return (
-                    <option key={bed.id || bed._id || index} value={bed.id || bed._id} disabled={!isAvailable}>
-                      {bedCode ? `${bedCode} (${displayLabel})` : displayLabel}{statusTag}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
+            {destinationNeedsBed ? (
+              <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
+                <span>New Bed</span>
+                <select
+                  value={bedId}
+                  onChange={(event) => setBedId(event.target.value)}
+                  disabled={!roomId}
+                  className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
+                >
+                  <option value="">Select a bed</option>
+                  {roomBeds.map((bed, index) => {
+                    const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
+                    const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
+                    const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
+                    const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
+                    return (
+                      <option key={bed.id || bed._id || index} value={bed.id || bed._id} disabled={!isAvailable}>
+                        {bedCode ? `${bedCode} (${displayLabel})` : displayLabel}{statusTag}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            ) : (
+              <label className="tenant-modal-field">
+                <span>New Bed</span>
+                <input
+                  type="text"
+                  value={roomId ? "Not applicable — private room" : "Select a room first"}
+                  readOnly
+                />
+              </label>
+            )}
           </div>
 
           {roomId && priceDiff !== 0 && (

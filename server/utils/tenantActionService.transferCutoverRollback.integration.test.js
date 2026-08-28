@@ -1,39 +1,34 @@
 /**
- * Proves the transactional rollback guarantee for the physical + Contract
- * cutover integration: if activateRoomTransferSuccessor fails AFTER
- * transferStayWorkflow's physical mutations have already been staged in
- * the same transaction, every one of those physical mutations is rolled
- * back — never a partial success.
+ * Proves the transactional rollback guarantee for the one-step room
+ * transfer: if the Contract cutover (activateRoomTransferSuccessorDraft)
+ * fails AFTER transferStayWorkflow's physical mutations have already been
+ * staged in the same transaction, every one of those physical mutations is
+ * rolled back — never a partial success.
  *
- * transferStayWorkflow's own pre-mutation validation (see
- * tenantActionService.transferCutover.integration.test.js) is deliberately
- * thorough enough that every realistic corrupt-data scenario is already
- * caught BEFORE physical mutation — which is correct/desirable, but means
- * a genuine post-mutation failure can't be reached through ordinary data
- * setup. This file mocks activateRoomTransferSuccessor itself (module
- * mock, not a stub of a fake — the exported function name and shape) to
- * force exactly that scenario, while resolveRoomTransferSuccessor stays
- * real so the legitimate pre-mutation validation still runs unchanged.
+ * The replacement Contract Draft is prepared in Stage A BEFORE the
+ * transaction; a rollback of the transaction below correctly leaves that
+ * prepared-but-not-current Draft in place (the retry-reuse case), so the
+ * predecessor stays the tenant's active/current Contract and no physical
+ * state moved.
+ *
+ * activateRoomTransferSuccessorDraft is module-mocked to force the
+ * post-mutation failure; resolveRoomTransferSuccessor stays real so the
+ * legitimate pre-cutover validation still runs unchanged.
  */
 import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
-const mockActivateRoomTransferSuccessor = jest.fn(async () => {
+const mockActivateDraft = jest.fn(async () => {
   throw Object.assign(new Error("Forced Contract activation failure for rollback test"), {
     code: "FORCED_TEST_FAILURE",
     statusCode: 500,
   });
 });
 
-// jest's ESM mock factory cannot partially import from the module it's
-// replacing, so resolveRoomTransferSuccessor's query is re-implemented
-// here directly (kept in sync with the real implementation's semantics —
-// abandoned-status exclusion + zero/one/many handling) so the legitimate
-// pre-mutation validation in transferStayWorkflow still runs for real,
-// while only activateRoomTransferSuccessor itself is forced to fail.
 await jest.unstable_mockModule("../services/contractRoomTransferActivationService.js", () => ({
-  activateRoomTransferSuccessor: mockActivateRoomTransferSuccessor,
+  activateRoomTransferSuccessor: jest.fn(),
+  activateRoomTransferSuccessorDraft: mockActivateDraft,
   resolveRoomTransferSuccessor: async ({ predecessorContractId, session = null }) => {
     const { Contract } = await import("../models/index.js");
     const { ABANDONED_TRANSFER_SUCCESSOR_STATUSES } = await import("../services/contractService.js");
@@ -51,16 +46,16 @@ await jest.unstable_mockModule("../services/contractRoomTransferActivationServic
 
 const { transferStayWorkflow } = await import("./tenantActionService.js");
 const { generateContractNumber } = await import("../services/contractService.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory } = await import("../models/index.js");
+const { Contract, Reservation, Room, User, Stay, BedHistory, Bill } = await import("../models/index.js");
 
 jest.setTimeout(120_000);
 
-describe("transferStayWorkflow rolls back physical mutations when Contract activation fails mid-transaction", () => {
+describe("transferStayWorkflow rolls back physical mutations when the Contract cutover fails mid-transaction", () => {
   let mongo;
 
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(mongo.getUri(), { dbName: "transfer_cutover_rollback" });
+    await mongoose.connect(mongo.getUri(), { dbName: "transfer_cutover_rollback_v2" });
   }, 120_000);
 
   afterAll(async () => {
@@ -69,38 +64,41 @@ describe("transferStayWorkflow rolls back physical mutations when Contract activ
   }, 120_000);
 
   beforeEach(async () => {
-    mockActivateRoomTransferSuccessor.mockClear();
+    mockActivateDraft.mockClear();
     await Promise.all([
-      Reservation.deleteMany({}),
-      Room.deleteMany({}),
-      User.deleteMany({}),
-      Contract.deleteMany({}),
-      Stay.deleteMany({}),
-      BedHistory.deleteMany({}),
+      Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
+      Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}), Bill.deleteMany({}),
     ]);
   });
 
-  test("Room/Bed/Stay/BedHistory/Reservation all remain unchanged when Contract activation throws", async () => {
+  test("Room/Bed/Stay/BedHistory/Reservation all remain unchanged when the cutover throws", async () => {
     const tenant = await User.create({
       firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
       email: `tenant-${new mongoose.Types.ObjectId()}@example.test`,
       username: `tenant_${new mongoose.Types.ObjectId().toString().slice(-10)}`,
       firstName: "Test", lastName: "Tenant", role: "tenant", tenantStatus: "active",
     });
+    // Same room type both sides — a transfer, not a room-type change.
     const roomA = await Room.create({
       name: "Room 301", roomNumber: "301", branch: "gil-puyat",
-      type: "quadruple-sharing", capacity: 4, currentOccupancy: 1, price: 6300,
-      beds: [{ id: "bed-a1", position: "single", status: "occupied", occupiedBy: { userId: tenant._id, reservationId: null } }],
+      type: "double-sharing", capacity: 2, currentOccupancy: 1, price: 5400,
+      beds: [
+        { id: "bed-a1", position: "lower", status: "occupied", occupiedBy: { userId: tenant._id, reservationId: null } },
+        { id: "bed-a2", position: "upper", status: "available" },
+      ],
     });
     const roomB = await Room.create({
-      name: "Room 101", roomNumber: "101", branch: "gil-puyat",
-      type: "private", capacity: 1, currentOccupancy: 0, price: 14400,
-      beds: [{ id: "bed-b1", position: "single", status: "available" }],
+      name: "Room 305", roomNumber: "305", branch: "gil-puyat",
+      type: "double-sharing", capacity: 2, currentOccupancy: 0, price: 6300,
+      beds: [
+        { id: "bed-b1", position: "lower", status: "available" },
+        { id: "bed-b2", position: "upper", status: "available" },
+      ],
     });
     const reservation = await Reservation.create({
       userId: tenant._id, roomId: roomA._id, status: "moveIn", leaseDuration: 6,
-      reservationFeeAmount: 2000, preferredRoomType: "quadruple-sharing",
-      agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
+      reservationFeeAmount: 2000, preferredRoomType: "double-sharing",
+      agreedToPrivacy: true, agreedToCertification: true, totalPrice: 5400,
       selectedBed: { id: "bed-a1" }, moveInDate: new Date("2026-08-01T00:00:00.000Z"),
     });
     roomA.beds[0].occupiedBy.reservationId = reservation._id;
@@ -109,7 +107,7 @@ describe("transferStayWorkflow rolls back physical mutations when Contract activ
       tenantId: tenant._id, reservationId: reservation._id, branch: roomA.branch,
       roomId: roomA._id, bedId: "bed-a1",
       leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
-      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), monthlyRent: 6300, status: "active",
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), monthlyRent: 5400, status: "active",
     });
     const bedHistory = await BedHistory.create({
       bedId: "bed-a1", roomId: roomA._id, tenantId: tenant._id, reservationId: reservation._id,
@@ -121,52 +119,63 @@ describe("transferStayWorkflow rolls back physical mutations when Contract activ
       ...numberA, contractPurpose: "initial", tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomA._id, branch: roomA.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomA.roomNumber,
-      roomType: "quadruple-sharing", leaseType: "long_term", status: "active", isCurrent: true,
+      roomType: "double-sharing", leaseType: "long_term", approvedMonthlyRate: 5400,
+      leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
+      status: "active", isCurrent: true,
       statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
       createdBy: actorId, updatedBy: actorId,
     });
+    // Pre-seed the replacement Contract as an already-prepared generated
+    // Draft so Stage A reuses it (no PDF generation needed in this test).
     const numberB = await generateContractNumber(roomB.branch, new Date());
-    await Contract.create({
+    const successor = await Contract.create({
       ...numberB, contractPurpose: "replacement", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
-      reservationId: reservation._id, roomId: roomB._id, branch: roomB.branch,
+      reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
-      roomType: "private", leaseType: "long_term", approvedMonthlyRate: 14400,
-      status: "published", isCurrent: false,
-      statusHistory: [{ status: "published", changedBy: actorId, reason: "seed" }],
-      finalDocument: {
-        storageKey: "gil-puyat/2026/transfer/final_v1.pdf", fileName: "final_v1.pdf",
-        fileHash: "hash1", fileSize: 1024, mimeType: "application/pdf", pageCount: 4,
-        sourceType: "admin_scan", sourceVersion: 1, sourceUploadedAt: new Date(),
-        publishedAt: new Date(), publishedBy: actorId, tenantVisible: true,
-      },
+      roomType: "double-sharing", leaseType: "long_term", approvedMonthlyRate: 6300,
+      leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
+      status: "generated", isCurrent: false, tenantVisible: true,
+      statusHistory: [{ status: "generated", changedBy: actorId, reason: "seed prepared draft" }],
       createdBy: actorId, updatedBy: actorId,
     });
 
     await expect(transferStayWorkflow({
       reservationId: reservation._id,
-      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1" },
+      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
       actorId,
     })).rejects.toMatchObject({ code: "FORCED_TEST_FAILURE" });
 
-    expect(mockActivateRoomTransferSuccessor).toHaveBeenCalledTimes(1);
+    expect(mockActivateDraft).toHaveBeenCalledTimes(1);
 
-    const [reloadedStay, reloadedRoomA, reloadedRoomB, reloadedBedHistory, reloadedReservation, reloadedPredecessor] = await Promise.all([
+    const [reloadedStay, reloadedRoomA, reloadedRoomB, reloadedBedHistory, reloadedReservation, reloadedPredecessor, reloadedSuccessor, settlementBills, activeBedHistories] = await Promise.all([
       Stay.findById(stay._id),
       Room.findById(roomA._id),
       Room.findById(roomB._id),
       BedHistory.findById(bedHistory._id),
       Reservation.findById(reservation._id),
       Contract.findById(predecessor._id),
+      Contract.findById(successor._id),
+      Bill.find({ reservationId: reservation._id, billType: "transfer_settlement" }),
+      BedHistory.find({ stayId: stay._id, status: "active" }),
     ]);
 
+    // Physical state fully rolled back.
     expect(String(reloadedStay.roomId)).toBe(String(roomA._id));
     expect(reloadedStay.bedId).toBe("bed-a1");
-    expect(reloadedRoomA.beds[0].status).toBe("occupied");
-    expect(reloadedRoomB.beds[0].status).toBe("available");
+    expect(reloadedRoomA.beds.find((b) => b.id === "bed-a1").status).toBe("occupied");
+    expect(reloadedRoomB.beds.find((b) => b.id === "bed-b1").status).toBe("available");
     expect(String(reloadedReservation.roomId)).toBe(String(roomA._id));
     expect(reloadedBedHistory.status).toBe("active");
+    expect(activeBedHistories).toHaveLength(1);
+    expect(settlementBills).toHaveLength(0);
+
+    // Contracts: predecessor still active/current, successor Draft untouched.
     expect(reloadedPredecessor.status).toBe("active");
     expect(reloadedPredecessor.isCurrent).toBe(true);
+    expect(reloadedSuccessor.status).toBe("generated");
+    expect(reloadedSuccessor.isCurrent).toBe(false);
   });
 });

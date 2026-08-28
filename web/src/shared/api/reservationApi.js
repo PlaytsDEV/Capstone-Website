@@ -456,9 +456,6 @@ export const reservationApi = {
     authFetch("/reservations/my-renewal-offers"),
 
   // SCENARIO 1 API METHODS
-  cancelTransfer: (reservationId) =>
-    authFetch(`/reservations/${reservationId}/cancel-transfer`, { method: "POST" }),
-
   cancelMoveOut: (reservationId) =>
     authFetch(`/reservations/${reservationId}/cancel-moveout`, { method: "POST" }),
 

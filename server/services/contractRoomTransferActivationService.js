@@ -189,3 +189,145 @@ export async function activateRoomTransferSuccessor({ successorContractId, actor
     await ownSession.endSession();
   }
 }
+
+/**
+ * ============================================================================
+ * ROOM-TRANSFER CONTRACT CUTOVER — DRAFT SUCCESSOR (Contract-domain only)
+ * ============================================================================
+ * The canonical one-step room transfer (transferStayWorkflow) generates the
+ * replacement Contract as a tenant-visible Draft in the same transaction as
+ * the physical move — exactly like a fresh move-in Contract, which is also a
+ * Draft while the tenant already occupies the room. This activator makes
+ * that Draft the tenant's current Contract WITHOUT requiring a wet-signed
+ * finalDocument first:
+ *
+ *   successor:   generated (status unchanged), isCurrent false -> true,
+ *                tenantVisible -> true
+ *   predecessor: active/published/expiring_soon -> replaced,
+ *                isCurrent true -> false, supersededByContractId set
+ *
+ * "active" still means "wet-signed final document exists" everywhere else —
+ * this never sets the successor to "active". A later wet-signed upload chains
+ * the Draft generated -> ... -> published -> active unchanged.
+ *
+ * Ordering: the predecessor is flipped to isCurrent:false FIRST (via
+ * transitionContract -> "replaced", a terminal status), so when the
+ * successor's isCurrent:true write lands the partial unique index
+ * { stayId, isCurrent:true } (both Contracts share the tenant's one Stay)
+ * only ever sees a single current Contract for the stay. Same session =
+ * atomic to external readers.
+ *
+ * Idempotent: an already-current successor is a no-op success.
+ * ============================================================================
+ */
+async function runRoomTransferDraftActivation({ successorContractId, actorId, session }) {
+  const successor = await Contract.findById(successorContractId).session(session);
+  if (!successor) {
+    throw error("Room-transfer successor Contract not found.", "TRANSFER_SUCCESSOR_NOT_FOUND", 404);
+  }
+  if (successor.contractPurpose !== "replacement") {
+    throw error("Contract is not a room-transfer replacement successor.", "NOT_A_TRANSFER_SUCCESSOR", 409);
+  }
+
+  if (successor.isCurrent === true) {
+    return { activated: false, alreadyActive: true, successor, predecessor: null };
+  }
+
+  // A prepared Draft is the minimum: it must be at least "generated" so the
+  // tenant has a reviewable document (and contractAcknowledgementService can
+  // bind acknowledgement to its prepared version/hash). Pre-generation
+  // drafts are a caller bug — transferStayWorkflow always generates first.
+  const READY_DRAFT_STATUSES = new Set([
+    "generated",
+    "awaiting_signatures",
+    "partially_signed",
+    "signed",
+    "awaiting_notarization",
+    "notarized",
+    "ready_for_publication",
+    "published",
+  ]);
+  if (!READY_DRAFT_STATUSES.has(successor.status)) {
+    throw error(
+      "Room-transfer successor Contract has no prepared document yet — it cannot become the tenant's current Contract.",
+      "TRANSFER_SUCCESSOR_NOT_PREPARED",
+      409,
+      { status: successor.status },
+    );
+  }
+
+  if (!successor.replacesContractId) {
+    throw error(
+      "Room-transfer successor Contract has no predecessor relationship.",
+      "TRANSFER_PREDECESSOR_REQUIRED",
+      409,
+    );
+  }
+  const predecessor = await Contract.findById(successor.replacesContractId).session(session);
+  const validPredecessorStatuses = ["active", "published", "expiring_soon"];
+  if (!predecessor || !validPredecessorStatuses.includes(predecessor.status) || predecessor.isCurrent !== true) {
+    throw error(
+      "The predecessor Contract is not active/current — the relationship is ambiguous or " +
+      "was already superseded by something else. Admin review required.",
+      "TRANSFER_PREDECESSOR_NOT_ACTIVE",
+      409,
+      { predecessorId: String(successor.replacesContractId) },
+    );
+  }
+
+  predecessor.supersededByContractId = successor._id;
+  await transitionContract(
+    predecessor,
+    "replaced",
+    actorId,
+    `Superseded by room transfer successor Contract ${successor.contractNumber}`,
+    session,
+  );
+
+  successor.isCurrent = true;
+  successor.tenantVisible = true;
+  successor.updatedBy = actorId;
+  successor.statusHistory.push({
+    status: successor.status,
+    changedBy: actorId,
+    reason: "Room transfer executed; successor Draft Contract is now the tenant's current Contract (wet-signing pending)",
+  });
+  await successor.save({ session });
+
+  // Same rationale as runRoomTransferActivation: a pending renewal chained
+  // off the predecessor we just replaced still carries the old room's frozen
+  // terms — cancel it in this same transaction.
+  const danglingRenewal = await Contract.findOne({
+    contractPurpose: "renewal",
+    replacesContractId: predecessor._id,
+    status: { $in: ["published", "renewal_pending"] },
+  }).session(session);
+  if (danglingRenewal) {
+    await transitionContract(
+      danglingRenewal,
+      "cancelled",
+      actorId,
+      "predecessor_transferred",
+      session,
+    );
+  }
+
+  return { activated: true, alreadyActive: false, successor, predecessor };
+}
+
+export async function activateRoomTransferSuccessorDraft({ successorContractId, actorId, session = null }) {
+  if (session) {
+    return runRoomTransferDraftActivation({ successorContractId, actorId, session });
+  }
+
+  const ownSession = await mongoose.startSession();
+  try {
+    let result;
+    await ownSession.withTransaction(async () => {
+      result = await runRoomTransferDraftActivation({ successorContractId, actorId, session: ownSession });
+    });
+    return result;
+  } finally {
+    await ownSession.endSession();
+  }
+}

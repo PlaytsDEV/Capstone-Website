@@ -45,13 +45,6 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     ]);
   });
 
-  const minimalFinalDocument = (actorId) => ({
-    storageKey: "gil-puyat/2026/transfer/final_v1.pdf", fileName: "final_v1.pdf",
-    fileHash: "hash1", fileSize: 1024, mimeType: "application/pdf", pageCount: 4,
-    sourceType: "admin_scan", sourceVersion: 1, sourceUploadedAt: new Date(),
-    publishedAt: new Date(), publishedBy: actorId, tenantVisible: true,
-  });
-
   async function seedScenario({ moveInDate, structuredAdvanceRentAmount = null }) {
     const tenant = await User.create({
       firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
@@ -66,8 +59,8 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
       beds: [{ id: "bed-a1", position: "single", status: "occupied", occupiedBy: { userId: tenant._id, reservationId: null } }],
     });
     const roomB = await Room.create({
-      name: "Room 101", roomNumber: "101", branch: "gil-puyat",
-      type: "private", capacity: 1, currentOccupancy: 0,
+      name: "Room 305", roomNumber: "305", branch: "gil-puyat",
+      type: "quadruple-sharing", capacity: 4, currentOccupancy: 0,
       price: 14400,
       beds: [{ id: "bed-b1", position: "single", status: "available" }],
     });
@@ -132,12 +125,13 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     const successor = await Contract.create({
       ...number, contractPurpose: "replacement", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
-      reservationId: reservation._id, roomId: roomB._id, branch: roomB.branch,
+      reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
-      roomType: "private", leaseType: "long_term", approvedMonthlyRate: 14400,
-      status: "published", isCurrent: false,
-      statusHistory: [{ status: "published", changedBy: actorId, reason: "seed" }],
-      finalDocument: minimalFinalDocument(actorId),
+      roomType: "quadruple-sharing", leaseType: "long_term", approvedMonthlyRate: 14400,
+      leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
+      status: "generated", isCurrent: false, tenantVisible: true,
+      statusHistory: [{ status: "generated", changedBy: actorId, reason: "seed prepared draft" }],
       createdBy: actorId, updatedBy: actorId,
     });
 
