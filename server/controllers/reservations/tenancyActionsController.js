@@ -48,6 +48,12 @@ import {
 import { getBusinessSettings } from "../../utils/businessSettings.js";
 import { resolveAuthoritativeLeasePricing } from "../../services/contractPricingResolver.js";
 import { resolveCurrentStayForReservation } from "../../services/tenantContractSelectionService.js";
+import {
+  scheduleRoomTransfer,
+  isFutureManilaDate,
+  isPastManilaDate,
+} from "../../services/scheduledRoomTransferService.js";
+import { serializeScheduledRoomTransfer } from "../../services/scheduledRoomTransferView.js";
 
 export const archiveReservation = async (req, res, next) => {
   try {
@@ -892,6 +898,51 @@ export const transferTenant = async (req, res, next) => {
 
     const oldData = reservation.toObject();
     const actor = await findDbUser(req.user.uid);
+
+    // ── Today vs future ──────────────────────────────────────────────────────
+    // effectiveTransferDate < today Manila  -> reject.
+    // effectiveTransferDate > today Manila  -> schedule (no physical cutover).
+    // effectiveTransferDate = today / absent -> the existing immediate cutover.
+    const effectiveTransferDate = req.body.effectiveTransferDate;
+    if (effectiveTransferDate && isPastManilaDate(effectiveTransferDate)) {
+      return res.status(400).json({
+        error: "The effective transfer date cannot be in the past.",
+        code: "PAST_TRANSFER_DATE",
+      });
+    }
+    if (effectiveTransferDate && isFutureManilaDate(effectiveTransferDate)) {
+      try {
+        const scheduled = await scheduleRoomTransfer({
+          reservationId,
+          payload: {
+            ...req.body,
+            targetRoomId: req.body.targetRoomId || req.body.newRoomId,
+            targetBedId: req.body.targetBedId || req.body.newBedId,
+          },
+          actorId: actor?._id || null,
+        });
+        await auditLogger.logModification(
+          req,
+          "reservation",
+          reservationId,
+          oldData,
+          { scheduledRoomTransfer: scheduled.scheduledTransfer?.toObject?.() ?? scheduled.scheduledTransfer },
+          `Room transfer scheduled for ${dayjs(scheduled.scheduledTransfer.effectiveTransferDate).format("YYYY-MM-DD")}`,
+        );
+        return res.status(201).json({
+          message: "Room transfer scheduled.",
+          scheduledRoomTransfer: await serializeScheduledRoomTransfer(scheduled.scheduledTransfer),
+        });
+      } catch (error) {
+        logger.error({ err: error, requestId: req.id }, "Schedule transfer error");
+        await auditLogger.logError(req, error, "Failed to schedule room transfer");
+        if (error?.statusCode) {
+          return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULE_TRANSFER_FAILED" });
+        }
+        return handleReservationError(res, error, "schedule transfer");
+      }
+    }
+
     const result = await transferStayWorkflow({
       reservationId,
       payload: {
