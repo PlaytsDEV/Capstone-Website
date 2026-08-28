@@ -28,6 +28,8 @@ import {
   renewStayWorkflow,
   moveOutStayWorkflow,
   transferStayWorkflow,
+  prepareRoomTransferAddendum,
+  discardRoomTransferAddendum,
   cancelMoveOutStayWorkflow,
   executeEarlyTerminationWorkflow,
   executeDirectRoomSwapWorkflow,
@@ -944,13 +946,124 @@ export const transferTenant = async (req, res, next) => {
   }
 };
 
-// NOTE (R1 hybrid reconciliation): main's `prepareRoomTransferContract` handler
-// is intentionally NOT carried forward here. It wrote `reservation.pendingTransfer*`
-// and drove the replacement-lease `autoGenerateTransferContract` pipeline, both of
-// which the canonical one-step Addendum model (transferStayWorkflow Stage A) makes
-// obsolete. A clean "prepare Room Transfer Addendum" endpoint (no physical
-// mutation, no phantom fields) is introduced in R2; a "discard prepared Addendum"
-// endpoint in R4.
+/**
+ * R2 — POST /api/reservations/:reservationId/transfer/prepare-addendum
+ *
+ * Prepares (or reuses) the Room Transfer Addendum Draft + its PDF for a
+ * planned transfer, WITHOUT performing the physical cutover. Lets Admin
+ * preview / download the Addendum before pressing "Confirm Transfer".
+ *
+ * Mutates nothing physical: no Stay / Reservation.roomId / occupancy / Bill /
+ * TenantCredit / UtilityReading / recurringRentRate / securityDepositHeld /
+ * pendingTransfer* fields. The Addendum is created isCurrent:false and is NOT
+ * activated. Idempotent — repeat calls reuse the existing compatible Draft.
+ *
+ * Access: Admin | Owner
+ * @body {string} targetRoomId
+ * @body {string} [targetBedId]  - required only for a shared destination
+ * @body {string} [effectiveTransferDate]
+ * @returns {Object} { addendum: {...identity}, reused: boolean }
+ */
+export const prepareRoomTransferAddendumAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await prepareRoomTransferAddendum({
+      reservationId,
+      payload: {
+        targetRoomId: req.body.targetRoomId || req.body.newRoomId,
+        targetBedId: req.body.targetBedId || req.body.newBedId,
+        effectiveTransferDate: req.body.effectiveTransferDate,
+      },
+      actorId: actor?._id || null,
+    });
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { addendumContractId: result.addendum.contractId, reused: result.reused },
+      `Room Transfer Addendum ${result.reused ? "reused" : "prepared"} (${result.addendum.contractNumber || result.addendum.contractId})`,
+    );
+
+    res.status(result.reused ? 200 : 201).json({
+      message: result.reused
+        ? "Existing Room Transfer Addendum draft reused."
+        : "Room Transfer Addendum draft prepared.",
+      ...result,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Prepare Room Transfer Addendum error");
+    await auditLogger.logError(req, error, "Failed to prepare Room Transfer Addendum");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "ADDENDUM_PREPARATION_FAILED" });
+    }
+    handleReservationError(res, error, "prepare room transfer addendum");
+  }
+};
+
+/**
+ * R4 — POST /api/reservations/:reservationId/transfer/discard-addendum
+ *
+ * Discards a PRE-CUTOVER Room Transfer Addendum Draft (transition
+ * generated -> cancelled). NOT a reversal of a completed transfer. Leaves the
+ * original/current Contract active, Stay / Reservation room / occupancy /
+ * utilities unchanged. Creates no Bill / TenantCredit, changes no held
+ * deposit, touches no pendingTransfer* fields, releases no bed lock.
+ *
+ * Access: Admin | Owner
+ * @returns {Object} { discarded: boolean, contractId, previousStatus }
+ */
+export const discardRoomTransferAddendumAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await discardRoomTransferAddendum({
+      reservationId,
+      actorId: actor?._id || null,
+    });
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { discardedAddendumContractId: result.contractId, previousStatus: result.previousStatus },
+      `Room Transfer Addendum discarded before cutover (${result.contractId})`,
+    );
+
+    res.status(200).json({
+      message: "Prepared Room Transfer Addendum discarded. The tenant's current lease is unchanged.",
+      ...result,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Discard Room Transfer Addendum error");
+    await auditLogger.logError(req, error, "Failed to discard Room Transfer Addendum");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "ADDENDUM_DISCARD_FAILED" });
+    }
+    handleReservationError(res, error, "discard room transfer addendum");
+  }
+};
 
 export const processDepositRefund = async (req, res, next) => {
   try {

@@ -79,6 +79,8 @@ await jest.unstable_mockModule("../utils/tenantActionService.js", () => ({
   moveOutStayWorkflow,
   renewStayWorkflow: jest.fn(),
   transferStayWorkflow: jest.fn(),
+  prepareRoomTransferAddendum: jest.fn(),
+  discardRoomTransferAddendum: jest.fn(),
   cancelMoveOutStayWorkflow: jest.fn(),
   executeEarlyTerminationWorkflow: jest.fn(),
   executeDirectRoomSwapWorkflow: jest.fn(),

@@ -43,6 +43,8 @@ import {
   transitionContract,
   createReplacementContractForTransfer,
   validateContractForGeneration,
+  ROOM_TRANSFER_SUCCESSOR_PURPOSES,
+  ABANDONED_TRANSFER_SUCCESSOR_STATUSES,
 } from "../services/contractService.js";
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
 import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
@@ -696,6 +698,266 @@ const isValidTransferPredecessor = (contract) => {
  *
  * Returns the successor Contract doc (status "generated", isCurrent:false).
  */
+/**
+ * Shared pre-transaction validation for a room-transfer intent. Resolves the
+ * reservation, destination room + (conditional) bed, the current-lease
+ * predecessor Contract and the active Stay, and runs every cheap guard that
+ * does NOT need a transaction session. Used by BOTH the one-step
+ * `transferStayWorkflow` (Stage A) and the read-only
+ * `prepareRoomTransferAddendum` / `discardRoomTransferAddendum` endpoints so
+ * the "is this transfer legal?" rules live in exactly one place.
+ *
+ * Mutates nothing. Throws `{statusCode, code}` on any failed guard.
+ *
+ * @param {Object}  p
+ * @param {string}  p.reservationId
+ * @param {Object}  p.payload            - { targetRoomId, targetBedId?, effectiveTransferDate?, confirm? }
+ * @param {boolean} [p.requireConfirm=false] - enforce payload.confirm (the cutover does; preview/discard do not)
+ * @returns {{ reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate, destinationNeedsBed }}
+ */
+export async function resolveValidatedRoomTransferIntent({ reservationId, payload = {}, requireConfirm = false }) {
+  const reservation = await Reservation.findById(reservationId)
+    .populate("roomId", "name roomNumber branch beds currentOccupancy capacity type")
+    .populate("userId", "firstName lastName email tenantStatus");
+  if (!reservation) {
+    throw Object.assign(new Error("Reservation not found"), { statusCode: 404, code: "RESERVATION_NOT_FOUND" });
+  }
+  if (!hasReservationStatus(reservation.status, "moveIn")) {
+    throw Object.assign(new Error("Only active moved-in tenants can be transferred."), { statusCode: 400, code: "INVALID_STATUS_FOR_TRANSFER" });
+  }
+  if (requireConfirm && !payload?.confirm) {
+    throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
+  }
+  if (!payload.targetRoomId) {
+    throw Object.assign(new Error("Target room is required."), { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" });
+  }
+
+  const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
+  const targetRoom = await Room.findById(payload.targetRoomId);
+  if (!targetRoom) {
+    throw Object.assign(new Error("Target room not found."), { statusCode: 404, code: "TARGET_ROOM_NOT_FOUND" });
+  }
+  if (String(targetRoom.branch) !== String(reservation.roomId?.branch || "")) {
+    throw Object.assign(new Error("Transfers are limited to rooms within the same branch."), { statusCode: 400, code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED" });
+  }
+  // A room transfer MAY change room type (Private <-> Double <-> Quadruple).
+  // Bed requirement is driven by the DESTINATION Room.type; a bed id supplied
+  // for a private destination is IGNORED, never rejected.
+  const destinationNeedsBed = roomTypeRequiresBed(targetRoom.type);
+  if (destinationNeedsBed && !payload.targetBedId) {
+    throw Object.assign(
+      new Error("A specific bed must be selected for a shared room."),
+      { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" },
+    );
+  }
+  const targetBed = destinationNeedsBed
+    ? targetRoom.beds.find(
+        (bed) => String(bed.id) === String(payload.targetBedId) || String(bed._id) === String(payload.targetBedId),
+      )
+    : null;
+  if (destinationNeedsBed && !targetBed) {
+    throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
+  }
+
+  const predecessorContract = await resolveAuthoritativeCurrentContract({
+    reservationId: reservation._id,
+    tenantId: reservation.userId?._id || reservation.userId,
+  });
+  if (!predecessorContract || !isValidTransferPredecessor(predecessorContract)) {
+    throw Object.assign(
+      new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
+      { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
+    );
+  }
+  const activeStay = await resolveCurrentStayForReservation(reservation._id);
+  if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
+    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
+  }
+  if (
+    String(activeStay.roomId) === String(payload.targetRoomId) &&
+    (!payload.targetBedId || String(activeStay.bedId) === String(payload.targetBedId))
+  ) {
+    throw Object.assign(new Error("Transfer target must differ from the current room and bed."), { statusCode: 400, code: "SAME_TRANSFER_TARGET" });
+  }
+
+  return { reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate, destinationNeedsBed };
+}
+
+/**
+ * R2 — Prepare (or reuse) the Room Transfer Addendum Draft + its PDF for a
+ * planned transfer, WITHOUT performing the physical cutover. This is the
+ * "preview / download the Addendum before you Confirm" endpoint.
+ *
+ * Reuses the exact same Stage-A validation + `prepareRoomTransferDraft` as
+ * the one-step cutover, so a subsequent `PUT /transfer` finds and reuses this
+ * very Draft (idempotent — `createReplacementContractForTransfer` returns the
+ * existing non-abandoned successor, and an already-`generated` Draft is not
+ * regenerated).
+ *
+ * Mutates NOTHING physical: no Stay, no Reservation.roomId, no occupancy, no
+ * Bill, no TenantCredit, no UtilityReading, no recurringRentRate, no
+ * securityDepositHeld, no pendingTransfer* fields. The Addendum is created
+ * `isCurrent:false` and is NOT activated as the tenant's current Contract.
+ *
+ * @returns {{ addendum: {...identity}, reused: boolean }}
+ */
+export async function prepareRoomTransferAddendum({ reservationId, payload = {}, actorId = null }) {
+  const {
+    reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate,
+  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: false });
+
+  // Was a compatible Draft already prepared for this exact transfer?
+  const existing = await resolveRoomTransferSuccessor({ predecessorContractId: predecessorContract._id }).catch(() => null);
+  const reused = Boolean(
+    existing &&
+    String(existing.roomId) === String(targetRoom._id) &&
+    ["generated", "awaiting_signatures", "partially_signed", "signed",
+     "awaiting_notarization", "notarized", "ready_for_publication", "published"].includes(existing.status),
+  );
+
+  const addendum = await prepareRoomTransferDraft({
+    reservation,
+    predecessorContract,
+    activeStay,
+    targetRoom,
+    targetBed,
+    effectiveTransferDate,
+    actorId,
+  });
+
+  return {
+    reused,
+    addendum: {
+      contractId: String(addendum._id),
+      contractNumber: addendum.contractNumber || null,
+      contractPurpose: addendum.contractPurpose,          // "amendment"
+      status: addendum.status,                            // "generated"
+      version: addendum.version ?? null,
+      amendmentEffectiveDate: addendum.amendmentEffectiveDate || effectiveTransferDate,
+      leaseStartDate: addendum.leaseStartDate || null,    // ORIGINAL lease start (unchanged)
+      leaseEndDate: addendum.leaseEndDate || null,        // ORIGINAL lease end (unchanged)
+      roomId: String(addendum.roomId),
+      roomNumber: addendum.roomNumber || targetRoom.roomNumber || null,
+      roomType: addendum.roomType || targetRoom.type || null,
+      bedId: addendum.bedId || null,
+      approvedMonthlyRate: addendum.approvedMonthlyRate ?? null,
+      securityDepositAmount: addendum.securityDepositAmount ?? null,
+      preparedDocument: addendum.preparedDocument
+        ? {
+            url: addendum.preparedDocument.url || null,
+            version: addendum.preparedDocument.version ?? null,
+            fileHash: addendum.preparedDocument.fileHash || null,
+          }
+        : null,
+    },
+  };
+}
+
+/**
+ * R4 — Discard a PRE-CUTOVER Room Transfer Addendum Draft. This is NOT a
+ * reversal of a completed transfer: it only applies while the Addendum is a
+ * `generated` (or earlier) Draft that has NOT been activated as the tenant's
+ * current Contract and NO physical transfer has occurred.
+ *
+ * Transitions that Draft `-> cancelled` (which makes it an "abandoned"
+ * successor — `createReplacementContractForTransfer` will then create a fresh
+ * one for the next attempt). Leaves the original/current Contract active, the
+ * Stay unchanged, the Reservation room unchanged, occupancy unchanged,
+ * utilities unchanged. Creates no Bill / TenantCredit, changes no held
+ * deposit, touches no `pendingTransfer*` fields, releases no bed lock.
+ *
+ * @returns {{ discarded: boolean, contractId: string|null, previousStatus: string|null }}
+ */
+export async function discardRoomTransferAddendum({ reservationId, actorId = null }) {
+  const reservation = await Reservation.findById(reservationId)
+    .populate("userId", "_id");
+  if (!reservation) {
+    throw Object.assign(new Error("Reservation not found"), { statusCode: 404, code: "RESERVATION_NOT_FOUND" });
+  }
+
+  const predecessorContract = await resolveAuthoritativeCurrentContract({
+    reservationId: reservation._id,
+    tenantId: reservation.userId?._id || reservation.userId,
+  });
+  if (!predecessorContract) {
+    throw Object.assign(new Error("No current Contract for this tenant."), { statusCode: 409, code: "NO_CURRENT_CONTRACT" });
+  }
+
+  // If the tenant's CURRENT Contract is itself a room-transfer successor that
+  // has been made current, the transfer already executed (Stage-B cutover
+  // activated it) — this is a post-cutover state, NOT a pre-cutover discard.
+  if (
+    ROOM_TRANSFER_SUCCESSOR_PURPOSES.includes(predecessorContract.contractPurpose) &&
+    predecessorContract.isCurrent === true &&
+    predecessorContract.replacesContractId
+  ) {
+    // Only "already completed" when the physical room actually moved onto this
+    // successor's room (a bare current amendment from a PRIOR completed
+    // transfer is fine to build the NEXT transfer on).
+    const succRoomId = String(predecessorContract.roomId);
+    const reservationRoomId = String(reservation.roomId?._id || reservation.roomId);
+    if (succRoomId === reservationRoomId) {
+      // Is there a not-yet-current NEXT-transfer Draft chained off it? If so we
+      // fall through and discard that. Otherwise the only thing "in flight" is
+      // the completed transfer itself.
+      const chainedNext = await Contract.findOne({
+        replacesContractId: predecessorContract._id,
+        contractPurpose: { $in: [...ROOM_TRANSFER_SUCCESSOR_PURPOSES] },
+        status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
+        isCurrent: { $ne: true },
+      });
+      if (!chainedNext) {
+        throw Object.assign(
+          new Error("This Room Transfer has already been completed and cannot be discarded here. Post-cutover reversal is a separate workflow."),
+          { statusCode: 409, code: "TRANSFER_ALREADY_COMPLETED" },
+        );
+      }
+    }
+  }
+
+  // The prepared successor, if any — a NON-abandoned amendment/replacement
+  // that replaces the current Contract and has NOT itself been made current.
+  const successor = await Contract.findOne({
+    replacesContractId: predecessorContract._id,
+    contractPurpose: { $in: [...ROOM_TRANSFER_SUCCESSOR_PURPOSES] },
+    status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
+  }).sort({ createdAt: -1 });
+
+  if (!successor) {
+    throw Object.assign(
+      new Error("No prepared Room Transfer Addendum to discard."),
+      { statusCode: 404, code: "NO_PREPARED_ADDENDUM" },
+    );
+  }
+  // If it has already become the tenant's current Contract, the transfer has
+  // been executed — this is a post-cutover state, not a discard.
+  if (successor.isCurrent === true) {
+    throw Object.assign(
+      new Error("This Room Transfer has already been completed and cannot be discarded here. Post-cutover reversal is a separate workflow."),
+      { statusCode: 409, code: "TRANSFER_ALREADY_COMPLETED" },
+    );
+  }
+  if (!DISCARDABLE_ADDENDUM_STATUSES.has(successor.status)) {
+    throw Object.assign(
+      new Error(`A Room Transfer Addendum in status "${successor.status}" cannot be discarded.`),
+      { statusCode: 409, code: "ADDENDUM_NOT_DISCARDABLE" },
+    );
+  }
+
+  const previousStatus = successor.status;
+  await transitionContract(successor, "cancelled", actorId, "Room Transfer Addendum discarded before cutover by admin");
+
+  return { discarded: true, contractId: String(successor._id), previousStatus };
+}
+
+// Statuses from which a prepared-but-not-current transfer Addendum may be
+// discarded. Deliberately excludes final/legal statuses (active/expired/etc.)
+// and anything already terminal.
+const DISCARDABLE_ADDENDUM_STATUSES = new Set([
+  "draft", "incomplete", "ready_for_generation", "generated",
+  "awaiting_signatures", "partially_signed",
+]);
+
 async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
   const successor = await createReplacementContractForTransfer({
     reservationId: reservation._id,
@@ -756,76 +1018,20 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
 
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {
   // ── Stage A — pre-transaction preparation ────────────────────────────────
-  // Resolve the reservation + its current Contract and prepare the
-  // replacement Contract Draft BEFORE opening the physical-transfer
-  // transaction (Contract PDF generation is not transaction-safe). All
-  // cheap validation that does not need the transaction session is done
-  // here too, so an invalid request fails fast without a prepared Draft.
-  const prepReservation = await Reservation.findById(reservationId)
-    .populate("roomId", "name roomNumber branch beds currentOccupancy capacity type")
-    .populate("userId", "firstName lastName email tenantStatus");
-  if (!prepReservation) {
-    throw Object.assign(new Error("Reservation not found"), { statusCode: 404, code: "RESERVATION_NOT_FOUND" });
-  }
-  if (!hasReservationStatus(prepReservation.status, "moveIn")) {
-    throw Object.assign(new Error("Only active moved-in tenants can be transferred."), { statusCode: 400, code: "INVALID_STATUS_FOR_TRANSFER" });
-  }
-  if (!payload?.confirm) {
-    throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
-  }
-  if (!payload.targetRoomId) {
-    throw Object.assign(new Error("Target room is required."), { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" });
-  }
-
-  const prepEffectiveDate = normalizeDate(payload.effectiveTransferDate) || new Date();
-  const prepTargetRoom = await Room.findById(payload.targetRoomId);
-  if (!prepTargetRoom) {
-    throw Object.assign(new Error("Target room not found."), { statusCode: 404, code: "TARGET_ROOM_NOT_FOUND" });
-  }
-  if (String(prepTargetRoom.branch) !== String(prepReservation.roomId?.branch || "")) {
-    throw Object.assign(new Error("Transfers are limited to rooms within the same branch."), { statusCode: 400, code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED" });
-  }
-  // A room transfer MAY change room type (Private <-> Double <-> Quadruple).
-  // The destination Contract, pricing, template and bed handling below all
-  // key off the DESTINATION Room.type; nothing here blocks a type change.
-  // Bed requirement is driven independently by the destination room type; a
-  // bed id supplied for a private destination is IGNORED, never rejected.
-  const prepDestinationNeedsBed = roomTypeRequiresBed(prepTargetRoom.type);
-  if (prepDestinationNeedsBed && !payload.targetBedId) {
-    throw Object.assign(
-      new Error("A specific bed must be selected for a shared room."),
-      { statusCode: 400, code: "MISSING_TRANSFER_FIELDS" },
-    );
-  }
-  const prepTargetBed = prepDestinationNeedsBed
-    ? prepTargetRoom.beds.find(
-        (bed) => String(bed.id) === String(payload.targetBedId) || String(bed._id) === String(payload.targetBedId),
-      )
-    : null;
-  if (prepDestinationNeedsBed && !prepTargetBed) {
-    throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
-  }
-
-  const prepPredecessor = await resolveAuthoritativeCurrentContract({
-    reservationId: prepReservation._id,
-    tenantId: prepReservation.userId?._id || prepReservation.userId,
-  });
-  if (!prepPredecessor || !isValidTransferPredecessor(prepPredecessor)) {
-    throw Object.assign(
-      new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
-      { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
-    );
-  }
-  const prepActiveStay = await resolveCurrentStayForReservation(prepReservation._id);
-  if (!prepActiveStay || !CURRENT_STAY_STATUSES.includes(prepActiveStay.status)) {
-    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
-  }
-  if (
-    String(prepActiveStay.roomId) === String(payload.targetRoomId) &&
-    (!payload.targetBedId || String(prepActiveStay.bedId) === String(payload.targetBedId))
-  ) {
-    throw Object.assign(new Error("Transfer target must differ from the current room and bed."), { statusCode: 400, code: "SAME_TRANSFER_TARGET" });
-  }
+  // Cheap validation (no transaction session) + prepare the Room Transfer
+  // Addendum Draft BEFORE opening the physical-transfer transaction (Contract
+  // PDF generation is not transaction-safe). Identical validation to the
+  // read-only `prepareRoomTransferAddendum` / `discardRoomTransferAddendum`
+  // endpoints — the "is this transfer legal?" rules live in
+  // `resolveValidatedRoomTransferIntent`.
+  const {
+    reservation: prepReservation,
+    targetRoom: prepTargetRoom,
+    targetBed: prepTargetBed,
+    predecessorContract: prepPredecessor,
+    activeStay: prepActiveStay,
+    effectiveTransferDate: prepEffectiveDate,
+  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: true });
 
   const preparedSuccessor = await prepareRoomTransferDraft({
     reservation: prepReservation,

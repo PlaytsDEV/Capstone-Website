@@ -721,6 +721,7 @@ export function TransferTenantModal({
     setTargetRoomMeterReading("");
     setReason("Room transfer");
     setForceOverride(false);
+    setPreparedAddendum(null);
     setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
     setSourceRoomMeterReading(
       sourceRoomLatestReading?.reading != null
@@ -945,6 +946,57 @@ export function TransferTenantModal({
       showNotification("Failed to generate settlement receipt PDF.", "error");
     } finally {
       setPdfLoading(false);
+    }
+  };
+
+  // -- R2: Room Transfer Addendum preview (prepare Draft, no cutover) --------
+  // Calls POST /transfer/prepare-addendum (idempotent, mutates nothing
+  // physical), then opens the prepared Addendum PDF in a new tab. A later
+  // "Confirm Transfer" reuses this same Draft.
+  const [addendumLoading, setAddendumLoading] = useState(false);
+  const [preparedAddendum, setPreparedAddendum] = useState(null);
+  const handlePreviewAddendum = async () => {
+    const resId = tenant?.reservationId || detail?.reservationId || null;
+    if (!resId || !roomId) {
+      showNotification("Choose a destination room first.", "warning");
+      return;
+    }
+    setAddendumLoading(true);
+    try {
+      const resp = await reservationApi.prepareRoomTransferAddendum(resId, {
+        targetRoomId: roomId,
+        targetBedId: destinationNeedsBed ? bedId : undefined,
+        effectiveTransferDate: effectiveTransferDate || undefined,
+      });
+      const addendum = resp?.addendum || resp?.data?.addendum || null;
+      setPreparedAddendum(addendum);
+      if (addendum?.contractId) {
+        try {
+          const { contractApi } = await import("../../../shared/api/contractApi");
+          const blob = await contractApi.getPreparedContractPdfBlob(addendum.contractId, addendum.preparedDocument?.version || undefined);
+          const url = URL.createObjectURL(blob);
+          const win = window.open(url, "_blank");
+          // Revoke after the new tab has had time to load the PDF; if the
+          // popup was blocked, revoke immediately.
+          if (win) {
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          } else {
+            URL.revokeObjectURL(url);
+            showNotification("Addendum prepared. Allow pop-ups to preview the PDF, or download it from the tenant's Contracts tab.", "info");
+          }
+        } catch {
+          showNotification("Room Transfer Addendum prepared. Open it from the tenant's Contracts tab to view/print.", "info");
+        }
+      }
+      showNotification(
+        resp?.reused ? "Existing Room Transfer Addendum draft reused." : "Room Transfer Addendum draft prepared.",
+        "success",
+      );
+    } catch (err) {
+      console.error("Prepare Room Transfer Addendum failed:", err);
+      showNotification(err?.message || "Failed to prepare the Room Transfer Addendum.", "error");
+    } finally {
+      setAddendumLoading(false);
     }
   };
 
@@ -1442,6 +1494,81 @@ export function TransferTenantModal({
                 </p>
               </div>
             )}
+          </div>
+
+          {/* ── Room Transfer Addendum — preview BEFORE confirming (R2) ── */}
+          <div className="twm-settlement-card">
+            <div className="twm-settlement-card__header">
+              <p className="twm-settlement-card__title">Room Transfer Addendum</p>
+              <button
+                type="button"
+                className="twm-settlement-card__download-btn"
+                disabled={addendumLoading || !roomId || (destinationNeedsBed && !bedId)}
+                onClick={handlePreviewAddendum}
+                title="Prepare and open the Room Transfer Addendum draft (no changes are made to the tenant yet)"
+              >
+                <Download size={13} />
+                <span>{addendumLoading ? "Preparing…" : "Preview / Download Addendum"}</span>
+              </button>
+            </div>
+            <div className="twm-settlement-card__body">
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Original lease dates</span>
+                <span className="twm-settlement-row__value">
+                  {preparedAddendum?.leaseStartDate
+                    ? `${fmtDate(preparedAddendum.leaseStartDate)} → ${fmtDate(preparedAddendum.leaseEndDate)}`
+                    : `${fmtDate(detail?.basicInfo?.leaseStartDate || tenant?.leaseStartDate)} → ${fmtDate(detail?.basicInfo?.leaseEndDate || tenant?.leaseEndDate)}`}
+                  <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                    Unchanged — a room transfer does not start a new lease or reset the term.
+                  </span>
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Old room → New room</span>
+                <span className="twm-settlement-row__value">
+                  {tenant?.room || "—"} → {selectedRoom?.name || selectedRoom?.roomNumber || "—"}
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Old rent → New rent</span>
+                <span className="twm-settlement-row__value">
+                  {fmtMoney(preview?.rent?.sourceEffectiveRate ?? currentPrice)}/mo → {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Effective transfer date</span>
+                <span className="twm-settlement-row__value">{fmtDate(effectiveTransferDate)}</span>
+              </div>
+              {preview?.deposit && (
+                <div className="twm-settlement-row">
+                  <span className="twm-settlement-row__label">Security deposit requirement</span>
+                  <span className="twm-settlement-row__value">
+                    {fmtMoney(preview.deposit.required)}
+                    {preview.deposit.balanceDue > 0
+                      ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
+                      : preview.deposit.excessHeld > 0
+                        ? ` (${fmtMoney(preview.deposit.excessHeld)} excess stays held)`
+                        : ""}
+                  </span>
+                </div>
+              )}
+              {preparedAddendum && (
+                <div className="twm-settlement-row twm-settlement-row--success">
+                  <span className="twm-settlement-row__label">
+                    Addendum draft {preparedAddendum.contractNumber ? `#${preparedAddendum.contractNumber}` : "ready"}
+                  </span>
+                  <span className="twm-settlement-row__value" style={{ fontSize: 11, fontWeight: 400 }}>
+                    Prepared — this exact draft is used when you Confirm.
+                  </span>
+                </div>
+              )}
+            </div>
+            <p className="twm-settlement-card__note">
+              This is a <strong>Room Transfer Addendum</strong>, not a replacement lease. Your original lease
+              continues unchanged except for the amended room and rate. It is prepared here for your review;
+              nothing is changed for the tenant until you press <strong>Confirm Transfer</strong>. Wet-signing /
+              notarization is not required before the transfer — the tenant acknowledges the Addendum afterward.
+            </p>
           </div>
 
           {hasOutstanding && forceOverride && (

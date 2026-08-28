@@ -145,6 +145,23 @@ test("Estimate PDF is generated from the same canonical transferPreview", () => 
   assert.doesNotMatch(transferModalSource, /estimatedTotal,/);
 });
 
+test("R2 — Step 3 offers a Room Transfer Addendum preview using the prepare-addendum endpoint", () => {
+  assert.match(transferModalSource, /reservationApi\.prepareRoomTransferAddendum/);
+  assert.match(transferModalSource, /Room Transfer Addendum/);
+  assert.match(transferModalSource, /Preview \/ Download Addendum/);
+  // It must be labelled an Addendum, never a replacement lease.
+  assert.doesNotMatch(transferModalSource, /Replacement Contract/i);
+  assert.match(transferModalSource, /not a replacement lease/i);
+  // Preview must NOT run the cutover — the prepare call is separate from onSubmit.
+  assert.match(transferModalSource, /nothing is changed for the tenant until you press/i);
+});
+
+test("R3 — Step 2 (Review) shows original lease dates as unchanged + canonical rent/deposit", () => {
+  assert.match(transferModalSource, /Original lease dates/);
+  assert.match(transferModalSource, /does not start a new lease or reset the term/i);
+  assert.match(transferModalSource, /Old rent → New rent|Old room → New room/);
+});
+
 test("Strict terminology invariants are maintained throughout TransferTenantModal", () => {
   assert.match(transferModalSource, /Transfer Tenant/i);
   assert.doesNotMatch(transferModalSource, /\bResident\b/);

@@ -72,6 +72,8 @@ import {
   getMyRenewalOffers,
   moveOutReservation,
   transferTenant,
+  prepareRoomTransferAddendumAction,
+  discardRoomTransferAddendumAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,
@@ -846,6 +848,42 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   transferTenant,
+);
+
+/**
+ * POST /api/reservations/:reservationId/transfer/prepare-addendum
+ *
+ * R2 — Prepare (or reuse) the Room Transfer Addendum Draft + PDF for a planned
+ * transfer so Admin can preview / download it before Confirm. Mutates nothing
+ * physical; does NOT activate the Addendum. Idempotent.
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/transfer/prepare-addendum",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  prepareRoomTransferAddendumAction,
+);
+
+/**
+ * POST /api/reservations/:reservationId/transfer/discard-addendum
+ *
+ * R4 — Discard a PRE-CUTOVER Room Transfer Addendum Draft (generated ->
+ * cancelled). NOT a reversal of a completed transfer. Leaves the current
+ * lease, Stay, room, occupancy and utilities unchanged.
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/transfer/discard-addendum",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  discardRoomTransferAddendumAction,
 );
 
 /**

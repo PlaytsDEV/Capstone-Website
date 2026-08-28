@@ -418,11 +418,29 @@ export const reservationApi = {
       }),
     ),
 
-  // NOTE: the R1 hybrid reconciliation intentionally omits a client method for
-  // main's `/transfer/prepare-contract` and `/cancel-transfer` — those carried
-  // the replacement-lease + phantom `pendingTransfer*` semantics. Clean
-  // Addendum prepare/discard endpoints land in R2/R4. Canonical transfer surface
-  // for R1: `transfer` + `getRoomTransferPreview`.
+  /**
+   * R2 — Prepare (or reuse) the Room Transfer Addendum Draft + PDF for a
+   * planned transfer, so Admin can preview / download it before Confirm.
+   * Mutates nothing physical; does NOT activate the Addendum. Idempotent.
+   * @param {string} reservationId
+   * @param {{ targetRoomId: string, targetBedId?: string, effectiveTransferDate?: string }} data
+   */
+  prepareRoomTransferAddendum: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/transfer/prepare-addendum`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+
+  /**
+   * R4 — Discard a PRE-CUTOVER Room Transfer Addendum Draft. NOT a reversal of
+   * a completed transfer. Leaves the current lease / Stay / room / occupancy /
+   * utilities unchanged.
+   * @param {string} reservationId
+   */
+  discardRoomTransferAddendum: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/transfer/discard-addendum`, {
+      method: "POST",
+    }),
 
   /**
    * Get the latest electricity meter reading for a room.

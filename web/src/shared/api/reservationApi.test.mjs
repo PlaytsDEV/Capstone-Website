@@ -12,6 +12,9 @@ import { reservationApi } from "./reservationApi.js";
 test("reservationApi exposes the canonical room-transfer surface", () => {
   assert.equal(typeof reservationApi.transfer, "function");
   assert.equal(typeof reservationApi.getRoomTransferPreview, "function");
+  // R2 / R4 — clean Addendum prepare/discard (NOT the old replacement-lease pair).
+  assert.equal(typeof reservationApi.prepareRoomTransferAddendum, "function");
+  assert.equal(typeof reservationApi.discardRoomTransferAddendum, "function");
 });
 
 test("reservationApi no longer exposes the obsolete prepare/cancel transfer methods", () => {

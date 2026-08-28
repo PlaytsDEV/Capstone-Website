@@ -55,6 +55,8 @@ export {
   moveOutReservation,
   checkoutReservation,
   transferTenant,
+  prepareRoomTransferAddendumAction,
+  discardRoomTransferAddendumAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,
