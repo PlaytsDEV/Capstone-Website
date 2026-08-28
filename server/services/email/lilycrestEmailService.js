@@ -38,6 +38,7 @@ import { getTemplateId } from "./templateRegistry.js";
 import { getEmailTemplateConfig, resolveSubject } from "./emailRegistry.js";
 import { sendInlineHtmlEmail, sendTemplateEmail } from "./resendEmailService.js";
 import { isResendConfigured } from "./resendClient.js";
+import { sendQaLocalEmail } from "./qaLocalEmailTransport.js";
 import {
   formatBranchName,
   formatBranchSubtitle,
@@ -82,12 +83,23 @@ export const sendLilycrestEmail = async ({
     return { success: false, provider: "resend", category: "configuration", code: "EMAIL_TYPE_UNKNOWN" };
   }
 
+  const normalizedVariables = normalizeEmailVariables(variables);
+  const localQaDelivery = await sendQaLocalEmail({
+    to,
+    templateKey,
+    variables: normalizedVariables,
+    subject: subject || resolveSubject(templateKey, normalizedVariables) || "Lilycrest Dormitory",
+    html: typeof config.builder === "function" ? config.builder(normalizedVariables) : "",
+  });
+  if (localQaDelivery) {
+    console.log("[Email] delivered to isolated local QA inbox", { templateKey });
+    return localQaDelivery;
+  }
+
   if (!isResendConfigured()) {
     console.log("[Email] not sent — Resend provider not configured", { templateKey });
     return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
   }
-
-  const normalizedVariables = normalizeEmailVariables(variables);
 
   const templateId = getTemplateId(templateKey);
 
