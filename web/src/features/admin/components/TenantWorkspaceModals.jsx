@@ -6,9 +6,26 @@ import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
+import { contractApi } from "../../../shared/api/contractApi";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
-import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
+import {
+  Clock,
+  History,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  CheckCircle2,
+  LogOut,
+  LoaderCircle,
+  AlertTriangle,
+  ArrowRight,
+  FileText,
+  Upload,
+  Printer,
+  FileCheck2,
+  Info,
+} from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -668,10 +685,10 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Transfer Tenant Modal — 3-Step Wizard
-   Step 1: Target Room & Date
-   Step 2: Meter Readings
-   Step 3: Review & Settlement Preview
+   Transfer Tenant Modal — 3-Step Guided Wizard
+   Step 1: Target Room & Paperwork (Select room/bed, calculate financial summary, prepare replacement contract)
+   Step 2: Sign & Upload Contract (Download draft, upload wet-signed/notarized PDF, verify)
+   Step 3: Meter Readings & Review (Departure/destination kWh meters, live settlement, confirm transfer)
    ───────────────────────────────────────────────────────────────────────────── */
 export function TransferTenantModal({
   open,
@@ -692,18 +709,40 @@ export function TransferTenantModal({
   // ── Wizard step state ─────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [attemptedStep1, setAttemptedStep1] = useState(false);
-  const [attemptedStep2, setAttemptedStep2] = useState(false);
+  const [attemptedStep3, setAttemptedStep3] = useState(false);
 
-  // ── Form state ────────────────────────────────────────────────────────────
+  // ── Step 1 Form state (Target Room & Paperwork) ───────────────────────────
   const [roomId, setRoomId] = useState("");
   const [bedId, setBedId] = useState("");
+  const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
+  const [forceOverride, setForceOverride] = useState(false);
+  const [preparingContract, setPreparingContract] = useState(false);
+  const [preparedContractId, setPreparedContractId] = useState(null);
+  const [preparedContractNumber, setPreparedContractNumber] = useState(null);
+  const [contractStatus, setContractStatus] = useState("draft");
+  const [contractIncomplete, setContractIncomplete] = useState(false);
+
+  // ── Step 2 Form state (Sign & Upload Contract) ────────────────────────────
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [downloadingDraft, setDownloadingDraft] = useState(false);
+  const [uploadingContract, setUploadingContract] = useState(false);
+  const [contractUploaded, setContractUploaded] = useState(false);
+
+  // ── Step 3 Form state (Meter Readings & Review) ───────────────────────────
   const [sourceRoomMeterReading, setSourceRoomMeterReading] = useState("");
   const [targetRoomMeterReading, setTargetRoomMeterReading] = useState("");
   const [reason, setReason] = useState("Room transfer");
   const [targetRoomBaseline, setTargetRoomBaseline] = useState(null);
   const [targetBaselineLoading, setTargetBaselineLoading] = useState(false);
-  const [forceOverride, setForceOverride] = useState(false);
-  const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // ── Cancellation & confirmation tracking ──────────────────────────────────
+  const transferConfirmedRef = useRef(false);
+  const preparedContractIdRef = useRef(null);
+
+  useEffect(() => {
+    preparedContractIdRef.current = preparedContractId;
+  }, [preparedContractId]);
 
   const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
   const hasOutstanding = outstandingBalance > 0;
@@ -713,14 +752,25 @@ export function TransferTenantModal({
     if (!open) return;
     setStep(1);
     setAttemptedStep1(false);
-    setAttemptedStep2(false);
+    setAttemptedStep3(false);
     setRoomId("");
     setBedId("");
+    setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
+    setForceOverride(false);
+    setPreparingContract(false);
+    setPreparedContractId(null);
+    setPreparedContractNumber(null);
+    setContractStatus("draft");
+    setContractIncomplete(false);
+    setSelectedFile(null);
+    setDownloadingDraft(false);
+    setUploadingContract(false);
+    setContractUploaded(false);
+    setReason("Room transfer");
     setTargetRoomBaseline(null);
     setTargetRoomMeterReading("");
-    setReason("Room transfer");
-    setForceOverride(false);
-    setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
+    transferConfirmedRef.current = false;
+    preparedContractIdRef.current = null;
     setSourceRoomMeterReading(
       sourceRoomLatestReading?.reading != null
         ? String(sourceRoomLatestReading.reading)
@@ -776,6 +826,11 @@ export function TransferTenantModal({
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
+  const securityDeposit =
+    resolveDepositFromPaymentInfo(
+      detail?.paymentInfo || tenant?.paymentInfo || tenant?.deposit,
+    ) || Number(detail?.billingInfo?.securityDeposit || tenant?.securityDeposit || 0);
+
   // ── Meter delta & anomaly guards ──────────────────────────────────────────
   const sourceBaseline = sourceRoomLatestReading?.reading != null
     ? Number(sourceRoomLatestReading.reading)
@@ -807,7 +862,8 @@ export function TransferTenantModal({
     daysSinceCycleStart != null && currentPrice > 0
       ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
       : null;
-  // ── Electricity cost estimate (live, using rate from active UtilityPeriod) ─
+
+  // Electricity cost estimate
   const kwhPreview =
     sourceDelta !== null && sourceDelta > 0 ? Math.round(sourceDelta * 100) / 100 : null;
   const rate = electricityRatePerUnit != null ? Number(electricityRatePerUnit) : null;
@@ -820,12 +876,15 @@ export function TransferTenantModal({
     (estimatedElectricityCost || 0) +
     (outstandingBalance || 0);
 
-  // ── Step gate validation ──────────────────────────────────────────────────
+  // ── Input filtering & validation gates ────────────────────────────────────
   const handleFloatKeyDown = (e) => {
     if (["e", "E", "-", "+"].includes(e.key)) {
       e.preventDefault();
     }
   };
+
+  const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
+  const step2Ready = contractStatus === "published" || contractUploaded;
 
   const sourceValid =
     sourceRoomMeterReading.trim() !== "" &&
@@ -835,13 +894,31 @@ export function TransferTenantModal({
     targetRoomMeterReading.trim() !== "" &&
     !isNaN(Number(targetRoomMeterReading)) &&
     Number(targetRoomMeterReading) >= 0;
+  const step3Valid =
+    sourceValid &&
+    targetValid &&
+    !sourceBelowBaseline &&
+    !targetBelowBaseline &&
+    reason.trim().length > 0;
 
-  const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
-  const step2Valid =
-    sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+  // ── Cancel & cleanup handler ──────────────────────────────────────────────
+  const handleClose = useCallback(async () => {
+    if (preparedContractIdRef.current && !transferConfirmedRef.current) {
+      const resId = tenant?.reservationId || tenant?._id || tenant?.id;
+      if (resId) {
+        try {
+          await reservationApi.cancelTransfer(resId);
+          showNotification("Pending transfer contract voided and bed lock released.", "info");
+        } catch (err) {
+          console.error("Failed to cancel pending transfer on close:", err);
+        }
+      }
+    }
+    onClose();
+  }, [tenant, onClose]);
 
-  // ── Step transition validation handlers with friendly toasts ────────────────
-  const handleNextStep1 = () => {
+  // ── Step 1: Prepare Replacement Contract ──────────────────────────────────
+  const handlePrepareContract = async () => {
     setAttemptedStep1(true);
     if (!roomId) {
       showNotification("Please select a target room for the transfer.", "warning");
@@ -858,48 +935,87 @@ export function TransferTenantModal({
       );
       return;
     }
-    setStep(2);
+    const resId = tenant?.reservationId || tenant?._id || tenant?.id;
+    if (!resId) {
+      showNotification("Missing reservation identifier for tenant.", "error");
+      return;
+    }
+
+    setPreparingContract(true);
+    try {
+      const res = await reservationApi.prepareTransferContract(resId, {
+        targetRoomId: roomId,
+        targetBedId: bedId,
+        effectiveTransferDate: effectiveTransferDate || toDateInputValue(new Date()),
+      });
+      const contractId = res?.contractId || res?.data?.contractId || res?.data?.id;
+      const contractNum = res?.contractNumber || res?.data?.contractNumber || "Pending";
+      const status = res?.status || res?.data?.status || "draft";
+      setPreparedContractId(contractId);
+      setPreparedContractNumber(contractNum);
+      setContractStatus(status);
+      setContractIncomplete(Boolean(res?.incomplete || res?.data?.incomplete));
+      showNotification("Replacement contract draft prepared successfully.", "success");
+      setStep(2);
+    } catch (err) {
+      console.error("Contract preparation failed:", err);
+      showNotification(err?.message || "Failed to prepare room transfer contract.", "error");
+    } finally {
+      setPreparingContract(false);
+    }
   };
 
-  const handleNextStep2 = () => {
-    setAttemptedStep2(true);
-    if (!sourceValid) {
-      showNotification("Please enter a valid final meter reading (kWh) for the current room.", "warning");
-      return;
+  // ── Step 2: Download / Print Contract Draft ───────────────────────────────
+  const handleDownloadContractDraft = async () => {
+    if (!preparedContractId) return;
+    setDownloadingDraft(true);
+    try {
+      const fetcher = contractApi.getPreparedContractPdfBlob || contractApi.getPreparedContractFile;
+      const blob = await fetcher(preparedContractId, 1);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Contract-Draft-${preparedContractNumber || preparedContractId}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showNotification("Contract draft downloaded.", "success");
+    } catch (err) {
+      console.error("Draft download failed:", err);
+      showNotification(err?.message || "Failed to download contract draft.", "error");
+    } finally {
+      setDownloadingDraft(false);
     }
-    if (!targetValid) {
-      showNotification("Please enter a valid opening meter reading (kWh) for the new room.", "warning");
-      return;
-    }
-    if (sourceBelowBaseline) {
-      showNotification(
-        `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
-        "warning",
-      );
-      return;
-    }
-    if (targetBelowBaseline) {
-      showNotification(
-        `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
-        "warning",
-      );
-      return;
-    }
-    if (!reason.trim()) {
-      showNotification("Please enter a reason for the room transfer.", "warning");
-      return;
-    }
-    setStep(3);
   };
 
-  // ── Bed label helper ─────────────────────────────────────────────────────
-  const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
-  const selectedBedLabel = selectedBed
-    ? getBedDisplayLabel(selectedBed, roomBeds.indexOf(selectedBed), selectedRoom?.type || selectedRoom?.roomType)
-    : bedId || "—";
+  // ── Step 2: Upload Wet-Signed / Notarized Contract ────────────────────────
+  const handleUploadSignedContract = async () => {
+    if (!preparedContractId) {
+      showNotification("No active replacement contract found.", "error");
+      return;
+    }
+    if (!selectedFile) {
+      showNotification("Please select a signed contract PDF file to upload.", "warning");
+      return;
+    }
+    setUploadingContract(true);
+    try {
+      await contractApi.uploadFinalNotarizedContract({
+        contractId: preparedContractId,
+        file: selectedFile,
+        preparedDocumentVersion: 1,
+      });
+      setContractStatus("published");
+      setContractUploaded(true);
+      showNotification("Wet-signed contract uploaded and verified successfully.", "success");
+    } catch (err) {
+      console.error("Signed contract upload failed:", err);
+      showNotification(err?.message || "Failed to upload signed contract.", "error");
+    } finally {
+      setUploadingContract(false);
+    }
+  };
 
-  // -- PDF download handler (lazy-import -- jsPDF only loaded on demand) ------
-  const [pdfLoading, setPdfLoading] = useState(false);
+  // ── Step 3: PDF Settlement Download ───────────────────────────────────────
   const handleDownloadTransferPDF = async () => {
     setPdfLoading(true);
     try {
@@ -932,19 +1048,88 @@ export function TransferTenantModal({
     }
   };
 
-  // -- Footer renderer ------------------------------------------------------
+  // ── Step 3: Confirm Transfer Submit ───────────────────────────────────────
+  const handleConfirmTransfer = () => {
+    setAttemptedStep3(true);
+    if (!step3Valid) {
+      if (!sourceValid) {
+        showNotification("Please enter a valid final meter reading (kWh) for the current room.", "warning");
+        return;
+      }
+      if (!targetValid) {
+        showNotification("Please enter a valid opening meter reading (kWh) for the new room.", "warning");
+        return;
+      }
+      if (sourceBelowBaseline) {
+        showNotification(
+          `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
+          "warning",
+        );
+        return;
+      }
+      if (targetBelowBaseline) {
+        showNotification(
+          `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
+          "warning",
+        );
+        return;
+      }
+      if (!reason.trim()) {
+        showNotification("Please enter a reason for the room transfer.", "warning");
+        return;
+      }
+      return;
+    }
+
+    transferConfirmedRef.current = true;
+    onSubmit({
+      roomId,
+      bedId,
+      reason,
+      forceOverride,
+      effectiveTransferDate: effectiveTransferDate || undefined,
+      sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
+      targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
+      contractId: preparedContractId,
+    });
+  };
+
+  // ── Bed label helper ─────────────────────────────────────────────────────
+  const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
+  const selectedBedLabel = selectedBed
+    ? getBedDisplayLabel(selectedBed, roomBeds.indexOf(selectedBed), selectedRoom?.type || selectedRoom?.roomType)
+    : bedId || "—";
+
+  // ── Footer renderer ──────────────────────────────────────────────────────
   const renderFooter = () => (
     <div className="twm-footer">
-      <button type="button" className="tenant-modal-btn tenant-modal-btn--ghost" onClick={onClose}>
+      <button
+        type="button"
+        className="tenant-modal-btn tenant-modal-btn--ghost"
+        onClick={handleClose}
+        disabled={loading || preparingContract || uploadingContract}
+      >
         Cancel
       </button>
       <div className="twm-footer__spacer" />
       <div className="twm-footer__actions">
-        {step > 1 && (
+        {step === 2 && (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--back"
-            onClick={() => setStep((s) => s - 1)}
+            onClick={() => setStep(1)}
+            disabled={uploadingContract || downloadingDraft}
+          >
+            <ChevronLeft size={16} />
+            <span>Back</span>
+          </button>
+        )}
+        {step === 3 && (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--back"
+            onClick={() => setStep(2)}
+            disabled={loading}
           >
             <ChevronLeft size={16} />
             <span>Back</span>
@@ -954,40 +1139,37 @@ export function TransferTenantModal({
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            onClick={handleNextStep1}
+            disabled={preparingContract || !step1Valid}
+            onClick={handlePrepareContract}
           >
-            <span>Next</span>
-            <ChevronRight size={16} />
+            {preparingContract ? (
+              <>
+                <LoaderCircle size={16} className="animate-spin" />
+                <span>Preparing Contract...</span>
+              </>
+            ) : (
+              <>
+                <span>Prepare Replacement Contract</span>
+                <ChevronRight size={16} />
+              </>
+            )}
           </button>
         ) : step === 2 ? (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            onClick={handleNextStep2}
+            disabled={!step2Ready}
+            onClick={() => setStep(3)}
           >
-            <span>Next</span>
+            <span>Next: Meter Readings</span>
             <ChevronRight size={16} />
           </button>
         ) : (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--success"
-            disabled={loading || !step1Valid || !step2Valid}
-            onClick={() => {
-              if (!step1Valid || !step2Valid) {
-                showNotification("Please make sure all transfer details are valid.", "warning");
-                return;
-              }
-              onSubmit({
-                roomId,
-                bedId,
-                reason,
-                forceOverride,
-                effectiveTransferDate: effectiveTransferDate || undefined,
-                sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
-                targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
-              });
-            }}
+            disabled={loading || !step1Valid || !step3Valid}
+            onClick={handleConfirmTransfer}
           >
             {loading ? (
               <>
@@ -1010,15 +1192,19 @@ export function TransferTenantModal({
     <TenantModalShell
       open={open}
       title={`Transfer Tenant${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
-      onClose={onClose}
+      onClose={handleClose}
       footer={renderFooter()}
     >
       <WizardStepper
-        steps={["Target Room", "Meter Readings", "Review"]}
+        steps={[
+          "Target Room & Paperwork",
+          "Sign & Upload Contract",
+          "Meter Readings & Review",
+        ]}
         currentStep={step}
       />
 
-      {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
+      {/* ── STEP 1: Target Room & Paperwork ───────────────────────────── */}
       {step === 1 && (
         <>
           <div className="twm-callout twm-callout--info">
@@ -1099,16 +1285,6 @@ export function TransferTenantModal({
             </label>
           </div>
 
-          {roomId && priceDiff !== 0 && (
-            <div className="twm-callout twm-callout--price">
-              Monthly Rent Adjustment:{" "}
-              <strong>
-                {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
-              </strong>{" "}
-              (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
-            </div>
-          )}
-
           <div className="tenant-modal-field">
             <span>Effective Transfer Date</span>
             <input
@@ -1124,11 +1300,187 @@ export function TransferTenantModal({
               </span>
             </span>
           </div>
+
+          {/* Financial Summary Callout */}
+          <div className="bg-card border border-border rounded-xl p-4 space-y-2.5 shadow-2xs">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Financial Summary & Terms
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-muted-foreground">Current Monthly Rent:</span>
+                <span className="font-semibold text-foreground">{fmtMoney(currentPrice)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-muted-foreground">New Monthly Rent:</span>
+                <span className="font-semibold text-primary">{fmtMoney(newPrice)}</span>
+              </div>
+              {priceDiff !== 0 && (
+                <div className="flex justify-between py-1 border-b border-border/50 sm:col-span-2">
+                  <span className="text-muted-foreground">Monthly Rent Adjustment:</span>
+                  <span className={`font-semibold ${priceDiff > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                    {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
+                  </span>
+                </div>
+              )}
+              {proRataPreview != null && (
+                <div className="flex justify-between py-1 border-b border-border/50 sm:col-span-2">
+                  <span className="text-muted-foreground">Estimated Cycle Proration:</span>
+                  <span className="font-medium text-foreground">{fmtMoney(proRataPreview)} ({daysSinceCycleStart}d / {daysInMonth}d)</span>
+                </div>
+              )}
+              <div className="flex justify-between py-1 sm:col-span-2">
+                <span className="text-muted-foreground">Security Deposit Carryover:</span>
+                <span className="font-medium text-foreground">
+                  {securityDeposit > 0 ? `${fmtMoney(securityDeposit)} will carry over to the new room assignment` : "Transfers to new room assignment"}
+                </span>
+              </div>
+            </div>
+          </div>
         </>
       )}
 
-      {/* ── STEP 2: Meter Readings ─────────────────────────────────────── */}
+      {/* ── STEP 2: Sign & Upload Contract ────────────────────────────── */}
       {step === 2 && (
+        <>
+          <div className="twm-callout twm-callout--info">
+            Download and print the official replacement contract draft. Have the tenant and dorm owner/lessor sign the document, then upload the wet-signed / notarized PDF copy.
+          </div>
+
+          {/* Contract Summary Card */}
+          <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                <span className="font-semibold text-sm text-foreground">
+                  {preparedContractNumber || "Draft Replacement Contract"}
+                </span>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium text-foreground bg-transparent">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    step2Ready ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                />
+                {step2Ready ? "Signed & Published" : "Draft Prepared"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs border-t border-border/60 pt-2.5">
+              <div>
+                <span className="text-muted-foreground block text-[11px]">Target Assignment</span>
+                <span className="font-medium text-foreground">
+                  {selectedRoom?.name || selectedRoom?.roomNumber || "Target Room"} • {selectedBedLabel}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[11px]">New Monthly Rent</span>
+                <span className="font-semibold text-foreground">{fmtMoney(newPrice)}/mo</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[11px]">Effective Date</span>
+                <span className="font-medium text-foreground">{fmtDate(effectiveTransferDate)}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[11px]">Contract Status</span>
+                <span className="font-medium text-foreground capitalize">{contractStatus.replace(/_/g, " ")}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                className="tenant-modal-btn tenant-modal-btn--ghost text-xs inline-flex items-center gap-1.5"
+                onClick={handleDownloadContractDraft}
+                disabled={downloadingDraft}
+              >
+                {downloadingDraft ? (
+                  <>
+                    <LoaderCircle size={14} className="animate-spin" />
+                    <span>Downloading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>Download / Print Contract Draft</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Signed Contract Upload Dropzone */}
+          <div className="bg-card border border-dashed border-border rounded-xl p-5 text-center space-y-3 shadow-2xs">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                <Upload size={20} />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-foreground">Upload Wet-Signed / Notarized Contract PDF</div>
+                <div className="text-[11px] text-muted-foreground">Select scanned document (PDF, PNG, JPG up to 15MB)</div>
+              </div>
+            </div>
+
+            <input
+              type="file"
+              id="signed-contract-file-input"
+              accept=".pdf,application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setSelectedFile(file);
+              }}
+            />
+
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <label
+                htmlFor="signed-contract-file-input"
+                className="tenant-modal-btn tenant-modal-btn--ghost text-xs cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <FileText size={14} />
+                <span>{selectedFile ? "Choose Different File" : "Browse Signed PDF"}</span>
+              </label>
+
+              {selectedFile && (
+                <button
+                  type="button"
+                  className="tenant-modal-btn tenant-modal-btn--primary text-xs inline-flex items-center gap-1.5"
+                  onClick={handleUploadSignedContract}
+                  disabled={uploadingContract}
+                >
+                  {uploadingContract ? (
+                    <>
+                      <LoaderCircle size={14} className="animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={14} />
+                      <span>Upload Signed Contract</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {selectedFile && (
+              <div className="text-[11px] text-foreground font-medium pt-1">
+                Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+              </div>
+            )}
+
+            {step2Ready && (
+              <div className="border border-border rounded-lg p-2.5 bg-muted/40 text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center justify-center gap-1.5">
+                <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Wet-signed contract uploaded and verified. Ready to proceed to meter readings.</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── STEP 3: Meter Readings & Review ───────────────────────────── */}
+      {step === 3 && (
         <>
           <div className="twm-callout twm-callout--info">
             Record the final kWh reading for the current room and the opening reading for the new room. These anchor the billing segments.
@@ -1136,7 +1488,7 @@ export function TransferTenantModal({
 
           <div className="tenant-modal-grid">
             {/* Source Room Meter */}
-            <div className={`tenant-modal-field ${attemptedStep2 && (!sourceValid || sourceBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep3 && (!sourceValid || sourceBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>Current Room — Final Meter (kWh)</span>
               <input
                 type="number"
@@ -1150,8 +1502,8 @@ export function TransferTenantModal({
               <div className="twm-meter-wrap">
                 {sourceBaseline !== null ? (
                   <span className="twm-meter-hint">
-                    Last recorded: {sourceBaseline.toLocaleString()} kWh on {fmtDate(sourceRoomLatestReading.date)}
-                    {" "}({sourceRoomLatestReading.eventType})
+                    Last recorded: {sourceBaseline.toLocaleString()} kWh on {fmtDate(sourceRoomLatestReading?.date)}
+                    {" "}({sourceRoomLatestReading?.eventType || "baseline"})
                   </span>
                 ) : (
                   <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
@@ -1168,7 +1520,7 @@ export function TransferTenantModal({
             </div>
 
             {/* Target Room Meter */}
-            <div className={`tenant-modal-field ${attemptedStep2 && (!targetValid || targetBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep3 && (!targetValid || targetBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room — Opening Meter (kWh)</span>
               <input
                 type="number"
@@ -1184,8 +1536,8 @@ export function TransferTenantModal({
                   <div className="twm-meter-skeleton" />
                 ) : targetBaseline !== null ? (
                   <span className="twm-meter-hint">
-                    Last recorded: {targetBaseline.toLocaleString()} kWh on {fmtDate(targetRoomBaseline.date)}
-                    {" "}({targetRoomBaseline.eventType})
+                    Last recorded: {targetBaseline.toLocaleString()} kWh on {fmtDate(targetRoomBaseline?.date)}
+                    {" "}({targetRoomBaseline?.eventType || "baseline"})
                   </span>
                 ) : roomId ? (
                   <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
@@ -1199,7 +1551,7 @@ export function TransferTenantModal({
             </div>
           </div>
 
-          <label className={`tenant-modal-field ${attemptedStep2 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
+          <label className={`tenant-modal-field ${attemptedStep3 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
             <textarea
               rows={3}
@@ -1208,12 +1560,7 @@ export function TransferTenantModal({
               placeholder="Required — describe the reason for this transfer"
             />
           </label>
-        </>
-      )}
 
-      {/* ── STEP 3: Review & Settlement Preview ───────────────────────── */}
-      {step === 3 && (
-        <>
           <div className="twm-review-summary">
             <div className="twm-review-field">
               <span className="twm-review-field__label">From</span>
@@ -1239,8 +1586,8 @@ export function TransferTenantModal({
               </span>
             </div>
             <div className="twm-review-field twm-review-field--wide">
-              <span className="twm-review-field__label">Reason</span>
-              <span className="twm-review-field__value">{reason}</span>
+              <span className="twm-review-field__label">Replacement Contract</span>
+              <span className="twm-review-field__value font-mono text-xs">{preparedContractNumber || "Attached"}</span>
             </div>
           </div>
 

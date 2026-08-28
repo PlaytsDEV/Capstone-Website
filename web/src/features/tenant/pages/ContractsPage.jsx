@@ -511,8 +511,15 @@ export default function ContractsPage() {
     try {
       const blob = await tenantContractApi.getMySignedContractFile(contract.id, version, false);
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const title = `Signed Contract v${version} - ${contract.contractNumber || "Contract"}`;
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(`<!doctype html><html><head><title>${title}</title><style>html,body{margin:0;height:100%;background:#525659;overflow:hidden;}iframe{width:100%;height:100%;border:none;}</style></head><body><iframe src="${url}" title="${title}"></iframe></body></html>`);
+        win.document.close();
+      } else {
+        window.open(url, "_blank");
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch (err) {
       setError(friendlyTenantDocumentError(err, "Failed to preview signed contract copy."));
     }
@@ -549,8 +556,15 @@ export default function ContractsPage() {
         }
       }
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const title = `Contract History - ${histContract.contractNumber || "Contract"}`;
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(`<!doctype html><html><head><title>${title}</title><style>html,body{margin:0;height:100%;background:#525659;overflow:hidden;}iframe{width:100%;height:100%;border:none;}</style></head><body><iframe src="${url}" title="${title}"></iframe></body></html>`);
+        win.document.close();
+      } else {
+        window.open(url, "_blank");
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch (err) {
       showNotification(err?.message || "Failed to preview historical contract copy.", "error");
     } finally {

@@ -481,10 +481,6 @@ const PreCheckoutModal = ({
 
           <div className="precheckout-summary-box">
             <div className="precheckout-summary-row">
-              <span>Selected Statements</span>
-              <strong style={{ color: "var(--text-heading)" }}>{billsToPay.length} invoice(s)</strong>
-            </div>
-            <div className="precheckout-summary-row">
               <span>Payment Gateway</span>
               <span>PayMongo (GCash, Maya, Cards, Online Banking)</span>
             </div>
@@ -497,18 +493,14 @@ const PreCheckoutModal = ({
           <div
             style={{
               marginTop: 16,
-              padding: "10px 12px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
               fontSize: 12,
-              color: "#334155",
+              color: "var(--text-secondary)",
               display: "flex",
               alignItems: "center",
               gap: 8,
             }}
           >
-            <ShieldCheck size={16} color="#0A1628" style={{ flexShrink: 0 }} />
+            <ShieldCheck size={16} color="#059669" style={{ flexShrink: 0 }} />
             <span>
               Transactions are encrypted and settled automatically once completed on PayMongo.
             </span>
@@ -565,7 +557,8 @@ const StatementLedgerHero = ({
   unpaidRent,
   unpaidElec,
   unpaidWater,
-  hasWaterBilling,
+  hasElectricityBilling = false,
+  hasWaterBilling = false,
   onPayAll,
   unpaidCount = 0,
 }) => {
@@ -617,15 +610,18 @@ const StatementLedgerHero = ({
           </strong>
         </div>
 
-        <div style={dash.chipDivider} />
-
-        <div style={dash.chipItem}>
-          <Zap size={15} color="#d97706" />
-          <span>Electricity:</span>
-          <strong style={{ color: "#0A1628", fontWeight: 700 }}>
-            {fmt(unpaidElec)}
-          </strong>
-        </div>
+        {hasElectricityBilling && (
+          <>
+            <div style={dash.chipDivider} />
+            <div style={dash.chipItem}>
+              <Zap size={15} color="#d97706" />
+              <span>Electricity:</span>
+              <strong style={{ color: "#0A1628", fontWeight: 700 }}>
+                {fmt(unpaidElec)}
+              </strong>
+            </div>
+          </>
+        )}
 
         {hasWaterBilling && (
           <>
@@ -653,6 +649,7 @@ const StatementFilters = ({
   setStatusFilter,
   categoryFilter = "all",
   setCategoryFilter,
+  hasElectricityBilling = false,
   hasWaterBilling = false,
 }) => {
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
@@ -709,7 +706,7 @@ const StatementFilters = ({
   const categoryOptions = [
     { value: "all", label: "All Kinds", count: bills.length },
     { value: "rent", label: "Rent", icon: Home, count: rentCount },
-    { value: "electricity", label: "Electricity", icon: Zap, count: elecCount },
+    ...(hasElectricityBilling ? [{ value: "electricity", label: "Electricity", icon: Zap, count: elecCount }] : []),
     ...(hasWaterBilling ? [{ value: "water", label: "Water", icon: Droplets, count: waterCount }] : []),
   ];
 
@@ -1455,6 +1452,9 @@ export default function BillingTab() {
         .checkPaymentStatus(sessionId)
         .then((result) => {
           if (result?.status === "paid" || result?.paid) {
+            try {
+              sessionStorage.setItem("lilycrest_last_settled_payment_time", String(Date.now()));
+            } catch {}
             showNotification("Payment successful! Your statement balance has been settled.", "success", 5000);
             loadBills();
           } else if (result?.status === "unpaid") {
@@ -1466,6 +1466,9 @@ export default function BillingTab() {
         })
         .catch((err) => {
           console.warn("[BILLING] Payment verification warning:", err);
+          try {
+            sessionStorage.setItem("lilycrest_last_settled_payment_time", String(Date.now()));
+          } catch {}
           showNotification("Payment completed. Refreshing statements.", "success", 5000);
           loadBills();
         })
@@ -1520,6 +1523,11 @@ export default function BillingTab() {
   const unpaidWater = useMemo(
     () => roundMoney(unpaidBillSummaries.reduce((sum, { summary }) => sum + summary.outstandingBySection.water, 0)),
     [unpaidBillSummaries],
+  );
+
+  const hasElectricityBilling = useMemo(
+    () => billSummaries.some(({ summary }) => summary.hasElectricityCharge),
+    [billSummaries],
   );
 
   const hasWaterBilling = useMemo(
@@ -1720,6 +1728,7 @@ export default function BillingTab() {
         unpaidRent={unpaidRent}
         unpaidElec={unpaidElec}
         unpaidWater={unpaidWater}
+        hasElectricityBilling={hasElectricityBilling}
         hasWaterBilling={hasWaterBilling}
         unpaidCount={unpaidBills.length}
         onPayAll={handleOpenReviewForAll}
@@ -1732,88 +1741,83 @@ export default function BillingTab() {
         setStatusFilter={setStatusFilter}
         categoryFilter={categoryFilter}
         setCategoryFilter={setCategoryFilter}
+        hasElectricityBilling={hasElectricityBilling}
         hasWaterBilling={hasWaterBilling}
       />
 
       {/* 3. Selection Toolbar (only when unpaid statements exist and not viewing paid history) */}
       {unpaidBills.length > 0 && statusFilter !== "paid" && (
-        <div
-          className="ledger-selection-toolbar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-            padding: "12px 16px",
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: 10,
-            marginBottom: 16,
-          }}
-        >
-          <label
-            className="ledger-select-all-label"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#0A1628",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-          >
-            <input
-              type="checkbox"
-              ref={masterCheckboxRef}
-              className="ledger-custom-checkbox"
-              checked={allUnpaidSelected}
-              onChange={handleToggleSelectAll}
-              aria-label="Select all unpaid statements"
+        <div className="ledger-selection-toolbar">
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <label
+              className="ledger-select-all-label"
               style={{
-                width: 18,
-                height: 18,
-                accentColor: "#0A1628",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#0A1628",
                 cursor: "pointer",
+                userSelect: "none",
               }}
-            />
-            <span>Select All Unpaid Invoices ({unpaidBills.length})</span>
-          </label>
-
-          <div
-            className="ledger-selection-actions"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            {selectedBillIds.length > 0 && (
-              <div
-                className="ledger-selected-summary"
-                style={{ fontSize: 13, color: "#64748b" }}
-              >
-                Selected: <strong style={{ color: "#0A1628" }}>{selectedBillIds.length}</strong> invoice{selectedBillIds.length === 1 ? "" : "s"} • <strong style={{ color: "#0A1628" }}>{fmt(selectedTotal)}</strong>
-              </div>
-            )}
-
-            <button
-              type="button"
-              className="btn-review-pay"
-              onClick={handleOpenReviewForSelected}
-              disabled={selectedBillIds.length === 0 || payingOnline}
-              title={
-                selectedBillIds.length === 0
-                  ? "Select at least one unpaid statement to proceed with payment"
-                  : "Review and pay selected statements"
-              }
             >
-              <CreditCard size={15} />
-              Review & Pay Selected ({fmt(selectedTotal)})
-            </button>
+              <input
+                type="checkbox"
+                ref={masterCheckboxRef}
+                className="ledger-custom-checkbox"
+                checked={allUnpaidSelected}
+                onChange={handleToggleSelectAll}
+                aria-label="Select all unpaid statements"
+                style={{
+                  width: 18,
+                  height: 18,
+                  accentColor: "#0A1628",
+                  cursor: "pointer",
+                }}
+              />
+              {selectedBillIds.length === 0 ? (
+                <span>Select All ({unpaidBills.length})</span>
+              ) : (
+                <span className="ledger-selection-counter">
+                  {selectedBillIds.length} of {unpaidBills.length} selected
+                </span>
+              )}
+            </label>
+
+            {selectedBillIds.length > 0 && (
+              <button
+                type="button"
+                className="ledger-deselect-btn"
+                onClick={() => setSelectedBillIds([])}
+                title="Deselect all chosen statements"
+              >
+                Deselect all
+              </button>
+            )}
           </div>
+
+          {selectedBillIds.length > 0 && (
+            <div
+              className="ledger-selection-actions"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <button
+                type="button"
+                className="btn-review-pay"
+                onClick={handleOpenReviewForSelected}
+                disabled={payingOnline}
+                title={`Pay selected statements (${fmt(selectedTotal)})`}
+              >
+                <CreditCard size={15} />
+                Pay Selected ({fmt(selectedTotal)})
+              </button>
+            </div>
+          )}
         </div>
       )}
 

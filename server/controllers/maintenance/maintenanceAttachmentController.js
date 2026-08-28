@@ -31,6 +31,7 @@ import {
   resolveMaintenanceRequestStorageBranch,
   uploadMaintenanceRequestAttachmentFile,
 } from "../../services/attachmentUploadService.js";
+import { notify } from "../../utils/notificationService.js";
 
 const emitMaintenanceUpdated = async (request) => {
   try {
@@ -216,8 +217,8 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
         : req.body?.work_log_attachments;
     const attachmentErrors = validateIncomingWorkLogAttachments(rawAttachments);
     const attachments = normalizeAttachments(rawAttachments, {
-      context: "maintenance_internal_note",
-      visibility: "admin_only",
+      context: "maintenance_resolution_proof",
+      visibility: "tenant_admin",
       branchId: request.branch,
       uploadedBy: adminUser?.user_id,
       senderRole: adminUser?.role || "admin",
@@ -241,24 +242,43 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
       );
     }
 
+    if (attachments.length > 5) {
+      throw new AppError(
+        "You can upload a maximum of 5 resolution proof photos.",
+        400,
+        "MAX_ATTACHMENTS_EXCEEDED",
+      );
+    }
+
     const eventTimestamp = new Date();
     appendWorkLogEntry(request, {
-      note: note || "Resolution proof uploaded and signed off.",
+      note: note || "Resolution proof verified and uploaded.",
       attachments,
       ...buildActorSnapshot(adminUser),
       logged_at: eventTimestamp,
       entry_type: "admin_proof",
-      visibility: "admin_only",
+      visibility: "tenant_admin",
     });
 
-    // Automatically transition lifecycle status to resolved if in-progress or pending
-    if (["pending", "viewed", "in_progress", "submitted", "waiting_for_tenant"].includes(request.status)) {
-      request.status = "resolved";
+    const targetStatus = "resolved";
+    const statusChanged = request.status !== targetStatus;
+
+    // Automatically transition lifecycle status to resolved from any non-terminal active status
+    if (!["resolved", "completed", "closed", "cancelled", "rejected"].includes(request.status)) {
+      request.status = targetStatus;
       request.resolved_at = eventTimestamp;
+      request.resolution_note = note || request.resolution_note || "Resolution proof verified and uploaded.";
+      request.closed_at = null;
+      request.resolutionConfirmation = {
+        confirmedAt: null,
+        tenantFeedback: null,
+        rating: null,
+        action: null,
+      };
     }
 
     appendStatusHistory(request, {
-      event: "admin_proof_uploaded",
+      event: "resolution_proof_uploaded",
       status: request.status,
       ...buildActorSnapshot(adminUser),
       note: note || null,
@@ -270,6 +290,26 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)
       .lean();
+
+    if (tenantUser?._id) {
+      try {
+        await notify.maintenanceUpdated(
+          tenantUser._id,
+          request.request_type,
+          request.status,
+          request.request_id,
+          {
+            statusChanged,
+            hasAdminNote: true,
+            hasProgressEntry: true,
+            hasProgressAttachments: attachments.length > 0,
+            eventId: `resolution-proof:${eventTimestamp.toISOString()}`,
+          },
+        );
+      } catch {
+        // non-fatal
+      }
+    }
 
     await emitMaintenanceUpdated(request);
 

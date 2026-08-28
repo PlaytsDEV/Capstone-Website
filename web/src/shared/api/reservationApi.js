@@ -409,6 +409,15 @@ export const reservationApi = {
     ),
 
   /**
+   * Prepares the replacement Contract for a planned room transfer (admin only)
+   */
+  prepareTransferContract: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/transfer/prepare-contract`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /**
    * Get the latest electricity meter reading for a room.
    * Used by the Transfer modal to pre-fill baseline readings.
    */
@@ -455,9 +464,13 @@ export const reservationApi = {
   getMyRenewalOffers: () =>
     authFetch("/reservations/my-renewal-offers"),
 
-  // SCENARIO 1 API METHODS
+  /**
+   * Cancel an approved or pending room transfer and release target room lock
+   */
   cancelTransfer: (reservationId) =>
-    authFetch(`/reservations/${reservationId}/cancel-transfer`, { method: "POST" }),
+    authFetch(`/reservations/${reservationId}/cancel-transfer`, {
+      method: "POST",
+    }),
 
   cancelMoveOut: (reservationId) =>
     authFetch(`/reservations/${reservationId}/cancel-moveout`, { method: "POST" }),

@@ -702,18 +702,19 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Master Selection Toolbar */
+/* Master Selection Toolbar (Clean Borderless Inline Header) */
 .ledger-selection-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 12px 16px;
-  background: var(--surface-card);
-  border: 1px solid var(--border-card);
-  border-radius: 10px;
-  margin-bottom: 16px;
+  padding: 4px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin-bottom: 12px;
+  min-height: 38px;
 }
 
 .ledger-select-all-label {
@@ -725,6 +726,31 @@
   color: var(--text-heading);
   cursor: pointer;
   user-select: none;
+}
+
+.ledger-selection-counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.ledger-deselect-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.ledger-deselect-btn:hover {
+  color: var(--text-heading);
+  background-color: var(--surface-hover, #f1f5f9);
 }
 
 .ledger-custom-checkbox {
@@ -992,10 +1018,9 @@
 }
 
 .precheckout-summary-box {
-  background: var(--surface-muted);
-  border: 1px solid var(--border-card);
-  border-radius: 10px;
-  padding: 16px;
+  background: transparent;
+  border-top: 1px solid var(--border-card);
+  padding: 16px 0 0;
   margin-top: 16px;
 }
 
@@ -1014,7 +1039,7 @@
   align-items: center;
   font-size: 16px;
   font-weight: 800;
-  color: var(--color-primary);
+  color: var(--text-heading);
   border-top: 1px solid var(--border-card);
   padding-top: 10px;
   margin-top: 8px;
@@ -1026,7 +1051,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  background: #f8fafc;
+  background: var(--surface-card, #ffffff);
 }
 
 /* ── Hero Itemized Breakdown Tray ─────────────────── */

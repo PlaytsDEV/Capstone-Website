@@ -1954,6 +1954,11 @@ export default function ReservationDetailsModal({
                         type="date"
                         value={actualMoveInDate}
                         onChange={(event) => setActualMoveInDate(event.target.value)}
+                        onClick={(event) => {
+                          try {
+                            event.currentTarget.showPicker?.();
+                          } catch {}
+                        }}
                         className="rdm-inline-input"
                       />
                     </div>
@@ -2020,6 +2025,13 @@ export default function ReservationDetailsModal({
                         type="button"
                         className="rdm-action rdm-action-primary rdm-action-success"
                         onClick={() => {
+                          if (cancellationPending) {
+                            showNotification(
+                              "Cannot move in tenant: A cancellation request is pending review. Please approve or reject the request first.",
+                              "warning",
+                            );
+                            return;
+                          }
                           const reading = branchUsesSubmeter ? Number(meterReadingVal) : null;
                           if (branchUsesSubmeter && (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0)) {
                             showNotification(
@@ -2060,7 +2072,12 @@ export default function ReservationDetailsModal({
                             "Tenant move-in recorded successfully",
                           );
                         }}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || cancellationPending}
+                        title={
+                          cancellationPending
+                            ? "Move-in locked: A cancellation request is pending admin review. Approve or reject the request first."
+                            : undefined
+                        }
                       >
                         Move In
                       </button>
@@ -2082,37 +2099,41 @@ export default function ReservationDetailsModal({
                         <button
                           className="rdm-action rdm-action-primary"
                           onClick={() => {
+                            if (cancellationPending) {
+                              showNotification(
+                                "Cannot move in tenant: A cancellation request is pending review. Please approve or reject the request first.",
+                                "warning",
+                              );
+                              return;
+                            }
                             if (!isMoveInPaymentSettled) return;
                             setMeterReadingVal("");
                             setShowMeterPrompt(true);
                           }}
-                          disabled={isSubmitting || !isMoveInPaymentSettled}
+                          disabled={isSubmitting || !isMoveInPaymentSettled || cancellationPending}
                           title={
-                            isMoveInPaymentSettled
-                              ? "Record tenant move-in and the initial meter reading"
-                              : "Move-in locked: 1-Month Advance Rent and Security Deposit (1DP + 1Adv) must be settled first."
+                            cancellationPending
+                              ? "Move-in locked: A cancellation request is pending admin review. Approve or reject the request first."
+                              : isMoveInPaymentSettled
+                                ? "Record tenant move-in and the initial meter reading"
+                                : "Move-in locked: 1-Month Advance Rent and Security Deposit (1DP + 1Adv) must be settled first."
                           }
                         >
                           Record Move In
                         </button>
-                        {!isMoveInPaymentSettled && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              gap: "8px",
-                              padding: "8px 12px",
-                              borderRadius: "8px",
-                              background: "#FEF2F2",
-                              border: "1px solid #FECACA",
-                              color: "#991B1B",
-                              fontSize: "12px",
-                              lineHeight: "1.45",
-                            }}
-                          >
-                            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: "2px", color: "#DC2626" }} />
-                            <span>
-                              <strong>Move-In Locked:</strong> 1-Month Advance & Deposit (1DP + 1Adv) settlement is pending.
+                        {cancellationPending && (
+                          <div className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs shadow-2xs">
+                            <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                            <span className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                              <strong className="text-slate-900 dark:text-slate-100">Move-In Locked:</strong> A tenant cancellation request is pending review. Review and resolve (Approve or Reject) the cancellation request above before moving in the tenant.
+                            </span>
+                          </div>
+                        )}
+                        {!cancellationPending && !isMoveInPaymentSettled && (
+                          <div className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs shadow-2xs">
+                            <AlertTriangle size={15} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                            <span className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                              <strong className="text-slate-900 dark:text-slate-100">Move-In Locked:</strong> 1-Month Advance & Deposit (1DP + 1Adv) settlement is pending.
                             </span>
                           </div>
                         )}
@@ -2123,12 +2144,24 @@ export default function ReservationDetailsModal({
                       <button
                         className="rdm-action rdm-action-dark"
                         onClick={() => {
+                          if (cancellationPending) {
+                            showNotification(
+                              "Cannot reschedule move-in while a cancellation request is pending review.",
+                              "warning",
+                            );
+                            return;
+                          }
                           setRescheduleMoveInDate(
                             toDateInputValue(readMoveInDate(reservation)) || todayDateStr,
                           );
                           setShowExtendPrompt(true);
                         }}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || cancellationPending}
+                        title={
+                          cancellationPending
+                            ? "Reschedule locked: A cancellation request is pending admin review."
+                            : undefined
+                        }
                       >
                         Reschedule move-in
                       </button>
@@ -2468,6 +2501,11 @@ export default function ReservationDetailsModal({
               value={rescheduleMoveInDate}
               min={todayDateStr}
               onChange={(event) => setRescheduleMoveInDate(event.target.value)}
+              onClick={(event) => {
+                try {
+                  event.currentTarget.showPicker?.();
+                } catch {}
+              }}
               className="rdm-reschedule-date-input"
               autoFocus
             />
@@ -2514,6 +2552,13 @@ export default function ReservationDetailsModal({
             type="button"
             className="rdm-reschedule-confirm"
             onClick={() => {
+              if (cancellationPending) {
+                showNotification(
+                  "Cannot reschedule move-in while a cancellation request is pending review.",
+                  "warning",
+                );
+                return;
+              }
               if (!rescheduleMoveInDate) {
                 showNotification("A valid move-in date is required.", "error");
                 return;
@@ -2528,7 +2573,12 @@ export default function ReservationDetailsModal({
                 `Move-in rescheduled to ${fmtDate(rescheduleMoveInDate)}`,
               );
             }}
-            disabled={isSubmitting || !rescheduleMoveInDate}
+            disabled={isSubmitting || !rescheduleMoveInDate || cancellationPending}
+            title={
+              cancellationPending
+                ? "Reschedule locked: A cancellation request is pending admin review."
+                : undefined
+            }
           >
             {isSubmitting ? "Saving..." : "Save Reschedule"}
           </button>

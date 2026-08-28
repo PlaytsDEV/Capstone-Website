@@ -77,6 +77,20 @@ const fail = (res, error) => res.status(error.statusCode || 500).json({
   ...(error.details ? { details: error.details } : {}),
 });
 
+const sanitizeDownloadFilename = (val, fallback = "Contract") => {
+  const clean = String(val || "")
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "");
+  return clean || fallback;
+};
+
+const buildContractPdfFilename = (contract, fallbackRef = "Official") => {
+  const refCode = sanitizeDownloadFilename(contract?.contractNumber || fallbackRef, "Contract");
+  const tenantName = sanitizeDownloadFilename(contract?.tenantLegalName || contract?.tenantName || "", "");
+  return tenantName ? `Contract-of-Lease-${refCode}-${tenantName}.pdf` : `Contract-of-Lease-${refCode}.pdf`;
+};
+
 const actor = async (req) => {
   const user = await User.findOne({ firebaseUid: req.user.uid }).select("_id role branch email").lean();
   if (!user) throw Object.assign(new Error("Authenticated user not found."), { statusCode: 404, code: "USER_NOT_FOUND" });
@@ -530,7 +544,7 @@ export const streamSignedDocument = async (req, res) => {
     if (!inspected) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
     res.setHeader("Content-Type", document.mimeType);
     res.setHeader("Content-Length", inspected.size);
-    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${buildContractPdfFilename(contract)}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);
@@ -756,7 +770,7 @@ export const streamNotarizedDocument = async (req, res) => {
     if (!inspected) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
     res.setHeader("Content-Type", document.mimeType);
     res.setHeader("Content-Length", inspected.size);
-    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${buildContractPdfFilename(contract)}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);
@@ -896,7 +910,7 @@ const streamFinal = async ({ req, res, contract, channel }) => {
   res.setHeader("Content-Type", resolved.finalDocument.mimeType);
   res.setHeader("Content-Length", resolved.finalDocument.fileSize);
   res.setHeader("Content-Disposition",
-    `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
+    `${download ? "attachment" : "inline"}; filename="${buildContractPdfFilename(contract)}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Pragma", "no-cache");
   resolved.createReadStream()
@@ -1209,7 +1223,7 @@ export const streamPreparedContract = async (req, res) => {
     );
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", resolved.size);
-    res.setHeader("Content-Disposition", `inline; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Content-Disposition", `inline; filename="${buildContractPdfFilename(contract)}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     resolved.createReadStream().on("error", (error) => {
@@ -1481,7 +1495,11 @@ export const downloadMyStayProof = async (req, res) => {
     const isDownload = req.query?.download !== "0" && req.query?.download !== "false";
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", pdfBuffer.length);
-    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    const tenantName = sanitizeDownloadFilename(stayData.tenantName || "", "");
+    const filename = tenantName
+      ? `Proof-of-Residency-${stayData.referenceNumber}-${tenantName}.pdf`
+      : `Proof-of-Residency-${stayData.referenceNumber}.pdf`;
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${filename}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.send(pdfBuffer);
   } catch (error) {
@@ -1581,7 +1599,11 @@ export const downloadStayProofForAdmin = async (req, res) => {
     const isDownload = req.query?.download === "1" || req.query?.download === "true";
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", pdfBuffer.length);
-    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    const tenantName = sanitizeDownloadFilename(stayData.tenantName || "", "");
+    const filename = tenantName
+      ? `Proof-of-Residency-${stayData.referenceNumber}-${tenantName}.pdf`
+      : `Proof-of-Residency-${stayData.referenceNumber}.pdf`;
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${filename}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.send(pdfBuffer);
   } catch (error) {
@@ -1673,7 +1695,7 @@ export const streamMyPreparedContract = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", fileSize);
     const disposition = req.query.download === "1" ? "attachment" : "inline";
-    res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Content-Disposition", `${disposition}; filename="${buildContractPdfFilename(contract)}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     createReadStream().on("error", (error) => {
@@ -1720,7 +1742,7 @@ export const streamMySignedContract = async (req, res) => {
     res.setHeader("Content-Type", document.mimeType || "application/pdf");
     res.setHeader("Content-Length", inspected.size);
     const isDownload = req.query?.download === "true" || req.query?.download === "1";
-    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${document.fileName ? document.fileName.replaceAll('"', '') : `signed-contract-v${document.version}.pdf`}"`);
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${buildContractPdfFilename(contract)}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);

@@ -698,6 +698,8 @@ export default function TenantDetailModal({
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),
       queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+      queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+      queryClient.invalidateQueries({ queryKey: ["billing"] }),
     ]);
 
   const isGuadalupe = useMemo(() => {
@@ -1188,6 +1190,7 @@ export default function TenantDetailModal({
           detail={fetchedDetail || initialTenant}
           loading={dialogState.loading}
           sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
+          electricityRatePerUnit={actionContext?.electricityRatePerUnit ?? null}
           onClose={closeDialog}
           onSubmit={async (payload) => {
             setDialogState((s) => ({ ...s, loading: true, error: null }));
@@ -1197,6 +1200,7 @@ export default function TenantDetailModal({
                 targetBedId: payload.bedId,
                 effectiveTransferDate: payload.effectiveTransferDate || new Date().toISOString().slice(0, 10),
                 reason: payload.reason,
+                notes: payload.notes || "",
                 sourceRoomMeterReading: payload.sourceRoomMeterReading,
                 targetRoomMeterReading: payload.targetRoomMeterReading,
                 forceOverride: payload.forceOverride || false,

@@ -91,6 +91,7 @@ export const contractApi = {
       ),
     }),
   getPreparedContractFile: fetchPreparedBlob,
+  getPreparedContractPdfBlob: fetchPreparedBlob,
   markPrinted: (contractId) => authFetch(`/contracts/${contractId}/mark-printed`, {
     method: "POST", body: JSON.stringify({ confirmed: true }),
   }),
@@ -138,15 +139,29 @@ export const contractApi = {
     return authFetch(`/contracts/${contractId}/documents/notarized`, { method: "POST", body });
   },
   uploadFinalNotarizedContract: (
-    contractId, file, preparedDocumentVersion, replacementReason = "", notarialDetails = {}, notes = "",
+    contractIdOrOptions, file, preparedDocumentVersion, replacementReason = "", notarialDetails = {}, notes = "",
   ) => {
+    let contractId = contractIdOrOptions;
+    let uploadFile = file;
+    let version = preparedDocumentVersion;
+    let reason = replacementReason;
+    let notarial = notarialDetails;
+    let noteText = notes;
+    if (typeof contractIdOrOptions === "object" && contractIdOrOptions !== null && !(contractIdOrOptions instanceof FormData)) {
+      contractId = contractIdOrOptions.contractId || contractIdOrOptions.id;
+      uploadFile = contractIdOrOptions.file;
+      version = contractIdOrOptions.preparedDocumentVersion || contractIdOrOptions.version || 1;
+      reason = contractIdOrOptions.replacementReason || "";
+      notarial = contractIdOrOptions.notarialDetails || {};
+      noteText = contractIdOrOptions.notes || "";
+    }
     const body = new FormData();
-    body.append("file", file);
+    body.append("file", uploadFile);
     body.append("confirmed", "true");
-    if (preparedDocumentVersion) body.append("preparedDocumentVersion", String(preparedDocumentVersion));
-    if (replacementReason) body.append("replacementReason", replacementReason);
-    if (notes) body.append("notes", notes);
-    body.append("notarialDetails", typeof notarialDetails === "string" ? notarialDetails : JSON.stringify(notarialDetails));
+    if (version) body.append("preparedDocumentVersion", String(version));
+    if (reason) body.append("replacementReason", reason);
+    if (noteText) body.append("notes", noteText);
+    body.append("notarialDetails", typeof notarial === "string" ? notarial : JSON.stringify(notarial));
     return authFetch(`/contracts/${contractId}/documents/final-notarized`, { method: "POST", body });
   },
   getNotarizedContractFile: (contractId, version, download = false) =>

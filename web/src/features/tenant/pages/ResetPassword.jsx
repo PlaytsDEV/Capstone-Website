@@ -182,10 +182,21 @@ function ResetPassword() {
           type={visible ? "text" : "password"}
           value={value}
           onChange={(event) => {
-            if (!/\s/.test(event.target.value)) onChange(event);
+            if (!/\s/.test(event.target.value)) {
+              event.target.value = event.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH);
+              onChange(event);
+            }
           }}
           onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
-          onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text") || "";
+            if (/\s/.test(text)) {
+              e.preventDefault();
+            } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+              e.preventDefault();
+              onChange({ target: { value: text.slice(0, NEW_PASSWORD_MAX_LENGTH) } });
+            }
+          }}
           autoComplete={autoComplete}
           maxLength={NEW_PASSWORD_MAX_LENGTH}
           className="w-full px-4 py-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:border-gray-300 focus:outline-none text-gray-900 font-light placeholder:text-gray-400 transition-colors"

@@ -183,4 +183,15 @@ describe("Email Builders Layout & Standardization Tests", () => {
     expect(html).toContain("Reschedule Visit Now");
     expect(html).toContain("https://lilycrestdms.com/applicant/reservation?step=2");
   });
+
+  test("PAYMENT_APPROVED builder and subject render Payment Confirmed terminology", () => {
+    const vars = sampleVariables.PAYMENT_APPROVED;
+    const subject = EMAIL_TEMPLATES.PAYMENT_APPROVED.subject(vars);
+    const html = EMAIL_TEMPLATES.PAYMENT_APPROVED.builder(vars);
+
+    expect(subject).toBe("Payment Confirmed — August 2026 | Lilycrest Dormitory");
+    expect(html).toContain("Payment Confirmed");
+    expect(html).toContain("has been received and confirmed");
+    expect(html).not.toContain("Payment Approved");
+  });
 });

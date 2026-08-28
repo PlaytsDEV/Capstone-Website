@@ -130,6 +130,7 @@ const {
   respondToMaintenanceReschedule,
   reopenAdminMaintenanceRequest,
   rateAdminMaintenanceProvider,
+  saveAdminMaintenanceProof,
 } = await import("./maintenanceController.js");
 const {
   resolveMaintenanceRequestBranch,
@@ -934,6 +935,72 @@ describe("maintenanceController", () => {
     expect(request.completionNote).toBeNull();
     expect(request.statusHistory).toEqual([]);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getMyRequests exposes resolutionProof with tenant-visible attachments", async () => {
+    const storedRequest = buildRequestDoc({
+      status: "resolved",
+      resolution_note: "Water pipe replaced and leak tested.",
+      resolved_at: new Date("2026-04-09T14:00:00.000Z"),
+      work_log: [
+        {
+          logged_at: new Date("2026-04-09T14:00:00.000Z"),
+          note: "Resolution proof",
+          attachments: [
+            {
+              name: "fixed_pipe.jpg",
+              uri: "https://storage.example.com/maintenance/fixed_pipe.jpg",
+              type: "image/jpeg",
+              visibility: "tenant_admin",
+            },
+            {
+              name: "internal_notes.pdf",
+              uri: "https://storage.example.com/maintenance/internal_notes.pdf",
+              type: "application/pdf",
+              visibility: "admin_only",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-tenant-1"
+          ? {
+              _id: "tenant_user_1",
+              user_id: "user_95f39d5b4ea4",
+              firstName: "Lily",
+              lastName: "Tenant",
+              email: "lily@example.com",
+              phone: "0917",
+              branch: "gil-puyat",
+              role: "tenant",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.resolutionProof).toBeDefined();
+    expect(request.resolutionProof.note).toBe("Water pipe replaced and leak tested.");
+    expect(request.resolutionProof.attachments).toHaveLength(1);
+    expect(request.resolutionProof.attachments[0]).toEqual(
+      expect.objectContaining({
+        name: "fixed_pipe.jpg",
+        uri: "https://storage.example.com/maintenance/fixed_pipe.jpg",
+      }),
+    );
+    expect(request.proofAttachments).toHaveLength(1);
   });
 
   test("getMyRequests filters admin-only attachments from tenant-visible conversation", async () => {
@@ -3874,5 +3941,99 @@ describe("maintenanceController", () => {
     expect(requestDoc.save).toHaveBeenCalled();
     expect(sendSuccess).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("saveAdminMaintenanceProof allows up to 5 resolution proof attachments", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "in_progress",
+      branch: "gil-puyat",
+      work_log: [],
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "admin_mongo_id",
+        user_id: "user_admin_proof",
+        firstName: "Admin",
+        lastName: "Facilities",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    );
+
+    const proofAttachments = Array.from({ length: 5 }, (_, i) => ({
+      name: `repair_proof_${i + 1}.jpg`,
+      uri: `https://storage.example.com/proof_${i + 1}.jpg`,
+      type: "image/jpeg",
+      size: 1024 * 500,
+    }));
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        note: "All 5 repair stages completed and verified.",
+        attachments: proofAttachments,
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await saveAdminMaintenanceProof(req, res, next);
+
+    expect(requestDoc.status).toBe("resolved");
+    expect(requestDoc.work_log.length).toBe(1);
+    expect(requestDoc.work_log[0].attachments.length).toBe(5);
+    expect(requestDoc.save).toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("saveAdminMaintenanceProof rejects requests with more than 5 resolution proof attachments", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "in_progress",
+      branch: "gil-puyat",
+      work_log: [],
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "admin_mongo_id",
+        user_id: "user_admin_proof",
+        firstName: "Admin",
+        lastName: "Facilities",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    );
+
+    const sixProofAttachments = Array.from({ length: 6 }, (_, i) => ({
+      name: `repair_proof_${i + 1}.jpg`,
+      uri: `https://storage.example.com/proof_${i + 1}.jpg`,
+      type: "image/jpeg",
+      size: 1024 * 500,
+    }));
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        note: "Trying to upload 6 proofs.",
+        attachments: sixProofAttachments,
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await saveAdminMaintenanceProof(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("MAX_ATTACHMENTS_EXCEEDED");
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(next.mock.calls[0][0].message).toContain("maximum of 5");
   });
 });

@@ -1396,10 +1396,38 @@ export async function cancelTransferStayWorkflow(reservationId, actorId = null) 
       const bed = targetRoom.beds?.find(b => String(b.id) === String(reservation.pendingTransferBedId) || String(b._id) === String(reservation.pendingTransferBedId));
       if (bed) {
         bed.status = "available";
+        bed.lockedBy = null;
+        bed.lockExpiresAt = null;
         bed.lockType = null;
         await targetRoom.save();
       }
     }
+  }
+
+  const predecessorContract = await Contract.findOne({
+    $or: [
+      { reservationId: reservation._id },
+      ...(reservation.currentStayId ? [{ stayId: reservation.currentStayId }] : []),
+    ],
+    isCurrent: true,
+  });
+
+  const replacementContracts = await Contract.find({
+    contractPurpose: "replacement",
+    status: { $nin: ["active", "cancelled", "archived"] },
+    $or: [
+      { reservationId: reservation._id },
+      ...(predecessorContract ? [{ replacesContractId: predecessorContract._id }] : []),
+    ],
+  });
+
+  for (const replacement of replacementContracts) {
+    await transitionContract(
+      replacement,
+      "cancelled",
+      actorId,
+      "Transfer cancelled by admin/tenant",
+    );
   }
 
   reservation.pendingTransferRoomId = null;

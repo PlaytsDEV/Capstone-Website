@@ -42,7 +42,7 @@ export const CONTRACT_TRANSITIONS = Object.freeze({
   awaiting_notarization: ["notarized", "cancelled"],
   notarized: ["ready_for_publication", "cancelled"],
   ready_for_publication: ["published", "cancelled"],
-  published: ["active", "expired", "replaced", "transfer_review_required", "terminated"],
+  published: ["active", "expired", "replaced", "transfer_review_required", "terminated", "cancelled"],
   active: ["expiring_soon", "expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expiring_soon: ["expired", "renewal_pending", "transfer_review_required", "terminated", "replaced"],
   expired: ["renewal_pending", "archived"],

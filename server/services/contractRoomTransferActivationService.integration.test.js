@@ -13,6 +13,7 @@ import {
   resolveRoomTransferSuccessor,
 } from "./contractRoomTransferActivationService.js";
 import { generateContractNumber } from "./contractService.js";
+import { cancelTransferStayWorkflow } from "../utils/tenantActionService.js";
 import { Contract, Reservation, Room, User, Stay, BedHistory } from "../models/index.js";
 
 jest.setTimeout(120_000);
@@ -506,3 +507,160 @@ describe("resolveRoomTransferSuccessor", () => {
       .rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_NOT_PREPARED" });
   });
 });
+
+describe("cancelTransferStayWorkflow", () => {
+  let mongo;
+
+  beforeAll(async () => {
+    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+    await mongoose.connect(mongo.getUri(), { dbName: "room_transfer_cancel" });
+  }, 120_000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongo?.stop();
+  }, 120_000);
+
+  beforeEach(async () => {
+    await Promise.all([
+      Reservation.deleteMany({}),
+      Room.deleteMany({}),
+      User.deleteMany({}),
+      Contract.deleteMany({}),
+      Stay.deleteMany({}),
+      BedHistory.deleteMany({}),
+    ]);
+  });
+
+  test("voids/cancels unactivated replacement contract and releases target bed lock upon transfer cancellation", async () => {
+    const actorId = new mongoose.Types.ObjectId();
+    const tenant = await User.create({
+      firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
+      email: `tenant-${new mongoose.Types.ObjectId()}@example.test`,
+      username: `tenant_${new mongoose.Types.ObjectId().toString().slice(-10)}`,
+      firstName: "Test",
+      lastName: "Tenant",
+      role: "tenant",
+    });
+    const roomA = await Room.create({
+      name: "Room 301",
+      roomNumber: "301",
+      branch: "gil-puyat",
+      type: "quadruple-sharing",
+      capacity: 4,
+      price: 6300,
+      beds: [{ id: "bed-a1", position: "lower", status: "occupied" }],
+    });
+    const roomB = await Room.create({
+      name: "Room 302",
+      roomNumber: "302",
+      branch: "gil-puyat",
+      type: "quadruple-sharing",
+      capacity: 4,
+      price: 6300,
+      beds: [{ id: "bed-b1", position: "upper", status: "reserved", lockType: "transfer" }],
+    });
+
+    const reservation = await Reservation.create({
+      userId: tenant._id,
+      roomId: roomA._id,
+      status: "moveIn",
+      leaseDuration: 6,
+      reservationFeeAmount: 2000,
+      preferredRoomType: "quadruple-sharing",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      totalPrice: 6300,
+      moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+      pendingTransferRoomId: roomB._id,
+      pendingTransferBedId: "bed-b1",
+      transferStatus: "pending",
+    });
+
+    const stay = await Stay.create({
+      tenantId: tenant._id,
+      reservationId: reservation._id,
+      branch: roomA.branch,
+      roomId: roomA._id,
+      bedId: "bed-a1",
+      leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"),
+      monthlyRent: 6300,
+      status: "active",
+    });
+
+    const numberOld = await generateContractNumber(roomA.branch, new Date());
+    const oldContract = await Contract.create({
+      ...numberOld,
+      contractPurpose: "initial",
+      tenantId: tenant._id,
+      applicationId: reservation._id,
+      reservationId: reservation._id,
+      stayId: stay._id,
+      roomId: roomA._id,
+      branch: roomA.branch,
+      propertyName: "Lilycrest Dormitory",
+      propertyAddress: "123 Test St.",
+      roomNumber: roomA.roomNumber,
+      roomType: "quadruple-sharing",
+      leaseType: "long_term",
+      status: "active",
+      isCurrent: true,
+      statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
+      createdBy: actorId,
+      updatedBy: actorId,
+    });
+
+    const numberNew = await generateContractNumber(roomB.branch, new Date());
+    const replacementContract = await Contract.create({
+      ...numberNew,
+      contractPurpose: "replacement",
+      replacesContractId: oldContract._id,
+      tenantId: tenant._id,
+      applicationId: reservation._id,
+      reservationId: reservation._id,
+      stayId: stay._id,
+      roomId: roomB._id,
+      bedId: "bed-b1",
+      branch: roomB.branch,
+      propertyName: "Lilycrest Dormitory",
+      propertyAddress: "123 Test St.",
+      roomNumber: roomB.roomNumber,
+      roomType: "quadruple-sharing",
+      leaseType: "long_term",
+      status: "draft",
+      isCurrent: false,
+      statusHistory: [{ status: "draft", changedBy: actorId, reason: "seed" }],
+      createdBy: actorId,
+      updatedBy: actorId,
+    });
+
+    const result = await cancelTransferStayWorkflow(reservation._id, actorId);
+    expect(result.success).toBe(true);
+
+    const [reloadedReservation, reloadedRoomB, reloadedOldContract, reloadedReplacementContract] = await Promise.all([
+      Reservation.findById(reservation._id),
+      Room.findById(roomB._id),
+      Contract.findById(oldContract._id),
+      Contract.findById(replacementContract._id),
+    ]);
+
+    expect(reloadedReservation.transferStatus).toBe("cancelled");
+    expect(reloadedReservation.pendingTransferRoomId).toBeNull();
+    expect(reloadedReservation.pendingTransferBedId).toBeNull();
+
+    const releasedBed = reloadedRoomB.beds.find((b) => String(b.id) === "bed-b1");
+    expect(releasedBed.status).toBe("available");
+
+    expect(reloadedReplacementContract.status).toBe("cancelled");
+    expect(reloadedReplacementContract.isCurrent).toBe(false);
+    const lastHistory = reloadedReplacementContract.statusHistory[reloadedReplacementContract.statusHistory.length - 1];
+    expect(lastHistory.status).toBe("cancelled");
+    expect(lastHistory.reason).toBe("Transfer cancelled by admin/tenant");
+    expect(String(lastHistory.changedBy)).toBe(String(actorId));
+
+    expect(reloadedOldContract.status).toBe("active");
+    expect(reloadedOldContract.isCurrent).toBe(true);
+  });
+});
+

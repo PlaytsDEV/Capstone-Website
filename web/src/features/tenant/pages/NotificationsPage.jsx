@@ -49,6 +49,7 @@ function NotificationIcon({ type }) {
     case "reservation_confirmed":
     case "visit_approved":
     case "payment_approved":
+    case "payment_confirmed":
     case "account_reactivated":
     case "renewal_effective":
       return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
@@ -101,7 +102,7 @@ function matchesFilter(notification, filter) {
       notification.title?.toLowerCase().includes("visit");
   }
   if (filter === "payment") {
-    return notification.type === "payment_approved" || notification.type === "payment_rejected";
+    return notification.type === "payment_approved" || notification.type === "payment_confirmed" || notification.type === "payment_rejected";
   }
   if (filter === "billing") {
     return ["bill_generated", "bill_due_reminder", "penalty_applied",

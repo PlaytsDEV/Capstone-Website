@@ -1035,7 +1035,14 @@ export default function SignedContractUploadSection({
                 <button
                   type="button"
                   onClick={() => {
-                    window.open(viewingDoc.url, "_blank");
+                    const title = `Signed Contract v${viewingDoc.version || "1"} - ${contract?.contractNumber || "Contract"}`;
+                    const win = window.open("", "_blank");
+                    if (win) {
+                      win.document.write(`<!doctype html><html><head><title>${title}</title><style>html,body{margin:0;height:100%;background:#525659;overflow:hidden;}iframe{width:100%;height:100%;border:none;}</style></head><body><iframe src="${viewingDoc.url}" title="${title}"></iframe></body></html>`);
+                      win.document.close();
+                    } else {
+                      window.open(viewingDoc.url, "_blank");
+                    }
                   }}
                   className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-semibold text-foreground transition-colors flex items-center gap-1.5 cursor-pointer"
                 >

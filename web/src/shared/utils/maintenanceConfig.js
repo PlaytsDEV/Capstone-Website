@@ -340,21 +340,17 @@ export function getNextRecommendedStageAction(request) {
       requiresSchedule: true,
     };
   }
-  if (status === "provider_assigned" || status === "scheduled") {
+  if (
+    status === "provider_assigned" ||
+    status === "scheduled" ||
+    status === "in_progress" ||
+    status === "waiting_tenant"
+  ) {
     return {
-      actionLabel: "Start Repair Work",
-      actionKey: "start_work",
-      actionColor: "primary",
-      contextNote: "Repair visit scheduled. Click when technician arrives on site to begin work.",
-      requiresSchedule: false,
-    };
-  }
-  if (status === "in_progress" || status === "waiting_tenant") {
-    return {
-      actionLabel: "Upload Proof & Mark Resolved",
+      actionLabel: "Mark Work Done & Upload Proof",
       actionKey: "upload_proof",
       actionColor: "success",
-      contextNote: "Technician work in progress. Upload resolution photos to request tenant verification.",
+      contextNote: "Stage 3 work in progress. Upload resolution photos and record expenses to request tenant verification.",
       requiresSchedule: false,
     };
   }

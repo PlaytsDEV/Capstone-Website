@@ -135,6 +135,12 @@ export const billingApi = {
       body: JSON.stringify(data),
     }),
 
+  generateBatchRentBills: (data) =>
+    authFetch("/billing/rent/generate-batch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   sendRentBill: (billId) =>
     authFetch(`/billing/rent/${billId}/send`, {
       method: "POST",

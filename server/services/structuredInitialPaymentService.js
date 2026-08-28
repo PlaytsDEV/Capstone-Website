@@ -174,6 +174,14 @@ export async function getStructuredMoveInBlockers(
 ) {
   if (!usesStructuredInitialPayment(reservation)) return [];
   const blockers = [];
+  if (
+    reservation.cancellationRequested === true &&
+    reservation.cancellationStatus === "pending"
+  ) {
+    blockers.push(
+      "A pending cancellation request must be resolved (approved or rejected) before moving in the tenant."
+    );
+  }
   if (reservation.reservationFeePaymentStatus !== "verified") {
     blockers.push("Reservation Fee must be verified through PayMongo.");
   }

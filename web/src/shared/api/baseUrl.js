@@ -1,8 +1,9 @@
 const normalizeUrl = (value = "") => String(value || "").trim().replace(/\/+$/, "");
 
-const envApiUrl = normalizeUrl(import.meta.env.VITE_API_URL);
-const envSocketUrl = normalizeUrl(import.meta.env.VITE_SOCKET_URL);
-const isProd = import.meta.env.PROD;
+const env = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env : {};
+const envApiUrl = normalizeUrl(env.VITE_API_URL);
+const envSocketUrl = normalizeUrl(env.VITE_SOCKET_URL);
+const isProd = Boolean(env.PROD);
 
 if (!envApiUrl && isProd) {
   throw new Error("VITE_API_URL is required for production builds.");

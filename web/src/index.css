@@ -156,13 +156,42 @@ input[type="password"]::-ms-clear {
 }
 
 /* ── Hide Native Datalist / Autocomplete Dropdown Arrow Indicators ─── */
-/* Prevents intrusive native dropdown arrow (▼) on inputs with datalist / suggestions */
-input::-webkit-calendar-picker-indicator,
-input::-webkit-list-button {
+/* Prevents intrusive native dropdown arrow (▼) on text inputs with datalist / suggestions */
+input[list]::-webkit-calendar-picker-indicator,
+input[list]::-webkit-list-button {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
   -webkit-appearance: none !important;
+}
+
+/* ── Standardize Date / Time Picker Indicators ─────────────── */
+/* Ensures interactive calendar/clock picker icon remains visible, clickable, and styled */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  display: block;
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="month"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: rgba(100, 116, 139, 0.12);
+}
+
+:is(.dark *) input[type="date"]::-webkit-calendar-picker-indicator,
+:is(.dark *) input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+:is(.dark *) input[type="month"]::-webkit-calendar-picker-indicator,
+:is(.dark *) input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
 }
 
 /* Offset anchor scroll for sticky navbar */

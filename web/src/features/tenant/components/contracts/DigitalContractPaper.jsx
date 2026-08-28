@@ -400,8 +400,16 @@ export default function DigitalContractPaper({
         "FAST"
       );
 
+      const safeTenantFilename = String(tenantName || "")
+        .normalize("NFKD")
+        .replace(/[^\w.-]+/g, "-")
+        .replace(/^[._-]+|[._-]+$/g, "")
+        .trim();
       const refCode = contract?.contractNumber || stayData?.referenceNumber || "Official";
-      pdf.save(`Contract-of-Lease-${refCode}.pdf`);
+      const downloadFileName = safeTenantFilename
+        ? `Contract-of-Lease-${refCode}-${safeTenantFilename}.pdf`
+        : `Contract-of-Lease-${refCode}.pdf`;
+      pdf.save(downloadFileName);
     } catch (err) {
       console.error("PDF generation failed:", err);
       if (onDownloadPdf) onDownloadPdf();
@@ -409,6 +417,19 @@ export default function DigitalContractPaper({
       setIsGeneratingPdf(false);
     }
   };
+
+  const safeTenantFilename = String(tenantName || "")
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "")
+    .trim();
+  const refCode = contract?.contractNumber || stayData?.referenceNumber || "Official";
+  const contractPdfDownloadName = safeTenantFilename
+    ? `Contract-of-Lease-${refCode}-${safeTenantFilename}.pdf`
+    : `Contract-of-Lease-${refCode}.pdf`;
+  const contractPrintDocumentTitle = safeTenantFilename
+    ? `Contract of Lease - ${tenantName} (${refCode})`
+    : `Contract of Lease - ${refCode}`;
 
   // A real canonical PDF exists once the backend has either generated a
   // prepared draft or published a final document. The tenant-facing fetch
@@ -456,6 +477,7 @@ export default function DigitalContractPaper({
     iframe.style.width = "0";
     iframe.style.height = "0";
     iframe.style.border = "none";
+    iframe.title = contractPrintDocumentTitle;
 
     let settled = false;
     let watchdog = null;
@@ -480,6 +502,9 @@ export default function DigitalContractPaper({
         return;
       }
       try {
+        if (iframe.contentDocument) {
+          iframe.contentDocument.title = contractPrintDocumentTitle;
+        }
         win.focus();
         win.print();
         finish(resolve);
@@ -524,43 +549,51 @@ export default function DigitalContractPaper({
   };
 
   const handlePrintClick = async () => {
+    const originalTitle = document.title;
     setDocumentError(null);
-    // No canonical PDF (synthetic contract, or nothing generated yet): the
-    // DOM preview IS the document — print it via the scoped @media print
-    // stylesheet below. This is a genuine preview of the same terms, not a
-    // rebuild of a signed artifact.
-    if (!hasCanonicalPdf) {
-      if (isSyntheticContract) {
-        setDocumentError(
-          "Your lease draft PDF is still being prepared. You can review the details on this page; printing will be available shortly.",
-        );
+    try {
+      document.title = contractPrintDocumentTitle;
+      // No canonical PDF (synthetic contract, or nothing generated yet): the
+      // DOM preview IS the document — print it via the scoped @media print
+      // stylesheet below. This is a genuine preview of the same terms, not a
+      // rebuild of a signed artifact.
+      if (!hasCanonicalPdf) {
+        if (isSyntheticContract) {
+          setDocumentError(
+            "Your lease draft PDF is still being prepared. You can review the details on this page; printing will be available shortly.",
+          );
+          return;
+        }
+        try {
+          window.print();
+        } catch {
+          setDocumentError("Your browser blocked the print dialog. Please try again or use Download.");
+        }
         return;
       }
+      setRealPdfBusy(true);
       try {
-        window.print();
-      } catch {
-        setDocumentError("Your browser blocked the print dialog. Please try again or use Download.");
-      }
-      return;
-    }
-    setRealPdfBusy(true);
-    try {
-      const blob = await fetchDocumentPdf(contract);
-      await printBlobViaIframe(blob);
-    } catch (err) {
-      console.error("Failed to print the canonical contract PDF.", err);
-      // Always surface a visible error — never silently window.print() the
-      // whole app page. For a draft we additionally offer the DOM fallback.
-      if (isFinalDocument) {
-        setDocumentError(friendlyDocumentError(err));
-      } else {
-        setDocumentError(
-          (err?.message || "Couldn't open the print dialog for the contract PDF.") +
-            " You can use Download instead, or try again.",
-        );
+        const blob = await fetchDocumentPdf(contract);
+        await printBlobViaIframe(blob);
+      } catch (err) {
+        console.error("Failed to print the canonical contract PDF.", err);
+        // Always surface a visible error — never silently window.print() the
+        // whole app page. For a draft we additionally offer the DOM fallback.
+        if (isFinalDocument) {
+          setDocumentError(friendlyDocumentError(err));
+        } else {
+          setDocumentError(
+            (err?.message || "Couldn't open the print dialog for the contract PDF.") +
+              " You can use Download instead, or try again.",
+          );
+        }
+      } finally {
+        setRealPdfBusy(false);
       }
     } finally {
-      setRealPdfBusy(false);
+      setTimeout(() => {
+        document.title = originalTitle;
+      }, 2000);
     }
   };
 
@@ -578,8 +611,7 @@ export default function DigitalContractPaper({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const refCode = contract?.contractNumber || stayData?.referenceNumber || "Official";
-      a.download = `Contract-of-Lease-${refCode}.pdf`;
+      a.download = contractPdfDownloadName;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
@@ -604,7 +636,10 @@ export default function DigitalContractPaper({
         @media print {
           @page {
             size: 8.5in 13in;
-            margin: 0.25in 0.35in;
+            margin: 0.26in 0.35in;
+          }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
           }
           body * {
             visibility: hidden !important;
@@ -612,6 +647,7 @@ export default function DigitalContractPaper({
           #digital-contract-paper, #digital-contract-paper * {
             visibility: visible !important;
             color: #000000 !important;
+            box-sizing: border-box !important;
           }
           #digital-contract-paper {
             position: absolute !important;
@@ -624,23 +660,102 @@ export default function DigitalContractPaper({
             border: none !important;
             box-shadow: none !important;
             transform: none !important;
-            font-size: 8.75pt !important;
-            line-height: 1.15 !important;
+            font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
+            font-size: 8.35pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper * {
+            font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper .print-header-notice {
+            font-size: 7.5pt !important;
+            margin: 0 0 5pt 0 !important;
+            padding: 0 !important;
+          }
+          #digital-contract-paper .print-title-wrap {
+            padding-bottom: 1pt !important;
+            margin-bottom: 2.5pt !important;
+            border-bottom: 0.5pt solid #000 !important;
           }
           #digital-contract-paper h1 {
             font-size: 12.5pt !important;
-            margin: 0 0 2pt 0 !important;
+            margin: 0 !important;
+            line-height: 1.15 !important;
           }
           #digital-contract-paper h2 {
             font-size: 9.5pt !important;
-            margin: 2pt 0 6pt 0 !important;
+            margin: 1pt 0 0 0 !important;
+            line-height: 1.15 !important;
           }
-          #digital-contract-paper p,
-          #digital-contract-paper table,
-          #digital-contract-paper div,
-          #digital-contract-paper section {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+          #digital-contract-paper p {
+            margin: 0 0 3.2pt 0 !important;
+            padding: 0 !important;
+            font-size: 8.35pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper div {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+          }
+          /* Reset Tailwind space-y in print */
+          #digital-contract-paper .space-y-1 > :not([hidden]) ~ :not([hidden]),
+          #digital-contract-paper .space-y-2 > :not([hidden]) ~ :not([hidden]),
+          #digital-contract-paper .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0 !important;
+          }
+          #digital-contract-paper .print-terms-title {
+            margin: 3.5pt 0 2.5pt 0 !important;
+            font-size: 8.75pt !important;
+          }
+          #digital-contract-paper .print-terms-body {
+            font-size: 8.35pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper .print-terms-body p {
+            margin: 0 0 3.2pt 0 !important;
+            font-size: 8.35pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper .print-sig-container {
+            padding-top: 6pt !important;
+            padding-bottom: 0 !important;
+          }
+          #digital-contract-paper .print-sig-spacer {
+            height: 0px !important;
+            margin-top: 1.5pt !important;
+            margin-bottom: 9pt !important;
+          }
+          #digital-contract-paper .print-lessee-spacer {
+            height: 0px !important;
+          }
+          #digital-contract-paper .print-witness-container {
+            padding-top: 6pt !important;
+          }
+          #digital-contract-paper .print-witness-lines {
+            padding-top: 16pt !important;
+            padding-bottom: 0 !important;
+          }
+          #digital-contract-paper .print-ack-container {
+            padding-top: 8pt !important;
+            font-size: 8.0pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper .print-ack-container p {
+            margin: 0 0 3pt 0 !important;
+            font-size: 8.0pt !important;
+            line-height: 1.18 !important;
+          }
+          #digital-contract-paper .print-notary-stack {
+            padding-top: 3pt !important;
+            font-size: 8.0pt !important;
+            line-height: 1.25 !important;
+          }
+          #digital-contract-paper .print-notary-stack div {
+            margin: 0 !important;
+            padding: 0 !important;
           }
         }
       `}</style>
@@ -819,12 +934,12 @@ export default function DigitalContractPaper({
                 }}
               >
                 {/* Header Notice */}
-                <p className="text-xs text-center font-semibold text-slate-600 tracking-wider uppercase mb-3">
+                <p className="print-header-notice text-xs text-center font-semibold text-slate-600 tracking-wider uppercase mb-3">
                   PREPARED COPY — NOT YET SIGNED OR NOTARIZED
                 </p>
 
                 {/* Main Titles */}
-                <div className="text-center pb-2 mb-3 border-b border-slate-100">
+                <div className="print-title-wrap text-center pb-2 mb-3 border-b border-slate-100">
                   <h1 className="text-xl sm:text-2xl font-bold tracking-wide uppercase m-0 text-black">
                     CONTRACT OF LEASE
                   </h1>
@@ -880,11 +995,11 @@ export default function DigitalContractPaper({
                   <strong>NOW THEREFORE</strong>, for and in consideration of the foregoing premises, the LESSOR leases unto the LESSEE and the LESSEE hereby accepts from the LESSOR the LEASED PREMISES, subject to the following:
                 </p>
 
-                <div className="text-center font-bold tracking-wider text-xs sm:text-sm uppercase my-3 text-black">
+                <div className="print-terms-title text-center font-bold tracking-wider text-xs sm:text-sm uppercase my-3 text-black">
                   TERMS AND CONDITIONS
                 </div>
 
-                <div className="text-justify text-[13.5px] sm:text-[14px] leading-relaxed text-black space-y-2">
+                <div className="print-terms-body text-justify text-[13.5px] sm:text-[14px] leading-relaxed text-black space-y-2">
                   <p className="indent-8 mb-2">
                     <strong>SECTION 1 – PURPOSE.</strong> The leased premises shall be used exclusively by the LESSEE for residential purposes only and shall not be diverted to other uses. It is hereby expressly agreed that if at any time the premises are used for other purposes, the LESSOR shall have the right to rescind this Contract, without prejudice to its other rights under the law.
                   </p>
@@ -959,11 +1074,11 @@ export default function DigitalContractPaper({
                 </p>
 
                 {/* Signatures Grid */}
-                <div className="pt-6 pb-2 text-center text-xs sm:text-sm">
+                <div className="print-sig-container pt-6 pb-2 text-center text-xs sm:text-sm">
                   <div className="grid grid-cols-2 gap-8 sm:gap-14 items-end">
                     {/* LESSEE Column */}
                     <div className="flex flex-col">
-                      <div className="border-b border-black w-full h-10"></div>
+                      <div className="print-lessee-spacer border-b border-black w-full h-10"></div>
                       <div className="text-black text-xs sm:text-sm font-bold uppercase tracking-wider mt-2">
                         LESSEE
                       </div>
@@ -972,7 +1087,7 @@ export default function DigitalContractPaper({
                     {/* LESSOR Column */}
                     <div className="flex flex-col">
                       <div className="font-bold text-black text-xs sm:text-sm">FIRST JRAC PARTNERSHIP CO.</div>
-                      <div className="text-xs italic text-black mt-1 mb-5">By:</div>
+                      <div className="print-sig-spacer text-xs italic text-black mt-1 mb-5">By:</div>
                       <div className="border-b border-black w-full h-0"></div>
                       <div className="font-bold text-black text-sm sm:text-base mt-2">
                         JOANNE ONG
@@ -984,11 +1099,11 @@ export default function DigitalContractPaper({
                   </div>
 
                   {/* Witnesses */}
-                  <div className="pt-6 text-left text-xs sm:text-sm">
+                  <div className="print-witness-container pt-6 text-left text-xs sm:text-sm">
                     <div className="font-bold tracking-wide text-black text-xs sm:text-sm">
                       SIGNED IN THE PRESENCE OF:
                     </div>
-                    <div className="grid grid-cols-2 gap-8 sm:gap-14 pt-8 pb-2">
+                    <div className="print-witness-lines grid grid-cols-2 gap-8 sm:gap-14 pt-8 pb-2">
                       <div className="border-b border-black w-full h-0"></div>
                       <div className="border-b border-black w-full h-0"></div>
                     </div>
@@ -996,7 +1111,7 @@ export default function DigitalContractPaper({
                 </div>
 
                 {/* Notarial Acknowledgment */}
-                <div className="pt-6 space-y-2 text-xs sm:text-sm text-black leading-relaxed">
+                <div className="print-ack-container pt-6 space-y-2 text-xs sm:text-sm text-black leading-relaxed">
                   <div className="text-center font-bold tracking-wider uppercase text-xs sm:text-sm text-black mb-2">
                     ACKNOWLEDGMENT
                   </div>
@@ -1014,7 +1129,7 @@ export default function DigitalContractPaper({
                     WITNESS MY HAND AND SEAL, on the date and place first above written.
                   </p>
 
-                  <div className="pt-2 text-xs text-black space-y-1">
+                  <div className="print-notary-stack pt-2 text-xs text-black space-y-1">
                     <div>Doc. No. _______;</div>
                     <div>Page No. _______;</div>
                     <div>Book No. _______;</div>
@@ -1242,58 +1357,58 @@ export default function DigitalContractPaper({
             backgroundColor: "#ffffff",
             color: "#000000",
             fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
-            fontSize: "10.5px",
-            lineHeight: "1.25",
-            padding: "24px 28px",
+            fontSize: "9.0px",
+            lineHeight: "1.18",
+            padding: "16px 24px",
           }}
         >
           {/* Header Notice */}
-          <p style={{ fontSize: "9.5px", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.5px", margin: "0 0 10px 0", color: "#333333" }}>
+          <p style={{ fontSize: "7.5px", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.5px", margin: "0 0 4px 0", color: "#333333" }}>
             PREPARED COPY — NOT YET SIGNED OR NOTARIZED
           </p>
 
-          <div style={{ textAlign: "center", paddingBottom: "2px", marginBottom: "6px" }}>
-            <h1 style={{ fontSize: "14px", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", margin: "0", color: "#000000" }}>
+          <div style={{ textAlign: "center", paddingBottom: "1px", marginBottom: "3px" }}>
+            <h1 style={{ fontSize: "12px", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", margin: "0", color: "#000000" }}>
               CONTRACT OF LEASE
             </h1>
-            <h2 style={{ fontSize: "11.5px", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", margin: "2px 0 0 0", color: "#000000" }}>
+            <h2 style={{ fontSize: "9.5px", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", margin: "1px 0 0 0", color: "#000000" }}>
               <Populated>{roomLabel} — {termLabel} LEASE</Populated>
             </h2>
           </div>
 
-          <p style={{ fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "10px", margin: "6px 0 3px 0", color: "#000000" }}>
+          <p style={{ fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "8.8px", margin: "3px 0 1.5px 0", color: "#000000" }}>
             KNOWN TO ALL MEN BY THESE PRESENTS:
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 4px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 1.5px 0", color: "#000000" }}>
             This <strong>CONTRACT OF LEASE</strong> is made and executed in the City of Makati, this{" "}
             <Populated>{executionDay}</Populated> day of{" "}
             <Populated>{executionMonth} {executionYear}</Populated>, by and between:
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 4px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 1.5px 0", color: "#000000" }}>
             <strong>FIRST JRAC PARTNERSHIP CO.</strong>, a general partnership duly organized and existing under and by virtue of the laws of the Republic of the Philippines, with principal office at 9431 Magallanes St., Guadalupe Nuevo, Makati City, represented herein by its General Partner, <strong>JOANNE ONG</strong>, hereinafter referred to as the <strong>LESSOR</strong>;
           </p>
 
-          <p style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "2px", fontSize: "9.5px", margin: "3px 0", color: "#000000" }}>
+          <p style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "2px", fontSize: "8.5px", margin: "1.5px 0", color: "#000000" }}>
             — and —
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 5px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 1.5px 0", color: "#000000" }}>
             <Populated>{tenantName}</Populated>, of legal age, Filipino, with postal and residential address at{" "}
             <Populated>{tenantAddress}</Populated>, hereinafter referred to as the <strong>LESSEE</strong>;
           </p>
 
-          <p style={{ fontWeight: "bold", letterSpacing: "0.5px", fontSize: "10px", margin: "4px 0 3px 0", color: "#000000" }}>
+          <p style={{ fontWeight: "bold", letterSpacing: "0.5px", fontSize: "8.8px", margin: "2.5px 0 1.5px 0", color: "#000000" }}>
             WITNESSETH: That
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 4px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 1.5px 0", color: "#000000" }}>
             <strong>WHEREAS</strong>, the LESSOR is the owner of a residential establishment known as{" "}
             <Populated>{branchName}</Populated>, located at <Populated>{branchAddress}</Populated>;
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 4px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 1.5px 0", color: "#000000" }}>
             <strong>WHEREAS</strong>, the LESSOR agrees to lease to the LESSEE a <Populated>{roomLabel}</Populated> accommodation known as Room{" "}
             <Populated>{roomNumber}</Populated>
             {!isPrivate && (
@@ -1304,26 +1419,26 @@ export default function DigitalContractPaper({
             (the “LEASED PREMISES”) within the said establishment, and the LESSEE is willing to lease the same for a limited time or period;
           </p>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", margin: "0 0 5px 0", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", margin: "0 0 2px 0", color: "#000000" }}>
             <strong>NOW THEREFORE</strong>, for and in consideration of the foregoing premises, the LESSOR leases unto the LESSEE and the LESSEE hereby accepts from the LESSOR the LEASED PREMISES, subject to the following:
           </p>
 
-          <div style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "10px", margin: "5px 0 4px 0", color: "#000000" }}>
+          <div style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "8.8px", margin: "2.5px 0 1.5px 0", color: "#000000" }}>
             TERMS AND CONDITIONS
           </div>
 
-          <div style={{ textAlign: "justify", fontSize: "10px", lineHeight: "1.22", color: "#000000" }}>
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+          <div style={{ textAlign: "justify", fontSize: "8.5px", lineHeight: "1.12", color: "#000000" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 1 – PURPOSE.</strong> The leased premises shall be used exclusively by the LESSEE for residential purposes only and shall not be diverted to other uses. It is hereby expressly agreed that if at any time the premises are used for other purposes, the LESSOR shall have the right to rescind this Contract, without prejudice to its other rights under the law.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 2 – DURATION.</strong> The lease of the {leaseSpaceSubject} shall run for a period of{" "}
               <Populated>{durationMonths} ( {durationInWords(durationMonths)} )</Populated> months, from{" "}
               <Populated>{formattedStart}</Populated> to <Populated>{formattedEnd}</Populated>. Being a <Populated>{termLabel}</Populated> LEASE, the period shall be <Populated>{durationCondition}</Populated>
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 3 – RENTAL RATE.</strong> The regular and basic monthly rental fee is{" "}
               <Populated>Php {formatMoney(regularRate)}</Populated> exclusive of any tax.{" "}
               {discountPercent > 0 ? (
@@ -1339,75 +1454,75 @@ export default function DigitalContractPaper({
               )}
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               {amenitiesParagraph}
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               The electricity consumption of the LESSEE, which is not part of the rental fee, shall be billed on a monthly basis.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               All payments shall be paid directly to the LESSOR through bank deposit or transfer, supported by an official acknowledgment receipt and/or service invoice.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               Delay in the payment of the rental fee or electricity consumption for three (3) consecutive months shall be ground for the LESSOR to terminate this Contract of Lease. In such case, the LESSEE shall voluntarily vacate the leased premises, surrender the key to the LESSOR, and shall no longer be allowed to access the leased premises except to retrieve his or her personal belongings.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Prior to moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
               <Populated>Php {formatMoney(advanceRent)}</Populated>, covering the period of <Populated>{advanceStart}</Populated> to <Populated>{advanceEnd}</Populated>, and one (1) month security deposit in the amount of{" "}
               <Populated>Php {formatMoney(securityDeposit)}</Populated>.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               The reservation fee of <Populated>Php 2,000.00</Populated> paid by the LESSEE shall be credited as partial payment for the said amounts. The LESSOR agrees to refund the deposit not later than thirty (30) days after the termination of this Contract, less payment, if any, for unpaid bills of electricity or other utility charges, failure to return the key (<Populated>Php 1,000.00</Populated>), and the cost of damages to the leased premises occasioned by the LESSEE’s fault or negligence. This deposit, which shall be non-interest bearing, cannot be applied by the LESSEE to any unpaid rent or to the last month’s rental, and shall be kept intact throughout the life of this Contract.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               Furthermore, if the LESSEE vacates the premises before the expiration of the period of lease, the full amount of the security deposit shall be forfeited in favor of the LESSOR.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 5 – FORCE MAJEURE.</strong> If the whole or any part of the leased premises shall be destroyed or damaged by fire, flood, lightning, typhoon, earthquake, storm, riot, or any other unforeseen disabling cause or act of God, as to render the leased premises during the term substantially unfit for the use and occupation of the LESSEE, then this Contract may be terminated without compensation by either the LESSOR or the LESSEE by notice in writing to the other party.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 6 – LESSOR’S RIGHT OF ENTRY.</strong> The LESSOR or its authorized representative shall, after giving due notice to the LESSEE, have the right to enter the premises in the presence of the LESSEE or his or her representative at any reasonable hour to examine the same, make repairs therein, undertake the operation and maintenance of the building, exhibit the leased premises to prospective lessees, or for any other lawful purpose which it may deem necessary.
             </p>
 
-            <p style={{ textIndent: "24px", margin: "0 0 4px 0" }}>
+            <p style={{ textIndent: "18px", margin: "0 0 1.5px 0" }}>
               <strong>SECTION 7 – EXPIRATION OF LEASE.</strong> At the expiration of the term of this lease or the cancellation thereof, as herein provided, the LESSEE shall promptly deliver to the LESSOR the leased premises with all corresponding keys, in as good and tenantable condition as the same is now, ordinary wear and tear excepted, devoid of all occupants, movable furniture, articles, and effects of any kind.
             </p>
           </div>
 
-          <p style={{ textAlign: "justify", textIndent: "24px", paddingTop: "4px", margin: "0 0 6px 0", fontSize: "10px", color: "#000000" }}>
+          <p style={{ textAlign: "justify", textIndent: "18px", paddingTop: "2.5px", margin: "0 0 3px 0", fontSize: "8.8px", color: "#000000" }}>
             <strong>IN WITNESS WHEREOF</strong>, both parties herein have affixed their signatures on the date and place first above written.
           </p>
 
           {/* Signatures Grid */}
-          <div style={{ paddingTop: "10px", paddingBottom: "4px", textAlign: "center", fontSize: "10px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "flex-end" }}>
+          <div style={{ paddingTop: "4px", paddingBottom: "1px", textAlign: "center", fontSize: "8.8px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "flex-end" }}>
               {/* LESSEE Column */}
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div style={{ borderBottom: "0.8px solid #000000", width: "100%", height: "0px" }}></div>
-                <div style={{ color: "#000000", fontSize: "9.5px", fontWeight: "bold", textTransform: "uppercase", marginTop: "3px" }}>LESSEE</div>
+                <div style={{ color: "#000000", fontSize: "8.5px", fontWeight: "bold", textTransform: "uppercase", marginTop: "1.5px" }}>LESSEE</div>
               </div>
 
               {/* LESSOR Column */}
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <div style={{ fontWeight: "bold", color: "#000000" }}>FIRST JRAC PARTNERSHIP CO.</div>
-                <div style={{ fontSize: "9.5px", fontStyle: "italic", color: "#000000", marginTop: "1px", marginBottom: "16px" }}>By:</div>
+                <div style={{ fontWeight: "bold", color: "#000000", fontSize: "8.5px" }}>FIRST JRAC PARTNERSHIP CO.</div>
+                <div style={{ fontSize: "8px", fontStyle: "italic", color: "#000000", marginTop: "1px", marginBottom: "8px" }}>By:</div>
                 <div style={{ borderBottom: "0.8px solid #000000", width: "100%", height: "0px" }}></div>
-                <div style={{ fontWeight: "bold", color: "#000000", marginTop: "3px" }}>JOANNE ONG</div>
-                <div style={{ color: "#000000", fontSize: "9.5px", marginTop: "1px" }}>General Partner – LESSOR</div>
+                <div style={{ fontWeight: "bold", color: "#000000", marginTop: "1.5px", fontSize: "8.5px" }}>JOANNE ONG</div>
+                <div style={{ color: "#000000", fontSize: "8px", marginTop: "0.5px" }}>General Partner – LESSOR</div>
               </div>
             </div>
 
-            <div style={{ paddingTop: "10px", textAlign: "left", fontSize: "9.5px" }}>
+            <div style={{ paddingTop: "4px", textAlign: "left", fontSize: "8.5px" }}>
               <div style={{ fontWeight: "bold" }}>SIGNED IN THE PRESENCE OF:</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", paddingTop: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", paddingTop: "11px" }}>
                 <div style={{ borderBottom: "0.8px solid #000000", width: "100%", height: "0px" }}></div>
                 <div style={{ borderBottom: "0.8px solid #000000", width: "100%", height: "0px" }}></div>
               </div>
@@ -1415,25 +1530,25 @@ export default function DigitalContractPaper({
           </div>
 
           {/* Notarial Acknowledgment */}
-          <div style={{ paddingTop: "10px", marginTop: "4px", fontSize: "9.5px", lineHeight: "1.25" }}>
-            <div style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "9.5px", margin: "0 0 4px 0" }}>
+          <div style={{ paddingTop: "4px", marginTop: "1px", fontSize: "8.25px", lineHeight: "1.12" }}>
+            <div style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "8.25px", margin: "0 0 2px 0" }}>
               ACKNOWLEDGMENT
             </div>
-            <p style={{ margin: "0 0 3px 0" }}>
+            <p style={{ margin: "0 0 1.5px 0" }}>
               REPUBLIC OF THE PHILIPPINES )<br />
               &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;) S.S.
             </p>
-            <p style={{ textAlign: "justify", textIndent: "20px", margin: "0 0 3px 0" }}>
+            <p style={{ textAlign: "justify", textIndent: "16px", margin: "0 0 1.5px 0" }}>
               BEFORE ME, this _____ day of ____________________, personally appeared the above-named parties, all known to me and to known to be the same persons who executed the foregoing instrument, and who acknowledged to me that the same is their free and voluntary act and deed.
             </p>
-            <p style={{ textAlign: "justify", textIndent: "20px", margin: "0 0 3px 0" }}>
+            <p style={{ textAlign: "justify", textIndent: "16px", margin: "0 0 1.5px 0" }}>
               This instrument, consisting of _____ ( ____ ) page/s, including the page on which this acknowledgment is written, has been signed on each and every page thereof by the concerned parties and their witnesses, and sealed with my notarial seal.
             </p>
-            <p style={{ textIndent: "20px", margin: "0 0 3px 0" }}>
+            <p style={{ textIndent: "16px", margin: "0 0 1.5px 0" }}>
               WITNESS MY HAND AND SEAL, on the date and place first above written.
             </p>
 
-            <div style={{ paddingTop: "4px", fontSize: "9px", color: "#000000", lineHeight: "1.3" }}>
+            <div style={{ paddingTop: "1px", fontSize: "7.75px", color: "#000000", lineHeight: "1.15" }}>
               <div>Doc. No. _______;</div>
               <div>Page No. _______;</div>
               <div>Book No. _______;</div>
