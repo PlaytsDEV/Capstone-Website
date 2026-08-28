@@ -22,7 +22,8 @@
  */
 
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { resolveAuthEmulatorConfig } from "./authEmulatorConfig.js";
 
 /**
  * Firebase Configuration
@@ -69,6 +70,13 @@ try {
   if (isFirebaseConfigured) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
+    const emulatorUrl = resolveAuthEmulatorConfig({
+      url: env.VITE_FIREBASE_AUTH_EMULATOR_URL,
+      projectId: firebaseConfig.projectId,
+    });
+    if (emulatorUrl) {
+      connectAuthEmulator(auth, emulatorUrl, { disableWarnings: false });
+    }
   } else {
     console.warn(
       "Firebase is not configured. Public pages will still render, but auth features are disabled.",

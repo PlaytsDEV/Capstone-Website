@@ -7,6 +7,10 @@ const { invalidateUserSessionsCore } = require('../../security/sessionInvalidati
 const { validateNewPassword: validateCanonicalNewPassword } = require('../../security/passwordPolicy.cjs');
 const { createSession } = require('../security/mobileSession');
 const { hashResetToken, resetTokenEligibilityFilter } = require('../security/resetTokenEligibility');
+const {
+  firebaseIdentityToolkitBaseUrl,
+  signInWithPasswordUrl,
+} = require('../security/firebaseIdentityToolkitEndpoint.cjs');
 const authTestDependencies = {
   getDb,
   sendLoginOtpEmail: (...args) => require('../services/emailService').sendLoginOtpEmail(...args),
@@ -329,7 +333,7 @@ async function login(req, res) {
   // Step 1: Authenticate with Firebase
   try {
     const resp = await axios.post(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+      signInWithPasswordUrl(apiKey),
       { email: emailRaw, password, returnSecureToken: true },
     );
     fbUid = resp.data.localId;
@@ -831,7 +835,7 @@ async function changePassword(req, res) {
 
     try {
       await axios.post(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+        signInWithPasswordUrl(apiKey),
         { email: userEmail, password: current_password, returnSecureToken: false },
       );
     } catch (fbErr) {
@@ -1373,6 +1377,8 @@ module.exports = {
   // controller; the separately scoped legacy controller exists only to
   // finish already-issued custom tokens during the cutover window.
   __test: {
+    firebaseIdentityToolkitBaseUrl,
+    signInWithPasswordUrl,
     hashOtp,
     otpMatches,
     verifyOtp,
