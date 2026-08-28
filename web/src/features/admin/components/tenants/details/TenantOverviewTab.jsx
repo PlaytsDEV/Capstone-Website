@@ -1,3 +1,5 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList,
   FileCheck,
@@ -6,9 +8,20 @@ import {
   Eye,
   FileText,
   History,
+  Zap,
+  Plus,
+  Minus,
+  Edit3,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
 import { formatCodedRoomAndBed } from "../../../../../shared/utils/bedIdentifier";
 import { formatDate } from "./tenantDetailConstants";
+import { adminApi } from "../../../services/adminApi";
+import { showNotification } from "../../../../../shared/utils/notification";
+import getFriendlyError from "../../../../../shared/utils/friendlyError";
+import { STANDARD_APPLIANCES_CATALOG as STANDARD_APPLIANCES } from "../../../../tenant/utils/roomDetailsPricing.js";
 
 export default function TenantOverviewTab({
   tenant,
@@ -20,6 +33,124 @@ export default function TenantOverviewTab({
   docsPanelRef,
   onPreviewDoc,
 }) {
+  const queryClient = useQueryClient();
+
+  const isGuadalupe = useMemo(() => {
+    const branchName = String(
+      fetchedDetail?.branch ||
+      tenant?.branch ||
+      fetchedDetail?.roomId?.branch ||
+      tenant?.roomId?.branch ||
+      ""
+    ).toLowerCase().trim();
+    return branchName.includes("guadalupe");
+  }, [fetchedDetail?.branch, tenant?.branch, fetchedDetail?.roomId, tenant?.roomId]);
+
+  const initialAppliancesMap = useMemo(() => {
+    const raw =
+      fetchedDetail?.selectedAppliances ??
+      tenant?.selectedAppliances ??
+      [];
+
+    const map = { fan: 0, ricecooker: 0, laptop: 0 };
+    if (Array.isArray(raw)) {
+      raw.forEach((item) => {
+        if (!item) return;
+        const rawId = String(item.id || item.applianceId || "").toLowerCase();
+        const qty = Number(item.quantity) || 0;
+        if (rawId) {
+          map[rawId] = qty;
+        }
+      });
+    } else if (typeof raw === "object" && raw !== null) {
+      Object.entries(raw).forEach(([id, qty]) => {
+        const rawId = String(id).toLowerCase();
+        map[rawId] = Number(qty) || 0;
+      });
+    }
+    return map;
+  }, [fetchedDetail?.selectedAppliances, tenant?.selectedAppliances]);
+
+  const [isEditingAppliances, setIsEditingAppliances] = useState(false);
+  const [editedAppliances, setEditedAppliances] = useState(initialAppliancesMap);
+  const [isSavingAppliances, setIsSavingAppliances] = useState(false);
+
+  useEffect(() => {
+    setEditedAppliances(initialAppliancesMap);
+  }, [initialAppliancesMap]);
+
+  const liveMonthlyTotal = useMemo(() => {
+    return STANDARD_APPLIANCES.reduce((sum, app) => {
+      const qty = Number(editedAppliances[app.id]) || 0;
+      return sum + qty * app.unitPrice;
+    }, 0);
+  }, [editedAppliances]);
+
+  const currentSavedMonthlyTotal = useMemo(() => {
+    return STANDARD_APPLIANCES.reduce((sum, app) => {
+      const qty = Number(initialAppliancesMap[app.id]) || 0;
+      return sum + qty * app.unitPrice;
+    }, 0);
+  }, [initialAppliancesMap]);
+
+  const hasAnyDeclaredAppliances = useMemo(() => {
+    return Object.values(initialAppliancesMap).some((qty) => Number(qty) > 0);
+  }, [initialAppliancesMap]);
+
+  const handleStepperChange = (appId, delta) => {
+    setEditedAppliances((prev) => {
+      const current = Number(prev[appId]) || 0;
+      const next = Math.max(0, current + delta);
+      return { ...prev, [appId]: next };
+    });
+  };
+
+  const handleSaveAppliances = async () => {
+    const tenantId =
+      tenant?.userId?._id ||
+      tenant?.userId ||
+      tenant?.tenantId?._id ||
+      tenant?.tenantId ||
+      tenant?._id ||
+      tenant?.id ||
+      fetchedDetail?.tenantId ||
+      fetchedDetail?.userId;
+
+    if (!tenantId) {
+      showNotification("Unable to resolve tenant ID for appliance update.", "error");
+      return;
+    }
+
+    const selectedAppliancesPayload = STANDARD_APPLIANCES.map((app) => ({
+      id: app.id,
+      name: app.name,
+      quantity: Number(editedAppliances[app.id]) || 0,
+      price: app.unitPrice,
+    }));
+
+    setIsSavingAppliances(true);
+    try {
+      await adminApi.updateTenantAppliances(tenantId, {
+        selectedAppliances: selectedAppliancesPayload,
+      });
+      showNotification("Tenant appliance add-ons updated successfully", "success");
+      setIsEditingAppliances(false);
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["billing"] });
+    } catch (err) {
+      const msg = getFriendlyError(err) || "Failed to update declared appliances.";
+      showNotification(msg, "error");
+    } finally {
+      setIsSavingAppliances(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedAppliances(initialAppliancesMap);
+    setIsEditingAppliances(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Submitted Tenant Application Form Card */}
@@ -249,6 +380,159 @@ export default function TenantOverviewTab({
           </div>
         </div>
       </div>
+
+      {/* Declared Appliance Add-ons Card (Guadalupe Branch) */}
+      {(isGuadalupe || hasAnyDeclaredAppliances) && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2.5 border-b border-border/40">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-sky-50 dark:bg-sky-950/40 border border-border flex items-center justify-center text-sky-600 dark:text-sky-400">
+                <Zap className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                  Declared Appliance Add-ons
+                </h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Guadalupe fixed-rate electricity add-ons (billed on Cycle 2+ statements)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!isEditingAppliances ? (
+                <>
+                  <span className="text-xs font-bold text-foreground tabular-nums">
+                    ₱{currentSavedMonthlyTotal.toLocaleString()}/mo
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditedAppliances(initialAppliancesMap);
+                      setIsEditingAppliances(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground transition-colors cursor-pointer"
+                    title="Edit tenant appliance declarations"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>Edit Appliances</span>
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={isSavingAppliances}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Cancel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAppliances}
+                    disabled={isSavingAppliances}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+                  >
+                    {isSavingAppliances ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save Changes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Appliance Item Rows */}
+          <div className="divide-y divide-border/40 text-xs">
+            {STANDARD_APPLIANCES.map((app) => {
+              const currentQty = isEditingAppliances
+                ? Number(editedAppliances[app.id]) || 0
+                : Number(initialAppliancesMap[app.id]) || 0;
+              const subtotal = currentQty * app.unitPrice;
+
+              return (
+                <div
+                  key={app.id}
+                  className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <span className="font-semibold text-foreground text-xs block truncate">
+                      {app.name}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground block">
+                      ₱{app.unitPrice}/month each
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    {isEditingAppliances ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${app.name} quantity`}
+                          onClick={() => handleStepperChange(app.id, -1)}
+                          disabled={currentQty === 0 || isSavingAppliances}
+                          className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="w-6 text-center text-xs font-bold text-foreground tabular-nums">
+                          {currentQty}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Increase ${app.name} quantity`}
+                          onClick={() => handleStepperChange(app.id, 1)}
+                          disabled={isSavingAppliances}
+                          className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border/60 bg-muted/30 text-xs font-medium text-foreground">
+                        Qty: <strong>{currentQty}</strong>
+                      </span>
+                    )}
+
+                    <span className="w-20 text-right font-semibold text-foreground text-xs tabular-nums">
+                      {currentQty > 0 ? `₱${subtotal.toLocaleString()}/mo` : "₱0/mo"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer Subtotal & Recalculation Callout */}
+          <div className="pt-2.5 border-t border-border/40 flex items-center justify-between text-xs">
+            <span className="text-[11px] text-muted-foreground">
+              {isEditingAppliances
+                ? "Live recalculated monthly surcharge"
+                : hasAnyDeclaredAppliances
+                  ? "Recurring monthly surcharge added to statement"
+                  : "No declared electric appliances"}
+            </span>
+            <div className="text-right">
+              <span className="text-[11px] text-muted-foreground mr-1.5 font-medium">Monthly Add-on:</span>
+              <span className="font-bold text-foreground tabular-nums">
+                ₱{(isEditingAppliances ? liveMonthlyTotal : currentSavedMonthlyTotal).toLocaleString()}
+                <span className="text-[11px] font-normal text-muted-foreground"> / mo</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Attached Verification Documents & Media Card */}
       <div

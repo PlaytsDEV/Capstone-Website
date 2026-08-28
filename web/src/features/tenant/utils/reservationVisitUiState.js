@@ -108,3 +108,38 @@ export function getVisitSummaryUiState({
       : "Application Locked",
   };
 }
+
+export function getVisitConfirmButtonLabel(selectedVisit, isSaving = false) {
+  if (isSaving) return "Submitting...";
+  if (selectedVisit === "physical_visit") return "Confirm Visit Schedule";
+  if (selectedVisit === "remote_2d_viewing") return "Confirm Remote Viewing";
+  if (selectedVisit === "urgent_move_in_review") return "Confirm Priority Request";
+  return "Confirm & Submit";
+}
+
+export function getViewingNextStepGuidance(selectedVisit) {
+  if (selectedVisit === "remote_2d_viewing") {
+    return "No in-person visit required. Once confirmed, you can proceed directly to your tenant application.";
+  }
+  if (selectedVisit === "urgent_move_in_review") {
+    return "Your priority viewing request is sent to the admin queue. You can complete your tenant application right away.";
+  }
+  if (selectedVisit === "physical_visit") {
+    return "Please arrive at the branch on time for your scheduled visit. Your tenant application unlocks after your visit is completed.";
+  }
+  return "Your viewing preference will be saved for this reservation.";
+}
+
+export function getViewingConfirmationSubtitle(selectedVisit) {
+  if (selectedVisit === "physical_visit") {
+    return "Please review your visit schedule before confirming.";
+  }
+  if (selectedVisit === "remote_2d_viewing") {
+    return "Please confirm your remote viewing preference.";
+  }
+  if (selectedVisit === "urgent_move_in_review") {
+    return "Please confirm your priority review request.";
+  }
+  return "Please review and confirm your viewing details.";
+}
+

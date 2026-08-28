@@ -443,30 +443,40 @@ export function resolveVisibleRentBillingCycle(moveInDate, referenceDate = new D
 export function getReservationRecurringFeeEntries(reservation = {}) {
   const customCharges = Array.isArray(reservation?.customCharges)
     ? reservation.customCharges
+        .map((charge) => ({
+          name: String(charge?.name || "").trim(),
+          amount: roundMoney(charge?.amount || 0),
+        }))
+        .filter((charge) => charge.name && charge.amount > 0)
     : [];
 
-  const recurringCharges = customCharges
-    .map((charge) => ({
-      name: String(charge?.name || "").trim(),
-      amount: roundMoney(charge?.amount || 0),
-    }))
-    .filter((charge) => charge.name && charge.amount > 0);
-
-  if (recurringCharges.length > 0) {
-    return recurringCharges;
+  let applianceEntries = [];
+  if (Array.isArray(reservation?.selectedAppliances)) {
+    applianceEntries = reservation.selectedAppliances
+      .filter(
+        (item) =>
+          Number(item?.quantity) > 0 && String(item?.name || "").trim().length > 0,
+      )
+      .map((item) => ({
+        name: `${String(item.name).trim()} (${Number(item.quantity)}x)`,
+        amount: roundMoney(Number(item.quantity) * Number(item.price || 200)),
+      }))
+      .filter((entry) => entry.amount > 0);
   }
 
-  const legacyApplianceFees = roundMoney(reservation?.applianceFees || 0);
-  if (legacyApplianceFees > 0) {
-    return [
-      {
-        name: "Appliance Fees",
-        amount: legacyApplianceFees,
-      },
-    ];
+  if (applianceEntries.length === 0) {
+    const legacyApplianceFees = roundMoney(reservation?.applianceFees || 0);
+    if (legacyApplianceFees > 0) {
+      applianceEntries = [
+        {
+          name: "Appliance Fees",
+          amount: legacyApplianceFees,
+        },
+      ];
+    }
   }
 
-  return [];
+  return [...customCharges, ...applianceEntries];
 }
 
 export function getReservationRecurringFees(reservation = {}) {

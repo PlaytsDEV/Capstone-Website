@@ -1,15 +1,18 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
- Ticket,
- Calendar,
- Clock,
- MapPin,
- Home,
- CreditCard,
- FileText,
- Shield,
- Download,
+  Ticket,
+  Calendar,
+  Camera,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  Home,
+  CreditCard,
+  FileText,
+  Shield,
+  Download,
+  Zap,
 } from "lucide-react";
 import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
@@ -182,7 +185,15 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
         {panelState === "preference" && viewingPrefLabel && (
           <DetailRow
-            icon={<Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+            icon={
+              viewingPreference === "remote_2d_viewing" ? (
+                <Camera size={14} color={isDark ? "#34D399" : "#059669"} />
+              ) : viewingPreference === "urgent_move_in_review" ? (
+                <Zap size={14} color={isDark ? "#FBBF24" : "#D97706"} />
+              ) : (
+                <Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />
+              )
+            }
             label="Preference"
             value={viewingPrefLabel}
             isDark={isDark}
@@ -212,7 +223,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         })()}
 
         {(() => {
-          const { primaryDate, dateType, displayLabel } = resolveDisplayMoveInDate(
+          const { primaryDate, dateType } = resolveDisplayMoveInDate(
             reservation,
             readMoveInDate,
             fmtShortDate,
@@ -236,8 +247,14 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
           return (
             <DetailRow
               icon={<Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
-              label={displayLabel || (dateType === "confirmed" ? "Confirmed Move-in" : "Preferred Move-in")}
-              value={primaryDate ? fmtShortDate(primaryDate) : "Not specified yet"}
+              label={
+                dateType === "confirmed"
+                  ? "Confirmed Move-in"
+                  : dateType === "preferred"
+                  ? "Preferred Move-in"
+                  : "Target Move-in"
+              }
+              value={primaryDate ? fmtShortDate(primaryDate) : "To be scheduled"}
               subValue={countdownText}
               isDark={isDark}
             />
@@ -317,15 +334,19 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
       {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
         <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
-          <Clock size={13} color="#2563EB" />
-          <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
+          <CheckCircle2 size={13} color={isDark ? "#34D399" : "#059669"} />
+          <span style={{ ...S.pendingText, color: isDark ? "#34D399" : "#059669" }}>
+            Remote viewing confirmed. Please complete your tenant application.
+          </span>
         </div>
       )}
 
       {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
         <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
-          <Clock size={13} color="#DC2626" />
-          <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
+          <Zap size={13} color={isDark ? "#FBBF24" : "#D97706"} />
+          <span style={{ ...S.pendingText, color: isDark ? "#FBBF24" : "#D97706" }}>
+            Priority review requested. Please complete your tenant application.
+          </span>
         </div>
       )}
 

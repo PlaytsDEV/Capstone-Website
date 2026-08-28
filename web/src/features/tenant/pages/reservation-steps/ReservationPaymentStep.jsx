@@ -16,11 +16,14 @@ import {
   Check,
   Home,
   Calendar,
+  Wallet,
   ArrowLeft,
   Edit3,
   Loader2,
+  BedDouble,
 } from "lucide-react";
 import { getAvailableLeaseOptions } from "./applicationFormConstants";
+import { getEffectiveMonthlyStayRate } from "../../utils/pricingDisplayHelpers";
 import { showNotification } from "../../../../shared/utils/notification";
 
 const formatCurrency = (amount) =>
@@ -49,7 +52,7 @@ const toDisplayString = (value, fallback = "") => {
 };
 
 /**
- * Step 4 - Reservation Fee Payment (Streamlined & Responsive)
+ * Step 4 - Slot Reservation Fee Payment (Streamlined & Responsive)
  * PayMongo online checkout (GCash, Maya, Card).
  */
 const ReservationPaymentStep = ({
@@ -82,6 +85,10 @@ const ReservationPaymentStep = ({
   const minMonths = room?.longTermLeaseMinMonths ?? 6;
   const leaseOptions = React.useMemo(() => getAvailableLeaseOptions(minMonths), [minMonths]);
   const activeLease = leaseDuration || reservationData?.leaseDuration || room?.leaseDuration || "6";
+  const pricingInfo = React.useMemo(
+    () => getEffectiveMonthlyStayRate(reservationData, { leaseDuration: activeLease }),
+    [reservationData, activeLease]
+  );
 
   const handleSelectTerm = async (termValue) => {
     if (String(termValue) === String(activeLease)) {
@@ -159,10 +166,10 @@ const ReservationPaymentStep = ({
         <div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
             <CreditCard className="w-7 h-7 text-slate-800 dark:text-slate-200 flex-shrink-0" />
-            <span>Reservation Fee Payment</span>
+            <span>Slot Reservation Fee</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed mt-1 max-w-2xl">
-            Pay the one-time reservation fee deposit to lock and secure your room.
+            Pay the one-time reservation fee to secure your room. 100% credited toward your move-in balance.
           </p>
         </div>
       </div>
@@ -189,7 +196,7 @@ const ReservationPaymentStep = ({
           <div>
             <div className="info-box-title">Payment Complete</div>
             <div className="info-text">
-              Your reservation fee of {formatCurrency(reservationFeeAmount)} has been paid and your room is reserved.
+              Your slot reservation fee of {formatCurrency(reservationFeeAmount)} has been paid and your room is reserved.
             </div>
           </div>
         </div>
@@ -199,12 +206,13 @@ const ReservationPaymentStep = ({
         <div className="rf-unified-checkout-card">
           {/* Top Hero Banner */}
           <div className="rf-uc-hero">
-            <span className="rf-uc-hero-label">One-Time Reservation Fee</span>
+            <span className="rf-uc-hero-label">Slot Reservation Fee</span>
             <div className="rf-uc-hero-amount whitespace-nowrap">
               {formatCurrency(reservationFeeAmount)}
             </div>
-            <div className="rf-uc-hero-subbadge">Deductible Partial Payment Deposit</div>
+            <div className="rf-uc-hero-subbadge">100% Credited Toward Move-In Balance</div>
           </div>
+
 
           {/* Body Content */}
           <div className="rf-uc-body">
@@ -226,7 +234,8 @@ const ReservationPaymentStep = ({
               {bedDisplay && (
                 <div className="rf-uc-summary-row">
                   <div className="rf-uc-row-left">
-                    <span className="rf-uc-label">Bed</span>
+                    <BedDouble size={15} className="rf-uc-icon" />
+                    <span className="rf-uc-label">Bed Slot</span>
                   </div>
                   <div className="rf-uc-row-right">
                     <span className="rf-uc-val-primary">{bedDisplay}</span>
@@ -238,7 +247,7 @@ const ReservationPaymentStep = ({
                 <div className="rf-uc-summary-row">
                   <div className="rf-uc-row-left">
                     <Calendar size={15} className="rf-uc-icon" />
-                    <span className="rf-uc-label">Intended Move-in Date</span>
+                    <span className="rf-uc-label">Intended Move-In Date</span>
                   </div>
                   <div className="rf-uc-row-right">
                     <span className="rf-uc-val-primary whitespace-nowrap">{fmtDate(targetMoveInDate)}</span>
@@ -250,7 +259,7 @@ const ReservationPaymentStep = ({
               <div className="rf-uc-summary-row">
                 <div className="rf-uc-row-left">
                   <Calendar size={15} className="rf-uc-icon" />
-                  <span className="rf-uc-label">Duration of Lease</span>
+                  <span className="rf-uc-label">Lease Duration</span>
                 </div>
                 <div className="rf-uc-row-right flex items-center gap-2">
                   <span className="rf-uc-val-primary">
@@ -315,9 +324,32 @@ const ReservationPaymentStep = ({
                 </div>
               )}
 
+              {/* Monthly Stay Rate Row */}
+              <div className="rf-uc-summary-row">
+                <div className="rf-uc-row-left items-start">
+                  <Wallet size={15} className="rf-uc-icon mt-0.5" />
+                  <div>
+                    <span className="rf-uc-label block">Monthly Stay Rate</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5 whitespace-nowrap">
+                      {pricingInfo.applianceFees > 0
+                        ? `Starts Month 2 · Incl. ₱${pricingInfo.applianceFees.toLocaleString()}/mo appliances`
+                        : "Starts Month 2 (excl. utilities)"}
+                    </span>
+                  </div>
+                </div>
+                <div className="rf-uc-row-right self-start pt-0.5">
+                  <span className="rf-uc-val-primary whitespace-nowrap">{pricingInfo.formattedMonthlyRate}</span>
+                </div>
+              </div>
+
               <div className="rf-uc-summary-row rf-uc-total-row">
                 <div className="rf-uc-row-left">
-                  <span className="rf-uc-total-label">Reservation Fee (Due Now)</span>
+                  <div>
+                    <span className="rf-uc-total-label block">Total Due Today</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block">
+                      Slot Reservation Fee
+                    </span>
+                  </div>
                 </div>
                 <div className="rf-uc-row-right">
                   <span className="rf-uc-total-amount whitespace-nowrap">{formatCurrency(reservationFeeAmount)}</span>
@@ -327,7 +359,7 @@ const ReservationPaymentStep = ({
 
             {/* Checkout Action Section */}
             {!paymentAvailable && !readOnly ? (
-              <div className="rf-locked-banner rf-payment-locked-box">
+              <div className="rf-locked-banner rf-payment-locked-box my-3">
                 <div className="info-box-title">
                   <Lock size={16} /> Payment Locked — Application Under Review
                 </div>
@@ -339,55 +371,68 @@ const ReservationPaymentStep = ({
             ) : (
               !readOnly && (
                 <div className="rf-uc-actions">
-                  {/* Accepted Payment Methods */}
+                  {/* Unified Reservation Policy & Terms Container */}
+                  <div className="rf-policy-unified-card">
+                    {/* Credit Reassurance Row */}
+                    <div className="rf-policy-credit-row">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" aria-hidden="true" />
+                      <span className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                        This <strong>{formatCurrency(reservationFeeAmount)}</strong> reservation fee will be automatically credited toward your move-in balance upon check-in.
+                      </span>
+                    </div>
+
+                    <div className="rf-policy-divider" aria-hidden="true" />
+
+                    {/* Non-Refundable Fee Policy Checkbox Row */}
+                    <div
+                      className={`rf-policy-check-row ${agreedToFeePolicy ? "is-checked" : ""} ${
+                        isLoading || payingOnline ? "is-disabled" : ""
+                      }`}
+                      role="checkbox"
+                      aria-checked={Boolean(agreedToFeePolicy)}
+                      tabIndex={isLoading || payingOnline ? -1 : 0}
+                      onKeyDown={(e) => {
+                        if ((e.key === " " || e.key === "Enter") && !isLoading && !payingOnline) {
+                          e.preventDefault();
+                          setAgreedToFeePolicy(!agreedToFeePolicy);
+                        }
+                      }}
+                      onClick={() => {
+                        if (!isLoading && !payingOnline) {
+                          setAgreedToFeePolicy(!agreedToFeePolicy);
+                        }
+                      }}
+                    >
+                      <div className="rf-policy-checkbox-wrapper">
+                        <input
+                          type="checkbox"
+                          id="agreedToFeePolicy"
+                          checked={Boolean(agreedToFeePolicy)}
+                          onChange={(e) => setAgreedToFeePolicy(e.target.checked)}
+                          disabled={isLoading || payingOnline}
+                          tabIndex={-1}
+                          className="rf-policy-checkbox"
+                        />
+                        <div className="rf-policy-custom-check" aria-hidden="true">
+                          {agreedToFeePolicy && <Check size={12} strokeWidth={3.5} />}
+                        </div>
+                      </div>
+                      <label htmlFor="agreedToFeePolicy" className="rf-policy-label" onClick={(e) => e.stopPropagation()}>
+                        <span>
+                          I acknowledge that the <strong className="whitespace-nowrap">{formatCurrency(reservationFeeAmount)}</strong> reservation fee is non-refundable.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Accepted Payment Methods (Positioned directly above payment button as trust badges) */}
                   <div className="rf-payment-methods-bar">
-                    <span className="rf-payment-methods-label">Accepted Online Methods:</span>
+                    <span className="rf-payment-methods-label">Accepted Payment Methods:</span>
                     <div className="rf-payment-methods-pills">
                       <span className="rf-pay-pill">GCash</span>
                       <span className="rf-pay-pill">Maya</span>
                       <span className="rf-pay-pill">Cards</span>
                     </div>
-                  </div>
-
-                  {/* Non-Refundable Fee Policy Checkbox */}
-                  <div
-                    className={`rf-fee-policy-check rf-policy-ack-box ${agreedToFeePolicy ? "is-checked" : ""} ${
-                      isLoading || payingOnline ? "is-disabled" : ""
-                    }`}
-                    role="checkbox"
-                    aria-checked={Boolean(agreedToFeePolicy)}
-                    tabIndex={isLoading || payingOnline ? -1 : 0}
-                    onKeyDown={(e) => {
-                      if ((e.key === " " || e.key === "Enter") && !isLoading && !payingOnline) {
-                        e.preventDefault();
-                        setAgreedToFeePolicy(!agreedToFeePolicy);
-                      }
-                    }}
-                    onClick={() => {
-                      if (!isLoading && !payingOnline) {
-                        setAgreedToFeePolicy(!agreedToFeePolicy);
-                      }
-                    }}
-                  >
-                    <div className="rf-policy-checkbox-wrapper">
-                      <input
-                        type="checkbox"
-                        id="agreedToFeePolicy"
-                        checked={Boolean(agreedToFeePolicy)}
-                        onChange={(e) => setAgreedToFeePolicy(e.target.checked)}
-                        disabled={isLoading || payingOnline}
-                        tabIndex={-1}
-                        className="rf-policy-checkbox"
-                      />
-                      <div className="rf-policy-custom-check" aria-hidden="true">
-                        {agreedToFeePolicy && <Check size={12} strokeWidth={3.5} />}
-                      </div>
-                    </div>
-                    <label htmlFor="agreedToFeePolicy" className="rf-policy-label" onClick={(e) => e.stopPropagation()}>
-                      <span>
-                        I understand that the <strong className="whitespace-nowrap">{formatCurrency(reservationFeeAmount)}</strong> reservation fee is non-refundable.
-                      </span>
-                    </label>
                   </div>
 
                   {/* Minimalist State Hint (Simple text, no background box, no color callout) */}

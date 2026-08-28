@@ -2978,32 +2978,22 @@ export default function useReservationFlow() {
         await queryClient.invalidateQueries({ queryKey: ["users"] });
         setShowStageConfirm(false);
         setPendingStageAction(null);
-        setSuccessOverlay({
-          show: true,
-          title: "Application Submitted!",
-          subtitle: "Your application is under review. We will notify you once approved.",
-        });
         appNavigate("/applicant/profile", {
           flash: {
             type: "success",
             title: "Application Submitted!",
-            message: "Your application is under review. We will notify you once approved.",
+            message: "Tenant application submitted successfully.",
           },
         });
       } else if (pendingStageAction === "stage4") {
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
         setShowStageConfirm(false);
         setPendingStageAction(null);
-        setSuccessOverlay({
-          show: true,
-          title: "Reservation Submitted!",
-          subtitle: "Your reservation is being processed by admin.",
-        });
         appNavigate("/applicant/profile", {
           flash: {
             type: "success",
             title: "Reservation Submitted!",
-            message: "Your reservation is being processed by admin.",
+            message: "Reservation submitted successfully.",
           },
         });
       }

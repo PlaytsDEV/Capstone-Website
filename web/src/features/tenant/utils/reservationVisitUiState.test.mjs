@@ -6,6 +6,9 @@ import {
   formatVisitSlotLabel,
   getVisitScheduleSubmitLabel,
   getVisitSummaryUiState,
+  getVisitConfirmButtonLabel,
+  getViewingNextStepGuidance,
+  getViewingConfirmationSubtitle,
 } from "./reservationVisitUiState.js";
 
 const physicalReservation = (visitStatus) => ({
@@ -144,3 +147,42 @@ test("formatVisitSlotLabel formats various time representations properly", () =>
   assert.equal(formatVisitSlotLabel({ slot: "02:00 PM" }), "02:00 PM");
   assert.equal(formatVisitSlotLabel(null, "No visit selected"), "No visit selected");
 });
+
+test("getVisitConfirmButtonLabel returns contextual action labels", () => {
+  assert.equal(getVisitConfirmButtonLabel("remote_2d_viewing"), "Confirm Remote Viewing");
+  assert.equal(getVisitConfirmButtonLabel("physical_visit"), "Confirm Visit Schedule");
+  assert.equal(getVisitConfirmButtonLabel("urgent_move_in_review"), "Confirm Priority Request");
+  assert.equal(getVisitConfirmButtonLabel("remote_2d_viewing", true), "Submitting...");
+  assert.equal(getVisitConfirmButtonLabel("physical_visit", true), "Submitting...");
+});
+
+test("getViewingNextStepGuidance returns accurate next-step instructions", () => {
+  assert.match(
+    getViewingNextStepGuidance("remote_2d_viewing"),
+    /No in-person visit required.*tenant application/i
+  );
+  assert.match(
+    getViewingNextStepGuidance("physical_visit"),
+    /arrive at the branch on time.*unlocks after your visit is completed/i
+  );
+  assert.match(
+    getViewingNextStepGuidance("urgent_move_in_review"),
+    /priority viewing request.*admin queue.*complete your tenant application/i
+  );
+});
+
+test("getViewingConfirmationSubtitle returns tailored subtitle copy", () => {
+  assert.equal(
+    getViewingConfirmationSubtitle("remote_2d_viewing"),
+    "Please confirm your remote viewing preference."
+  );
+  assert.equal(
+    getViewingConfirmationSubtitle("physical_visit"),
+    "Please review your visit schedule before confirming."
+  );
+  assert.equal(
+    getViewingConfirmationSubtitle("urgent_move_in_review"),
+    "Please confirm your priority review request."
+  );
+});
+

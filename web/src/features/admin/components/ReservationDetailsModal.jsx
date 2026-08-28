@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, FileText, Image as ImageIcon, Info, Loader2, Maximize2, Receipt, User, XCircle } from "lucide-react";
+import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, FileText, Image as ImageIcon, Info, Loader2, Maximize2, Receipt, User, XCircle, Zap } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
@@ -34,6 +34,7 @@ import {
   resolveMoveInPaymentStatus,
 } from "../utils/reservationFormatters";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar";
+import { resolveApplianceBreakdown } from "../../tenant/utils/roomDetailsPricing.js";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -893,6 +894,36 @@ export default function ReservationDetailsModal({
         ? "Short-term"
         : "—";
 
+  const isGuadalupeReservation = useMemo(() => {
+    const branchName = String(
+      reservation?.roomId?.branch ||
+      reservation?.branch ||
+      reservation?.room?.branch ||
+      visitBranch ||
+      ""
+    ).toLowerCase().trim();
+    return branchName.includes("guadalupe");
+  }, [reservation, visitBranch]);
+
+  const applianceBreakdown = useMemo(() => {
+    return resolveApplianceBreakdown(
+      reservation?.selectedAppliances,
+      reservation?.applianceFees,
+      reservation?.roomId || reservation?.room,
+    );
+  }, [
+    reservation?.selectedAppliances,
+    reservation?.applianceFees,
+    reservation?.roomId,
+    reservation?.room,
+  ]);
+
+  const declaredAppliances = applianceBreakdown.items;
+  const monthlyApplianceSubtotal = applianceBreakdown.totalApplianceFees;
+
+  const showApplianceBlock =
+    isGuadalupeReservation || declaredAppliances.length > 0 || monthlyApplianceSubtotal > 0;
+
   const doAction = (key, apiCall, successMsg) => {
     const modalConfig =
       key === "extend"
@@ -1246,6 +1277,40 @@ export default function ReservationDetailsModal({
                 <div className="rdm-glance-tertiary">
                   Initial Due: <strong>{formatPhp(initialTotalDue)}</strong>
                 </div>
+
+                {/* Appliance Add-ons (Guadalupe / Declared Appliances) */}
+                {showApplianceBlock && (
+                  <div className="rdm-glance-appliance-subcard">
+                    <div className="rdm-glance-appliance-header">
+                      <Zap size={13} className="rdm-glance-appliance-icon" />
+                      <span>Appliance Add-ons</span>
+                    </div>
+                    {declaredAppliances.length > 0 ? (
+                      <div className="rdm-glance-appliance-content">
+                        <ul className="rdm-glance-appliance-list">
+                          {declaredAppliances.map((item, idx) => (
+                            <li key={item.id || idx} className="rdm-glance-appliance-item">
+                              <span className="rdm-glance-appliance-name">
+                                {item.name} ×{item.quantity}
+                              </span>
+                              <span className="rdm-glance-appliance-rate">
+                                ({formatPhp(item.subtotal)}/mo)
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="rdm-glance-appliance-subtotal">
+                          <span>Monthly Subtotal:</span>
+                          <strong>{formatPhp(monthlyApplianceSubtotal)} / mo</strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rdm-glance-appliance-empty">
+                        <span>None declared ({formatPhp(0)}/mo)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Block 4: Stage Readiness & Verification */}
@@ -2179,6 +2244,12 @@ export default function ReservationDetailsModal({
                 <span>One-Month Security Deposit</span>
                 <strong>{formatPhpCurrency(securityDepositAmount)}</strong>
               </div>
+              {showApplianceBlock && monthlyApplianceSubtotal > 0 && (
+                <div className="rdm-side-summary-item">
+                  <span>Monthly Appliance Add-ons</span>
+                  <strong>+{formatPhpCurrency(monthlyApplianceSubtotal)}/mo</strong>
+                </div>
+              )}
               {initialTotalDue !== null && (
                 <div className="rdm-side-summary-item rdm-side-summary-total">
                   <span>Initial Total Due</span>

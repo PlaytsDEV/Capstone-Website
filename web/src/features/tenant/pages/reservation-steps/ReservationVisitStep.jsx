@@ -38,7 +38,11 @@ import { getRemoteViewingImages } from "../check-availability/checkAvailabilityC
 import { APP_LOCALE } from "../../../../shared/utils/dateFormat";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getBedDisplayLabel, getBedShortCode } from "../../../../shared/utils/bedIdentifier";
-import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
+import {
+  getEffectiveMonthlyStayRate,
+  getResolvedMonthlyRate,
+  isPricingDisplayUsable,
+} from "../../utils/pricingDisplayHelpers";
 import { getPersistedPhysicalVisitState } from "../../utils/reservationVisitState";
 import { canAccessTenantApplication, getPhysicalVisitApplicantState } from "../../utils/physicalVisitFlow";
 import {
@@ -46,6 +50,9 @@ import {
   formatVisitSlotLabel,
   getVisitScheduleSubmitLabel,
   getVisitSummaryUiState,
+  getVisitConfirmButtonLabel,
+  getViewingNextStepGuidance,
+  getViewingConfirmationSubtitle,
 } from "../../utils/reservationVisitUiState";
 import { VIEWING_PREFERENCE_LOCKED_MESSAGE } from "../../utils/reservationViewingPreferenceLock";
 
@@ -265,6 +272,7 @@ const ReservationVisitStep = ({
   visitTime,
   setVisitTime,
   reservationData,
+  leaseDuration,
   visitCode,
   visitCompleted,
   visitApproved,
@@ -318,11 +326,16 @@ const ReservationVisitStep = ({
     "";
 
   const room = reservationData?.room || {};
+  const activeLease = leaseDuration || reservationData?.leaseDuration || room?.leaseDuration;
+  const pricingInfo = getEffectiveMonthlyStayRate(
+    reservationData,
+    activeLease ? { leaseDuration: activeLease } : {},
+  );
   const pricingDisplay = reservationData?.pricingDisplay;
-  const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
-  const monthlyRent = getResolvedMonthlyRate(pricingDisplay);
-  const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
-  const estimatedMonthlyTotal = hasResolvedMonthlyRate ? monthlyRent + applianceFees : null;
+  const hasResolvedMonthlyRate = pricingInfo.hasResolvedRate;
+  const monthlyRent = pricingInfo.estimatedMonthlyTotal;
+  const applianceFees = pricingInfo.applianceFees;
+  const estimatedMonthlyTotal = pricingInfo.estimatedMonthlyTotal;
   const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
 
   const uploadedRoomImages = Array.isArray(room.images)
@@ -642,9 +655,16 @@ const ReservationVisitStep = ({
           </div>
           <div className="py-2.5 flex justify-between items-center">
             <span className="text-slate-500 dark:text-slate-400">Monthly Rent</span>
-            <span className="font-bold text-slate-900 dark:text-slate-100">
-              {hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)} / mo` : "Upon Review"}
-            </span>
+            <div className="text-right">
+              <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                {pricingInfo.formattedMonthlyRate}
+              </span>
+              {pricingInfo.applianceNote && (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal block">
+                  {pricingInfo.applianceNote}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1379,35 +1399,52 @@ const ReservationVisitStep = ({
               className="rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                    Confirm Submission
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {selectedVisit === "physical_visit"
-                      ? "Please review your visit schedule before confirming."
-                      : selectedVisit === "remote_2d_viewing"
-                      ? "Please confirm your remote viewing preference."
-                      : "Please confirm your priority review request."}
-                  </p>
-                </div>
-              </div>
+              {(() => {
+                const ConfirmIcon = OPTION_ICONS[selectedVisit] || Eye;
+                return (
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 shrink-0">
+                      <ConfirmIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                        Confirm Submission
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {getViewingConfirmationSubtitle(selectedVisit)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Receipt Breakdown */}
               <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs border-y border-slate-100 dark:border-slate-800 py-1">
-                <div className="py-2 flex justify-between">
+                <div className="py-2 flex justify-between items-center">
                   <span className="text-slate-500 dark:text-slate-400">Viewing Preference:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {VISIT_OPTIONS.find((o) => o.value === selectedVisit)?.title || "Not selected"}
                   </span>
                 </div>
-                <div className="py-2 flex justify-between">
+                <div className="py-2 flex justify-between items-center">
                   <span className="text-slate-500 dark:text-slate-400">Room Designation:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">{getRoomName(room)}</span>
                 </div>
-                <div className="py-2 flex justify-between">
+                {room.type && (
+                  <div className="py-2 flex justify-between items-center">
+                    <span className="text-slate-500 dark:text-slate-400">Room Type:</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                      {formatRoomType(room.type)}
+                    </span>
+                  </div>
+                )}
+                {chosenBedCode && chosenBedCode !== "N/A" && (
+                  <div className="py-2 flex justify-between items-center">
+                    <span className="text-slate-500 dark:text-slate-400">Chosen Bed:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{chosenBedCode}</span>
+                  </div>
+                )}
+                <div className="py-2 flex justify-between items-center">
                   <span className="text-slate-500 dark:text-slate-400">Branch Location:</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">
                     {formatBranch(room.branch || reservationData?.branch)}
@@ -1415,13 +1452,13 @@ const ReservationVisitStep = ({
                 </div>
                 {selectedVisit === "physical_visit" && (
                   <>
-                    <div className="py-2 flex justify-between">
+                    <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-500 dark:text-slate-400">Preferred Visit Date:</span>
                       <span className="font-bold text-slate-900 dark:text-slate-100">
                         {fmtDateFull(visitDate || reservationData?.visitDate)}
                       </span>
                     </div>
-                    <div className="py-2 flex justify-between">
+                    <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-500 dark:text-slate-400">Preferred Visit Time:</span>
                       <span className="font-bold text-slate-900 dark:text-slate-100">
                         {visitTime || reservationData?.visitTime || "Not scheduled"}
@@ -1429,6 +1466,33 @@ const ReservationVisitStep = ({
                     </div>
                   </>
                 )}
+                {selectedVisit === "remote_2d_viewing" && (
+                  <div className="py-2 flex justify-between items-center">
+                    <span className="text-slate-500 dark:text-slate-400">Viewing Method:</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Photo Gallery Review
+                    </span>
+                  </div>
+                )}
+                {selectedVisit === "urgent_move_in_review" && (
+                  <div className="py-2 flex justify-between items-center">
+                    <span className="text-slate-500 dark:text-slate-400">Review Track:</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Priority Viewing Review
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Next-Step Guidance Reassurance Card */}
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                  <span>Next Step</span>
+                </div>
+                <p className="leading-relaxed">
+                  {getViewingNextStepGuidance(selectedVisit)}
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -1445,7 +1509,7 @@ const ReservationVisitStep = ({
                   onClick={handleConfirmedSubmit}
                   disabled={isSaving}
                 >
-                  {isSaving ? "Submitting..." : "Confirm & Save"}
+                  {getVisitConfirmButtonLabel(selectedVisit, isSaving)}
                 </button>
               </div>
             </div>

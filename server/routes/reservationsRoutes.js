@@ -53,6 +53,7 @@ import {
   updateReservationByUser,
   cancelReservationByUser,
   requestCancellationByUser,
+  withdrawCancellationRequestByUser,
   approveCancellationRequest,
   rejectCancellationRequest,
   requestPreMoveInModification,
@@ -513,6 +514,19 @@ router.post(
   verifyToken,
   verifyApplicant,
   requestCancellationByUser,
+);
+
+/**
+ * POST /api/reservations/:reservationId/cancel-request/withdraw
+ *
+ * Tenant withdraws a pending cancellation request before admin review.
+ * Reservation returns to regular active/reserved status.
+ */
+router.post(
+  "/:reservationId/cancel-request/withdraw",
+  verifyToken,
+  verifyApplicant,
+  withdrawCancellationRequestByUser,
 );
 
 /**

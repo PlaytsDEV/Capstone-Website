@@ -103,6 +103,7 @@ await jest.unstable_mockModule("../controllers/reservationsController.js", () =>
   updateReservationByUser: noop,
   cancelReservationByUser: noop,
   requestCancellationByUser: noop,
+  withdrawCancellationRequestByUser: noop,
   approveCancellationRequest: noop,
   rejectCancellationRequest: noop,
   deleteReservation: noop,

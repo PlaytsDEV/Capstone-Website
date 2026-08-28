@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isPricingDisplayUsable, getResolvedMonthlyRate } from "./pricingDisplayHelpers.js";
+import {
+  isPricingDisplayUsable,
+  getResolvedMonthlyRate,
+  getEffectiveMonthlyStayRate,
+} from "./pricingDisplayHelpers.js";
 
 test("preview pricing display for a 12-month GP Quadruple lease resolves to PHP 5,400", () => {
   const pricingDisplay = {
@@ -45,4 +49,40 @@ test("missing pricingDisplay (not yet fetched) is treated as unavailable, not ze
 test("a malformed finalMonthlyRate (non-finite) does not produce a fake number", () => {
   const pricingDisplay = { status: "preview", finalMonthlyRate: "not-a-number" };
   assert.equal(getResolvedMonthlyRate(pricingDisplay), null);
+});
+
+test("getEffectiveMonthlyStayRate computes base rate + appliance fees with formatting", () => {
+  const reservationData = {
+    room: {
+      type: "quadruple",
+      monthlyPrice: 5400,
+      isDiscountEnabled: true,
+    },
+    leaseDuration: "12",
+    applianceFees: 200,
+    selectedAppliances: [{ name: "Laptop", fee: 200, quantity: 1 }],
+  };
+
+  const result = getEffectiveMonthlyStayRate(reservationData);
+  assert.equal(result.baseMonthlyRent, 5400);
+  assert.equal(result.applianceFees, 200);
+  assert.equal(result.estimatedMonthlyTotal, 5600);
+  assert.equal(result.formattedMonthlyRate, "₱5,600 / mo");
+  assert.equal(result.applianceNote, "Includes ₱200/mo appliance add-ons");
+});
+
+test("getEffectiveMonthlyStayRate reacts to short-term lease duration override", () => {
+  const reservationData = {
+    room: {
+      type: "quadruple",
+      isDiscountEnabled: true,
+    },
+    leaseDuration: "12",
+  };
+
+  const shortTermResult = getEffectiveMonthlyStayRate(reservationData, { leaseDuration: "3" });
+  assert.equal(shortTermResult.baseMonthlyRent, 6300);
+  assert.equal(shortTermResult.estimatedMonthlyTotal, 6300);
+  assert.equal(shortTermResult.formattedMonthlyRate, "₱6,300 / mo");
+  assert.equal(shortTermResult.applianceNote, "");
 });

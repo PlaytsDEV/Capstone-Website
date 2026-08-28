@@ -924,21 +924,11 @@ function VisitSchedulesTab() {
                             defaultOnly
                           />
                           <div className="min-w-0">
-                            <div className="font-medium text-foreground">
-                              {row.customer}
-                              {row.historyStatus === "cancelled" ? (
-                                <span className="ml-2 rounded-full bg-error-light px-2 py-0.5 text-[10px] font-semibold text-error-dark">
-                                  Cancelled
-                                </span>
-                              ) : row.attemptNumber != null ? (
-                                <span
-                                  className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                    row.isHistorical
-                                      ? "bg-muted text-muted-foreground"
-                                      : "bg-info-light text-info-dark"
-                                  }`}
-                                >
-                                  Attempt {row.attemptNumber}
+                            <div className="font-medium text-foreground flex items-center gap-2 flex-wrap">
+                              <span>{row.customer}</span>
+                              {row.attemptNumber && row.attemptNumber > 1 ? (
+                                <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                  Attempt #{row.attemptNumber}
                                 </span>
                               ) : null}
                             </div>

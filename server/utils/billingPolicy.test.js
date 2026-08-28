@@ -119,7 +119,48 @@ describe("resolveCurrentRentBillingCycle", () => {
 });
 
 describe("getReservationRecurringFees", () => {
-  test("prefers recurring custom charges when they are present", () => {
+  test("generates itemized additionalCharges from selectedAppliances with default and custom prices", () => {
+    expect(
+      getReservationRecurringFees({
+        selectedAppliances: [
+          { name: "Electric Fan", quantity: 2 }, // default price 200 -> 400
+          { name: "Refrigerator", quantity: 1, price: 500 }, // custom price 500 -> 500
+          { name: "Unused Appliance", quantity: 0 }, // filtered out
+        ],
+      }),
+    ).toEqual({
+      applianceFees: 900,
+      additionalCharges: [
+        { name: "Electric Fan (2x)", amount: 400 },
+        { name: "Refrigerator (1x)", amount: 500 },
+      ],
+    });
+  });
+
+  test("combines customCharges and selectedAppliances cleanly without overwriting", () => {
+    expect(
+      getReservationRecurringFees({
+        customCharges: [
+          { name: "Locker", amount: 150 },
+          { name: "WiFi Booster", amount: 250 },
+        ],
+        selectedAppliances: [
+          { name: "Electric Fan", quantity: 1, price: 200 },
+          { name: "Laptop", quantity: 2, price: 200 },
+        ],
+      }),
+    ).toEqual({
+      applianceFees: 1000,
+      additionalCharges: [
+        { name: "Locker", amount: 150 },
+        { name: "WiFi Booster", amount: 250 },
+        { name: "Electric Fan (1x)", amount: 200 },
+        { name: "Laptop (2x)", amount: 400 },
+      ],
+    });
+  });
+
+  test("combines customCharges and legacy applianceFees fallback when selectedAppliances is absent", () => {
     expect(
       getReservationRecurringFees({
         customCharges: [
@@ -129,23 +170,32 @@ describe("getReservationRecurringFees", () => {
         applianceFees: 900,
       }),
     ).toEqual({
-      applianceFees: 650,
+      applianceFees: 1550,
       additionalCharges: [
         { name: "Aircon", amount: 500 },
         { name: "Locker", amount: 150 },
+        { name: "Appliance Fees", amount: 900 },
       ],
     });
   });
 
-  test("falls back to legacy applianceFees when no recurring custom charges exist", () => {
+  test("falls back to legacy applianceFees when selectedAppliances is empty and no customCharges exist", () => {
     expect(
       getReservationRecurringFees({
         customCharges: [],
+        selectedAppliances: [],
         applianceFees: 700,
       }),
     ).toEqual({
       applianceFees: 700,
       additionalCharges: [{ name: "Appliance Fees", amount: 700 }],
+    });
+  });
+
+  test("returns empty array and 0 fees when no charges or appliances are present", () => {
+    expect(getReservationRecurringFees({})).toEqual({
+      applianceFees: 0,
+      additionalCharges: [],
     });
   });
 });
