@@ -505,6 +505,7 @@ export default function TenantsWorkspacePage() {
         await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["reservations"] }),
         queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
         queryClient.invalidateQueries({ queryKey: ["billing"] }),
         ]);
     };
@@ -1270,6 +1271,7 @@ export default function TenantsWorkspacePage() {
                     notes: payload.notes || "",
                     sourceRoomMeterReading: payload.sourceRoomMeterReading,
                     targetRoomMeterReading: payload.targetRoomMeterReading,
+                    forceOverride: payload.forceOverride || false,
                     confirm: true,
                   },
                 );
