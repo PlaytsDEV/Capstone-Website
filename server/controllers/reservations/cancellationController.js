@@ -345,6 +345,23 @@ export const approveCancellationRequest = async (req, res, next) => {
       });
     }
 
+    const currentStatus = normalizeReservationStatus(reservation.status);
+    if (currentStatus === "moveIn" || currentStatus === "moveOut") {
+      return res.status(409).json({
+        error: "Cannot cancel a reservation for a tenant who has already moved in. Please use the Move-Out or Early Termination workflow instead.",
+        code: "TENANT_ALREADY_MOVED_IN",
+      });
+    }
+
+    try {
+      await assertNoActiveStayOrProgressedContract(reservation._id, reservation.userId);
+    } catch (guardErr) {
+      return res.status(guardErr.statusCode || 409).json({
+        error: guardErr.message,
+        code: guardErr.code || "ACTIVE_STAY_OR_CONTRACT_BLOCKS_CANCELLATION",
+      });
+    }
+
     const now = new Date();
     const adminNote = req.body.note || null;
     const oldData = reservation.toObject();

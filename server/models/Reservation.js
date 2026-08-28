@@ -1264,10 +1264,10 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
-    // "pending" | "approved" | "rejected"
+    // "pending" | "approved" | "rejected" | "dismissed_on_movein"
     cancellationStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected", "dismissed_on_movein"],
       default: null,
     },
     cancellationReviewedAt: {
@@ -1307,6 +1307,22 @@ const reservationSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
       },
+    },
+
+    // --- Room Transfer Tracking ---
+    pendingTransferRoomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room",
+      default: null,
+    },
+    pendingTransferBedId: {
+      type: String,
+      default: null,
+    },
+    transferStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "completed", "cancelled", null],
+      default: null,
     },
 
     // --- Soft Delete ---

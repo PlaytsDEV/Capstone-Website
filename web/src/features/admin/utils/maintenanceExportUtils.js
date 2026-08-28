@@ -11,6 +11,12 @@ import {
   getMaintenanceUrgencyMeta,
 } from "../../../shared/utils/maintenanceConfig.js";
 
+export const ARCHIVE_FILTER_OPTIONS = [
+  { key: "active", label: "Active Requests" },
+  { key: "archived", label: "Archived Requests" },
+  { key: "all", label: "All Records (Audit)" },
+];
+
 /**
  * Standard CSV column configurations for Maintenance Requests export.
  */
@@ -120,10 +126,17 @@ export function formatMaintenanceBranchLabel(branch = "") {
 export function resolveTenantFullName(req = {}) {
   if (req.tenant?.full_name) return req.tenant.full_name;
   if (req.tenant?.fullName) return req.tenant.fullName;
+  if (req.tenant?.name) return req.tenant.name;
   if (req.tenantName) return req.tenantName;
   if (req.user?.fullName) return req.user.fullName;
+  if (req.user?.name) return req.user.name;
+  if (req.userName) return req.userName;
+  if (req.user_name) return req.user_name;
   if (req.tenant?.firstName) {
     return `${req.tenant.firstName} ${req.tenant.lastName || ""}`.trim();
+  }
+  if (req.user?.firstName) {
+    return `${req.user.firstName} ${req.user.lastName || ""}`.trim();
   }
   return "Tenant";
 }

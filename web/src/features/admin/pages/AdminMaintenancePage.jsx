@@ -104,6 +104,7 @@ import {
   getStatusLabel,
   getStageStatusLabel,
 } from "./maintenance/maintenanceUtils";
+import { handleExportSingleMaintenanceVoucherPDF } from "../utils/maintenanceVoucherPdf";
 
 import { BranchBadge } from "./maintenance/components/BranchBadge";
 import { SectionBadge } from "./maintenance/components/SectionBadge";
@@ -576,6 +577,8 @@ export default function AdminMaintenancePage() {
   const handleUseProviderSuggestion = (providerId) => {
     if (providerId) {
       setProviderChoice(providerId);
+    } else {
+      setProviderSuggestion(null);
     }
   };
 
@@ -614,23 +617,10 @@ export default function AdminMaintenancePage() {
 
   const handleRespondToReschedule = async ({ action, scheduledDate, notes }) => {
     if (!selectedRequest) return;
-    try {
-      await respondToRescheduleMutation.mutateAsync({
-        requestId: selectedRequest.request_id,
-        payload: { action, scheduledDate, notes },
-      });
-      showNotification({
-        title: action === "decline" ? "Reschedule Declined" : "Schedule Updated",
-        message: action === "decline" ? "Tenant reschedule request declined." : "New repair schedule confirmed.",
-        type: "success",
-      });
-    } catch (err) {
-      showNotification({
-        title: "Reschedule Response Failed",
-        message: getMaintenanceApiErrorMessage(err, "Failed to respond to reschedule request."),
-        type: "error",
-      });
-    }
+    return await respondToRescheduleMutation.mutateAsync({
+      requestId: selectedRequest.request_id,
+      payload: { action, scheduledDate, notes },
+    });
   };
 
   const handleSchedule = () => {
@@ -761,6 +751,7 @@ export default function AdminMaintenancePage() {
             onAssignProvider={handleAssignProvider}
             onSuggestProvider={handleSuggestProvider}
             onUseProviderSuggestion={handleUseProviderSuggestion}
+            onClearSuggestion={() => setProviderSuggestion(null)}
             onRateProvider={handleRateProvider}
             isAssigningProvider={assignProviderMutation.isPending}
             isSuggestingProvider={suggestProviderMutation.isPending}
@@ -770,6 +761,7 @@ export default function AdminMaintenancePage() {
             isRespondingToReschedule={respondToRescheduleMutation.isPending}
             onQuickStatusChange={handleQuickStatusChange}
             onGenerateReport={handleGenerateReport}
+            onDownloadReport={handleExportSingleMaintenanceVoucherPDF}
             onRemoveAttachment={(target) => {
               if (target) {
                 setAttachmentRemovalDialog({

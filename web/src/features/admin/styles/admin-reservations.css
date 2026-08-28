@@ -566,47 +566,202 @@
   flex-wrap: wrap;
 }
 
-.visit-avail-branch-picker {
-  display: flex;
+/* ─── Custom Branch Dropdown (Enterprise Popover) ─────────────── */
+.visit-branch-dropdown-wrapper {
+  position: relative;
+  display: inline-flex;
   align-items: center;
+}
+
+.visit-branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 30px;
+  background: var(--bg-surface, #f8fafc);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-secondary, #475569);
+  font-family: var(--font-sans, "Plus Jakarta Sans", system-ui, -apple-system, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+:is(.dark *) .visit-branch-badge {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.visit-branch-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 0 12px;
-  height: 36px;
-  background: var(--bg-surface, var(--bg-card, #ffffff));
+  padding: 0 10px;
+  height: 30px;
+  width: auto;
+  min-width: 140px;
+  background: var(--bg-card, #ffffff);
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-md, 8px);
   color: var(--text-primary, #0f172a);
-  font-size: 13px;
+  font-family: var(--font-sans, "Plus Jakarta Sans", system-ui, -apple-system, sans-serif);
+  font-size: 12px;
   font-weight: 600;
-  transition: border-color var(--duration-fast, 150ms) ease;
-}
-
-.visit-avail-branch-picker:hover {
-  border-color: var(--border-strong, #cbd5e1);
-}
-
-.visit-avail-branch-picker select {
-  border: none;
-  background: transparent;
-  color: var(--text-primary, #0f172a);
-  font-size: 13px;
-  font-weight: 600;
-  outline: none;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
 }
 
-:is(.dark *) .visit-avail-branch-picker {
+.visit-branch-trigger-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.visit-branch-dropdown-trigger:hover:not(:disabled) {
+  background: var(--bg-hover, #f8fafc);
+  border-color: var(--border-strong, #cbd5e1);
+  color: var(--text-primary, #0f172a);
+}
+
+.visit-branch-dropdown-trigger--open {
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 1px #0f172a;
+}
+
+:is(.dark *) .visit-branch-dropdown-trigger {
   background: var(--bg-card, #1e293b);
   border-color: var(--border-default, #334155);
   color: var(--text-primary, #f8fafc);
 }
 
-:is(.dark *) .visit-avail-branch-picker:hover {
-  border-color: var(--border-strong, #475569);
+:is(.dark *) .visit-branch-dropdown-trigger:hover:not(:disabled) {
+  background: #334155;
+  border-color: #475569;
 }
 
-:is(.dark *) .visit-avail-branch-picker select {
+:is(.dark *) .visit-branch-dropdown-trigger--open {
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 0 0 1px #cbd5e1;
+}
+
+.visit-branch-trigger-icon {
+  color: var(--text-secondary, #64748b);
+  flex-shrink: 0;
+}
+
+:is(.dark *) .visit-branch-trigger-icon {
+  color: #94a3b8;
+}
+
+.visit-branch-trigger-label {
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.visit-branch-chevron {
+  color: var(--text-secondary, #94a3b8);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  margin-left: 2px;
+}
+
+.visit-branch-chevron--open {
+  transform: rotate(180deg);
+}
+
+.visit-branch-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 200px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: visit-dropdown-enter 0.15s ease-out;
+}
+
+@keyframes visit-dropdown-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:is(.dark *) .visit-branch-dropdown-menu {
+  background: var(--bg-card, #1e293b);
+  border-color: var(--border-default, #334155);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.visit-branch-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans, "Plus Jakarta Sans", system-ui, -apple-system, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.visit-branch-dropdown-item:hover {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.visit-branch-dropdown-item--selected {
+  font-weight: 700;
+  background: var(--bg-surface, #f8fafc);
+}
+
+:is(.dark *) .visit-branch-dropdown-item {
   color: var(--text-primary, #f8fafc);
+}
+
+:is(.dark *) .visit-branch-dropdown-item:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+:is(.dark *) .visit-branch-dropdown-item--selected {
+  background: rgba(51, 65, 85, 0.6);
+}
+
+.visit-branch-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visit-branch-item-label {
+  white-space: nowrap;
 }
 
 .visit-avail-dirty-group {
@@ -777,9 +932,25 @@
 
 .visit-card__header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+:is(.dark *) .visit-card__header {
+  border-color: #334155;
+}
+
+.visit-card__header-main {
+  display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  flex: 1;
+  min-width: 260px;
 }
 
 .visit-card__header-icon {
@@ -808,6 +979,13 @@
   flex: 1;
 }
 
+.visit-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .visit-card__header h3 {
   margin: 0;
   font-size: 15px;
@@ -830,13 +1008,45 @@
   color: var(--text-secondary, #94a3b8);
 }
 
-/* ─── Header Quick Cap & Utility Actions ─────────────────────── */
+/* ─── Header Action Bar (Branch Picker, Reset, History, Save) ── */
 .visit-card__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-left: auto;
+}
+
+/* ─── Schedule Subtoolbar (Quick Cap, Presets, Slot Toggles) ─── */
+.visit-schedule-subtoolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-surface, var(--bg-inset, #f8fafc));
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+:is(.dark *) .visit-schedule-subtoolbar {
+  background: rgba(15, 23, 42, 0.4);
+  border-color: #334155;
+}
+
+.visit-subtoolbar-left {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.visit-subtoolbar-slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .visit-cap-quick-set {

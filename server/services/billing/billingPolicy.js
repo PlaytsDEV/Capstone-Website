@@ -152,16 +152,17 @@ export function getVisibleBillDueDate(billLike = {}) {
 export function getVisibleBillSnapshot(billLike = {}, now = new Date()) {
   const charges = getVisibleBillCharges(billLike);
   if (billLike?.billType === "initial_payment") {
+    const breakdownGross = Number(billLike?.initialPaymentBreakdown?.grossInitialAmount || 0);
+    const breakdownTotal = Number(billLike?.initialPaymentBreakdown?.initialPaymentTotal || 0);
     const grossAmount = roundMoney(
-      billLike?.initialPaymentBreakdown?.grossInitialAmount ??
-        billLike?.grossAmount ??
-        billLike?.totalAmount ??
-        0,
+      breakdownGross > 0
+        ? breakdownGross
+        : (billLike?.grossAmount || billLike?.totalAmount || 0),
     );
     const totalAmount = roundMoney(
-      billLike?.initialPaymentBreakdown?.initialPaymentTotal ??
-        billLike?.totalAmount ??
-        0,
+      breakdownTotal > 0
+        ? breakdownTotal
+        : (billLike?.totalAmount || grossAmount || 0),
     );
     const paidAmount = roundMoney(billLike?.paidAmount || 0);
     const remainingAmount = roundMoney(Math.max(totalAmount - paidAmount, 0));

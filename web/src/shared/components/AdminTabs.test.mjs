@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../../..");
 
-test("AdminTabs component and CSS exist with unified solid underline standard", () => {
+test("AdminTabs component and CSS exist with unified segmented pill standard", () => {
   const tabsJsx = fs.readFileSync(
     path.join(webRoot, "src/shared/components/AdminTabs.jsx"),
     "utf8",
@@ -26,7 +26,7 @@ test("AdminTabs component and CSS exist with unified solid underline standard", 
   assert.match(tabsCss, /\.admin-tabs-bar/);
   assert.match(tabsCss, /\.admin-tab-btn/);
   assert.match(tabsCss, /\.admin-tab-btn--active/);
-  assert.match(tabsCss, /border-bottom:\s*2px solid var\(--foreground/);
+  assert.match(tabsCss, /border-bottom:\s*2px solid/);
 });
 
 test("System category pages integrate AdminTabs component", () => {

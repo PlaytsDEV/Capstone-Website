@@ -1497,6 +1497,14 @@ export const updateAdminMaintenanceCost = async (req, res, next) => {
     ensureAdminAccess(request, req);
     const adminUser = await getDbUser(req.user.uid);
 
+    if (request.costBreakdown?.billId) {
+      return sendError(
+        res,
+        400,
+        "Cannot modify repair expenses because this cost is already linked to a generated monthly billing invoice.",
+      );
+    }
+
     const rawLabor = Number(req.body?.laborCost);
     const rawMaterials = Number(req.body?.materialsCost);
 

@@ -187,23 +187,24 @@ const MaintenanceTab = () => {
  />
  </div>
  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
- <button
- type="button"
- onClick={() => setShowForm(false)}
- style={s.ghostBtn}
- >
- Cancel
- </button>
- <button
- type="submit"
- disabled={createMutation.isPending}
- style={{
- ...s.primaryBtn,
- opacity: createMutation.isPending ? 0.6 : 1,
- }}
- >
- {createMutation.isPending ? "Submitting..." : "Submit Request"}
- </button>
+  <button
+  type="button"
+  onClick={() => setShowForm(false)}
+  style={s.ghostBtn}
+  disabled={createMutation.isPending || pendingConfirm}
+  >
+  Cancel
+  </button>
+  <button
+  type="submit"
+  disabled={createMutation.isPending || pendingConfirm}
+  style={{
+  ...s.primaryBtn,
+  opacity: createMutation.isPending || pendingConfirm ? 0.6 : 1,
+  }}
+  >
+  Submit Request
+  </button>
  </div>
  </form>
  </div>

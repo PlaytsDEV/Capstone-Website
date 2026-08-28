@@ -2061,6 +2061,15 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
   }
 }
 
+// NOTE (R1 hybrid reconciliation): main's `cancelTransferStayWorkflow` is
+// intentionally NOT carried forward. It operated on the phantom
+// `reservation.pendingTransfer*` / `transferStatus` fields and a bed "lock"
+// that the prepare step never actually set, and it filtered on
+// `contractPurpose:"replacement"`. The canonical one-step Addendum model has
+// no pre-cutover phantom state to unwind. A clean "discard prepared Room
+// Transfer Addendum" workflow (transition the generated Addendum Draft ->
+// cancelled, nothing else) is introduced in R4.
+
 /**
  * SCENARIO 1 - Case 2: Post-Approval Move-Out Cancellation with Re-booking Conflict Check
  */

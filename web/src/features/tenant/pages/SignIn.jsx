@@ -32,6 +32,7 @@ import {
   generateUsername,
   sanitizeName,
   formatProperCase,
+  NEW_PASSWORD_MAX_LENGTH,
 } from "../../../shared/utils/authValidation";
 import { authApi } from "../../../shared/api/apiClient";
 import {
@@ -109,6 +110,9 @@ function SignIn() {
   const handlePasswordKey = (e) => {
     if (e.getModifierState) {
       setCapsLockActive(e.getModifierState("CapsLock"));
+    }
+    if (e.key === " ") {
+      e.preventDefault();
     }
   };
 
@@ -242,7 +246,10 @@ function SignIn() {
   // ── Form handling ──────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const sanitizedValue = name === "password" ? value.replace(/\s/g, "") : value;
+    const sanitizedValue =
+      name === "password"
+        ? value.replace(/\s/g, "").slice(0, NEW_PASSWORD_MAX_LENGTH)
+        : value;
     setFormData((prev) => ({ ...prev, [name]: sanitizedValue }));
     
     if (debounceTimersRef.current[name]) {
@@ -770,21 +777,32 @@ function SignIn() {
  valid={touched.email && fieldValid.email}
  />
 
- <FloatingInput
- label="Password"
- name="password"
- type={showPassword ? "text" : "password"}
- value={formData.password}
- onChange={handleChange}
- onKeyDown={handlePasswordKey}
- onKeyUp={handlePasswordKey}
- onBlur={() => handleBlur("password")}
- onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
- disabled={submitting || isLockedOut}
- autoComplete="current-password"
- error={touched.password ? validationErrors.password : null}
- valid={touched.password && fieldValid.password}
- endAdornment={
+      <FloatingInput
+        label="Password"
+        name="password"
+        type={showPassword ? "text" : "password"}
+        value={formData.password}
+        onChange={handleChange}
+        onKeyDown={handlePasswordKey}
+        onKeyUp={handlePasswordKey}
+        onBlur={() => handleBlur("password")}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text") || "";
+          if (/\s/.test(text)) {
+            e.preventDefault();
+            showNotification("Spaces are not permitted in passwords", "warning", 3000);
+          } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+            e.preventDefault();
+            setFormData((prev) => ({ ...prev, password: text.slice(0, NEW_PASSWORD_MAX_LENGTH) }));
+            showNotification(`Password input was limited to ${NEW_PASSWORD_MAX_LENGTH} characters`, "warning", 3000);
+          }
+        }}
+        disabled={submitting || isLockedOut}
+        autoComplete="current-password"
+        maxLength={NEW_PASSWORD_MAX_LENGTH}
+        error={touched.password ? validationErrors.password : null}
+        valid={touched.password && fieldValid.password}
+        endAdornment={
  <PasswordVisibilityButton
  visible={showPassword}
  onToggle={() => setShowPassword((current) => !current)}

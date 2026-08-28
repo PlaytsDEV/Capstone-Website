@@ -27,10 +27,59 @@ export function ModernDateTimePicker({
 }) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  const [calendarPlacement, setCalendarPlacement] = useState("bottom");
+  const [timePlacement, setTimePlacement] = useState("bottom");
   const [viewDate, setViewDate] = useState(() => (dateValue ? dayjs(dateValue) : dayjs()));
 
   const calendarContainerRef = useRef(null);
   const timeContainerRef = useRef(null);
+
+  const detectPlacement = (element) => {
+    if (!element) return "bottom";
+    const rect = element.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    if (spaceBelow < 330 && spaceAbove > 280) {
+      return "top";
+    }
+    return "bottom";
+  };
+
+  const handleToggleCalendar = () => {
+    if (disabled) return;
+    if (!isCalendarOpen) {
+      const placement = detectPlacement(calendarContainerRef.current);
+      setCalendarPlacement(placement);
+      setIsCalendarOpen(true);
+      setIsTimePickerOpen(false);
+      setTimeout(() => {
+        calendarContainerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }, 50);
+    } else {
+      setIsCalendarOpen(false);
+    }
+  };
+
+  const handleToggleTimePicker = () => {
+    if (disabled) return;
+    if (!isTimePickerOpen) {
+      const placement = detectPlacement(timeContainerRef.current);
+      setTimePlacement(placement);
+      setIsTimePickerOpen(true);
+      setIsCalendarOpen(false);
+      setTimeout(() => {
+        timeContainerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }, 50);
+    } else {
+      setIsTimePickerOpen(false);
+    }
+  };
 
   // Close popups when clicking outside
   useEffect(() => {
@@ -94,9 +143,11 @@ export function ModernDateTimePicker({
       });
     }
 
-    // Next month padding to fill 6 rows (42 days)
+    // Next month padding to fill necessary rows (up to 35 or 42 days)
     const nextMonth = viewDate.add(1, "month");
-    const remainingDays = 42 - days.length;
+    const totalDaysSoFar = days.length;
+    const targetCount = totalDaysSoFar <= 28 ? 28 : totalDaysSoFar <= 35 ? 35 : 42;
+    const remainingDays = targetCount - totalDaysSoFar;
     for (let i = 1; i <= remainingDays; i++) {
       const d = nextMonth.date(i);
       days.push({
@@ -180,10 +231,7 @@ export function ModernDateTimePicker({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => {
-              setIsCalendarOpen((prev) => !prev);
-              setIsTimePickerOpen(false);
-            }}
+            onClick={handleToggleCalendar}
             className={`w-full h-10 rounded-lg border px-3 flex items-center justify-between text-xs font-medium transition cursor-pointer text-left ${
               isCalendarOpen
                 ? "border-slate-900 dark:border-slate-100 ring-1 ring-slate-900/10 bg-white dark:bg-slate-900"
@@ -198,7 +246,13 @@ export function ModernDateTimePicker({
 
           {/* Custom Modern Calendar Popover */}
           {isCalendarOpen && (
-            <div className="absolute top-full left-0 mt-1.5 z-40 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xl space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
+            <div
+              className={`absolute z-50 w-72 max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xl space-y-2.5 animate-in fade-in zoom-in-95 duration-100 ${
+                calendarPlacement === "top"
+                  ? "bottom-full mb-1.5 left-0"
+                  : "top-full mt-1.5 left-0"
+              }`}
+            >
               {/* Calendar Month Header */}
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <button
@@ -315,10 +369,7 @@ export function ModernDateTimePicker({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => {
-              setIsTimePickerOpen((prev) => !prev);
-              setIsCalendarOpen(false);
-            }}
+            onClick={handleToggleTimePicker}
             className={`w-full h-10 rounded-lg border px-3 flex items-center justify-between text-xs font-medium transition cursor-pointer text-left active:scale-[0.99] ${
               isTimePickerOpen
                 ? "border-[#0A1628] dark:border-slate-100 ring-1 ring-[#0A1628]/10 bg-white dark:bg-slate-900"
@@ -333,7 +384,13 @@ export function ModernDateTimePicker({
 
           {/* Custom Modern Time Slots Popover */}
           {isTimePickerOpen && (
-            <div className="absolute top-full left-0 sm:right-0 sm:left-auto mt-1.5 z-40 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xl space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
+            <div
+              className={`absolute z-50 w-72 max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xl space-y-2.5 animate-in fade-in zoom-in-95 duration-100 ${
+                timePlacement === "top"
+                  ? "bottom-full mb-1.5 left-0 sm:right-0 sm:left-auto"
+                  : "top-full mt-1.5 left-0 sm:right-0 sm:left-auto"
+              }`}
+            >
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   Standard Service Windows

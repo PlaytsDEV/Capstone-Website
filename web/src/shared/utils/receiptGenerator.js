@@ -552,6 +552,23 @@ async function buildReceiptDoc(reservation, profile) {
   return doc;
 }
 
+function openReceiptInTab(doc, title) {
+  doc.setProperties({
+    title,
+    subject: "Official Receipt",
+    author: "Lilycrest Dormitory",
+    creator: "Lilycrest Dormitory",
+  });
+  const blobUrl = doc.output("bloburl");
+  const win = window.open("", "_blank");
+  if (win) {
+    win.document.write(`<!doctype html><html><head><title>${title}</title><style>html,body{margin:0;height:100%;background:#525659;overflow:hidden;}iframe{width:100%;height:100%;border:none;}</style></head><body><iframe src="${blobUrl}" title="${title}"></iframe></body></html>`);
+    win.document.close();
+  } else {
+    window.open(blobUrl, "_blank");
+  }
+}
+
 export async function generateDepositReceipt(reservation, profile) {
   const doc = await buildReceiptDoc(reservation, profile);
   const filename = `Lilycrest_Receipt_${reservation.reservationCode || "deposit"}.pdf`;
@@ -560,8 +577,7 @@ export async function generateDepositReceipt(reservation, profile) {
 
 export async function viewDepositReceipt(reservation, profile) {
   const doc = await buildReceiptDoc(reservation, profile);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  openReceiptInTab(doc, `Official Receipt - ${reservation.reservationCode || "Deposit"}`);
 }
 
 // ==========================================================================
@@ -745,8 +761,7 @@ export async function generateMoveInReceipt(reservation, profile, bill) {
 
 export async function viewMoveInReceipt(reservation, profile, bill) {
   const doc = await buildMoveInReceiptDoc(reservation, profile, bill);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  openReceiptInTab(doc, `Official Move-In Receipt - ${reservation.reservationCode || "Settlement"}`);
 }
 
 // ==========================================================================
@@ -906,8 +921,7 @@ export async function generateMoveInStatementPDF(reservation, profile) {
 
 export async function viewMoveInStatementPDF(reservation, profile) {
   const doc = await buildMoveInStatementDoc(reservation, profile);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  openReceiptInTab(doc, `Move-In Statement - ${reservation.reservationCode || "Statement"}`);
 }
 
 // ==========================================================================
@@ -1071,8 +1085,8 @@ export async function generateReceiptPDF(bill) {
 
 export async function viewReceiptPDF(bill) {
   const doc = await buildBillingReceiptDoc(bill);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  const rawRef = bill.paymentReference || bill.paymongoReference || bill.billReference || (bill.id || bill._id || "receipt").slice(-8).toUpperCase();
+  openReceiptInTab(doc, `Official Receipt - ${rawRef}`);
 }
 
 // ==========================================================================
@@ -1235,8 +1249,10 @@ export async function generateBillingReceiptPDF(bill) {
 
 export async function viewBillingReceiptPDF(bill) {
   const doc = await buildBillingStatementDoc(bill);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  const monthSlug = bill.billingMonth
+    ? new Date(bill.billingMonth).toLocaleDateString("en-PH", { year: "numeric", month: "short" })
+    : "Statement";
+  openReceiptInTab(doc, `Billing Statement (${monthSlug}) - ${bill.invoiceNumber || "Invoice"}`);
 }
 
 // ==========================================================================
@@ -1530,8 +1546,8 @@ export async function generateSettlementReceiptPDF(data) {
 
 export async function viewSettlementReceiptPDF(data) {
   const doc = await buildSettlementDoc(data);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  const typeSlug = data.type === "transfer" ? "Transfer Estimate" : "Move-Out Estimate";
+  openReceiptInTab(doc, `${typeSlug} - ${data.tenantName || "Tenant"}`);
 }
 
 // ==========================================================================

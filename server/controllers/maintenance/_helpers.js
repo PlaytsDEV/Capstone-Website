@@ -851,12 +851,35 @@ export const serializeMaintenanceRequest = (
   tenant = null,
   { includeInternal = true } = {},
 ) => {
-  const workLog = includeInternal && Array.isArray(request.work_log)
-    ? request.work_log.map((entry) => ({
+  const rawWorkLog = Array.isArray(request.work_log) ? request.work_log : [];
+  const workLog = includeInternal
+    ? rawWorkLog.map((entry) => ({
         ...entry,
         attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal }),
       }))
     : [];
+
+  const resolutionProofAttachments = rawWorkLog.flatMap((entry) => {
+    const entryAtts = Array.isArray(entry?.attachments) ? entry.attachments : [];
+    return entryAtts.filter((att) => {
+      if (!att || typeof att !== "object") return false;
+      if (att.isRemoved) return false;
+      if (att.removedScope === "tenant_only" || att.removedScope === "request") return false;
+      if (att.visibility === "admin_only") return false;
+      return true;
+    });
+  });
+  const sanitizedResolutionProofAttachments = sanitizeAttachmentsForOutput(
+    resolutionProofAttachments,
+    { includeInternal: false },
+  );
+  const resolutionProof = {
+    note: request.resolution_note || request.notes || null,
+    resolvedAt: request.resolved_at || request.completedAt || request.closed_at || null,
+    resolvedBy: includeInternal ? (request.resolvedBy || null) : undefined,
+    resolvedByName: request.resolvedByName || null,
+    attachments: sanitizedResolutionProofAttachments,
+  };
 
   const publicReplies = Array.isArray(request.publicReplies) && request.publicReplies.length
     ? request.publicReplies
@@ -1113,6 +1136,10 @@ export const serializeMaintenanceRequest = (
     reopenCount,
     reopen_count: reopenCount,
     resolutionConfirmation,
+    resolutionProof,
+    resolution_proof: resolutionProof,
+    proofAttachments: sanitizedResolutionProofAttachments,
+    proof_attachments: sanitizedResolutionProofAttachments,
     assigned_to: includeInternal ? request.assigned_to ?? null : null,
     notes: includeInternal ? request.notes ?? null : null,
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),

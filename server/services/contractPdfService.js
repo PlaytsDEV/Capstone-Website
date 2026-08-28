@@ -551,6 +551,16 @@ export const renderPreparedContractPdf = async (generationData) => {
     font: fonts.regular,
     color: rgb(0.48, 0, 0),
   });
+  const tenantName = generationData.fields?.tenantLegalName || "Tenant";
+  const contractNumber = generationData.contractNumber || generationData.fields?.contractNumber || "";
+  const docTitle = contractNumber
+    ? `Contract of Lease - ${tenantName} (${contractNumber})`
+    : `Contract of Lease - ${tenantName}`;
+  document.setTitle(docTitle);
+  document.setSubject(`Contract of Lease - ${generationData.property?.propertyName || "Lilycrest Dormitory"}`);
+  document.setAuthor("Lilycrest Dormitory Management System");
+  document.setCreator("Lilycrest Dormitory");
+  document.setProducer("Lilycrest Dormitory");
   const outputBytes = await document.save({
     addDefaultPage: false,
     updateFieldAppearances: false,

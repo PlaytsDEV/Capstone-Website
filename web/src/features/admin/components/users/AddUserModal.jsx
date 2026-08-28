@@ -5,7 +5,7 @@ import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
 import { showNotification } from "../../../../shared/utils/notification";
-import { sanitizeName, formatProperCase } from "../../../../shared/utils/authValidation";
+import { sanitizeName, formatProperCase, NEW_PASSWORD_MAX_LENGTH } from "../../../../shared/utils/authValidation";
 
 function generateSecurePassword() {
   const lowercase = "abcdefghjkmnpqrstuvwxyz";
@@ -271,12 +271,29 @@ export default function AddUserModal({
               <input
                 type={showPassword ? "text" : "password"}
                 value={addForm.password}
-                onChange={(e) => onFormChange("password", e.target.value)}
+                onChange={(e) => {
+                  if (/\s/.test(e.target.value)) return;
+                  onFormChange("password", e.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === " ") e.preventDefault();
+                }}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text") || "";
+                  if (/\s/.test(text)) {
+                    e.preventDefault();
+                    showNotification("Spaces are not permitted in passwords", "warning", 3000);
+                  } else if (text.length > NEW_PASSWORD_MAX_LENGTH) {
+                    e.preventDefault();
+                    onFormChange("password", text.slice(0, NEW_PASSWORD_MAX_LENGTH));
+                    showNotification(`Password input was limited to ${NEW_PASSWORD_MAX_LENGTH} characters`, "warning", 3000);
+                  }
+                }}
                 onBlur={() => handleBlur("password")}
                 required
                 placeholder="Enter or generate password"
                 minLength={6}
-                maxLength={100}
+                maxLength={NEW_PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
                 style={{ width: "100%", paddingRight: "56px" }}
               />

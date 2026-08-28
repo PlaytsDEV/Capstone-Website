@@ -739,7 +739,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     onClick={() => setFilterTab(t.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border shadow-xs cursor-pointer ${
                       isActiveTab
-                        ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100 font-bold"
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100"
                         : "bg-card text-card-foreground border-border hover:bg-muted/80 hover:border-slate-300 dark:hover:border-slate-700"
                     }`}
                   >

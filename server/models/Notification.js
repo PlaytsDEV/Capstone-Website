@@ -49,6 +49,7 @@ const notificationSchema = new mongoose.Schema(
         "visit_requested",
         "visit_scheduled",
         "payment_approved",
+        "payment_confirmed",
         "payment_rejected",
         "payment_proof_submitted",
         "application_submitted",

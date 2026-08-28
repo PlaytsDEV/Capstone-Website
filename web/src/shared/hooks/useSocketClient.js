@@ -128,7 +128,15 @@ export default function useSocketClient() {
               toastMessage = notification.title;
             }
           }
-          showNotification(toastMessage, toastType, 3500);
+          const notifTypeLower = String(notification?.type || "").toLowerCase();
+          const lastSettled = Number(sessionStorage.getItem("lilycrest_last_settled_payment_time") || 0);
+          const isRecentPaymentSettlement =
+            (notifTypeLower === "payment_approved" || notifTypeLower === "payment_confirmed") &&
+            Date.now() - lastSettled < 4000;
+
+          if (!isRecentPaymentSettlement) {
+            showNotification(toastMessage, toastType, 3500);
+          }
           const scope = getNotificationQueryScope(user);
           qc.setQueryData(notificationQueryKeys.unread(scope), (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,

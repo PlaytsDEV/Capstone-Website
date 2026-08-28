@@ -418,6 +418,12 @@ export const reservationApi = {
       }),
     ),
 
+  // NOTE: the R1 hybrid reconciliation intentionally omits a client method for
+  // main's `/transfer/prepare-contract` and `/cancel-transfer` — those carried
+  // the replacement-lease + phantom `pendingTransfer*` semantics. Clean
+  // Addendum prepare/discard endpoints land in R2/R4. Canonical transfer surface
+  // for R1: `transfer` + `getRoomTransferPreview`.
+
   /**
    * Get the latest electricity meter reading for a room.
    * Used by the Transfer modal to pre-fill baseline readings.

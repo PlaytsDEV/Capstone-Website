@@ -415,6 +415,127 @@ export const generateAllRentBills = async (req, res, next) => {
   }
 };
 
+export const generateBatchRentBills = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const {
+      reservationIds = [],
+      billingMonth,
+      dueDate,
+      branch: requestedBranch,
+    } = req.body || {};
+
+    if (!Array.isArray(reservationIds) || reservationIds.length === 0) {
+      return res.status(400).json({ error: "reservationIds array is required and cannot be empty." });
+    }
+
+    const branch =
+      req.branchFilter || (admin.isOwner && requestedBranch ? requestedBranch : admin.branch);
+    if (!branch) {
+      return res.status(400).json({ error: "Branch is required." });
+    }
+
+    const summary = {
+      total: reservationIds.length,
+      generated: 0,
+      failed: 0,
+      errors: [],
+    };
+    const bills = [];
+    const warnings = [];
+
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < reservationIds.length; i += CHUNK_SIZE) {
+      const chunk = reservationIds.slice(i, i + CHUNK_SIZE);
+      const settledResults = await Promise.allSettled(
+        chunk.map(async (reservationId) => {
+          const reservation = await loadRentReservationForAdmin({ reservationId, branch });
+          const draft = await buildRentBillDraft({
+            reservation,
+            branch,
+            billingMonth,
+            dueDate,
+            rentAmount: null,
+            notes: "Generated through multi-select rent batch billing.",
+          });
+
+          const result = await finalizeRentBill({
+            req,
+            admin,
+            reservation,
+            draft,
+          });
+
+          const tenantName =
+            [reservation.userId?.firstName, reservation.userId?.lastName]
+              .filter(Boolean)
+              .join(" ")
+              .trim() || "Tenant";
+
+          const itemWarnings = [];
+          if (result.delivery?.email?.status === "failed") {
+            itemWarnings.push(`${tenantName}: email notification failed.`);
+          }
+          if (result.delivery?.pdf?.status === "failed") {
+            itemWarnings.push(`${tenantName}: PDF generation failed.`);
+          }
+
+          return {
+            bill: formatBill(result.bill),
+            warnings: itemWarnings,
+          };
+        })
+      );
+
+      settledResults.forEach((resItem, idx) => {
+        const reservationId = chunk[idx];
+        if (resItem.status === "fulfilled") {
+          summary.generated += 1;
+          bills.push(resItem.value.bill);
+          if (resItem.value.warnings?.length) {
+            warnings.push(...resItem.value.warnings);
+          }
+        } else {
+          summary.failed += 1;
+          summary.errors.push({
+            reservationId,
+            error: resItem.reason?.message || "Failed to generate bill",
+          });
+        }
+      });
+    }
+
+    if (summary.generated > 0) {
+      await logBillingAudit(req, {
+        admin,
+        action: "Generated Batch Rent Bills",
+        severity: "info",
+        entityType: "billing",
+        branch,
+        details: `Generated ${summary.generated} rent bill(s) via batch selection for branch ${branch} (Billing Month: ${billingMonth})`,
+        metadata: {
+          branch,
+          billingMonth,
+          summary,
+          generatedCount: summary.generated,
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      summary,
+      bills,
+      warnings,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
+    next(error);
+  }
+};
+
 export const generateBulkBills = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);

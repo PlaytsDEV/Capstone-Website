@@ -84,7 +84,7 @@ export const EMAIL_TEMPLATES = Object.freeze({
     builder: buildOverdueNoticeEmail,
   },
   PAYMENT_APPROVED: {
-    subject: (v) => `Payment Approved — ${v.BILLING_MONTH} | Lilycrest Dormitory`,
+    subject: (v) => `Payment Confirmed — ${v.BILLING_MONTH} | Lilycrest Dormitory`,
     builder: buildPaymentApprovedEmail,
   },
   PAYMENT_REJECTED: {

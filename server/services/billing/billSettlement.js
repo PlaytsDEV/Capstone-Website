@@ -13,6 +13,7 @@ import {
   quarantineStructuredSettlementMismatch,
 } from "../structuredInitialPaymentService.js";
 import { STRUCTURED_INITIAL_PAYMENT_WORKFLOW } from "../../config/structuredInitialPayment.js";
+import { Bill, Reservation } from "../../models/index.js";
 
 export async function settlePaymongoBill({
   bill,
@@ -139,6 +140,70 @@ export async function settlePaymongoBill({
   };
 }
 
+export async function settleInitialMoveInOnCheckIn({
+  reservation,
+  actorId = "system",
+  paymentMethod = "offline_cash",
+  now = new Date(),
+} = {}) {
+  if (!reservation) return { settled: false, reason: "no_reservation" };
+  const resDoc = reservation._id ? reservation : await Reservation.findById(reservation);
+  if (!resDoc) return { settled: false, reason: "reservation_not_found" };
+
+  let bill = null;
+  if (resDoc.initialPaymentBillId) {
+    bill = await Bill.findById(resDoc.initialPaymentBillId);
+  }
+  if (!bill) {
+    bill = await Bill.findOne({
+      reservationId: resDoc._id,
+      billType: "initial_payment",
+      isArchived: { $ne: true },
+    });
+  }
+
+  if (!bill) return { settled: false, reason: "no_initial_bill" };
+  if (bill.status === "paid" && Number(bill.remainingAmount) === 0) {
+    return { settled: false, reason: "already_paid", bill };
+  }
+
+  const amountToSettle = Number(bill.remainingAmount || bill.totalAmount || 0);
+  const rawMethod = String(paymentMethod || "").trim().toLowerCase();
+  const normalizedMethod =
+    rawMethod === "cash" || !rawMethod ? "offline_cash" : paymentMethod;
+
+  const paymentResult = await applyBillPayment({
+    bill,
+    amount: amountToSettle,
+    method: normalizedMethod,
+    source: "admin-manual",
+    referenceNumber: `MOVEIN-${resDoc._id.toString().slice(-6).toUpperCase()}`,
+    recordedBy: actorId,
+    metadata: {
+      reservationId: String(resDoc._id),
+      reason: "Settled upon move-in check-in",
+    },
+    now,
+  });
+
+  resDoc.initialPaymentStatus = "paid";
+  resDoc.paymentStatus = "paid_in_full";
+  resDoc.isMoveInSettled = true;
+  resDoc.initialPaymentSettledAt = now;
+  if (typeof resDoc.save === "function") {
+    await resDoc.save({ validateModifiedOnly: true });
+  }
+
+  await syncStructuredReservationAfterBillSettlement(bill);
+
+  return {
+    settled: true,
+    bill,
+    payment: paymentResult?.payment,
+  };
+}
+
 export default {
   settlePaymongoBill,
+  settleInitialMoveInOnCheckIn,
 };

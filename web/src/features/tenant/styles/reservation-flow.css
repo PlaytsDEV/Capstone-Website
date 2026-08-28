@@ -610,10 +610,10 @@
 }
 
 /* Suppress native dropdown arrow on datalist/autocomplete inputs */
-.form-input::-webkit-calendar-picker-indicator,
-.form-input::-webkit-list-button,
-.rf-input::-webkit-calendar-picker-indicator,
-.rf-input::-webkit-list-button {
+.form-input[list]::-webkit-calendar-picker-indicator,
+.form-input[list]::-webkit-list-button,
+.rf-input[list]::-webkit-calendar-picker-indicator,
+.rf-input[list]::-webkit-list-button {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;

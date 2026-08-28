@@ -30,6 +30,7 @@ import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showConfirmation, showNotification } from "../../../../shared/utils/notification";
 import { fmtCurrency, fmtDate, fmtMonth, formatBranch } from "../../utils/formatters";
 import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
+import BatchGenerateRentBillsModal from "./BatchGenerateRentBillsModal";
 import {
   buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
   formatAdminPaymentMode,
@@ -221,19 +222,11 @@ function PreviewModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm">
       <section className="w-full max-w-xl overflow-hidden rounded-[20px] border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border bg-muted/20 px-6 py-5">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-accent,#D4AF37)]">
-              Manual Override
-            </p>
-            <h3 className="mt-1 text-lg font-semibold text-card-foreground">Force Rent Bill Generation</h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full bg-background p-2 text-muted-foreground shadow-sm hover:bg-muted"
-          >
-            Close
-          </button>
+        <div className="border-b border-border bg-muted/20 px-6 py-5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-accent,#D4AF37)]">
+            Manual Override
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-card-foreground">Force Rent Bill Generation</h3>
         </div>
 
         <div className="grid grid-cols-2 gap-4 px-6 py-5">
@@ -364,11 +357,14 @@ export default function RentBillingTab({
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [generatingId, setGeneratingId] = useState(null);
   const [sendingId, setSendingId] = useState(null);
-  const [batchSending, setBatchSending] = useState(false);
   const [activeNoticeKey, setActiveNoticeKey] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewTenant, setPreviewTenant] = useState(null);
+
+  const [selectedReservationIds, setSelectedReservationIds] = useState(new Set());
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
 
   const branchParam = branch && branch !== "all" ? branch : undefined;
   const canLoad = isOwner || Boolean(branch);
@@ -384,11 +380,12 @@ export default function RentBillingTab({
     return () => clearInterval(interval);
   }, []);
 
-  // Clear preview modal on branch switch
+  // Clear selection and preview modal on filter/branch switches
   useEffect(() => {
+    setSelectedReservationIds(new Set());
     setPreview(null);
     setPreviewTenant(null);
-  }, [branchParam]);
+  }, [branchParam, activeMonthParam, timeframeMode, activeTab, searchQuery]);
 
   const loadData = useCallback(async () => {
     if (!canLoad || !isActive) return;
@@ -596,20 +593,91 @@ export default function RentBillingTab({
     return { expected, collected, outstanding, exceptions, upcoming, collectionPercent };
   }, [tableRows]);
 
-  const sendableRows = useMemo(
-    () => tableRows.filter(
-      (r) => r.bill && (r.computedStatus === 'generated' || r.computedStatus === 'ready') && !isBillSent(r.bill)
-    ),
-    [tableRows]
+  const eligibleRows = useMemo(
+    () =>
+      filteredRows.filter(
+        (r) => !r.bill && r.computedStatus !== "missing_data" && r.contractRate > 0,
+      ),
+    [filteredRows],
   );
 
-  const sendableTotalAmount = useMemo(
-    () => sendableRows.reduce(
-      (sum, r) => sum + r.contractRate,
-      0
-    ),
-    [sendableRows]
+  const selectedRows = useMemo(
+    () =>
+      eligibleRows.filter((r) =>
+        selectedReservationIds.has(getId(r.reservationId)),
+      ),
+    [eligibleRows, selectedReservationIds],
   );
+
+  const selectedTotalAmount = useMemo(
+    () =>
+      selectedRows.reduce((sum, r) => sum + (Number(r.contractRate) || 0), 0),
+    [selectedRows],
+  );
+
+  const handleToggleSelect = useCallback((reservationId) => {
+    const idStr = String(reservationId || "");
+    if (!idStr) return;
+    setSelectedReservationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(idStr)) {
+        next.delete(idStr);
+      } else {
+        next.add(idStr);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedReservationIds((prev) => {
+      if (prev.size === eligibleRows.length) {
+        return new Set();
+      }
+      return new Set(eligibleRows.map((r) => getId(r.reservationId)).filter(Boolean));
+    });
+  }, [eligibleRows]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedReservationIds(new Set());
+  }, []);
+
+  const handleBatchGenerate = async () => {
+    if (isBatchGenerating || selectedReservationIds.size === 0) return;
+    setIsBatchGenerating(true);
+    try {
+      const targetMonth = timeframeMode === "all" ? getCurrentMonthInput() : month;
+      const payload = {
+        reservationIds: Array.from(selectedReservationIds),
+        billingMonth: targetMonth,
+        branch: branchParam,
+      };
+      const result = await billingApi.generateBatchRentBills(payload);
+      const generatedCount = result?.summary?.generated ?? result?.bills?.length ?? 0;
+      const failedCount = result?.summary?.failed ?? 0;
+
+      if (generatedCount > 0) {
+        showNotification(
+          `${generatedCount} rent bill${generatedCount !== 1 ? "s" : ""} generated successfully.`,
+          "success",
+        );
+      }
+      if (failedCount > 0) {
+        showNotification(
+          `${failedCount} bill${failedCount !== 1 ? "s" : ""} failed to generate.`,
+          "error",
+        );
+      }
+
+      setSelectedReservationIds(new Set());
+      setIsBatchModalOpen(false);
+      await loadData();
+    } catch (error) {
+      showNotification(error?.message || "Batch generation failed.", "error");
+    } finally {
+      setIsBatchGenerating(false);
+    }
+  };
 
   const handlePreview = async (tenant) => {
     const reservationId = getId(tenant.reservationId);
@@ -682,33 +750,6 @@ export default function RentBillingTab({
       } catch (e) { showNotification(e.message, "error"); }
       finally { setDownloadingId(null); }
     }
-  };
-
-  const handleSendAllReady = async () => {
-    if (batchSending || sendableRows.length === 0) return;
-    const confirmed = await showConfirmation(
-      `Send ${sendableRows.length} bill${sendableRows.length !== 1 ? 's' : ''} now?`,
-      `This will dispatch rent billing statements to ${sendableRows.length} tenant${sendableRows.length !== 1 ? 's' : ''}. This cannot be undone.`,
-      { confirmLabel: 'Send All', confirmVariant: 'primary' }
-    );
-    if (!confirmed) return;
-    setBatchSending(true);
-    let successCount = 0;
-    let errorCount = 0;
-    for (const row of sendableRows) {
-      const billId = getId(row.bill?.id || row.bill?._id);
-      if (!billId) continue;
-      try {
-        await billingApi.sendRentBill(billId);
-        successCount++;
-      } catch {
-        errorCount++;
-      }
-    }
-    setBatchSending(false);
-    if (successCount > 0) showNotification(`${successCount} bill${successCount !== 1 ? 's' : ''} sent successfully.`, 'success');
-    if (errorCount > 0) showNotification(`${errorCount} bill${errorCount !== 1 ? 's' : ''} failed to send.`, 'error');
-    await loadData();
   };
 
   if (initialLoading && tenants.length === 0 && bills.length === 0) {
@@ -899,9 +940,9 @@ export default function RentBillingTab({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative whitespace-nowrap px-3.5 py-1.5 text-xs font-semibold transition-all rounded-lg ${
+                className={`relative whitespace-nowrap px-3.5 py-1.5 text-xs font-semibold transition-colors rounded-lg ${
                   activeTab === tab.id 
-                    ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-950 font-bold" 
+                    ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-950" 
                     : "text-muted-foreground hover:text-card-foreground hover:bg-card"
                 }`}
               >
@@ -942,21 +983,78 @@ export default function RentBillingTab({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        {/* Bulk Action Bar */}
+        {selectedReservationIds.size > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/15 px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-bold text-card-foreground shadow-xs">
+                <Users size={14} className="text-slate-500" />
+                {selectedReservationIds.size} tenant{selectedReservationIds.size !== 1 ? "s" : ""} selected
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Total Value: <span className="font-bold text-[color:var(--color-accent,#D4AF37)]">{fmtCurrency(selectedTotalAmount)}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="h-8 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+              >
+                Deselect All
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBatchModalOpen(true)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98]"
+              >
+                <Send size={13} />
+                Generate Rent Bills ({selectedReservationIds.size})
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="overflow-x-auto min-h-[380px]">
+          <table className="w-full min-w-[860px] table-fixed text-left text-xs">
+            <colgroup>
+              <col className="w-[48px]" />
+              <col className="w-[26%]" />
+              <col className="w-[20%]" />
+              <col className="w-[20%]" />
+              <col className="w-[18%]" />
+              <col className="w-[16%]" />
+            </colgroup>
             <thead className="bg-background">
               <tr>
-                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
-                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">System Status</th>
-                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
-                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Amount Tracker</th>
-                <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Override Actions</th>
+                <th className="w-[48px] px-3 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all eligible tenants"
+                    checked={eligibleRows.length > 0 && selectedReservationIds.size === eligibleRows.length}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          selectedReservationIds.size > 0 &&
+                          selectedReservationIds.size < eligibleRows.length;
+                      }
+                    }}
+                    disabled={eligibleRows.length === 0}
+                    onChange={handleSelectAll}
+                    className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </th>
+                <th className="w-[26%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
+                <th className="w-[20%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">System Status</th>
+                <th className="w-[20%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
+                <th className="w-[18%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Amount Tracker</th>
+                <th className="w-[16%] px-5 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Override Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50 bg-card">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center">
+                  <td colSpan={6} className="py-16 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
                       <div className="flex shrink-0 items-center justify-center mb-2.5">
                         <CheckCircle size={28} className="text-emerald-600 dark:text-emerald-400" />
@@ -1025,10 +1123,25 @@ export default function RentBillingTab({
                   const reservationId = getId(row.reservationId);
                   const isBusy = previewLoadingId === reservationId || generatingId === reservationId;
                   const genDate = row.nextBillingDate || row.billingCycle?.generationDate;
+                  const isEligible = !row.bill && row.computedStatus !== "missing_data" && row.contractRate > 0;
+                  const isSelected = selectedReservationIds.has(reservationId);
                   
                   return (
-                    <tr key={rowKey} className="group transition-colors hover:bg-muted/30">
-                      <td className="px-5 py-3">
+                    <tr key={rowKey} className={`group transition-colors hover:bg-muted/30 ${isSelected ? "bg-muted/20" : ""}`}>
+                      <td className="w-[48px] px-3 py-3 text-center">
+                        {isEligible ? (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.tenantName}`}
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(reservationId)}
+                            className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        ) : (
+                          <span className="inline-block w-4 h-4" />
+                        )}
+                      </td>
+                      <td className="w-[26%] px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">
                             {getInitials(row.tenantName)}
@@ -1052,7 +1165,7 @@ export default function RentBillingTab({
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="w-[20%] px-5 py-3">
                         <div className="flex flex-col items-start gap-1">
                           {(() => {
                             const cfg = getStatusConfig(row.computedStatus);
@@ -1082,7 +1195,7 @@ export default function RentBillingTab({
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="w-[20%] px-5 py-3">
                         <p className="text-xs font-medium text-card-foreground">
                           {formatCycle(row.billingCycleStart, row.billingCycleEnd)}
                         </p>
@@ -1090,7 +1203,7 @@ export default function RentBillingTab({
                           Due: <span className="font-bold text-card-foreground">{fmtDate(row.dueDate || row.billingCycle?.dueDate)}</span>
                         </p>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="w-[18%] px-5 py-3">
                         {(() => {
                           const rentCharge = Number(row.bill?.charges?.rent || row.contractRate || 0);
                           const elecAmt = Number(row.bill?.charges?.electricity || 0);
@@ -1233,7 +1346,7 @@ export default function RentBillingTab({
                           );
                         })()}
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="w-[16%] px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {!row.bill && (
                             <button
@@ -1293,45 +1406,24 @@ export default function RentBillingTab({
         </div>
       </div>
 
-      {/* Sticky Batch Send Dock — only visible when 2+ sendable bills exist */}
-      {sendableRows.length >= 2 && (
-        <div
-          className="sticky bottom-4 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--color-accent,#D4AF37)]/40 bg-[color:var(--color-primary,#0A1628)] px-5 py-3.5 text-white shadow-xl"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-accent,#D4AF37)]/20 text-[color:var(--color-accent,#D4AF37)]">
-              <CheckCircle size={18} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">
-                {sendableRows.length} rent bill{sendableRows.length !== 1 ? 's' : ''} ready to dispatch
-              </p>
-              <p className="text-xs text-slate-300">
-                Total value: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(sendableTotalAmount)}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={batchSending}
-            onClick={handleSendAllReady}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[color:var(--color-accent,#D4AF37)] px-5 text-xs font-bold text-black shadow-md transition-all hover:bg-[color:var(--color-accent-hover,#B9921F)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-            title={batchSending ? "Sending bills..." : "Dispatch all generated rent statements to tenants"}
-          >
-            {batchSending
-              ? <LoaderCircle size={15} className="animate-spin" />
-              : <Send size={15} />}
-            {batchSending ? 'Sending statements…' : 'Send All Ready Bills'}
-          </button>
-        </div>
-      )}
-
       {/* Preview Modal */}
       <PreviewModal
         preview={preview}
         isGenerating={Boolean(generatingId && previewTenant)}
         onClose={() => { if (!generatingId) { setPreview(null); setPreviewTenant(null); } }}
         onGenerate={() => previewTenant && handleGenerate(previewTenant, { skipConfirm: true })}
+      />
+
+      {/* Batch Generate Rent Bills Modal */}
+      <BatchGenerateRentBillsModal
+        isOpen={isBatchModalOpen}
+        onClose={() => {
+          if (!isBatchGenerating) setIsBatchModalOpen(false);
+        }}
+        onConfirm={handleBatchGenerate}
+        selectedRows={selectedRows}
+        isGenerating={isBatchGenerating}
+        billingMonth={activeMonthParam}
       />
     </section>
   );

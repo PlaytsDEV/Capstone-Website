@@ -37,7 +37,7 @@ const fixture = (overrides = {}) => ({
 describe("flow-based Contract HTML", () => {
   test("uses exact long-bond margins and the full printable width", () => {
     const html = buildContractHtml(fixture());
-    expect(html).toContain("@page{size:8.5in 13in;margin:.25in .35in}");
+    expect(html).toContain("@page{size:8.5in 13in;margin:.26in .35in}");
     expect(html).toContain(".contract-page{width:100%;max-width:none;margin:0;padding:0");
   });
 
@@ -122,4 +122,17 @@ describe("flow-based Contract HTML", () => {
     }));
     expect(html).toContain("JUAN CARLOS MIGUEL ANTONIO DELA CRUZ SANTOS JR.");
   });
+
+  test("contains calibrated compact legal typography and complete notarial stack for 1-page fit", () => {
+    const html = buildContractHtml(fixture());
+    expect(html).toContain("<title>Contract of Lease - ALEXANDRA SAMPLE TENANT (LILYCREST GIL PUYAT)</title>");
+    expect(html).toContain("font-size:8.35pt;line-height:1.18");
+    expect(html).toContain(".notary-stack");
+    expect(html).toContain("Doc. No. _______;");
+    expect(html).toContain("Page No. _______;");
+    expect(html).toContain("Book No. _______;");
+    expect(html).toContain("Series of _______.</div>");
+  });
 });
+
+

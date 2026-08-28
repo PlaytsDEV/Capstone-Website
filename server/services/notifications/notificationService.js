@@ -336,19 +336,19 @@ const notify = {
       { entityType: "reservation" }),
 
   paymentApproved: (userId, billingMonth, amount, options = {}) => {
-    const title = "Payment Approved";
+    const title = "Payment Confirmed";
     const formattedAmount = typeof amount === "number" ? amount.toLocaleString() : amount;
-    const message = `Your payment of ₱${formattedAmount} for ${billingMonth} has been approved.`;
+    const message = `Your payment of ₱${formattedAmount} for ${billingMonth} has been received and confirmed.`;
     const billId = options.billId || null;
     const dedupeKey = buildEventDedupeKey(
-      "payment_approved",
+      "payment_confirmed",
       billId || "account",
       options.eventId,
     );
 
     return createNotificationWithPush(
       userId,
-      "payment_approved",
+      "payment_confirmed",
       title,
       message,
       {
@@ -363,7 +363,7 @@ const notify = {
           body: message,
           data: {
             ...pushIdentity,
-            type: "payment_approved",
+            type: "payment_confirmed",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
             url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
@@ -371,6 +371,9 @@ const notify = {
         }),
     );
   },
+
+  paymentConfirmed: (userId, billingMonth, amount, options = {}) =>
+    notify.paymentApproved(userId, billingMonth, amount, options),
 
   billingNotice: (
     userId,

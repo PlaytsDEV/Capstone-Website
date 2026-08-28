@@ -7,6 +7,7 @@ import {
   Coins,
   FileText,
   Loader2,
+  Lock,
   Pencil,
   Receipt,
   Save,
@@ -30,6 +31,9 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
   ref,
 ) {
   const updateCostMutation = useUpdateMaintenanceCost();
+
+  const isBilled = Boolean(request?.costBreakdown?.billId);
+  const isCardDisabled = Boolean(disabled || isBilled);
 
   const [isEditing, setIsEditing] = useState(!defaultSummaryMode);
 
@@ -170,10 +174,12 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
   const handleSaveCost = async () => {
     setTouched({ labor: true, materials: true, reason: true });
 
-    if (disabled) {
+    if (isCardDisabled) {
       showNotification({
-        title: "Ticket Locked",
-        message: "This maintenance request is locked and its expense records cannot be edited.",
+        title: isBilled ? "Expense Billed" : "Ticket Locked",
+        message: isBilled
+          ? "This maintenance expense is linked to an issued monthly billing statement and cannot be modified."
+          : "This maintenance request is locked and its expense records cannot be edited.",
         type: "warning",
       });
       return false;
@@ -331,16 +337,26 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
             <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hidden sm:inline-flex">
               Post-Service Accounting
             </span>
-            {!disabled && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                title="Edit repair costs and attribution policy"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
+            {isBilled ? (
+              <span
+                title="This repair expense is attached to an issued monthly billing statement and is locked from further edits."
+                className="inline-flex items-center gap-1.5 rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
               >
-                <Pencil size={12} className="text-slate-500" />
-                <span>Edit Expenses</span>
-              </button>
+                <Lock size={12} className="text-slate-500 shrink-0" />
+                <span>Billed to Monthly Statement</span>
+              </span>
+            ) : (
+              !isCardDisabled && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  title="Edit repair costs and attribution policy"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
+                >
+                  <Pencil size={12} className="text-slate-500" />
+                  <span>Edit Expenses</span>
+                </button>
+              )
             )}
           </div>
         </div>
@@ -431,9 +447,19 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
           <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Post-Service Accounting
           </span>
-          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-            Admin Only
-          </span>
+          {isBilled ? (
+            <span
+              title="This repair expense is attached to an issued monthly billing statement and cannot be modified."
+              className="inline-flex items-center gap-1.5 rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+            >
+              <Lock size={12} className="text-slate-500 shrink-0" />
+              <span>Billed</span>
+            </span>
+          ) : (
+            <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+              Admin Only
+            </span>
+          )}
         </div>
       </div>
 
@@ -723,10 +749,12 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
             <button
               type="button"
               onClick={handleSaveCost}
-              disabled={disabled || updateCostMutation.isPending || !hasChanges || hasValidationErrors}
+              disabled={isCardDisabled || updateCostMutation.isPending || !hasChanges || hasValidationErrors}
               title={
-                disabled
-                  ? "Maintenance request is locked and cannot be edited"
+                isCardDisabled
+                  ? isBilled
+                    ? "Repair expenses are billed to monthly statement and cannot be modified"
+                    : "Maintenance request is locked and cannot be edited"
                   : !hasChanges
                     ? "All repair expenses are synced. Update costs to record changes."
                     : hasValidationErrors
@@ -734,7 +762,7 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
                       : "Click to save and record expenses"
               }
               className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-bold shadow-xs transition cursor-pointer active:scale-[0.98] ${
-                hasChanges && !hasValidationErrors && !disabled
+                hasChanges && !hasValidationErrors && !isCardDisabled
                   ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75"
               }`}

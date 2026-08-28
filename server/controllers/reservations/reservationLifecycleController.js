@@ -49,6 +49,7 @@ import {
   sendDocumentsRejectedEmail,
 } from "../../config/email.js";
 import { ensureCurrentCycleRentBill } from "../../utils/rentGenerator.js";
+import { settleInitialMoveInOnCheckIn } from "../../services/billing/billSettlement.js";
 import { emitToUser, emitToAdmins } from "../../utils/socket.js";
 import { validateVisitSelection } from "../../utils/visitAvailability.js";
 import {
@@ -382,6 +383,16 @@ export const updateReservation = async (req, res, next) => {
     }
 
     if (isMoveInTransition) {
+      if (
+        existingReservation.cancellationRequested === true &&
+        existingReservation.cancellationStatus === "pending"
+      ) {
+        return res.status(409).json({
+          error: "Cannot move in tenant while a cancellation request is pending review. Please approve or reject the cancellation request first.",
+          code: "PENDING_CANCELLATION_REQUEST_BLOCKS_MOVEIN",
+        });
+      }
+
       const structuredBlockers = await getStructuredMoveInBlockers(
         existingReservation,
         {
@@ -684,6 +695,26 @@ export const updateReservation = async (req, res, next) => {
           pricingSnapshotVersion: updatedReservation.pricingSnapshotVersion,
         },
       });
+    }
+
+    if (isMoveInTransition) {
+      try {
+        const rawMethod = String(req.body.paymentMethod || "").trim().toLowerCase();
+        const paymentMethod =
+          rawMethod === "cash" || !rawMethod ? "offline_cash" : req.body.paymentMethod;
+
+        await settleInitialMoveInOnCheckIn({
+          reservation: updatedReservation,
+          actorId,
+          paymentMethod,
+          now: new Date(),
+        });
+      } catch (settleErr) {
+        logger.warn(
+          { err: settleErr, reservationId: updatedReservation._id },
+          "Failed to auto-settle initial move-in bill on check-in",
+        );
+      }
     }
 
     if (isMoveInTransition && usesStructuredInitialPayment(updatedReservation)) {
@@ -2257,6 +2288,16 @@ export const extendReservation = async (req, res, next) => {
         error: "Only reserved/pending reservations can be extended",
         code: "INVALID_STATUS_FOR_EXTENSION",
       });
+
+    if (
+      reservation.cancellationRequested === true &&
+      reservation.cancellationStatus === "pending"
+    ) {
+      return res.status(409).json({
+        error: "Cannot reschedule move-in while a cancellation request is pending review. Please approve or reject the cancellation request first.",
+        code: "PENDING_CANCELLATION_REQUEST_BLOCKS_MOVEIN",
+      });
+    }
 
     const { Bill } = await import("../../models/index.js");
     const { buildBillingSummary } = await import("../../utils/tenantWorkspace.js");

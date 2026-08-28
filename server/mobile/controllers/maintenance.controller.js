@@ -582,7 +582,31 @@ function stripTenantRequestFields(request) {
   const thread = buildTenantThread(clean);
   const latestUpdate = latestTenantVisibleUpdate(thread);
 
-  // 1. Strip internal notes, work logs, logs, and deduplication hashes
+  // 1. Extract resolution proof for tenant before stripping internal fields
+  const rawWorkLog = Array.isArray(clean.work_log || clean.workLog) ? (clean.work_log || clean.workLog) : [];
+  const resolutionProofAttachments = rawWorkLog.flatMap((entry) => {
+    const entryAtts = Array.isArray(entry?.attachments) ? entry.attachments : [];
+    return entryAtts.filter((att) => {
+      if (!att || typeof att !== 'object') return false;
+      if (att.isRemoved) return false;
+      if (att.removedScope === 'tenant_only' || att.removedScope === 'request') return false;
+      if (att.visibility === 'admin_only') return false;
+      return true;
+    });
+  });
+  const sanitizedProofAttachments = normalizeAttachmentList(resolutionProofAttachments);
+  const resolutionProof = {
+    note: clean.resolution_note || clean.resolutionNote || clean.notes || null,
+    resolvedAt: clean.resolved_at || clean.completedAt || clean.closed_at || null,
+    resolvedByName: clean.resolvedByName || clean.resolved_by_name || null,
+    attachments: sanitizedProofAttachments,
+  };
+  clean.resolutionProof = resolutionProof;
+  clean.resolution_proof = resolutionProof;
+  clean.proofAttachments = sanitizedProofAttachments;
+  clean.proof_attachments = sanitizedProofAttachments;
+
+  // 1b. Strip internal notes, work logs, logs, and deduplication hashes
   delete clean.notes;
   delete clean.resolution_note;
   delete clean.resolutionNote;

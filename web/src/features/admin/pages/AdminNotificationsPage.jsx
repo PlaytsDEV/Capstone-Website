@@ -279,7 +279,16 @@ const TYPE_META = {
     isPrimaryAction: false,
   },
   payment_approved: {
-    label: "Payment Approved",
+    label: "Payment Confirmed",
+    icon: Receipt,
+    priority: "low",
+    variant: "success",
+    actionLabel: "View Billing",
+    category: "billing",
+    isPrimaryAction: false,
+  },
+  payment_confirmed: {
+    label: "Payment Confirmed",
     icon: Receipt,
     priority: "low",
     variant: "success",
@@ -353,6 +362,7 @@ const ACTION_URLS = {
   bill_due_reminder: "/admin/billing",
   penalty_applied: "/admin/billing",
   payment_approved: "/admin/billing",
+  payment_confirmed: "/admin/billing",
   payment_rejected: "/admin/billing",
   payment_proof_submitted: "/admin/billing",
   application_submitted: "/admin/reservations",
@@ -588,6 +598,7 @@ export default function AdminNotificationsPage() {
               "bill_due_reminder",
               "penalty_applied",
               "payment_approved",
+              "payment_confirmed",
               "payment_rejected",
               "payment_proof_submitted",
             ].includes(n.type)

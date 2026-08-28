@@ -9,13 +9,13 @@
  * =============================================================================
  */
 
-import { auth } from "../../firebase/config";
-import { API_BASE_URL } from "./baseUrl";
-import { getSessionHeaders } from "./authSession";
+import { auth } from "../../firebase/config.js";
+import { API_BASE_URL } from "./baseUrl.js";
+import { getSessionHeaders } from "./authSession.js";
 import {
   withProtectedRequestPolicy,
   withPublicRequestPolicy,
-} from "./requestPolicy";
+} from "./requestPolicy.js";
 
 export const API_URL = API_BASE_URL;
 

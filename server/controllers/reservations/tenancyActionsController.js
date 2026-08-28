@@ -944,6 +944,13 @@ export const transferTenant = async (req, res, next) => {
   }
 };
 
+// NOTE (R1 hybrid reconciliation): main's `prepareRoomTransferContract` handler
+// is intentionally NOT carried forward here. It wrote `reservation.pendingTransfer*`
+// and drove the replacement-lease `autoGenerateTransferContract` pipeline, both of
+// which the canonical one-step Addendum model (transferStayWorkflow Stage A) makes
+// obsolete. A clean "prepare Room Transfer Addendum" endpoint (no physical
+// mutation, no phantom fields) is introduced in R2; a "discard prepared Addendum"
+// endpoint in R4.
 
 export const processDepositRefund = async (req, res, next) => {
   try {
