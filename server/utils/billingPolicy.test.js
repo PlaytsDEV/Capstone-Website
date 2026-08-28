@@ -306,6 +306,7 @@ describe("syncBillAmounts", () => {
       applianceFees: 0,
       corkageFees: 0,
       penalty: 0,
+      securityDeposit: 0,
       discount: 0,
     });
 

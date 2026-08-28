@@ -55,6 +55,7 @@ import UtilityPeriod from "./UtilityPeriod.js";
 import UtilityReading from "./UtilityReading.js";
 import Bill from "./Bill.js";
 import Payment from "./Payment.js";
+import TenantCredit from "./TenantCredit.js";
 import AcknowledgmentAccount from "./AcknowledgmentAccount.js";
 
 // 4b. Legacy Billing Models (@deprecated - replaced by UtilityPeriod, UtilityReading, Bill)
@@ -121,6 +122,7 @@ export {
   MaintenanceRequest,
   Notification,
   Payment,
+  TenantCredit,
   LoginLog,
   UserSession,
   AcknowledgmentAccount,
@@ -269,6 +271,7 @@ export default {
   MoveOutClearance,
   Notification,
   Payment,
+  TenantCredit,
   LoginLog,
   UserSession,
   PaymongoWebhookEvent,

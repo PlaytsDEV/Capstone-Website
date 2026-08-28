@@ -15,6 +15,7 @@ import {
   resolveVisibleRentBillingCycle,
   syncBillAmounts,
 } from "./billingPolicy.js";
+import { applyRentCreditToBill } from "./tenantCreditService.js";
 import logger from "../../middleware/logger.js";
 import notify from "../notifications/notificationService.js";
 import { sendBillGeneratedEmail } from "../../config/email.js";
@@ -63,6 +64,13 @@ export function resolveReservationRentAmount(
   reservation,
   referenceDate = new Date(),
 ) {
+  // A room transfer that changed the room/room-type records the destination
+  // approved rate here; it wins over EVERYTHING else (including the
+  // immutable structured pricingSnapshot) so the next recurring rent Bill
+  // bills the destination rate. See transferStayWorkflow.
+  if (Number.isFinite(Number(reservation?.recurringRentRate)) && Number(reservation.recurringRentRate) > 0) {
+    return roundMoney(reservation.recurringRentRate);
+  }
   if (
     usesStructuredInitialPayment(reservation) &&
     Number.isFinite(Number(reservation?.pricingSnapshot?.finalMonthlyRate))
@@ -241,6 +249,31 @@ export async function ensureCurrentCycleRentBill({
   }
 
   await bill.save();
+
+  // ── Auto-consume available tenant RENT credit (e.g. excess prepaid rent
+  //    from a cheaper-room transfer). Applied ONLY to the rent component,
+  //    recorded as a matching charges.discount line, then the Bill total is
+  //    re-synced via the canonical helper. Idempotent per (credit, billId).
+  try {
+    const { applied } = await applyRentCreditToBill({
+      billId: bill._id,
+      userId,
+      eligibleRentAmount: rentPrice,
+    });
+    if (applied > 0) {
+      bill.charges.discount = roundMoney(Number(bill.charges.discount || 0) + applied);
+      bill.tenantCreditApplied = roundMoney(Number(bill.tenantCreditApplied || 0) + applied);
+      syncBillAmounts(bill);
+      await bill.save();
+    }
+  } catch (creditErr) {
+    // Credit application must never block rent-bill creation — the Bill
+    // stands at full rent and the credit remains available for next cycle.
+    logger.warn(
+      { err: creditErr, billId: String(bill._id), reservationId: String(reservation._id) },
+      "[rentGenerator] tenant rent-credit application failed (non-fatal)",
+    );
+  }
 
   if (structured) {
     const { AuditLog } = await import("../../models/index.js");

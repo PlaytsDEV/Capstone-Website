@@ -284,15 +284,54 @@ export async function getStructuredMoveInReadinessSummary(reservation) {
 export async function syncStructuredReservationAfterBillSettlement(bill) {
   if (bill?.billType !== "initial_payment" || !bill?.reservationId) return;
   const remaining = money(Math.max(Number(bill.totalAmount || 0) - Number(bill.paidAmount || 0), 0));
-  await Reservation.updateOne(
-    { _id: bill.reservationId },
-    {
-      $set: {
-        initialPaymentStatus: remaining === 0 ? "paid" : "partial",
-        ...(remaining === 0 ? { paymentStatus: "paid_in_full" } : {}),
+
+  // On full settlement of the initial payment, record the security-deposit
+  // component actually collected as the authoritative held-cash figure
+  // (reservation.securityDepositHeld) — idempotent, only set when unset or
+  // still lower than the freshly-collected amount, so a duplicate webhook
+  // does not disturb a later transfer-adjusted value.
+  let heldDepositSet = null;
+  if (remaining === 0) {
+    const reservationDoc = await Reservation.findById(bill.reservationId).select("securityDepositHeld securityDepositLedger pricingSnapshot").lean();
+    const collectedDeposit = money(
+      Number(bill?.initialPaymentBreakdown?.securityDeposit) ||
+        Number(reservationDoc?.pricingSnapshot?.securityDepositAmount) ||
+        0,
+    );
+    const currentHeld = Number(reservationDoc?.securityDepositHeld);
+    if (collectedDeposit > 0 && (!Number.isFinite(currentHeld) || currentHeld < collectedDeposit)) {
+      const alreadyLogged = (reservationDoc?.securityDepositLedger || []).some(
+        (e) => e.kind === "move_in" && String(e.billId) === String(bill._id),
+      );
+      heldDepositSet = {
+        collectedDeposit,
+        previousHeld: Number.isFinite(currentHeld) ? currentHeld : null,
+        pushLedger: !alreadyLogged,
+      };
+    }
+  }
+
+  const setOps = {
+    initialPaymentStatus: remaining === 0 ? "paid" : "partial",
+    ...(remaining === 0 ? { paymentStatus: "paid_in_full" } : {}),
+    ...(heldDepositSet ? { securityDepositHeld: heldDepositSet.collectedDeposit } : {}),
+  };
+  const updateDoc = { $set: setOps };
+  if (heldDepositSet?.pushLedger) {
+    updateDoc.$push = {
+      securityDepositLedger: {
+        kind: "move_in",
+        previousHeld: heldDepositSet.previousHeld,
+        adjustmentAmount: heldDepositSet.collectedDeposit - (heldDepositSet.previousHeld || 0),
+        resultingHeld: heldDepositSet.collectedDeposit,
+        sourceRef: { kind: "bill", id: bill._id },
+        billId: bill._id,
+        idempotencyKey: `move_in_deposit:${String(bill._id)}`,
+        reason: "Security deposit collected with initial payment.",
       },
-    },
-  );
+    };
+  }
+  await Reservation.updateOne({ _id: bill.reservationId }, updateDoc);
   await AuditLog.create({
     logId: `LOG-${randomUUID()}`,
     type: "data_modification",

@@ -77,6 +77,21 @@ export async function openMoveOutClearance({
     throw serviceError("Could not resolve branch for this tenancy.", "BRANCH_UNRESOLVED", 409);
   }
 
+  // Deposit available for settlement = the ACTUAL cash held
+  // (reservation.securityDepositHeld), which the room-transfer + payment
+  // flows keep authoritative. Phase 10: `Number(null)` is 0, so a legacy
+  // tenancy (field never populated) or one the transfer backfilled to 0
+  // must NOT be read as "₱0 held" — that zeroes the whole refund basis via
+  // the MoveOutClearance pre-save hook. Only a POSITIVE recorded value is
+  // real held cash; otherwise fall back to the current Stay's monthly rent
+  // (kept aligned to the destination rate on transfer), then the reservation
+  // rate. This must never refund a destination's REQUIRED deposit that was
+  // never actually collected.
+  const heldDepositRaw = Number(reservation.securityDepositHeld);
+  const securityDepositAmount = Number.isFinite(heldDepositRaw) && heldDepositRaw > 0
+    ? heldDepositRaw
+    : Number(stay.monthlyRent || reservation.monthlyRent || 0);
+
   return MoveOutClearance.create({
     reservationId,
     stayId: stay._id,
@@ -85,7 +100,7 @@ export async function openMoveOutClearance({
     status: "initiated",
     intendedMoveOutDate: new Date(intendedMoveOutDate),
     initiatedBy: actorId,
-    securityDepositAmount: Number(stay.monthlyRent || reservation.monthlyRent || 0),
+    securityDepositAmount,
   });
 }
 

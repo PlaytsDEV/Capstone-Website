@@ -46,6 +46,8 @@ import {
   findBedOccupancyOverlaps,
   findMissingElectricityLifecycleReadings,
   isWaterBillableRoom,
+  readRoomScopedMoveInDate,
+  readRoomScopedMoveOutDate,
 } from "../utils/utilityFlowRules.js";
 import {
   getUtilityDispatchEntry,
@@ -313,6 +315,118 @@ async function assertUtilityPeriodNotSent(period, utilityType) {
 }
 
 // ============================================================================
+// ROOM-SCOPED OCCUPANT RESOLUTION (Phase 4 — electricity/water follow the
+// tenant's ACTUAL room, across room transfers)
+// ============================================================================
+//
+// The utility close/recompute historically resolved a room's billable
+// occupants purely from the denormalized `Reservation.roomId` +
+// `moveInDate`/`moveOutDate`. A ROOM TRANSFER mutates `Reservation.roomId` to
+// the destination and (correctly) leaves the global `moveOutDate` null — it
+// is not a dorm move-out. Result: for a period spanning the transfer date,
+// the source room DROPS the transferred tenant entirely (their valid
+// pre-transfer days go unbilled and the rest of the room is over-charged),
+// and the destination room would count them from the period start reading
+// (billing them for consumption before they arrived).
+//
+// BedHistory is the canonical per-(room, reservation) occupancy record and is
+// written atomically inside the transfer transaction:
+//   - old room: the active row is closed -> status:"transferred",
+//     effectiveEndDate/moveOutDate = transfer date
+//   - new room: a fresh status:"active" row, moveInDate = transfer date
+//
+// This helper returns every reservation that occupied `room` at any point in
+// the period — including one that has since transferred AWAY (found via its
+// "transferred" BedHistory row, not the roomId filter) — and stamps each with
+// the matching BedHistory boundaries as `_roomScopedMoveInDate` /
+// `_roomScopedMoveOutDate`. A reservation with no BedHistory row for the room
+// (e.g. a private-room move-in, which does not create one today) is returned
+// unstamped and the pure helpers fall back to the global reservation dates —
+// so non-transfer billing is byte-for-byte unchanged.
+export async function resolveRoomScopedReservationsForPeriod({ room, periodStart, periodEnd }) {
+  const [stillInRoom, roomBedHistory] = await Promise.all([
+    Reservation.find({
+      roomId: room._id,
+      status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
+      isArchived: { $ne: true },
+      $and: [
+        buildMoveInBeforeQuery(periodEnd),
+        buildMoveOutAfterOrMissingQuery(periodStart),
+      ],
+    })
+      .populate("userId", "firstName lastName email")
+      .lean(),
+    BedHistory.find({ roomId: room._id }).lean(),
+  ]);
+
+  // Index BedHistory by reservationId (the transfer always sets it). If a
+  // reservation has multiple rows for this room (transferred out and later
+  // back in), prefer the one whose [start, end] overlaps the period; else the
+  // latest by moveInDate.
+  const bhByReservation = new Map();
+  for (const bh of roomBedHistory) {
+    const key = String(bh.reservationId || "");
+    if (!key) continue;
+    const list = bhByReservation.get(key) || [];
+    list.push(bh);
+    bhByReservation.set(key, list);
+  }
+  const pickBedHistoryRow = (rows) => {
+    if (!rows || rows.length === 0) return null;
+    const overlapping = rows.find((bh) => {
+      const s = bh.effectiveStartDate || bh.moveInDate;
+      const e = bh.effectiveEndDate || bh.moveOutDate;
+      const startsBeforeEnd = s && new Date(s) < new Date(periodEnd);
+      const endsAfterStart = !e || new Date(e) > new Date(periodStart);
+      return startsBeforeEnd && endsAfterStart;
+    });
+    if (overlapping) return overlapping;
+    return [...rows].sort((a, b) => new Date(b.moveInDate) - new Date(a.moveInDate))[0];
+  };
+
+  const stamp = (reservation) => {
+    const bh = pickBedHistoryRow(bhByReservation.get(String(reservation._id || "")));
+    if (!bh) return reservation;
+    return {
+      ...reservation,
+      _roomScopedMoveInDate: bh.effectiveStartDate || bh.moveInDate || null,
+      _roomScopedMoveOutDate: bh.effectiveEndDate || bh.moveOutDate || null,
+    };
+  };
+
+  const byId = new Map();
+  for (const r of stillInRoom) byId.set(String(r._id), stamp(r));
+
+  // Reservations that transferred AWAY from this room during/after the period
+  // start: current roomId points elsewhere, so the query above missed them.
+  const transferredAwayResIds = roomBedHistory
+    .filter((bh) => bh.status === "transferred" && bh.reservationId)
+    .map((bh) => bh.reservationId)
+    .filter((rid) => !byId.has(String(rid)));
+
+  if (transferredAwayResIds.length) {
+    const transferredAwayRes = await Reservation.find({
+      _id: { $in: transferredAwayResIds },
+      status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
+      isArchived: { $ne: true },
+    })
+      .populate("userId", "firstName lastName email")
+      .lean();
+    for (const r of transferredAwayRes) {
+      const stamped = stamp(r);
+      // Only keep if their room-scoped occupancy actually overlaps the period.
+      const s = stamped._roomScopedMoveInDate;
+      const e = stamped._roomScopedMoveOutDate;
+      const overlaps =
+        s && new Date(s) < new Date(periodEnd) && (!e || new Date(e) > new Date(periodStart));
+      if (overlaps) byId.set(String(r._id), stamped);
+    }
+  }
+
+  return [...byId.values()];
+}
+
+// ============================================================================
 // CLOSING BIZ LOGIC
 // ============================================================================
 
@@ -370,17 +484,11 @@ async function closePeriodAndGenerateDrafts({
           .lean()
       : [];
 
-  const reservations = await Reservation.find({
-    roomId: room._id,
-    status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
-    isArchived: { $ne: true },
-    $and: [
-      buildMoveInBeforeQuery(closingDate),
-      buildMoveOutAfterOrMissingQuery(period.startDate),
-    ],
-  })
-    .populate("userId", "firstName lastName email")
-    .lean();
+  const reservations = await resolveRoomScopedReservationsForPeriod({
+    room,
+    periodStart: period.startDate,
+    periodEnd: closingDate,
+  });
 
   const cyclePeriod = {
     startDate: period.startDate,
@@ -418,11 +526,15 @@ async function closePeriodAndGenerateDrafts({
     const inCycleMoveTenantIds = new Set();
     for (const res of billableReservations) {
       const tenantKey = String(res.userId?._id || res.userId);
-      const checkIn = readMoveInDate(res)
-        ? dayjs(readMoveInDate(res)).startOf("day")
+      // Room-scoped: for a tenant who transferred into/out of THIS room the
+      // relevant move date is the transfer boundary (BedHistory), not the
+      // whole-tenancy move-in/move-out — so their transfer-day reading is
+      // correctly recognised as an in-cycle move and kept below.
+      const checkIn = readRoomScopedMoveInDate(res)
+        ? dayjs(readRoomScopedMoveInDate(res)).startOf("day")
         : null;
-      const checkOut = readMoveOutDate(res)
-        ? dayjs(readMoveOutDate(res)).startOf("day")
+      const checkOut = readRoomScopedMoveOutDate(res)
+        ? dayjs(readRoomScopedMoveOutDate(res)).startOf("day")
         : null;
       if (
         checkIn &&
@@ -1059,17 +1171,11 @@ export const updateUtilityPeriod = async (req, res, next) => {
         .sort({ date: 1, createdAt: 1 })
         .lean();
 
-      const reservations = await Reservation.find({
-        roomId: room._id,
-        status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
-        isArchived: { $ne: true },
-        $and: [
-          buildMoveInBeforeQuery(period.endDate),
-          buildMoveOutAfterOrMissingQuery(period.startDate),
-        ],
-      })
-        .populate("userId", "firstName lastName email")
-        .lean();
+      const reservations = await resolveRoomScopedReservationsForPeriod({
+        room,
+        periodStart: period.startDate,
+        periodEnd: period.endDate,
+      });
 
       const cyclePeriod = {
         startDate: period.startDate,
@@ -1283,17 +1389,11 @@ export const reviseUtilityResult = async (req, res, next) => {
       .sort({ date: 1, createdAt: 1 })
       .lean();
 
-    const reservations = await Reservation.find({
-      roomId: room._id,
-      status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
-      isArchived: { $ne: true },
-      $and: [
-        buildMoveInBeforeQuery(period.endDate),
-        buildMoveOutAfterOrMissingQuery(period.startDate),
-      ],
-    })
-      .populate("userId", "firstName lastName email")
-      .lean();
+    const reservations = await resolveRoomScopedReservationsForPeriod({
+      room,
+      periodStart: period.startDate,
+      periodEnd: period.endDate,
+    });
 
     const cyclePeriod = {
       startDate: period.startDate,

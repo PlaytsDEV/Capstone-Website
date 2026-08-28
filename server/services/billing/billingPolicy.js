@@ -26,7 +26,10 @@ export function sumBillCharges(charges = {}) {
     (charges.water || 0) +
     (charges.applianceFees || 0) +
     (charges.corkageFees || 0) +
-    (charges.penalty || 0) -
+    (charges.penalty || 0) +
+    // Security-deposit component (transfer_settlement Bills only today).
+    // Additive like every other positive charge; absent/0 on all legacy Bills.
+    (charges.securityDeposit || 0) -
     (charges.discount || 0),
   );
 }
@@ -78,6 +81,7 @@ export function getVisibleBillCharges(billLike = {}) {
     applianceFees: Number(billLike?.charges?.applianceFees || 0),
     corkageFees: Number(billLike?.charges?.corkageFees || 0),
     penalty: Number(billLike?.charges?.penalty || 0),
+    securityDeposit: Number(billLike?.charges?.securityDeposit || 0),
     discount: Number(billLike?.charges?.discount || 0),
   };
 
@@ -95,7 +99,8 @@ export function getVisibleBillIssuedAt(billLike = {}) {
     (billLike?.charges?.rent || 0) +
       (billLike?.charges?.applianceFees || 0) +
       (billLike?.charges?.corkageFees || 0) +
-      (billLike?.charges?.penalty || 0) -
+      (billLike?.charges?.penalty || 0) +
+      (billLike?.charges?.securityDeposit || 0) -
       (billLike?.charges?.discount || 0),
   );
 
@@ -122,7 +127,8 @@ export function getVisibleBillDueDate(billLike = {}) {
     (billLike?.charges?.rent || 0) +
       (billLike?.charges?.applianceFees || 0) +
       (billLike?.charges?.corkageFees || 0) +
-      (billLike?.charges?.penalty || 0) -
+      (billLike?.charges?.penalty || 0) +
+      (billLike?.charges?.securityDeposit || 0) -
       (billLike?.charges?.discount || 0),
   );
 

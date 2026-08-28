@@ -82,6 +82,13 @@ export default function DigitalContractPaper({
   fetchDocumentPdf,
 }) {
   const pdfLegalPageRef = useRef(null);
+  // R5.2/R5.4 — the hidden <iframe> + its blob: URL used for printing the
+  // canonical PDF. window.print() returns BEFORE the browser's print preview
+  // has finished owning the document, so revoking the URL / removing the
+  // iframe on a short timer kills the preview mid-view ("Total: 1 sheet… then
+  // it disappears"). We keep ONE print resource alive until this component
+  // unmounts, and replace (never leak) it on a repeat print.
+  const printResourceRef = useRef(null); // { iframe, url }
   const [realPdfBusy, setRealPdfBusy] = useState(false);
   const [documentError, setDocumentError] = useState(null);
 
@@ -455,19 +462,40 @@ export default function DigitalContractPaper({
       : Boolean(contract?.finalDocument || contract?.generatedStorageKey)
   );
 
+  // Tear down the previous print iframe + blob URL (if any). Called before a
+  // new print and on unmount — NOT on a short timer after print(), which is
+  // what previously killed the preview while the user was still looking at it.
+  const releasePrintResource = useCallback(() => {
+    const res = printResourceRef.current;
+    printResourceRef.current = null;
+    if (!res) return;
+    try { res.iframe?.remove(); } catch { /* already detached */ }
+    try { if (res.url) URL.revokeObjectURL(res.url); } catch { /* already revoked */ }
+  }, []);
+
+  // Release the print resource only when the viewer/modal unmounts. The blob
+  // URL + iframe stay alive for the entire lifetime of the open viewer so the
+  // browser's print preview always has its source document.
+  useEffect(() => releasePrintResource, [releasePrintResource]);
+
   // Print a PDF blob by loading it into a hidden iframe and invoking the
-  // iframe's own print. Two failure modes this guards against:
-  //  1. onload fires before the browser's built-in PDF viewer has finished
-  //     initializing, so contentWindow.print() is a silent no-op — we poll
-  //     briefly for the document to be ready, then retry.
-  //  2. Some browsers (Firefox) throw on contentWindow.print() for a
-  //     PDF-viewer iframe — we reject so the caller shows a visible error
-  //     ("use Download instead") rather than doing nothing.
+  // iframe's own print. Guards against:
+  //  1. onload firing before the browser's built-in PDF viewer has finished
+  //     initializing, so contentWindow.print() is a silent no-op — poll
+  //     briefly for readiness, then retry.
+  //  2. Some browsers (Firefox) throwing on contentWindow.print() for a
+  //     PDF-viewer iframe — reject so the caller shows a visible error.
+  //  3. R5.2 — the print preview losing its source: the iframe + blob URL are
+  //     retained until the viewer unmounts (see releasePrintResource), never
+  //     revoked on a post-print timer.
   const printBlobViaIframe = (blob) => new Promise((resolve, reject) => {
     if (!(blob instanceof Blob) || blob.size === 0) {
       reject(new Error("The contract PDF could not be loaded for printing."));
       return;
     }
+    // Repeat print: drop the previous resource first so we never leak iframes.
+    releasePrintResource();
+
     const url = URL.createObjectURL(blob);
     const iframe = document.createElement("iframe");
     iframe.setAttribute("aria-hidden", "true");
@@ -478,19 +506,19 @@ export default function DigitalContractPaper({
     iframe.style.height = "0";
     iframe.style.border = "none";
     iframe.title = contractPrintDocumentTitle;
+    printResourceRef.current = { iframe, url };
 
     let settled = false;
     let watchdog = null;
-    const cleanup = () => {
-      if (watchdog) clearTimeout(watchdog);
-      URL.revokeObjectURL(url);
-      setTimeout(() => iframe.remove(), 1500);
-    };
     const finish = (fn, arg) => {
       if (settled) return;
       settled = true;
+      if (watchdog) clearTimeout(watchdog);
+      // On reject, the resource is useless — release it now. On resolve, KEEP
+      // it: the print preview still needs the document; it is released when
+      // the viewer unmounts (or replaced on the next print).
+      if (fn === reject) releasePrintResource();
       fn(arg);
-      setTimeout(cleanup, 2500);
     };
 
     const tryPrint = (attempt = 0) => {
@@ -631,7 +659,10 @@ export default function DigitalContractPaper({
 
   return (
     <div className="w-full space-y-3">
-      {/* Dynamic Print Stylesheet for 1:1 Legal (8.5in x 13in) single-page print */}
+      {/* Print stylesheet for 1:1 Legal (8.5in x 13in). Sized to fit a short
+          lease on ONE sheet, but content that genuinely overflows flows onto
+          additional Legal pages — signature / notarial blocks are kept intact
+          across the break (R5.5). */}
       <style>{`
         @media print {
           @page {
@@ -650,11 +681,16 @@ export default function DigitalContractPaper({
             box-sizing: border-box !important;
           }
           #digital-contract-paper {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            /* static (not absolute) so a long contract paginates instead of
+               being clipped to the first sheet by some print engines */
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
             width: 100% !important;
             max-width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
             margin: 0 !important;
             padding: 0 !important;
             border: none !important;
@@ -663,6 +699,15 @@ export default function DigitalContractPaper({
             font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
             font-size: 8.35pt !important;
             line-height: 1.18 !important;
+          }
+          /* Keep multi-line blocks from splitting awkwardly across a page break */
+          #digital-contract-paper .print-sig-container,
+          #digital-contract-paper .print-witness-container,
+          #digital-contract-paper .print-ack-container,
+          #digital-contract-paper .print-notary-stack,
+          #digital-contract-paper .print-title-wrap {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
           #digital-contract-paper * {
             font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
@@ -848,7 +893,7 @@ export default function DigitalContractPaper({
             aria-label="Initial Digital Contract"
             className={`w-full ${
               layoutMode === "digital" || !hasSignedDoc ? "max-w-4xl" : "max-w-full"
-            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[800px]`}
+            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[70vh] min-h-[380px] max-h-[800px] sm:h-[800px]`}
           >
             {/* Panel Header (Exact h-11 height alignment) */}
             <div className="h-11 flex-shrink-0 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
@@ -921,8 +966,9 @@ export default function DigitalContractPaper({
               </div>
             </div>
 
-            {/* Scrollable Container (flex-1 fill height) */}
-            <div className="flex-1 min-h-0 px-6 py-8 sm:px-12 sm:py-10 overflow-y-auto bg-white flex justify-center">
+            {/* Scrollable Container (flex-1 fill height). Compact padding on
+                narrow viewports so the document itself gets the width (R5.6). */}
+            <div className="flex-1 min-h-0 px-3 py-4 sm:px-12 sm:py-10 overflow-y-auto overflow-x-auto bg-white flex justify-center">
               <article
                 id="digital-contract-paper"
                 className="w-full max-w-[840px] bg-white text-black"
@@ -1162,7 +1208,7 @@ export default function DigitalContractPaper({
             aria-label="Wet-Signed Contract Scan"
             className={`w-full ${
               layoutMode === "signed" ? "max-w-4xl" : "max-w-full"
-            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[800px]`}
+            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[70vh] min-h-[380px] max-h-[800px] sm:h-[800px]`}
           >
             {/* Panel Header (Exact h-11 height alignment) */}
             <div className="h-11 flex-shrink-0 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">

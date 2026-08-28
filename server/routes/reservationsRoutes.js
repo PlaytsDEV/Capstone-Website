@@ -72,9 +72,9 @@ import {
   getMyRenewalOffers,
   moveOutReservation,
   transferTenant,
-  prepareRoomTransferContract,
+  prepareRoomTransferAddendumAction,
+  discardRoomTransferAddendumAction,
   processDepositRefund,
-  cancelTransferAction,
   cancelMoveOutAction,
   earlyTerminationAction,
   swapRoomsAction,
@@ -778,15 +778,6 @@ router.put(
 
 // SCENARIO 1: Mid-Lifecycle Contract & Occupancy Mutation Routes
 router.post(
-  "/:reservationId/cancel-transfer",
-  verifyToken,
-  verifyAdmin,
-  filterByBranch,
-  requireAnyPermission(["manageReservations", "manageTenants"]),
-  cancelTransferAction,
-);
-
-router.post(
   "/:reservationId/cancel-moveout",
   verifyToken,
   verifyAdmin,
@@ -834,15 +825,21 @@ router.get(
 /**
  * PUT /api/reservations/:reservationId/transfer
  *
- * Transfer a tenant to a different room/bed.
+ * Transfer a tenant to a different room (same room type). One canonical
+ * server operation: prepares the replacement Contract as a tenant-visible
+ * Draft, then atomically performs the physical cutover (bed/occupancy,
+ * settlement bill, Stay, Contract). No separate prepare/wet-sign step.
  *
  * Access: Admin | Owner
  *
  * @param {string} reservationId - MongoDB ObjectId
- * @body {string} newRoomId - Target room ObjectId
- * @body {string} newBedId - Target bed ObjectId
+ * @body {string} targetRoomId - Destination room ObjectId (same room type)
+ * @body {string} [targetBedId] - Destination bed; required only for a
+ *   double-sharing / quadruple-sharing destination, omitted for private
  * @body {string} reason - Transfer reason
- * @returns {Object} Updated reservation
+ * @body {boolean} confirm - Must be true
+ * @body {boolean} [forceOverride] - Proceed despite an outstanding balance
+ * @returns {Object} Updated reservation + stay + settlement snapshot
  */
 router.put(
   "/:reservationId/transfer",
@@ -854,28 +851,39 @@ router.put(
 );
 
 /**
- * POST /api/reservations/:reservationId/transfer/prepare-contract
+ * POST /api/reservations/:reservationId/transfer/prepare-addendum
  *
- * Prepares (generates) the replacement Contract for a planned room transfer
- * WITHOUT moving the tenant — no Room/Bed/Stay/Reservation mutation. The
- * generated Contract must then be wet-signed (Phase 1 upload flow) before
- * PUT /:reservationId/transfer above will allow the actual physical
- * transfer to execute.
+ * R2 — Prepare (or reuse) the Room Transfer Addendum Draft + PDF for a planned
+ * transfer so Admin can preview / download it before Confirm. Mutates nothing
+ * physical; does NOT activate the Addendum. Idempotent.
  *
  * Access: Admin | Owner
- *
- * @param {string} reservationId - MongoDB ObjectId
- * @body {string} targetRoomId - Destination room ObjectId
- * @body {string} targetBedId - Destination bed identifier
- * @returns {Object} { contractId, contractNumber, incomplete }
  */
 router.post(
-  "/:reservationId/transfer/prepare-contract",
+  "/:reservationId/transfer/prepare-addendum",
   verifyToken,
   verifyAdmin,
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
-  prepareRoomTransferContract,
+  prepareRoomTransferAddendumAction,
+);
+
+/**
+ * POST /api/reservations/:reservationId/transfer/discard-addendum
+ *
+ * R4 — Discard a PRE-CUTOVER Room Transfer Addendum Draft (generated ->
+ * cancelled). NOT a reversal of a completed transfer. Leaves the current
+ * lease, Stay, room, occupancy and utilities unchanged.
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/transfer/discard-addendum",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  discardRoomTransferAddendumAction,
 );
 
 /**

@@ -61,6 +61,16 @@ export const reservationApi = {
   getTenantActionContext: (reservationId) =>
     authFetch(`/reservations/${reservationId}/tenant-actions/context`),
 
+  // Same endpoint, additionally returning `transferPreview` — the canonical
+  // rent-adjustment / additional-deposit / required-vs-held numbers for a
+  // candidate destination room. Additive: base callers pass no params.
+  getRoomTransferPreview: (reservationId, { targetRoomId, effectiveTransferDate } = {}) => {
+    const qs = new URLSearchParams();
+    if (targetRoomId) qs.set("targetRoomId", String(targetRoomId));
+    if (effectiveTransferDate) qs.set("effectiveTransferDate", String(effectiveTransferDate));
+    return authFetch(`/reservations/${reservationId}/tenant-actions/context?${qs.toString()}`);
+  },
+
   getVisitAvailability: (params = {}) => {
     const queryString = new URLSearchParams(
       Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""),
@@ -409,12 +419,27 @@ export const reservationApi = {
     ),
 
   /**
-   * Prepares the replacement Contract for a planned room transfer (admin only)
+   * R2 — Prepare (or reuse) the Room Transfer Addendum Draft + PDF for a
+   * planned transfer, so Admin can preview / download it before Confirm.
+   * Mutates nothing physical; does NOT activate the Addendum. Idempotent.
+   * @param {string} reservationId
+   * @param {{ targetRoomId: string, targetBedId?: string, effectiveTransferDate?: string }} data
    */
-  prepareTransferContract: (reservationId, data) =>
-    authFetch(`/reservations/${reservationId}/transfer/prepare-contract`, {
+  prepareRoomTransferAddendum: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/transfer/prepare-addendum`, {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(data || {}),
+    }),
+
+  /**
+   * R4 — Discard a PRE-CUTOVER Room Transfer Addendum Draft. NOT a reversal of
+   * a completed transfer. Leaves the current lease / Stay / room / occupancy /
+   * utilities unchanged.
+   * @param {string} reservationId
+   */
+  discardRoomTransferAddendum: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/transfer/discard-addendum`, {
+      method: "POST",
     }),
 
   /**
@@ -464,14 +489,7 @@ export const reservationApi = {
   getMyRenewalOffers: () =>
     authFetch("/reservations/my-renewal-offers"),
 
-  /**
-   * Cancel an approved or pending room transfer and release target room lock
-   */
-  cancelTransfer: (reservationId) =>
-    authFetch(`/reservations/${reservationId}/cancel-transfer`, {
-      method: "POST",
-    }),
-
+  // SCENARIO 1 API METHODS
   cancelMoveOut: (reservationId) =>
     authFetch(`/reservations/${reservationId}/cancel-moveout`, { method: "POST" }),
 

@@ -116,9 +116,9 @@ export default function TenantHistoryTab({
                               {stayContract.contractNumber || "Pending"}
                             </strong>
                           </span>
-                          {stayContract.purpose === "replacement" && (
+                          {(stayContract.purpose === "amendment" || stayContract.purpose === "replacement") && (
                             <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
-                              Transfer Replacement
+                              {stayContract.purpose === "amendment" ? "Room Transfer Addendum" : "Transfer Replacement (legacy)"}
                             </span>
                           )}
                         </div>

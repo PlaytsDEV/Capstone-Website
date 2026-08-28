@@ -12,6 +12,7 @@ import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 import { activateDueRenewalContracts } from "./contractRenewalActivationService.js";
 import { generateContractNumber } from "./contractService.js";
+import { resolveReservationRentAmount } from "./billing/rentGenerator.js";
 import { Contract, Reservation, Room, User, Stay, BedHistory } from "../models/index.js";
 
 jest.setTimeout(120_000);
@@ -178,6 +179,76 @@ describe("contractRenewalActivationService.activateDueRenewalContracts", () => {
     expect(reloadedStay.status).toBe("active");
     expect(String(reloadedStay.roomId)).toBe(String(room._id));
     expect(reloadedBedHistory.status).toBe("active");
+  });
+
+  test("PHASE 10 — a transferred tenant's renewal: the renewal-approved rate wins and the room-transfer recurringRentRate override is cleared", async () => {
+    const { tenant, room, reservation } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+
+    // Simulate the tenant having transferred rooms BEFORE renewing: the
+    // transfer cutover set reservation.recurringRentRate to the destination
+    // rate (13500) and reservation.monthlyRent = 13500. This override wins
+    // over everything in resolveReservationRentAmount.
+    await Reservation.updateOne(
+      { _id: reservation._id },
+      { $set: { monthlyRent: 13500, recurringRentRate: 13500 } },
+    );
+
+    // The transferred (current) room's Contract — its own approved rate 13500.
+    const oldContract = await createContract({
+      tenant, room, reservation, actorId, overrides: { approvedMonthlyRate: 13500 },
+    });
+    // Renewal successor — a NEW lease term with its own canonically-approved
+    // rate that is DIFFERENT from the transfer rate (renewal-approved 14000).
+    const successor = await createContract({
+      tenant, room, reservation, actorId,
+      overrides: {
+        contractPurpose: "renewal",
+        replacesContractId: oldContract._id,
+        parentContractId: oldContract.parentContractId || oldContract._id,
+        status: "published",
+        isCurrent: false,
+        leaseStartDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        leaseEndDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
+        approvedMonthlyRate: 14000,
+        finalDocument: minimalFinalDocument(actorId),
+        finalStorageKey: "gil-puyat/2026/renewal/final_v2.pdf",
+        publishedAt: new Date(),
+        tenantVisible: true,
+      },
+    });
+    await Stay.create([{
+      tenantId: tenant._id, reservationId: reservation._id, branch: room.branch,
+      roomId: room._id, bedId: "bed-1", leaseStartDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      leaseEndDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000), monthlyRent: 14000,
+      status: "active", createdBy: actorId, updatedBy: actorId,
+    }]);
+    await BedHistory.create([{
+      bedId: "bed-1", roomId: room._id, tenantId: tenant._id, reservationId: reservation._id,
+      stayId: null, branch: room.branch, moveInDate: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000),
+      status: "active",
+    }]);
+
+    const report = await activateDueRenewalContracts();
+    expect(report.activated).toBe(1);
+    expect(report.errors).toBe(0);
+
+    const reloadedReservation = await Reservation.findById(reservation._id).lean();
+    // monthlyRent switched to the renewal-approved rate ...
+    expect(reloadedReservation.monthlyRent).toBe(14000);
+    // ... and the room-transfer override is GONE (null/absent), so the
+    // renewed rate is now the ONE authoritative current rate.
+    expect(reloadedReservation.recurringRentRate == null).toBe(true);
+
+    // The canonical rent resolver returns the renewed rate — the old
+    // transfer rate (13500) can no longer override it.
+    expect(resolveReservationRentAmount(reloadedReservation)).toBe(14000);
+    expect(resolveReservationRentAmount(reloadedReservation)).not.toBe(13500);
+
+    // Lineage: Original -> ... -> Renewal, renewal is its own purpose (not an addendum).
+    const reloadedSuccessor = await Contract.findById(successor._id).lean();
+    expect(reloadedSuccessor.contractPurpose).toBe("renewal");
+    expect(reloadedSuccessor.isCurrent).toBe(true);
   });
 
   test("does not activate two successors that both reference the same predecessor — flags a conflict instead of guessing", async () => {

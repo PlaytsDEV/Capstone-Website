@@ -97,6 +97,29 @@ export function useTenantActionContext(reservationId, options = {}) {
   });
 }
 
+/**
+ * Canonical Room Transfer financial preview for a candidate destination room.
+ * Returns `{ transferPreview }` (rent adjustment, additional deposit,
+ * required/held/balance, excess, electricity/water — all NOT summed into the
+ * immediate total except rent + deposit). Disabled until a target room is
+ * chosen; debounce the date at the call site.
+ */
+export function useRoomTransferPreview(reservationId, { targetRoomId, effectiveTransferDate } = {}, options = {}) {
+  return useQuery({
+    queryKey: [
+      ...queryKeys.reservations.tenantActionContext(reservationId),
+      "transferPreview",
+      targetRoomId || null,
+      effectiveTransferDate || null,
+    ],
+    queryFn: () =>
+      reservationApi.getRoomTransferPreview(reservationId, { targetRoomId, effectiveTransferDate }),
+    enabled: !!reservationId && !!targetRoomId,
+    staleTime: 15 * 1000,
+    ...options,
+  });
+}
+
 /** Mark a tenant workspace record as viewed by admin */
 export function useMarkTenantAsViewed() {
   const qc = useQueryClient();

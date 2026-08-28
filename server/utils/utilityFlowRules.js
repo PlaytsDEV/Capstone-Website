@@ -6,6 +6,26 @@ import {
   readMoveOutDate,
 } from "./lifecycleNaming.js";
 
+// ── Room-scoped occupancy boundaries (Phase 4) ─────────────────────────────
+// A ROOM TRANSFER is not a dorm move-out: the Reservation's global
+// moveInDate/moveOutDate keep describing the tenancy as a whole, so they
+// cannot express "this tenant occupied THIS room only between X and Y".
+// BedHistory already records exactly that, per (roomId, reservationId), and
+// is written atomically inside the transfer transaction (status:"transferred"
+// + effectiveEndDate on the old room, a fresh status:"active" row with
+// moveInDate = transfer date on the new room). The utility close/recompute
+// path stamps each reservation it is about to bill with the matching
+// BedHistory row's boundaries as `_roomScopedMoveInDate` /
+// `_roomScopedMoveOutDate`; these readers prefer that stamp and fall back to
+// the global reservation dates when it is absent (a tenant with no
+// BedHistory row for the room — e.g. a private-room move-in, which today
+// does not create one — is unaffected).
+export const readRoomScopedMoveInDate = (reservation) =>
+  reservation?._roomScopedMoveInDate ?? readMoveInDate(reservation);
+
+export const readRoomScopedMoveOutDate = (reservation) =>
+  reservation?._roomScopedMoveOutDate ?? readMoveOutDate(reservation);
+
 const WATER_BILLABLE_ROOM_TYPES = new Set([
   "private",
   "double-sharing",
@@ -85,8 +105,10 @@ export function filterBillableReservationsForPeriod({
     if (!reservation?.userId) return false;
     if (!BILLABLE_RESERVATION_STATUSES.has(reservation.status)) return false;
 
-    const checkInDate = startOfDay(readMoveInDate(reservation));
-    const checkOutDate = startOfDay(readMoveOutDate(reservation));
+    // Room-scoped: for a transferred tenant these are the BedHistory
+    // boundaries for THIS room, not the whole-tenancy dates.
+    const checkInDate = startOfDay(readRoomScopedMoveInDate(reservation));
+    const checkOutDate = startOfDay(readRoomScopedMoveOutDate(reservation));
     if (!checkInDate || checkInDate >= end) return false;
     if (checkOutDate && checkOutDate <= start) return false;
     return true;
@@ -136,42 +158,43 @@ export function findMissingElectricityLifecycleReadings({
       : "Tenant";
 
     const tenantMoveInReadings = moveInReadingsByTenant.get(tenantKey) || [];
+    const scopedMoveIn = readRoomScopedMoveInDate(reservation);
     if (
       fallsStrictlyAfterCycleStart(
-        readMoveInDate(reservation),
+        scopedMoveIn,
         period?.startDate,
         period?.endDate,
       ) &&
-      !tenantMoveInReadings.some((entry) =>
-        isSameDay(entry.date, readMoveInDate(reservation)),
-      )
+      !tenantMoveInReadings.some((entry) => isSameDay(entry.date, scopedMoveIn))
     ) {
       missingMoveInReadings.push({
         reservationId: reservation._id,
         tenantId: tenantKey,
         tenantName,
-        moveInDate: readMoveInDate(reservation),
+        moveInDate: scopedMoveIn,
         reason: "missing exact-date move-in reading",
       });
     }
 
     const tenantMoveOutReadings = moveOutReadingsByTenant.get(tenantKey) || [];
+    const scopedMoveOut = readRoomScopedMoveOutDate(reservation);
+    // A room transfer stamps _roomScopedMoveOutDate for this room even though
+    // the tenancy has NOT moved out of the dorm — so the exact-date move-out
+    // reading is required whenever a room-scoped move-out date lands in the
+    // cycle, not only when the reservation status is "moveOut".
+    const endsInThisRoomDuringCycle =
+      (hasReservationStatus(reservation.status, "moveOut") ||
+        reservation?._roomScopedMoveOutDate != null) &&
+      fallsWithinCycle(scopedMoveOut, period?.startDate, period?.endDate);
     if (
-      hasReservationStatus(reservation.status, "moveOut") &&
-      fallsWithinCycle(
-        readMoveOutDate(reservation),
-        period?.startDate,
-        period?.endDate,
-      ) &&
-      !tenantMoveOutReadings.some((entry) =>
-        isSameDay(entry.date, readMoveOutDate(reservation)),
-      )
+      endsInThisRoomDuringCycle &&
+      !tenantMoveOutReadings.some((entry) => isSameDay(entry.date, scopedMoveOut))
     ) {
       missingMoveOutReadings.push({
         reservationId: reservation._id,
         tenantId: tenantKey,
         tenantName,
-        moveOutDate: readMoveOutDate(reservation),
+        moveOutDate: scopedMoveOut,
         reason: "missing exact-date move-out reading",
       });
     }
@@ -228,10 +251,28 @@ export function buildTenantEventsForPeriod({
         : "Tenant";
       const moveInReading = moveInReadingsByTenant.get(tenantKey)?.reading;
       const moveOutReading = moveOutReadingsByTenant.get(tenantKey)?.reading;
-      const checkInDay = startOfDay(readMoveInDate(reservation));
+      // Room-scoped: a tenant who TRANSFERRED INTO this room mid-period has a
+      // whole-tenancy moveInDate before the cycle, but their occupancy of
+      // THIS room starts at the transfer date — so they must NOT be treated
+      // as "present from the period start reading".
+      const checkInDay = startOfDay(readRoomScopedMoveInDate(reservation));
       const cycleStartDay = startOfDay(period?.startDate);
       const checkedInBeforeCycle =
         checkInDay && cycleStartDay && checkInDay <= cycleStartDay;
+
+      // Explicit room-scoped occupancy bounds (populated only for a tenant
+      // stamped with _roomScopedMoveInDate/_roomScopedMoveOutDate by the
+      // utility close). The billing engine's gap-fallback uses these to avoid
+      // charging a transferred tenant for consumption outside their occupancy
+      // of THIS room. Null for a normal tenant -> engine behaviour unchanged.
+      const roomScopedFromReading =
+        reservation?._roomScopedMoveInDate != null
+          ? (checkedInBeforeCycle
+              ? Number(period?.startReading || 0)
+              : (moveInReading ?? null))
+          : null;
+      const roomScopedToReading =
+        reservation?._roomScopedMoveOutDate != null ? (moveOutReading ?? null) : null;
 
       return {
         tenantId: tenantKey,
@@ -241,6 +282,8 @@ export function buildTenantEventsForPeriod({
           ? Number(period?.startReading || 0)
           : (moveInReading ?? null),
         moveOutReading: moveOutReading ?? null,
+        roomScopedFromReading,
+        roomScopedToReading,
       };
     })
     .filter(
@@ -273,8 +316,8 @@ export function findBedOccupancyOverlaps({
     const bedKey = getBedKey(reservation);
     if (!bedKey) continue;
 
-    const effectiveStart = startOfDay(readMoveInDate(reservation));
-    const rawEnd = startOfDay(readMoveOutDate(reservation)) || end;
+    const effectiveStart = startOfDay(readRoomScopedMoveInDate(reservation));
+    const rawEnd = startOfDay(readRoomScopedMoveOutDate(reservation)) || end;
     if (!effectiveStart) continue;
 
     const overlapStart = effectiveStart > start ? effectiveStart : start;

@@ -170,6 +170,17 @@ const billSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+      // Security-deposit component of a Bill. Non-zero today only on a
+      // billType:"transfer_settlement" Bill, where it carries the ADDITIONAL
+      // security deposit due because a room transfer raised the required
+      // deposit (never the full deposit — only the difference vs. what is
+      // already held; see reservation.securityDepositHeld). Kept as its own
+      // categorized line so rent and deposit are never flattened together.
+      // Old Bills without the field read as 0 (schema default) — safe.
+      securityDeposit: {
+        type: Number,
+        default: 0,
+      },
       discount: {
         type: Number,
         default: 0,
@@ -187,6 +198,14 @@ const billSchema = new mongoose.Schema(
       default: 0,
     },
     reservationCreditApplied: {
+      type: Number,
+      default: 0,
+    },
+    // Portion of this Bill's RENT covered by a consumed TenantCredit (e.g.
+    // excess prepaid rent from a cheaper-room transfer). Mirrored into
+    // charges.discount so the canonical total already nets it out; this
+    // field is the audit pointer. 0 on all legacy Bills (schema default).
+    tenantCreditApplied: {
       type: Number,
       default: 0,
     },
@@ -600,9 +619,33 @@ const billSchema = new mongoose.Schema(
           // reservations) and where it came from, for explainability only.
           applicablePrepaidRent: { type: Number, default: null },
           prepaidRentSource: { type: String, default: null },
-          // Utility proration fields — populated when source meter reading is known at transfer time
+          // Rent-cycle boundaries used for the proration (audit).
+          cycleStart: { type: Date, default: null },
+          cycleEnd: { type: Date, default: null },
+          // Utility proration fields — INFORMATIONAL ADMIN-PREVIEW ONLY.
+          // Populated when a source meter reading is supplied at transfer time.
+          // These are NOT a charge on the transfer_settlement Bill: the
+          // departed tenant's source-room electricity is billed exactly once,
+          // at the source room's UtilityPeriod close, for their pre-transfer
+          // segment (room-scoped occupancy — see Phase 4).
           estimatedElectricityKwh: { type: Number, default: null },
           estimatedElectricityCharge: { type: Number, default: null },
+          sourceElectricitySettledAtPeriodClose: { type: Boolean, default: true },
+          // ── Security-deposit settlement (independent of the rent numbers
+          //    above; see roomTransferDepositSettlement.js). All in PHP. ──
+          depositPreviouslyHeld: { type: Number, default: null }, // reservation.securityDepositHeld at transfer time
+          destinationRequiredDeposit: { type: Number, default: null }, // 1x successor Contract approved monthly rate
+          additionalDepositDue: { type: Number, default: null }, // billed as charges.securityDeposit
+          excessDepositHeld: { type: Number, default: null }, // stays refundable, NOT converted to rent credit
+          depositHeldAfterTransferBeforePayment: { type: Number, default: null },
+          depositHeldWasBackfilled: { type: Boolean, default: false }, // true when securityDepositHeld was derived from move-in financials
+          // ── Final settlement components (rent and deposit kept separate) ─
+          rentComponentDue: { type: Number, default: null },
+          depositComponentDue: { type: Number, default: null },
+          totalImmediateDue: { type: Number, default: null },
+          // The transfer event this settlement belongs to — the predecessor
+          // Contract id (the canonical transfer identifier in this codebase).
+          transferReference: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
         },
         { _id: false },
       ),

@@ -151,8 +151,9 @@ function ContractSummaryBanner({ contract, stayData }) {
   );
 }
 
-function AcknowledgeConfirmModal({ open, isDraft, busy, onConfirm, onCancel }) {
+function AcknowledgeConfirmModal({ open, isDraft, isAddendum, busy, onConfirm, onCancel }) {
   if (!open) return null;
+  const docName = isAddendum ? "Room Transfer Addendum" : "Contract";
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
@@ -167,10 +168,22 @@ function AcknowledgeConfirmModal({ open, isDraft, busy, onConfirm, onCancel }) {
           </div>
           <div className="min-w-0">
             <h3 id="ack-modal-title" className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-              {isDraft ? "Acknowledge Draft Contract" : "Acknowledge Final Contract"}
+              {isDraft ? `Acknowledge ${docName}` : `Acknowledge Final ${docName}`}
             </h3>
             <p className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              {isDraft ? (
+              {isAddendum ? (
+                isDraft ? (
+                  <>
+                    This confirms you have <strong>received and reviewed</strong> the Room Transfer Addendum
+                    recording your room change. <strong>Your original lease remains in effect</strong> — this is
+                    not a new lease and its start/end dates do not change.
+                    <br />
+                    <span className="mt-1.5 block">It is <strong>not</strong> a signature.</span>
+                  </>
+                ) : (
+                  <>This confirms you have <strong>received and reviewed</strong> the final Room Transfer Addendum. Your original lease remains in effect.</>
+                )
+              ) : isDraft ? (
                 <>
                   This only confirms that you have <strong>received and reviewed</strong> the
                   generated draft of your lease contract.
@@ -210,11 +223,12 @@ function AcknowledgeConfirmModal({ open, isDraft, busy, onConfirm, onCancel }) {
   );
 }
 
-function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
+function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy, isAddendum = false }) {
   if (!acknowledgement || !acknowledgement.required) return null;
 
   const isDraft = acknowledgement.documentKind === "draft";
-  const subject = isDraft ? "draft contract" : "final contract";
+  const docName = isAddendum ? "Room Transfer Addendum" : "contract";
+  const subject = isDraft ? `draft ${docName}` : `final ${docName}`;
 
   if (acknowledgement.acknowledged) {
     return (
@@ -235,9 +249,11 @@ function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
   return (
     <div className="mb-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <p className="text-xs sm:text-sm text-sky-800 dark:text-sky-300 font-medium">
-        {isDraft
-          ? "Please confirm that you have received and reviewed the generated draft of your contract. This is not a signature."
-          : "Please confirm that you have received and reviewed your final contract."}
+        {isAddendum
+          ? "Please confirm you have received and reviewed the Room Transfer Addendum recording your room change. Your original lease stays in effect — this is not a new lease and not a signature."
+          : isDraft
+            ? "Please confirm that you have received and reviewed the generated draft of your contract. This is not a signature."
+            : "Please confirm that you have received and reviewed your final contract."}
       </p>
       <button
         type="button"
@@ -246,7 +262,7 @@ function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy }) {
         className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-colors disabled:opacity-50 cursor-pointer shadow-2xs flex-shrink-0"
       >
         <CheckCircle2 size={14} strokeWidth={2} />
-        <span>{busy ? "Confirming…" : isDraft ? "Acknowledge Draft" : "Acknowledge Contract"}</span>
+        <span>{busy ? "Confirming…" : `Acknowledge ${isAddendum ? "Addendum" : isDraft ? "Draft" : "Contract"}`}</span>
       </button>
     </div>
   );
@@ -296,12 +312,18 @@ function PreviousContractsSection({ history, onPreview, onDownload, actionBusyId
               const startDate = item.leaseStartDate ? dayjs(item.leaseStartDate).format("MMM D, YYYY") : "—";
               const endDate = item.leaseEndDate ? dayjs(item.leaseEndDate).format("MMM D, YYYY") : "—";
               const rate = item.approvedMonthlyRate || item.regularMonthlyRate;
-              const isReplacement = item.contractPurpose === "replacement" || item.status === "replaced";
+              // A Room Transfer Addendum ("amendment") or a legacy transfer
+              // "replacement" — both are transfer-side documents, not a
+              // separate lease.
+              const isTransferDoc = item.contractPurpose === "amendment" || item.contractPurpose === "replacement";
+              const isReplacement = isTransferDoc || item.status === "replaced";
               const isExpired = item.status === "expired" || item.status === "completed";
               const isRenewed = item.status === "renewed";
               const isCancelled = item.status === "cancelled" || item.status === "voided";
 
-              const statusBadgeLabel = isReplacement
+              const statusBadgeLabel = item.contractPurpose === "amendment"
+                ? (item.isCurrent ? "Room Transfer Addendum" : "Superseded Addendum")
+                : isReplacement
                 ? "Superseded (Transfer)"
                 : isRenewed
                 ? "Renewed"
@@ -651,11 +673,13 @@ export default function ContractsPage() {
         acknowledgement={acknowledgement}
         onAcknowledge={() => setAckModalOpen(true)}
         busy={acknowledging}
+        isAddendum={contract?.contractPurpose === "amendment"}
       />
 
       <AcknowledgeConfirmModal
         open={ackModalOpen}
         isDraft={acknowledgement?.documentKind === "draft"}
+        isAddendum={contract?.contractPurpose === "amendment"}
         busy={acknowledging}
         onConfirm={performAcknowledge}
         onCancel={() => setAckModalOpen(false)}
