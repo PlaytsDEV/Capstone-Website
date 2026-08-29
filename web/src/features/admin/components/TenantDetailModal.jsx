@@ -428,6 +428,13 @@ export default function TenantDetailModal({
     }
   };
 
+  // "View Bill" from Room Transfer History — open the tenant's canonical
+  // Billing (Financials) tab where the transfer_settlement Bill is listed.
+  // History does NOT rebuild Billing; it only links to it.
+  const handleViewBillFromHistory = () => {
+    setActiveTab("financials");
+  };
+
   const [generatingReceiptId, setGeneratingReceiptId] = useState(null);
 
   const handleViewBillReceipt = async (item = null) => {
@@ -1119,6 +1126,7 @@ export default function TenantDetailModal({
                       setIsDocsPanelOpen={setIsDocsPanelOpen}
                       docsPanelRef={docsPanelRef}
                       onPreviewDoc={setPreviewDoc}
+                      onOpenDigitalContract={handleOpenDigitalContract}
                     />
                   </div>
                 )}
@@ -1143,8 +1151,10 @@ export default function TenantDetailModal({
                   <TenantHistoryTab
                     tenant={tenant}
                     roomHistory={roomHistory}
+                    roomTransferHistory={tenant?.roomTransferHistory || []}
                     dedicatedContract={dedicatedContract}
                     onOpenDigitalContract={handleOpenDigitalContract}
+                    onViewBill={handleViewBillFromHistory}
                   />
                 )}
 
@@ -1521,6 +1531,11 @@ export default function TenantDetailModal({
                 fetchDocumentPdf={(c) => (c?.finalDocument
                   ? contractApi.getFinalContractFile(c._id || c.id, false)
                   : contractApi.getPreparedContractFile(c._id || c.id))}
+                // Signed scan resolves from the CANONICAL identity the backend
+                // returned (signedScan.contractId — may be an ancestor lease
+                // for a Room Transfer Addendum), via the ADMIN signed-file route.
+                fetchSignedDoc={({ contractId, version, download }) =>
+                  contractApi.getSignedContractFile(contractId, version, Boolean(download))}
               />
             )}
           </div>

@@ -31,9 +31,9 @@ test("additive preview API exists and takes targetRoomId + effectiveTransferDate
   assert.match(useReservations, /export function useRoomTransferPreview/);
 });
 
-test("Total Immediate Due is rent adjustment + additional deposit ONLY — electricity is NOT added", () => {
+test("Scheduled Room Transfer Balance is rent adjustment + additional deposit ONLY — electricity is NOT added", () => {
   // The label
-  assert.match(transferModal, /Total Immediate Due/);
+  assert.match(transferModal, /Scheduled Room Transfer Balance/);
   assert.match(transferModal, /preview\.totalImmediateDue/);
   // Electricity row is explicitly muted / informational and says billed at period close
   assert.match(transferModal, /billed at period close|generated during the normal utility period close|final charge is generated during/i);
@@ -139,9 +139,9 @@ test("tenantProfileService current monthly rent prefers reservation.recurringRen
 
 // ── No duplicate electricity / water in the transfer settlement UI ──────
 test("transfer modal never renders electricity/water as a charged settlement line (informational only)", () => {
-  // The electricity row is class twm-settlement-row--muted and states it is not
-  // charged here (immediate) / follows the period close (scheduled).
-  assert.match(transferModal, /twm-settlement-row--muted[\s\S]{0,700}not charged here/i);
+  // The electricity row is class twm-settlement-row--muted and states the
+  // charge follows the normal utility period close (scheduled transfer).
+  assert.match(transferModal, /twm-settlement-row--muted[\s\S]{0,700}billed at period close/i);
   assert.match(transferModal, /follows the normal utility period close/i);
   assert.match(transferModal, /Water[\s\S]{0,300}settled at its normal period close/i);
 });

@@ -18,6 +18,7 @@ import {
   inspectNotarizedContractDocument,
 } from "../services/contractDocumentStorageService.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
+import { resolveSignedScanForContract } from "../services/signedContractScanResolver.js";
 import { getOpenScheduledRoomTransferForReservation } from "../services/scheduledRoomTransferView.js";
 import {
   resolveCurrentPreparedDocument,
@@ -1252,8 +1253,18 @@ export const getTenantCurrentContract = async (req, res) => {
     } catch (ackErr) {
       logger.warn({ err: ackErr, contractId: String(contract._id) }, "[getTenantCurrentContract] acknowledgement resolve failed (non-fatal)");
     }
+    // Canonical signed-scan identity for THIS contract (walks the lineage for
+    // a Room Transfer Addendum that has no scan of its own) — the Admin
+    // "Official Digital Lease Contract -> Signed Scan" viewer consumes this
+    // instead of guessing from `contract.signedDocuments`.
+    let signedScan = null;
+    try {
+      signedScan = await resolveSignedScanForContract(contract);
+    } catch (scanErr) {
+      logger.warn({ err: scanErr, contractId: String(contract._id) }, "[getTenantCurrentContract] signed-scan resolve failed (non-fatal)");
+    }
     const contractPayload = contract.toObject ? contract.toObject() : contract;
-    res.json({ contract: { ...contractPayload, acknowledgement } });
+    res.json({ contract: { ...contractPayload, id: String(contract._id), acknowledgement, signedScan } });
   } catch (error) {
     if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {
       logger.error(
@@ -1438,10 +1449,20 @@ export const getMyCurrentContract = async (req, res) => {
     } catch (ackErr) {
       logger.warn({ err: ackErr, contractId: String(contract._id) }, "[getMyCurrentContract] acknowledgement resolve failed (non-fatal)");
     }
+    // Canonical signed-scan identity (lineage-aware for a Room Transfer
+    // Addendum) so Tenant Web's Signed Scan tab works in the Addendum-current
+    // case, labelled as inherited from the original lease.
+    let signedScan = null;
+    try {
+      signedScan = await resolveSignedScanForContract(contract);
+    } catch (scanErr) {
+      logger.warn({ err: scanErr, contractId: String(contract._id) }, "[getMyCurrentContract] signed-scan resolve failed (non-fatal)");
+    }
     const view = toTenantContractView(contract, new Date(), {
       preparedDocument,
       preparedDocumentIssue,
       acknowledgement,
+      signedScan,
     });
 
     // "Upcoming" leg of the current/upcoming/history triad — a renewal or
@@ -1460,7 +1481,11 @@ export const getMyCurrentContract = async (req, res) => {
             // Non-fatal — upcoming view still returns without a prepared document
           }
         }
-        upcomingView = toTenantContractView(upcomingContract, new Date(), { preparedDocument: upcomingPrepared });
+        const upcomingSignedScan = await resolveSignedScanForContract(upcomingContract).catch(() => null);
+        upcomingView = toTenantContractView(upcomingContract, new Date(), {
+          preparedDocument: upcomingPrepared,
+          signedScan: upcomingSignedScan,
+        });
       }
     } catch {
       upcomingView = null;
@@ -1629,7 +1654,16 @@ export const getMyContractHistory = async (req, res) => {
   try {
     const user = await tenantActor(req);
     const contracts = await resolveTenantContractHistory(user._id);
-    res.json({ contracts: contracts.map((contract) => toTenantContractView(contract)) });
+    // Each historical Contract resolves ITS OWN signed scan (an older
+    // historical Contract must never show the current Contract's scan). An
+    // amendment/replacement in history still inherits from its lineage.
+    const views = await Promise.all(
+      contracts.map(async (contract) => {
+        const signedScan = await resolveSignedScanForContract(contract).catch(() => null);
+        return toTenantContractView(contract, new Date(), { signedScan });
+      }),
+    );
+    res.json({ contracts: views });
   } catch (error) {
     fail(res, error);
   }
@@ -1644,7 +1678,8 @@ export const getMyContractDetails = async (req, res) => {
         .then((resolved) => resolved.document)
         .catch(() => null);
     }
-    res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument }) });
+    const signedScan = await resolveSignedScanForContract(contract).catch(() => null);
+    res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument, signedScan }) });
   } catch (error) {
     fail(res, error);
   }

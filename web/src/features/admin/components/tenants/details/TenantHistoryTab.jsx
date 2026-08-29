@@ -1,10 +1,13 @@
 import { History, FileText, Eye } from "lucide-react";
+import RoomTransferHistorySection from "./RoomTransferHistorySection";
 
 export default function TenantHistoryTab({
   tenant,
   roomHistory = [],
+  roomTransferHistory = [],
   dedicatedContract,
   onOpenDigitalContract,
+  onViewBill,
 }) {
   return (
     <div className="space-y-4">
@@ -144,6 +147,14 @@ export default function TenantHistoryTab({
           </div>
         )}
       </div>
+
+      {/* Room Transfer History — below the Room Stay Timeline. Same canonical
+          server serializer as the Overview card; audit record. */}
+      <RoomTransferHistorySection
+        roomTransferHistory={roomTransferHistory}
+        onOpenDigitalContract={onOpenDigitalContract}
+        onViewBill={onViewBill}
+      />
     </div>
   );
 }

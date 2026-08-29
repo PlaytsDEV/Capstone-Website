@@ -34,6 +34,7 @@ export default function TenantOverviewTab({
   setIsDocsPanelOpen,
   docsPanelRef,
   onPreviewDoc,
+  onOpenDigitalContract,
 }) {
   const queryClient = useQueryClient();
 
@@ -159,7 +160,10 @@ export default function TenantOverviewTab({
   return (
     <div className="space-y-4">
       {scheduledRoomTransfer ? (
-        <ScheduledRoomTransferCard transfer={scheduledRoomTransfer} />
+        <ScheduledRoomTransferCard
+          transfer={scheduledRoomTransfer}
+          onOpenDigitalContract={onOpenDigitalContract}
+        />
       ) : null}
 
       {/* Submitted Tenant Application Form Card */}

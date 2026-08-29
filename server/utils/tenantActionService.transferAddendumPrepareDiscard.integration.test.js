@@ -409,3 +409,108 @@ describe("R4 — discardRoomTransferAddendum (pre-cutover only)", () => {
     expect(String(stay.roomId)).toBe(String(roomB._id));
   });
 });
+
+describe("stale room-transfer Addendum — self-heal on re-target", () => {
+  let mongo;
+  beforeAll(async () => {
+    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+    await mongoose.connect(mongo.getUri(), { dbName: "stale_addendum_selfheal" });
+  }, 120_000);
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongo?.stop();
+  }, 120_000);
+  beforeEach(async () => {
+    await Promise.all([
+      Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
+      Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
+      Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
+    ]);
+    await BusinessSettings.create({
+      key: "global",
+      privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
+      isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+    });
+    mockValidate.mockClear();
+    mockGenerate.mockClear();
+  });
+
+  test("a leftover generated Addendum for room X does NOT block a new transfer to room Y — it is auto-abandoned", async () => {
+    const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "701" });
+    const roomX = await emptyRoom("private", "801"); // stale target
+    const roomY = await emptyRoom("double-sharing", "802"); // new, correct target
+
+    // 1. An earlier attempt prepared an Addendum targeting room X (no cutover).
+    const stalePrep = await prepareRoomTransferAddendum({
+      reservationId: reservation._id,
+      payload: { targetRoomId: roomX._id, effectiveTransferDate: TRANSFER },
+      actorId,
+    });
+    const staleContract = await Contract.findById(stalePrep.addendum.contractId);
+    expect(staleContract.status).toBe("generated");
+    expect(String(staleContract.roomId)).toBe(String(roomX._id));
+
+    // 2. Admin now prepares a transfer to a DIFFERENT room (Y) — no
+    //    ScheduledRoomTransfer exists, the stale one is a discardable Draft, so
+    //    it self-heals instead of throwing ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH.
+    const freshPrep = await prepareRoomTransferAddendum({
+      reservationId: reservation._id,
+      payload: { targetRoomId: roomY._id, targetBedId: "r802-b1", effectiveTransferDate: TRANSFER },
+      actorId,
+    });
+    expect(freshPrep.addendum.contractId).not.toBe(stalePrep.addendum.contractId);
+
+    // Stale Addendum -> cancelled (kept as history, never deleted).
+    const staleAfter = await Contract.findById(stalePrep.addendum.contractId);
+    expect(staleAfter.status).toBe("cancelled");
+    expect(staleAfter.isCurrent).toBe(false);
+
+    // Exactly ONE live amendment, targeting room Y.
+    const live = await Contract.find({
+      reservationId: reservation._id, contractPurpose: "amendment",
+      status: { $nin: ["cancelled", "voided", "rejected", "archived"] },
+    });
+    expect(live).toHaveLength(1);
+    expect(String(live[0].roomId)).toBe(String(roomY._id));
+
+    // 3. The real cutover to room Y completes.
+    await transferStayWorkflow({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: roomY }),
+      actorId,
+    });
+    const stay = await resolveCurrentStayForReservation(reservation._id);
+    expect(String(stay.roomId)).toBe(String(roomY._id));
+  });
+
+  test("a wet-signed (published) successor for room X still HARD-blocks a transfer to room Y", async () => {
+    const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "710" });
+    const roomX = await emptyRoom("private", "810");
+    const roomY = await emptyRoom("double-sharing", "811");
+
+    const prep = await prepareRoomTransferAddendum({
+      reservationId: reservation._id,
+      payload: { targetRoomId: roomX._id, effectiveTransferDate: TRANSFER },
+      actorId,
+    });
+    // Force the successor beyond a discardable Draft (simulates a wet-signed
+    // / published replacement Contract).
+    await Contract.updateOne(
+      { _id: prep.addendum.contractId },
+      { $set: { status: "published" } },
+    );
+
+    await expect(
+      prepareRoomTransferAddendum({
+        reservationId: reservation._id,
+        payload: { targetRoomId: roomY._id, targetBedId: "r811-b1", effectiveTransferDate: TRANSFER },
+        actorId,
+      }),
+    ).rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" });
+
+    // The published successor is untouched.
+    const still = await Contract.findById(prep.addendum.contractId);
+    expect(still.status).toBe("published");
+    expect(String(still.roomId)).toBe(String(roomX._id));
+  });
+});

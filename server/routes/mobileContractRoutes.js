@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import { Contract as ContractModel } from "../models/index.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import { resolvePublishedFinalDocument } from "../services/contractPublicationService.js";
 import {
@@ -15,6 +16,7 @@ import {
 } from "../services/preparedContractDocumentService.js";
 import { inspectSignedContractDocument } from "../services/contractDocumentStorageService.js";
 import { resolveTenantContractDocument } from "../services/tenantContractDocumentResolver.js";
+import { resolveSignedScanForContract } from "../services/signedContractScanResolver.js";
 import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js";
 import {
   acknowledgeContract,
@@ -134,11 +136,24 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     }
   }
 
+  // Canonical signed-scan identity (lineage-aware for a Room Transfer
+  // Addendum) — same resolver as web; mobile surfaces the same inherited
+  // signed/final document identity.
+  let signedScan = null;
+  if (contract) {
+    try {
+      signedScan = await resolveSignedScanForContract(contract);
+    } catch (error) {
+      logger.warn({ err: error, contractId: contract?._id }, "Mobile signed-scan resolution failed (non-fatal)");
+    }
+  }
+
   return res.json({
     contract: toTenantContractView(contract, new Date(), {
       preparedDocument,
       preparedDocumentIssue,
       acknowledgement,
+      signedScan,
       documentBasePath: "/api/m/contracts",
     }),
     state: contract ? "CONTRACT_AVAILABLE" : "NO_PUBLISHED_CONTRACT",
@@ -234,10 +249,28 @@ router.get("/contracts/:contractId/documents/signed/:version", mobileTenant, asy
     return res.status(404).json({ detail: "Signed Contract is not available" });
   }
   const contract = await ownedCurrentContract(req.mobileTenant._id);
-  if (!contract || String(contract._id) !== String(req.params.contractId)) {
+  if (!contract) {
     return res.status(404).json({ detail: "Signed Contract is not available" });
   }
-  const resolvedDocument = resolveTenantContractDocument(contract);
+  // The signed scan may live on the current contract OR — for a Room Transfer
+  // Addendum with none of its own — on an ANCESTOR lease in the same lineage.
+  // Resolve the canonical identity and, if it points at another contract,
+  // load THAT contract (still guarded by tenantId ownership).
+  let scanContract = contract;
+  if (String(contract._id) !== String(req.params.contractId)) {
+    const canonical = await resolveSignedScanForContract(contract).catch(() => null);
+    if (!canonical || String(canonical.contractId) !== String(req.params.contractId)) {
+      return res.status(404).json({ detail: "Signed Contract is not available" });
+    }
+    scanContract = await ContractModel.findOne({
+      _id: req.params.contractId,
+      tenantId: req.mobileTenant._id,
+    });
+    if (!scanContract) {
+      return res.status(404).json({ detail: "Signed Contract is not available" });
+    }
+  }
+  const resolvedDocument = resolveTenantContractDocument(scanContract);
   if (
     resolvedDocument.type !== "final_signed" ||
     Number(resolvedDocument.version) !== requestedVersion

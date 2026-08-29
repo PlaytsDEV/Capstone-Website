@@ -92,13 +92,13 @@ async function ensureActiveStay(reservation, actorId = null, session = null, pre
   const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
   if (!moveInDate || !leaseEndDate) return null;
 
-  const roomId = reservation.roomId?._id || reservation.roomId;
+  const stayRoomId = reservation.roomId?._id || reservation.roomId;
   let branch = reservation.roomId?.branch || predecessorContract?.branch || "";
-  if (!branch && roomId) {
-    const roomDoc = await Room.findById(roomId).session(session).lean();
+  if (!branch && stayRoomId) {
+    const roomDoc = await Room.findById(stayRoomId).session(session).lean();
     if (roomDoc?.branch) branch = roomDoc.branch;
   }
-  const bedId = reservation.selectedBed?.id || (roomId ? `room-${roomId}` : "bed-1");
+  const stayBedId = reservation.selectedBed?.id || (stayRoomId ? `room-${stayRoomId}` : "bed-1");
 
   const stay = await Stay.create(
     [
@@ -106,8 +106,8 @@ async function ensureActiveStay(reservation, actorId = null, session = null, pre
         tenantId: reservation.userId?._id || reservation.userId,
         reservationId: reservation._id,
         branch,
-        roomId,
-        bedId,
+        roomId: stayRoomId,
+        bedId: stayBedId,
         leaseStartDate: moveInDate,
         leaseEndDate,
         monthlyRent: getMonthlyRent(reservation) || predecessorContract?.monthlyRent || 0,
@@ -775,15 +775,39 @@ const isValidTransferPredecessor = (contract) => {
  * `prepareRoomTransferAddendum` / `discardRoomTransferAddendum` endpoints so
  * the "is this transfer legal?" rules live in exactly one place.
  *
- * Mutates nothing. Throws `{statusCode, code}` on any failed guard.
+ * Mutates nothing by default. Throws `{statusCode, code}` on any failed guard.
+ *
+ * `materializeStay` (opt-in — set ONLY by the paths that ultimately commit:
+ * `transferStayWorkflow` Stage A and `scheduleRoomTransfer`): if the tenant
+ * has no current Stay row yet, lazily create it from the reservation's
+ * move-in data via the SAME `ensureActiveStay` path the transfer transaction
+ * (Stage B) and `renewStayWorkflow` already use. Historically the Stay was
+ * only ever materialized inside a write transaction, so a legitimately
+ * moved-in tenant whose first lifecycle action was a room transfer failed
+ * Stage A's read-only stay check with a generic `NO_ACTIVE_STAY` before the
+ * transaction (which would have created it) ever ran. This does NOT bypass
+ * the active-stay requirement — it runs the identical create-if-eligible
+ * logic and STILL enforces `CURRENT_STAY_STATUSES` afterward; when the Stay
+ * genuinely cannot be derived (reservation missing moveInDate / leaseDuration)
+ * it raises an explicit lifecycle error instead of the generic one.
+ * Read-only preview / prepare-addendum callers never pass this and stay
+ * side-effect-free.
  *
  * @param {Object}  p
  * @param {string}  p.reservationId
  * @param {Object}  p.payload            - { targetRoomId, targetBedId?, effectiveTransferDate?, confirm? }
  * @param {boolean} [p.requireConfirm=false] - enforce payload.confirm (the cutover does; preview/discard do not)
+ * @param {boolean} [p.materializeStay=false] - lazily create the Stay if missing (committing paths only)
+ * @param {string}  [p.actorId=null]     - attributed as createdBy/updatedBy on a lazily-created Stay
  * @returns {{ reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate, destinationNeedsBed }}
  */
-export async function resolveValidatedRoomTransferIntent({ reservationId, payload = {}, requireConfirm = false, actorId = null }) {
+export async function resolveValidatedRoomTransferIntent({
+  reservationId,
+  payload = {},
+  requireConfirm = false,
+  materializeStay = false,
+  actorId = null,
+}) {
   const reservation = await Reservation.findById(reservationId)
     .populate("roomId", "name roomNumber branch beds currentOccupancy capacity type")
     .populate("userId", "firstName lastName email tenantStatus");
@@ -827,6 +851,36 @@ export async function resolveValidatedRoomTransferIntent({ reservationId, payloa
     throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
   }
 
+  // Resolve (or, on a committing path, lazily materialize) the tenant's
+  // current Stay BEFORE the predecessor-Contract resolution below —
+  // `resolveAuthoritativeCurrentContract` ranks contract candidates against
+  // the current Stay (a reservationId/stayId match outranks a bare
+  // "isCurrent !== false"), so it must run with the real Stay in place.
+  let activeStay = await resolveCurrentStayForReservation(reservation._id);
+  if (!activeStay && materializeStay) {
+    // Committing path (immediate/scheduled transfer): the tenant is a
+    // legitimately moved-in resident but has never had a lifecycle action
+    // run yet, so the lazily-created Stay does not exist. Create it now via
+    // the canonical path (identical to Stage B / renewStayWorkflow) — exactly
+    // what the transfer transaction would have done a moment later.
+    activeStay = await ensureActiveStay(reservation, actorId);
+    if (!activeStay) {
+      // ensureActiveStay returns null only when the move-in anchor is
+      // underivable (no moveInDate, or no positive leaseDuration). Surface
+      // that specific lifecycle gap rather than the generic message so the
+      // admin knows what to fix on the reservation.
+      throw Object.assign(
+        new Error(
+          "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+        ),
+        { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+      );
+    }
+  }
+  if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
+    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
+  }
+
   const predecessorContract = await resolveAuthoritativeCurrentContract({
     reservationId: reservation._id,
     tenantId: reservation.userId?._id || reservation.userId,
@@ -836,13 +890,6 @@ export async function resolveValidatedRoomTransferIntent({ reservationId, payloa
       new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
       { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
     );
-  }
-  let activeStay = await resolveCurrentStayForReservation(reservation._id);
-  if (!activeStay) {
-    activeStay = await ensureActiveStay(reservation, actorId, null, predecessorContract);
-  }
-  if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
-    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
   }
   if (
     String(activeStay.roomId) === String(payload.targetRoomId) &&
@@ -1030,7 +1077,7 @@ const DISCARDABLE_ADDENDUM_STATUSES = new Set([
 ]);
 
 async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
-  const successor = await createReplacementContractForTransfer({
+  const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
     stayId: activeStay?._id || predecessorContract.stayId,
     oldContract: predecessorContract,
@@ -1042,11 +1089,62 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
     actorId,
   });
 
+  let successor = await buildDraft();
+
+  // The idempotency guard in createReplacementContractForTransfer reuses ANY
+  // non-abandoned successor of the predecessor Contract. If that reused
+  // successor targets a DIFFERENT room than the one the admin is now
+  // transferring to, it is stale — left behind by an earlier attempt (a
+  // pre-future-only immediate transfer, or a scheduling attempt whose Addendum
+  // outlived its cancellation). Self-heal when it is safe to do so:
+  //   - the stale successor is a not-yet-current, not-yet-wet-signed Draft
+  //     (exactly what discardRoomTransferAddendum abandons), AND
+  //   - the tenant has NO open ScheduledRoomTransfer (so nothing live depends
+  //     on the stale Draft).
+  // Otherwise keep hard-blocking — a wet-signed successor, an already-current
+  // one, or a live scheduled transfer genuinely needs explicit admin action
+  // (Cancel Scheduled Transfer / discard-addendum).
   if (String(successor.roomId) !== String(targetRoom._id)) {
-    throw Object.assign(
-      new Error("An existing room-transfer replacement Contract for this tenant targets a different room. Resolve it before transferring."),
-      { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+    const { ScheduledRoomTransfer } = await import("../models/index.js");
+    const { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } = await import("../models/ScheduledRoomTransfer.js");
+    const openScheduled = await ScheduledRoomTransfer.exists({
+      reservationId: reservation._id,
+      status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
+      isArchived: { $ne: true },
+    });
+    const isDiscardableDraft =
+      successor.isCurrent !== true && DISCARDABLE_ADDENDUM_STATUSES.has(successor.status);
+
+    if (openScheduled || !isDiscardableDraft) {
+      throw Object.assign(
+        new Error(
+          openScheduled
+            ? "This tenant already has a scheduled room transfer to a different room. Cancel it before scheduling a new one."
+            : "An existing room-transfer replacement Contract for this tenant targets a different room and cannot be auto-resolved. Resolve it in the Contracts workspace before transferring.",
+        ),
+        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+      );
+    }
+
+    // Abandon the stale Draft (generated -> cancelled, same as
+    // discardRoomTransferAddendum — never deleted, stays as history) and build
+    // the correct successor for THIS destination.
+    await transitionContract(
+      successor,
+      "cancelled",
+      actorId,
+      `Stale Room Transfer Addendum superseded — re-targeted from room ${successor.roomNumber || successor.roomId} to ${targetRoom.roomNumber || targetRoom.name || targetRoom._id}`,
     );
+    successor = await buildDraft();
+
+    if (String(successor.roomId) !== String(targetRoom._id)) {
+      // The rebuilt Draft still points elsewhere — a second stale successor, or
+      // a data-integrity problem. Do not loop; surface it for admin repair.
+      throw Object.assign(
+        new Error("An existing room-transfer replacement Contract for this tenant targets a different room. Resolve it in the Contracts workspace before transferring."),
+        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+      );
+    }
   }
 
   // Already prepared (retry, or prepared earlier) — nothing to regenerate.
@@ -1092,6 +1190,21 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
   return generated;
 }
 
+/**
+ * CANONICAL INTERNAL ROOM-TRANSFER CUTOVER ENGINE.
+ *
+ * As of the future-only Admin Room Transfer rule, this is NOT called directly
+ * by the Admin/API `transferTenant` controller anymore. Every new Admin
+ * transfer is scheduled (`scheduleRoomTransfer`); this workflow is executed by
+ * `scheduledRoomTransferExecutor` on the effective transfer date (Job 20 /
+ * retry). At that point the scheduled effective date legitimately IS "today",
+ * so there is deliberately NO "future-only" date guard in here — the guard
+ * lives in the controller, before scheduling.
+ *
+ * Also still used to replay/derive historical immediate transfers and by the
+ * transfer* integration suites, which exercise it as the effective-date
+ * executor (not as an "Admin immediate transfer" path).
+ */
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {
   // ── Stage A — pre-transaction preparation ────────────────────────────────
   // Cheap validation (no transaction session) + prepare the Room Transfer
@@ -1107,7 +1220,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
     predecessorContract: prepPredecessor,
     activeStay: prepActiveStay,
     effectiveTransferDate: prepEffectiveDate,
-  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: true, actorId });
+  } = await resolveValidatedRoomTransferIntent({
+    reservationId,
+    payload,
+    requireConfirm: true,
+    // Committing path: materialize the tenant's Stay now if a legitimately
+    // moved-in resident never had one created (the transaction's
+    // ensureActiveStay would do it a moment later anyway). Keeps Stage A and
+    // Stage B seeing the same Stay.
+    materializeStay: true,
+    actorId,
+  });
 
   const preparedSuccessor = await prepareRoomTransferDraft({
     reservation: prepReservation,
