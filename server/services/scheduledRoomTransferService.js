@@ -410,14 +410,18 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
             reason: payload.reason || "Room transfer",
             addendumContractId: addendum?.contractId || null,
             previewSnapshot,
-            sourceRoomMeterReading:
-              payload.sourceRoomMeterReading != null && !Number.isNaN(Number(payload.sourceRoomMeterReading))
-                ? Number(payload.sourceRoomMeterReading)
-                : null,
-            targetRoomMeterReading:
-              payload.targetRoomMeterReading != null && !Number.isNaN(Number(payload.targetRoomMeterReading))
-                ? Number(payload.targetRoomMeterReading)
-                : null,
+            // Meter readings are NOT captured at scheduling time. A future
+            // scheduled transfer has not happened yet — the source room's meter
+            // keeps moving until the effective date, so a reading taken now is
+            // not a truthful "final" value, and the destination's reading now is
+            // not necessarily the real "opening" value for the cutover date.
+            // The executor resolves the boundary readings on the effective date
+            // (exact effective-date reading, else the latest canonical DB
+            // reading dated on or before it). These fields stay null unless a
+            // future explicitly-supported effective-date reading workflow sets
+            // them; `transferStayWorkflow` already tolerates missing readings.
+            sourceRoomMeterReading: null,
+            targetRoomMeterReading: null,
             status: "scheduled",
             holdApplied: true,
             scheduledBy: actorId,

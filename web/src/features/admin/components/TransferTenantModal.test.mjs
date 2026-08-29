@@ -66,11 +66,49 @@ export function validateTransferStep3MeterReadings({
 
 // ── Unit Tests ──────────────────────────────────────────────────────────────
 
-test("Transfer wizard exposes 3 steps: room+date, meter readings, review+settlement", () => {
-  assert.match(transferModalSource, /steps=\{\["Target Room", "Meter Readings", "Review"\]\}/);
+test("Transfer wizard is adaptive: 3 steps immediate (incl. Meter Readings), 2 steps future scheduled", () => {
+  // Immediate: Target Room → Meter Readings → Review.
+  assert.match(
+    transferModalSource,
+    /wizardSteps = isScheduledTransfer\s*\?\s*\["Target Room", "Review"\]\s*:\s*\["Target Room", "Meter Readings", "Review"\]/s,
+  );
+  assert.match(transferModalSource, /steps=\{wizardSteps\}/);
   assert.match(transferModalSource, /STEP 1: Target Room & Date/);
-  assert.match(transferModalSource, /STEP 2: Meter Readings/);
-  assert.match(transferModalSource, /STEP 3: Review & Settlement Preview/);
+  // Meter Readings step is rendered ONLY for an immediate transfer.
+  assert.match(transferModalSource, /STEP 2 \(immediate only\): Meter Readings/);
+  assert.match(transferModalSource, /\{step === 2 && !isScheduledTransfer &&/);
+  // Review renders at step 3 (immediate) OR step 2 (scheduled).
+  assert.match(transferModalSource, /const reviewStep = isScheduledTransfer \? 2 : 3/);
+  assert.match(transferModalSource, /\{isReviewStep &&/);
+});
+
+test("Future scheduled transfer omits the Meter Readings step and says readings are finalized on the effective date", () => {
+  assert.match(transferModalSource, /Meter readings will be finalized on the effective transfer date/);
+  assert.match(transferModalSource, /To be finalized on \{fmtDate\(effectiveTransferDate\)\}/);
+  // Scheduled review carries the concise Utilities note excluding electricity/water from the balance.
+  assert.match(
+    transferModalSource,
+    /not included in the Scheduled\s*\n?\s*Room Transfer Balance/s,
+  );
+});
+
+test("Scheduled transfer never submits scheduling-day meter readings", () => {
+  assert.match(
+    transferModalSource,
+    /sourceRoomMeterReading:\s*\n?\s*isScheduledTransfer \|\| !sourceRoomMeterReading \? null : Number\(sourceRoomMeterReading\)/s,
+  );
+  assert.match(
+    transferModalSource,
+    /targetRoomMeterReading:\s*\n?\s*isScheduledTransfer \|\| !targetRoomMeterReading \? null : Number\(targetRoomMeterReading\)/s,
+  );
+});
+
+test("Meter-reading state is cleared when switching immediate → scheduled and restored when switching back", () => {
+  // The mode-switch effect clears readings + attempted flag in scheduled mode
+  // and clamps the step, and re-seeds + forces the Meter Readings step back.
+  assert.match(transferModalSource, /Meter-reading STATE SAFETY on immediate ⇄ scheduled switching/);
+  assert.match(transferModalSource, /if \(isScheduledTransfer\) \{\s*\n\s*setSourceRoomMeterReading\(""\);\s*\n\s*setTargetRoomMeterReading\(""\);/s);
+  assert.match(transferModalSource, /setStep\(\(s\) => \(s > reviewStep \? reviewStep : s\)\)/);
 });
 
 test("Wizard has NO replacement-contract preparation or wet-signed upload gate", () => {

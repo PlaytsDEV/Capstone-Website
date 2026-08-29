@@ -285,7 +285,16 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
   // close). Shown as an informational figure only.
   const sourceRoomId = reservation.roomId?._id || reservation.roomId;
   const [lastReading, openPeriod] = await Promise.all([
-    UtilityReading.findOne({ roomId: sourceRoomId, utilityType: "electricity", isArchived: false })
+    // Bounded to `date <= transferDate`: the preview's electricity estimate must
+    // reflect the source room's meter as of the effective transfer date, not a
+    // reading recorded after it (e.g. a Sep 5 transfer must not surface a Sep 29
+    // reading as its baseline).
+    UtilityReading.findOne({
+      roomId: sourceRoomId,
+      utilityType: "electricity",
+      isArchived: false,
+      date: { $lte: transferDate },
+    })
       .sort({ date: -1, createdAt: -1 }).select("reading").lean(),
     UtilityPeriod.findOne({ roomId: sourceRoomId, utilityType: "electricity", status: "open" })
       .sort({ startDate: -1 }).select("ratePerUnit").lean(),
@@ -1282,6 +1291,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // rooms. If the admin supplied an explicit reading, use it. Otherwise fall
       // back to the latest recorded reading from DB history so the billing
       // engine never has a gap at the transfer boundary.
+      //
+      // EFFECTIVE-DATE READING RULE (immediate AND scheduled): the fallback
+      // reading for either transfer boundary MUST be dated on or before the
+      // effective transfer date. A scheduled transfer executes days/weeks after
+      // it was scheduled, and a reading may have been recorded (or back-dated)
+      // AFTER the effective date — such a reading is not a truthful "final" /
+      // "opening" value for a cutover on `effectiveTransferDate`. `$lte` keeps
+      // an exact effective-date reading eligible (priority 1) while excluding
+      // anything after it; the desc sort then yields the latest reading on or
+      // before the effective date (priority 2). A room with only later readings
+      // gets NO fallback snapshot — the existing "no prior reading" behavior.
       // -----------------------------------------------------------------------
 
       // -- Source room: departing moveOut snapshot --
@@ -1304,11 +1324,14 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         );
       } else {
         // Admin left blank — fallback: carry the last recorded reading forward
-        // so we always have a timestamped anchor on the transfer date.
+        // so we always have a timestamped anchor on the transfer date. Bounded
+        // to `date <= effectiveTransferDate` so a scheduled transfer can never
+        // adopt a post-cutover reading as its "final" source value.
         const latestSourceReading = await UtilityReading.findOne({
           roomId: currentRoom._id,
           utilityType: "electricity",
           isArchived: false,
+          date: { $lte: effectiveTransferDate },
         })
           .sort({ date: -1, createdAt: -1 })
           .session(session)
@@ -1353,11 +1376,14 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         );
       } else {
         // Admin left blank — fallback: carry the last recorded reading of the
-        // target room forward as the opening snapshot.
+        // target room forward as the opening snapshot. Same date bound as the
+        // source: never an opening value dated after the effective transfer
+        // date.
         const latestTargetReading = await UtilityReading.findOne({
           roomId: targetRoom._id,
           utilityType: "electricity",
           isArchived: false,
+          date: { $lte: effectiveTransferDate },
         })
           .sort({ date: -1, createdAt: -1 })
           .session(session)

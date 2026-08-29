@@ -139,7 +139,9 @@ test("tenantProfileService current monthly rent prefers reservation.recurringRen
 
 // ── No duplicate electricity / water in the transfer settlement UI ──────
 test("transfer modal never renders electricity/water as a charged settlement line (informational only)", () => {
-  // The electricity row is class twm-settlement-row--muted and states it is not charged here
-  assert.match(transferModal, /twm-settlement-row--muted[\s\S]{0,400}not charged here/i);
+  // The electricity row is class twm-settlement-row--muted and states it is not
+  // charged here (immediate) / follows the period close (scheduled).
+  assert.match(transferModal, /twm-settlement-row--muted[\s\S]{0,700}not charged here/i);
+  assert.match(transferModal, /follows the normal utility period close/i);
   assert.match(transferModal, /Water[\s\S]{0,300}settled at its normal period close/i);
 });

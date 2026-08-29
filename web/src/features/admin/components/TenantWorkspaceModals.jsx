@@ -677,10 +677,13 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Transfer Tenant Modal — 3-Step Wizard
-   Step 1: Target Room & Date
-   Step 2: Meter Readings
-   Step 3: Review & Settlement Preview
+   Transfer Tenant Modal — adaptive wizard
+   IMMEDIATE transfer (effective date = today):
+     Step 1: Target Room & Date  →  Step 2: Meter Readings  →  Step 3: Review
+   FUTURE SCHEDULED transfer (effective date > today, Manila):
+     Step 1: Target Room & Date  →  Step 2: Review  (no Meter Readings step)
+   The tenant has not moved on a scheduled transfer, so today's readings are not
+   the real cutover readings — the executor finalizes them on the effective date.
    ───────────────────────────────────────────────────────────────────────────── */
 export function TransferTenantModal({
   open,
@@ -802,6 +805,18 @@ export function TransferTenantModal({
   const isScheduledTransfer =
     !!effectiveTransferDate && effectiveTransferDate > localTodayStr();
 
+  // ── Adaptive wizard shape ────────────────────────────────────────────────
+  // Immediate: Target Room → Meter Readings → Review (3 steps).
+  // Future scheduled: Target Room → Review (2 steps). No Meter Readings step —
+  // the tenant has not moved, so today's readings are not the cutover readings;
+  // the executor finalizes them on the effective date.
+  const wizardSteps = isScheduledTransfer
+    ? ["Target Room", "Review"]
+    : ["Target Room", "Meter Readings", "Review"];
+  // Canonical index of the Review step for the CURRENT wizard shape.
+  const reviewStep = isScheduledTransfer ? 2 : 3;
+  const isReviewStep = step === reviewStep;
+
   // ── Canonical transfer financial preview (server-computed) ────────────────
   // The same rent-settlement + deposit-settlement math the executed transfer
   // runs. Fetched only once a destination room is selected.
@@ -809,7 +824,7 @@ export function TransferTenantModal({
   const { data: previewResp, isFetching: previewLoading } = useRoomTransferPreview(
     reservationId,
     { targetRoomId: roomId || null, effectiveTransferDate: effectiveTransferDate || null },
-    { enabled: !!reservationId && !!roomId && step === 3 },
+    { enabled: !!reservationId && !!roomId && isReviewStep },
   );
   const preview = previewResp?.data?.transferPreview ?? previewResp?.transferPreview ?? null;
 
@@ -857,8 +872,43 @@ export function TransferTenantModal({
     !!roomId &&
     (!destinationNeedsBed || !!bedId) &&
     (!hasOutstanding || forceOverride);
-  const step2Valid =
-    sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+  // Meter-reading gate. For a FUTURE scheduled transfer there is no Meter
+  // Readings step, so it is trivially satisfied (readings are finalized on the
+  // effective date); only the reason is still required.
+  const meterStepValid = isScheduledTransfer
+    ? reason.trim().length > 0
+    : sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+
+  // ── Meter-reading STATE SAFETY on immediate ⇄ scheduled switching ─────────
+  // If the admin entered readings for an immediate transfer, then went Back and
+  // pushed the effective date into the future, those readings must NOT be
+  // carried into the scheduled request. Clear them (and any attempted-step
+  // flag) whenever the wizard is in scheduled mode, and clamp `step` so it
+  // never points past the now-shorter wizard. Switching back to today restores
+  // the Meter Readings step; the fields re-seed from the latest baseline and
+  // must be re-validated before Review.
+  useEffect(() => {
+    if (!open) return;
+    if (isScheduledTransfer) {
+      setSourceRoomMeterReading("");
+      setTargetRoomMeterReading("");
+      setAttemptedStep2(false);
+      setStep((s) => (s > reviewStep ? reviewStep : s));
+    } else {
+      // Back to immediate mode: re-seed the source field from the known
+      // baseline so the restored Meter Readings step is not blank, and force
+      // the admin back through it (never straight to an immediate Review with
+      // no readings).
+      setSourceRoomMeterReading(
+        sourceRoomLatestReading?.reading != null ? String(sourceRoomLatestReading.reading) : "",
+      );
+      setTargetRoomMeterReading(
+        targetRoomBaseline?.reading != null ? String(targetRoomBaseline.reading) : "",
+      );
+      setStep((s) => (s >= 2 ? 2 : s));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScheduledTransfer, open]);
 
   // ── Step transition validation handlers with friendly toasts ────────────────
   const handleNextStep1 = () => {
@@ -878,6 +928,9 @@ export function TransferTenantModal({
       );
       return;
     }
+    // Immediate → Meter Readings (step 2). Future scheduled → straight to
+    // Review (also step 2 in the 2-step wizard; there is no Meter Readings
+    // step because the tenant has not moved yet).
     setStep(2);
   };
 
@@ -1031,7 +1084,7 @@ export function TransferTenantModal({
             <span>Back</span>
           </button>
         )}
-        {step === 1 ? (
+        {!isReviewStep && step === 1 ? (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
@@ -1040,7 +1093,7 @@ export function TransferTenantModal({
             <span>Next</span>
             <ChevronRight size={16} />
           </button>
-        ) : step === 2 ? (
+        ) : !isReviewStep && step === 2 ? (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
@@ -1053,9 +1106,9 @@ export function TransferTenantModal({
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--success"
-            disabled={loading || !step1Valid || !step2Valid}
+            disabled={loading || !step1Valid || !meterStepValid}
             onClick={() => {
-              if (!step1Valid || !step2Valid) {
+              if (!step1Valid || !meterStepValid) {
                 showNotification("Please make sure all transfer details are valid.", "warning");
                 return;
               }
@@ -1065,8 +1118,14 @@ export function TransferTenantModal({
                 reason,
                 forceOverride,
                 effectiveTransferDate: effectiveTransferDate || undefined,
-                sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
-                targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
+                // A FUTURE scheduled transfer never carries scheduling-day
+                // meter readings — the executor finalizes the boundary readings
+                // on the effective date. Immediate transfers still submit the
+                // admin's transfer-day readings.
+                sourceRoomMeterReading:
+                  isScheduledTransfer || !sourceRoomMeterReading ? null : Number(sourceRoomMeterReading),
+                targetRoomMeterReading:
+                  isScheduledTransfer || !targetRoomMeterReading ? null : Number(targetRoomMeterReading),
               });
             }}
           >
@@ -1094,10 +1153,7 @@ export function TransferTenantModal({
       onClose={onClose}
       footer={renderFooter()}
     >
-      <WizardStepper
-        steps={["Target Room", "Meter Readings", "Review"]}
-        currentStep={step}
-      />
+      <WizardStepper steps={wizardSteps} currentStep={step} />
 
       {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
       {step === 1 && (
@@ -1242,8 +1298,8 @@ export function TransferTenantModal({
         </>
       )}
 
-      {/* ── STEP 2: Meter Readings ─────────────────────────────────────── */}
-      {step === 2 && (
+      {/* ── STEP 2 (immediate only): Meter Readings ────────────────────── */}
+      {step === 2 && !isScheduledTransfer && (
         <>
           <div className="twm-callout twm-callout--info">
             Record the final kWh reading for the current room and the opening reading for the new room. These anchor the billing segments.
@@ -1326,8 +1382,8 @@ export function TransferTenantModal({
         </>
       )}
 
-      {/* ── STEP 3: Review & Settlement Preview ───────────────────────── */}
-      {step === 3 && (
+      {/* ── Review & Settlement Preview — step 3 (immediate) or step 2 (scheduled) ── */}
+      {isReviewStep && (
         <>
           <div className="twm-review-summary">
             <div className="twm-review-field">
@@ -1354,6 +1410,14 @@ export function TransferTenantModal({
               <span className="twm-review-field__label">Effective Date</span>
               <span className="twm-review-field__value">{fmtDate(effectiveTransferDate)}</span>
             </div>
+            {isScheduledTransfer && (
+              <div className="twm-review-field">
+                <span className="twm-review-field__label">Meter readings</span>
+                <span className="twm-review-field__value">
+                  To be finalized on {fmtDate(effectiveTransferDate)}
+                </span>
+              </div>
+            )}
             <div className="twm-review-field">
               <span className="twm-review-field__label">New Monthly Rent</span>
               <span className="twm-review-field__value">
@@ -1381,6 +1445,18 @@ export function TransferTenantModal({
               <span className="twm-review-field__value">{reason}</span>
             </div>
           </div>
+
+          {isScheduledTransfer && (
+            <div className="twm-callout twm-callout--info">
+              <strong>Utilities</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 13 }}>
+                Meter readings will be finalized on the effective transfer date.
+                Electricity and applicable water charges will follow the normal
+                utility billing process and are not included in the Scheduled
+                Room Transfer Balance.
+              </p>
+            </div>
+          )}
 
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
@@ -1460,13 +1536,15 @@ export function TransferTenantModal({
                   {/* ── ELECTRICITY — informational only, NOT in the immediate total ── */}
                   <div className="twm-settlement-row twm-settlement-row--muted">
                     <span className="twm-settlement-row__label">
-                      Estimated source-room electricity
+                      {isScheduledTransfer ? "Source-room electricity" : "Estimated source-room electricity"}
                       <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                        Final charge is generated during the normal utility period close — not charged here.
+                        {isScheduledTransfer
+                          ? `Meter readings will be finalized on ${fmtDate(effectiveTransferDate)}; the final charge follows the normal utility period close.`
+                          : "Final charge is generated during the normal utility period close — not charged here."}
                       </span>
                     </span>
                     <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
-                      {kwhPreview != null && preview.electricity.ratePerUnit
+                      {!isScheduledTransfer && kwhPreview != null && preview.electricity.ratePerUnit
                         ? fmtMoney(kwhPreview * preview.electricity.ratePerUnit)
                         : "billed at period close"}
                     </span>
