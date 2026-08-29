@@ -88,5 +88,7 @@ describe("Backend Security Headers", () => {
     expect(res.headers.get("strict-transport-security")).toContain("max-age=31536000");
     expect(res.headers.get("permissions-policy")).toContain("camera=()");
     expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
+    expect(res.headers.get("content-security-policy")).not.toContain("script-src 'self' 'unsafe-inline'");
   });
 });
