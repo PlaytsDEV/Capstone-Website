@@ -48,6 +48,21 @@ import {
 import { getBusinessSettings } from "../../utils/businessSettings.js";
 import { resolveAuthoritativeLeasePricing } from "../../services/contractPricingResolver.js";
 import { resolveCurrentStayForReservation } from "../../services/tenantContractSelectionService.js";
+import {
+  scheduleRoomTransfer,
+  isFutureManilaDate,
+  isPastManilaDate,
+} from "../../services/scheduledRoomTransferService.js";
+import {
+  serializeScheduledRoomTransfer,
+  getOpenScheduledRoomTransferForReservation,
+} from "../../services/scheduledRoomTransferView.js";
+import {
+  cancelScheduledRoomTransfer,
+  retryScheduledRoomTransfer,
+} from "../../services/scheduledRoomTransferExecutor.js";
+import { ScheduledRoomTransfer } from "../../models/index.js";
+import { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } from "../../models/ScheduledRoomTransfer.js";
 
 export const archiveReservation = async (req, res, next) => {
   try {
@@ -892,6 +907,51 @@ export const transferTenant = async (req, res, next) => {
 
     const oldData = reservation.toObject();
     const actor = await findDbUser(req.user.uid);
+
+    // ── Today vs future ──────────────────────────────────────────────────────
+    // effectiveTransferDate < today Manila  -> reject.
+    // effectiveTransferDate > today Manila  -> schedule (no physical cutover).
+    // effectiveTransferDate = today / absent -> the existing immediate cutover.
+    const effectiveTransferDate = req.body.effectiveTransferDate;
+    if (effectiveTransferDate && isPastManilaDate(effectiveTransferDate)) {
+      return res.status(400).json({
+        error: "The effective transfer date cannot be in the past.",
+        code: "PAST_TRANSFER_DATE",
+      });
+    }
+    if (effectiveTransferDate && isFutureManilaDate(effectiveTransferDate)) {
+      try {
+        const scheduled = await scheduleRoomTransfer({
+          reservationId,
+          payload: {
+            ...req.body,
+            targetRoomId: req.body.targetRoomId || req.body.newRoomId,
+            targetBedId: req.body.targetBedId || req.body.newBedId,
+          },
+          actorId: actor?._id || null,
+        });
+        await auditLogger.logModification(
+          req,
+          "reservation",
+          reservationId,
+          oldData,
+          { scheduledRoomTransfer: scheduled.scheduledTransfer?.toObject?.() ?? scheduled.scheduledTransfer },
+          `Room transfer scheduled for ${dayjs(scheduled.scheduledTransfer.effectiveTransferDate).format("YYYY-MM-DD")}`,
+        );
+        return res.status(201).json({
+          message: "Room transfer scheduled.",
+          scheduledRoomTransfer: await serializeScheduledRoomTransfer(scheduled.scheduledTransfer),
+        });
+      } catch (error) {
+        logger.error({ err: error, requestId: req.id }, "Schedule transfer error");
+        await auditLogger.logError(req, error, "Failed to schedule room transfer");
+        if (error?.statusCode) {
+          return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULE_TRANSFER_FAILED" });
+        }
+        return handleReservationError(res, error, "schedule transfer");
+      }
+    }
+
     const result = await transferStayWorkflow({
       reservationId,
       payload: {
@@ -1065,6 +1125,150 @@ export const discardRoomTransferAddendumAction = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/cancel
+ *
+ * Cancel a NOT-yet-executed scheduled room transfer. Automatic only when no
+ * money was received (paidAmount === 0 on the balance Bill / no Bill): the
+ * destination hold is released, the prepared Addendum is cancelled, the unpaid
+ * Bill is voided (canonical status, never deleted), the record -> `cancelled`.
+ * If ANY payment exists, nothing financial is reversed — the record ->
+ * `action_required` PAYMENT_ALREADY_RECEIVED for Administration-Office
+ * settlement. A completed transfer -> TRANSFER_ALREADY_COMPLETED.
+ *
+ * Access: Admin | Owner
+ */
+export const cancelScheduledRoomTransferAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const open = await ScheduledRoomTransfer.findOne({
+      reservationId,
+      status: { $nin: ["cancelled", "executed"] },
+      isArchived: { $ne: true },
+    }).sort({ createdAt: -1 });
+    if (!open) {
+      return res.status(404).json({
+        error: "No cancellable scheduled room transfer for this tenant.",
+        code: "NO_SCHEDULED_TRANSFER",
+      });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await cancelScheduledRoomTransfer(open._id, { actorId: actor?._id || null, system: false });
+
+    if (result.outcome === "skipped" && result.reason === "TRANSFER_ALREADY_COMPLETED") {
+      return res.status(409).json({
+        error: "This room transfer has already been completed and cannot be cancelled here.",
+        code: "TRANSFER_ALREADY_COMPLETED",
+      });
+    }
+
+    await auditLogger.logModification(
+      req, "reservation", reservationId, {},
+      { scheduledTransferId: String(open._id), cancelOutcome: result.outcome, reason: result.reason || null },
+      `Scheduled room transfer ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`,
+    );
+
+    const scheduledRoomTransfer = await getOpenScheduledRoomTransferForReservation(reservationId).catch(() => null);
+    return res.status(200).json({
+      message:
+        result.outcome === "cancelled"
+          ? "Scheduled room transfer cancelled. The tenant remains in the current room and the reserved destination has been released."
+          : "A payment has already been received for this scheduled transfer. Please coordinate with the Administration Office, 2nd Floor for settlement.",
+      outcome: result.outcome,
+      reason: result.reason || null,
+      scheduledRoomTransfer: scheduledRoomTransfer
+        ? scheduledRoomTransfer
+        : await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(open._id)),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Cancel scheduled room transfer error");
+    await auditLogger.logError(req, error, "Failed to cancel scheduled room transfer");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULED_TRANSFER_CANCEL_FAILED" });
+    }
+    handleReservationError(res, error, "cancel scheduled room transfer");
+  }
+};
+
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/retry
+ *
+ * Admin retry for an `action_required` scheduled room transfer. Re-runs EVERY
+ * gate (operational validation, payment gate, live financial revalidation) —
+ * never bypasses them. Retrying only makes sense once the blocker is resolved
+ * through the normal Bill payment (TRANSFER_BALANCE_UNPAID / ADDITIONAL_
+ * BALANCE_DUE). FINANCIAL_ADJUSTMENT_REQUIRED and PAYMENT_ALREADY_RECEIVED
+ * are NOT retryable here — they need explicit Administration-Office settlement.
+ *
+ * Access: Admin | Owner
+ */
+export const retryScheduledRoomTransferAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const rec = await ScheduledRoomTransfer.findOne({
+      reservationId,
+      status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
+      isArchived: { $ne: true },
+    }).sort({ createdAt: -1 });
+    if (!rec) {
+      return res.status(404).json({ error: "No open scheduled room transfer for this tenant.", code: "NO_SCHEDULED_TRANSFER" });
+    }
+    const NON_RETRYABLE = new Set(["FINANCIAL_ADJUSTMENT_REQUIRED", "PAYMENT_ALREADY_RECEIVED"]);
+    if (rec.status === "action_required" && NON_RETRYABLE.has(String(rec.lastError || ""))) {
+      return res.status(409).json({
+        error: "This scheduled transfer needs Administration-Office settlement before it can be retried.",
+        code: "RETRY_NOT_ALLOWED",
+      });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await retryScheduledRoomTransfer(rec._id, { actorId: actor?._id || null });
+
+    await auditLogger.logModification(
+      req, "reservation", reservationId, {},
+      { scheduledTransferId: String(rec._id), retryOutcome: result.outcome, reason: result.reason || null },
+      `Scheduled room transfer retry -> ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`,
+    );
+
+    const scheduledRoomTransfer = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(rec._id));
+    return res.status(200).json({
+      message:
+        result.outcome === "executed"
+          ? "Scheduled room transfer executed."
+          : "The scheduled room transfer still cannot be completed. See the status for details.",
+      outcome: result.outcome,
+      reason: result.reason || null,
+      scheduledRoomTransfer,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Retry scheduled room transfer error");
+    await auditLogger.logError(req, error, "Failed to retry scheduled room transfer");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULED_TRANSFER_RETRY_FAILED" });
+    }
+    handleReservationError(res, error, "retry scheduled room transfer");
+  }
+};
+
 export const processDepositRefund = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
@@ -1151,7 +1355,9 @@ export const earlyTerminationAction = async (req, res, next) => {
     const { reservationId } = req.params;
     const {
       penaltyFee = 0,
-      forfeitureReason = "early_termination",
+      // Schema-valid depositForfeitureReason (['early_vacancy','admin_decision',null]).
+      // Early termination = actualMoveOutDate < leaseEndDate = "early_vacancy".
+      forfeitureReason = "early_vacancy",
       moveOutDate,
       actualVacateTime,
       finalUtilityReading,

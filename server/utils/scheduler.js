@@ -862,12 +862,27 @@ async function reconcileOccupancyIntegrity() {
     const rooms = await Room.find({ isArchived: { $ne: true } });
     let roomsFixed = 0;
 
+    // Scheduled Room Transfer: an OPEN inbound schedule holds a real
+    // destination-capacity slot (and, for a shared room, a specific
+    // "reserved" bed) BEFORE its effective date. currentOccupancy in this
+    // codebase already means "committed capacity slots" (a `reserved`
+    // reservation counts), so these holds must be ADDED to the derived live
+    // count and their beds must NOT be treated as stale pointers — otherwise
+    // this job reconciles the hold away within a day. See
+    // scheduledRoomTransferService.js.
+    const { countOpenDestinationHolds, openHoldBackedBedKeys } = await import(
+      "../services/scheduledRoomTransferService.js"
+    );
+    const holdBackedBedKeys = await openHoldBackedBedKeys(rooms.map((r) => r._id));
+
     for (const room of rooms) {
-      const liveCount = await Reservation.countDocuments({
+      const liveReservationCount = await Reservation.countDocuments({
         roomId: room._id,
         isArchived: { $ne: true },
         status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
       });
+      const openHolds = await countOpenDestinationHolds(room._id);
+      const liveCount = liveReservationCount + openHolds;
 
       // Fetch live reservations with selectedBed for cross-validation (Phase 1)
       const liveReservations = await Reservation.find({
@@ -899,6 +914,14 @@ async function reconcileOccupancyIntegrity() {
         const isReservationHeldBed =
           (bed.status === "occupied" || bed.status === "reserved") ||
           (bed.status === "locked" && bed.occupiedBy?.reservationId);
+
+        // A bed held by an OPEN scheduled inbound transfer is a legitimate
+        // "reserved" hold whose occupiedBy points at the tenant's SOURCE-room
+        // reservation — its selectedBed will (correctly) not match this bed.
+        // Skip both stale-pointer passes for it.
+        if (holdBackedBedKeys.has(`${String(room._id)}::${String(bed.id)}`)) {
+          continue;
+        }
 
         if (isReservationHeldBed && bed.occupiedBy?.reservationId) {
           const resIdStr = String(bed.occupiedBy.reservationId);
@@ -1505,6 +1528,33 @@ export function startScheduler(options = {}) {
       scheduled: true,
       timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "missing-contract-generation-reconciliation",
+    }),
+  );
+
+  // Job 20: Scheduled Room Transfer execution — daily at 00:10 (Asia/Manila),
+  // right AFTER Job 0 (automated rent generation, 00:00). A rent Bill is only
+  // generated 14 days before its cycle rolls (RENT_GENERATION_LEAD_DAYS), so
+  // Job 0 never emits the transferred tenant's rent Bill on the effective
+  // date itself — no same-day rent-bill reconciliation is needed. This job
+  // processes ONLY status:"scheduled" records whose Manila effective date is
+  // due; `action_required` records are admin-resolve only and are never
+  // auto-retried here. retryJobOperation handles a transient PROCESS failure
+  // (whole-scan re-run) without violating the per-record no-auto-retry rule.
+  scheduledJobs.push(
+    cron.schedule("10 0 * * *", () =>
+      retryJobOperation(
+        async () => {
+          const { executeDueScheduledRoomTransfers } = await import(
+            "../services/scheduledRoomTransferExecutor.js"
+          );
+          return executeDueScheduledRoomTransfers();
+        },
+        { label: "Job 20: Scheduled room transfer execution" },
+      ),
+    {
+      scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
+      name: "scheduled-room-transfer-execution",
     }),
   );
 

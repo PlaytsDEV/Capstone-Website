@@ -32,6 +32,7 @@ import {
 import {
   resolveCurrentBillingCycle,
   sumBillCharges,
+  syncBillAmounts,
   roundMoney,
 } from "../services/billing/billingPolicy.js";
 import {
@@ -206,7 +207,7 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
  * Returns null when it cannot be computed (no target room, unsupported room
  * type, missing lease term) rather than guessing.
  */
-export async function computeRoomTransferPreview({ reservationId, targetRoomId, effectiveTransferDate }) {
+export async function computeRoomTransferPreview({ reservationId, targetRoomId, effectiveTransferDate, depositHeldOverride = null }) {
   if (!targetRoomId) return null;
   const [reservation, targetRoom] = await Promise.all([
     Reservation.findById(reservationId).populate("roomId", "name roomNumber branch type price monthlyPrice").lean(),
@@ -260,8 +261,14 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
   });
 
   // Deposit — REQUIRED (1x destination rate) vs HELD (actual cash).
+  // `depositHeldOverride` lets the scheduled-transfer executor recompute the
+  // ADDITIONAL-deposit-due against the held amount as it stood BEFORE the
+  // pre-paid Scheduled Transfer Balance Bill funded it — so a paid deposit
+  // component is not mistaken for "requirement dropped" (see Phase 2G #13).
   const destinationRequiredDeposit = roundMoney(destinationApprovedRate);
-  let depositHeld = Number(reservation.securityDepositHeld);
+  let depositHeld = depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
+    ? Number(depositHeldOverride)
+    : Number(reservation.securityDepositHeld);
   let depositHeldKnown = Number.isFinite(depositHeld);
   if (!depositHeldKnown) {
     const fin = resolveReservationFinancials(reservation);
@@ -297,6 +304,16 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
     effectiveTransferDate: transferDate,
     leaseStartDate: moveInDate || null,
     leaseEndDate: leaseEndDate || null,
+    // The move-in-anchored rent cycle the transfer date falls in — used to
+    // stamp billingCycleStart/End on a Scheduled Room Transfer Balance Bill so
+    // it lines up with the settlement the executor later recomputes.
+    billingCycle: currentBillingCycle
+      ? {
+          billingCycleStart: currentBillingCycle.billingCycleStart,
+          billingCycleEnd: currentBillingCycle.billingCycleEnd,
+          cycleIndex: currentBillingCycle.cycleIndex ?? null,
+        }
+      : null,
     rent: {
       sourceEffectiveRate: roundMoney(sourceEffectiveRate),
       sourceRateSource,
@@ -1414,7 +1431,23 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // (legacy records) — deterministically, from the same resolver move-in
       // used, NOT fabricated from "the Contract said a deposit was required".
       const destinationRequiredDeposit = roundMoney(Number(successorContract.approvedMonthlyRate) || 0);
-      let depositCurrentlyHeld = Number(reservation.securityDepositHeld);
+      // Scheduled transfer: if the pre-paid Scheduled Transfer Balance Bill
+      // already funded securityDepositHeld (Phase 2F), the ADDITIONAL deposit
+      // due for this transfer must be computed against the held amount as it
+      // stood BEFORE that funding — otherwise the Bill-reuse assertion below
+      // (recomputed component vs the Bill's charges.securityDeposit) would
+      // mismatch and the settlement Bill would be wrong. The executor passes
+      // that pre-funding value; the paid deposit component remains real cash
+      // (its ledger entry is untouched).
+      const scheduledDepositHeldOverride =
+        payload.scheduledTransferBillId != null &&
+        payload.depositHeldOverride != null &&
+        Number.isFinite(Number(payload.depositHeldOverride))
+          ? roundMoney(Number(payload.depositHeldOverride))
+          : null;
+      let depositCurrentlyHeld = scheduledDepositHeldOverride != null
+        ? scheduledDepositHeldOverride
+        : Number(reservation.securityDepositHeld);
       let heldWasBackfilled = false;
       if (!Number.isFinite(depositCurrentlyHeld)) {
         const moveInFinancials = resolveReservationFinancials(reservation);
@@ -1531,7 +1564,94 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       if (excessRentCredit > 0) noteParts.push(`excess prepaid rent ₱${excessRentCredit.toFixed(2)} kept as rent credit`);
       if (excessDepositHeld > 0) noteParts.push(`excess deposit held ₱${excessDepositHeld.toFixed(2)} (stays refundable)`);
 
-      const [transferBill] = await Bill.create(
+      // ── Scheduled Room Transfer: RE-USE the pre-created (and possibly
+      //    already-paid) Scheduled Transfer Balance Bill instead of creating a
+      //    SECOND transfer_settlement Bill. The executor
+      //    (scheduledRoomTransferExecutor.js) has already gated: it only calls
+      //    this workflow when the linked Bill's rent + securityDeposit
+      //    components equal the freshly-recomputed canonical settlement, and
+      //    only when that Bill is fully settled (or zero). So here we just
+      //    assert that invariant still holds in-session (a mismatch is a race
+      //    -> abort the whole txn) and refresh the Bill's execution-time
+      //    metadata while preserving paidAmount / status / payment history.
+      const scheduledBillId = payload.scheduledTransferBillId || null;
+      let transferBill;
+      if (scheduledBillId) {
+        transferBill = await Bill.findById(scheduledBillId).session(session);
+        if (
+          !transferBill ||
+          String(transferBill.reservationId) !== String(reservation._id) ||
+          transferBill.billType !== "transfer_settlement" ||
+          transferBill.isArchived === true ||
+          transferBill.status === "voided"
+        ) {
+          throw Object.assign(
+            new Error("The linked Scheduled Room Transfer Balance Bill is missing or invalid."),
+            { statusCode: 409, code: "ROOM_TRANSFER_SCHEDULED_BILL_INVALID" },
+          );
+        }
+        const billRent = roundMoney(Number(transferBill.charges?.rent || 0));
+        const billDeposit = roundMoney(Number(transferBill.charges?.securityDeposit || 0));
+        if (
+          Math.abs(billRent - roundMoney(transferCharges.rent)) > 0.01 ||
+          Math.abs(billDeposit - roundMoney(transferCharges.securityDeposit)) > 0.01
+        ) {
+          throw Object.assign(
+            new Error(
+              "The Scheduled Room Transfer Balance Bill no longer matches the canonical settlement recomputed at execution.",
+            ),
+            { statusCode: 409, code: "ROOM_TRANSFER_SCHEDULED_BILL_MISMATCH" },
+          );
+        }
+        // Refresh execution-time metadata; never touch paidAmount / payment history.
+        transferBill.roomId = currentRoom._id;
+        transferBill.billingMonth = effectiveTransferDate;
+        transferBill.billingCycleStart = currentBillingCycle?.billingCycleStart || effectiveTransferDate;
+        transferBill.billingCycleEnd = currentBillingCycle?.billingCycleEnd || effectiveTransferDate;
+        transferBill.proRataDays = proRataDays || null;
+        transferBill.notes = noteParts.join("; ");
+        transferBill.transferSnapshot = {
+          ...(transferBill.transferSnapshot || {}),
+          fromRoomId: currentRoom._id,
+          fromRoomName: currentRoom.name || currentRoom.roomNumber || "",
+          fromRoomType: currentRoom.type || "",
+          toRoomId: targetRoom._id,
+          toRoomName: targetRoom.name || targetRoom.roomNumber || "",
+          toRoomType: targetRoom.type || "",
+          effectiveTransferDate,
+          cycleStart: currentBillingCycle?.billingCycleStart || null,
+          cycleEnd: currentBillingCycle?.billingCycleEnd || null,
+          sourceApprovedRate: sourceEffectiveRate,
+          destinationApprovedRate: successorContract.approvedMonthlyRate,
+          sourceRateSource,
+          applicablePrepaidRent,
+          prepaidRentSource,
+          totalCoverageDays: settlement.totalCoverageDays,
+          destinationDays: settlement.destinationDays,
+          destinationProratedValue: settlement.destinationProratedValue,
+          unusedPrepaidCredit: settlement.unusedPrepaidCredit,
+          additionalAmountDue: settlement.additionalAmountDue,
+          excessCredit: settlement.excessCredit,
+          estimatedElectricityKwh,
+          estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
+          sourceElectricitySettledAtPeriodClose: true,
+          depositPreviouslyHeld: depositSettlement.depositPreviouslyHeld,
+          destinationRequiredDeposit: depositSettlement.destinationRequiredDeposit,
+          additionalDepositDue: depositSettlement.additionalDepositDue,
+          excessDepositHeld: depositSettlement.excessDepositHeld,
+          depositHeldAfterTransferBeforePayment: depositSettlement.depositHeldAfterTransferBeforePayment,
+          depositHeldWasBackfilled: heldWasBackfilled,
+          rentComponentDue,
+          depositComponentDue,
+          totalImmediateDue: transferSettlementTotal,
+          transferReference: predecessorContract._id,
+          isScheduledTransferBalance: true,
+          reconciledAtExecution: true,
+        };
+        syncBillAmounts(transferBill, { preserveStatus: true });
+        await transferBill.save({ session });
+      } else {
+      [transferBill] = await Bill.create(
         [
           {
             billType: "transfer_settlement",
@@ -1606,6 +1726,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         ],
         { session },
       );
+      }
 
       // ── Excess prepaid RENT -> reusable TenantCredit (never a deposit,
       //    never a refund here). Idempotency key is bound to the transfer
@@ -2201,7 +2322,14 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         reservation.earlyTerminationPenalty = Number(payload.earlyTerminationPenalty);
       }
       if (payload.forfeitureReason && payload.reason === "terminated") {
-        reservation.depositForfeitureReason = payload.forfeitureReason;
+        // Only accept schema-valid depositForfeitureReason values
+        // (['early_vacancy','admin_decision',null]); an early termination maps
+        // to "early_vacancy". Anything else is ignored so a bad caller value
+        // can't fail the move-out save.
+        const VALID_FORFEITURE_REASONS = new Set(["early_vacancy", "admin_decision"]);
+        if (VALID_FORFEITURE_REASONS.has(payload.forfeitureReason)) {
+          reservation.depositForfeitureReason = payload.forfeitureReason;
+        }
       }
 
       reservation.finalSettlementSummary = {
@@ -2261,6 +2389,24 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         },
       };
     });
+
+    // ── Tenant is leaving the dorm: resolve any OPEN scheduled room transfer
+    //    so a future destination hold is never left blocking a room after the
+    //    tenant is gone. No payment -> safe auto-cancel; payment exists ->
+    //    hold released but Bill/Payment/deposit-ledger/Addendum history
+    //    preserved + action_required PAYMENT_ALREADY_RECEIVED. Never executes
+    //    the transfer. Best-effort — runs AFTER the move-out txn commits and
+    //    never fails the move-out itself. (Termination routes through this
+    //    same workflow.)
+    try {
+      const { resolveScheduledTransferBeforeTenantDeparture } = await import(
+        "../services/scheduledRoomTransferExecutor.js"
+      );
+      await resolveScheduledTransferBeforeTenantDeparture(reservationId, { actorId });
+    } catch (e) {
+      logger.warn({ err: e, reservationId }, "moveOutStayWorkflow: scheduled-transfer resolution failed (non-fatal)");
+    }
+
     return result;
   } finally {
     await session.endSession();
@@ -2333,7 +2479,12 @@ export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
  * penalty/forfeiture fields specific to early termination.
  */
 export async function executeEarlyTerminationWorkflow(reservationId, payload = {}, actorId = null) {
-  const { penaltyFee = 0, forfeitureReason = "early_termination", ...rest } = payload;
+  // depositForfeitureReason enum is ['early_vacancy','admin_decision',null].
+  // Early termination = actualMoveOutDate < leaseEndDate, which IS the schema's
+  // definition of "early_vacancy" (see models/Reservation.js). moveOutStayWorkflow
+  // already sets this for an early vacancy; we keep the value schema-valid so the
+  // "terminated"-reason override at line ~2331 does not write an invalid enum.
+  const { penaltyFee = 0, forfeitureReason = "early_vacancy", ...rest } = payload;
   const result = await moveOutStayWorkflow({
     reservationId,
     payload: {
@@ -2443,12 +2594,23 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
     throw new Error("Reservation not found");
   }
 
-  reservation.status = "abandoned";
+  // Abandonment is a permanent departure. The canonical Reservation status set
+  // (CANONICAL_RESERVATION_STATUSES in utils/lifecycleNaming.js — the enum the
+  // `status` field actually validates against) has NO "abandoned" value; the
+  // terminal "tenant has left" state is "moveOut", same as a normal move-out.
+  // The abandonment-specific meaning is carried by the deposit-forfeiture
+  // fields + the human-readable note below, exactly as before.
+  reservation.status = "moveOut";
   reservation.depositForfeited = true;
-  reservation.depositForfeitureReason = "unannounced_abandonment";
+  // depositForfeitureReason enum is ['early_vacancy','admin_decision',null].
+  // An admin-triggered ghost-tenant forfeiture is an "admin_decision"; the
+  // specific "unannounced abandonment" wording is preserved in notes.
+  reservation.depositForfeitureReason = "admin_decision";
+  reservation.depositForfeitedAt = new Date();
+  reservation.depositRefundStatus = "forfeited";
   reservation.depositRefundAmount = 0;
-  reservation.abandonedAt = new Date();
-  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Abandonment protocol triggered by admin ${actorId || ""}`;
+  reservation.moveOutDate = reservation.moveOutDate || new Date();
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Unannounced abandonment protocol triggered by admin ${actorId || ""}`;
   await reservation.save();
 
   // Free bed inventory immediately
@@ -2464,8 +2626,25 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
   // Update user status
   const user = await User.findById(reservation.userId);
   if (user) {
-    user.tenantStatus = "abandoned";
+    // User.tenantStatus enum: ['applicant','active','inactive','moved_out',
+    // 'evicted','blacklisted']. "moved_out" is the canonical departed-tenant
+    // value the rest of the codebase recognises (inactivity guards check
+    // ['inactive','moved_out']); the punitive/forfeiture context lives on the
+    // Reservation, not here.
+    user.tenantStatus = "moved_out";
     await user.save();
+  }
+
+  // Resolve any OPEN scheduled room transfer — same rule as move-out: no
+  // payment -> safe auto-cancel; payment exists -> hold released, financial
+  // history preserved, action_required. Never executes the transfer.
+  try {
+    const { resolveScheduledTransferBeforeTenantDeparture } = await import(
+      "../services/scheduledRoomTransferExecutor.js"
+    );
+    await resolveScheduledTransferBeforeTenantDeparture(reservationId, { actorId });
+  } catch (e) {
+    logger.warn({ err: e, reservationId }, "executeAbandonmentProtocolWorkflow: scheduled-transfer resolution failed (non-fatal)");
   }
 
   return {

@@ -670,6 +670,12 @@ export function buildTenantWorkspaceEntry({
   violations = [],
   tenantStatus = "",
   hasAvailableBedsInBranch = true,
+  // Serialized open ScheduledRoomTransfer (serializeScheduledRoomTransfer)
+  // when the detail view has resolved one; null for the list view. Surfaced
+  // verbatim under `scheduledRoomTransfer` — it NEVER feeds into current
+  // room / rent / occupancy fields (the tenant stays in the source room
+  // until the effective date).
+  scheduledRoomTransfer = null,
   now = new Date(),
 }) {
   const leaseEndDate = currentStay?.leaseEndDate || computeLeaseEndDate(reservation);
@@ -911,6 +917,10 @@ export function buildTenantWorkspaceEntry({
     },
     financialSummary,
     roomHistory,
+    // An upcoming (not-yet-effective) room transfer, if one is scheduled.
+    // Display-only: the tenant remains in `basicInfo.room` / `paymentInfo`
+    // rates until its effectiveDate.
+    scheduledRoomTransfer: scheduledRoomTransfer || null,
     systemWarnings: warningFlags,
     contracts: (contracts || []).map((c) => ({
       _id: String(c._id || c.id),

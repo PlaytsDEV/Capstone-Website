@@ -151,6 +151,29 @@ export function getVisibleBillDueDate(billLike = {}) {
 
 export function getVisibleBillSnapshot(billLike = {}, now = new Date()) {
   const charges = getVisibleBillCharges(billLike);
+
+  // A voided Bill (e.g. an unpaid Scheduled Room Transfer Balance Bill whose
+  // schedule was cancelled before cutover) keeps its historical total, charge
+  // breakdown and paidAmount for audit, but is NEVER outstanding. Its
+  // tenant-facing remaining balance is zero on every surface (web + mobile),
+  // and syncBillAmounts() must not recompute total - paid back into it.
+  if (billLike?.status === "voided") {
+    const grossAmount = sumBillCharges(charges);
+    const totalAmount = roundMoney(
+      Math.max(grossAmount - (billLike?.reservationCreditApplied || 0), 0),
+    );
+    return {
+      charges,
+      grossAmount,
+      totalAmount,
+      paidAmount: roundMoney(billLike?.paidAmount || 0),
+      remainingAmount: 0,
+      dueDate: getVisibleBillDueDate(billLike),
+      issuedAt: getVisibleBillIssuedAt(billLike),
+      status: "voided",
+    };
+  }
+
   if (billLike?.billType === "initial_payment") {
     const breakdownGross = Number(billLike?.initialPaymentBreakdown?.grossInitialAmount || 0);
     const breakdownTotal = Number(billLike?.initialPaymentBreakdown?.initialPaymentTotal || 0);

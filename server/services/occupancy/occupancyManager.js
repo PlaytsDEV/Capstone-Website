@@ -106,10 +106,33 @@ const getRoomReadinessStatus = (beds, isAvailable) => {
   return "mixed";
 };
 
-export const deriveRoomOccupancyState = (room, reservations = []) => {
+/**
+ * @param {Object} room
+ * @param {Object[]} reservations  active ({reserved, moveIn}) reservations for this room
+ * @param {Object[]} [scheduledHolds]  OPEN inbound ScheduledRoomTransfer rows
+ *   targeting this room. Display-only: a held bed is marked `scheduledIncoming`
+ *   and counted in `currentOccupancy` (committed capacity), but this NEVER
+ *   changes any tenant's actual current room. Callers that don't pass this
+ *   are unaffected.
+ */
+export const deriveRoomOccupancyState = (room, reservations = [], scheduledHolds = []) => {
   const reservationsByBedId = new Map();
   const reservationsByReservationId = new Map();
   const reservationsByUserId = new Map();
+
+  const heldBedIds = new Set(
+    (Array.isArray(scheduledHolds) ? scheduledHolds : [])
+      .map((h) => (h?.destinationBedId ? String(h.destinationBedId) : null))
+      .filter(Boolean),
+  );
+  const heldByBedId = new Map(
+    (Array.isArray(scheduledHolds) ? scheduledHolds : [])
+      .filter((h) => h?.destinationBedId)
+      .map((h) => [String(h.destinationBedId), h]),
+  );
+  const bedlessHoldCount = (Array.isArray(scheduledHolds) ? scheduledHolds : []).filter(
+    (h) => !h?.destinationBedId,
+  ).length;
 
   for (const reservation of reservations) {
     reservationsByReservationId.set(String(reservation._id), reservation);
@@ -125,6 +148,28 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
   }
 
   const beds = (room.beds || []).map((bed) => {
+    // A bed held by an OPEN inbound scheduled transfer: render "reserved" +
+    // scheduledIncoming. The tenant's reservation is still in their SOURCE
+    // room, so it won't match below — take this branch first.
+    if (bed.id && heldBedIds.has(String(bed.id))) {
+      const hold = heldByBedId.get(String(bed.id));
+      return {
+        id: bed.id,
+        position: bed.position,
+        bunkBlock: bed.bunkBlock || (bed.position === "single" ? "none" : "A"),
+        code: bed.code || null,
+        status: "reserved",
+        scheduledIncoming: true,
+        lockExpiresAt: null,
+        lockedBy: null,
+        occupant: {
+          reservationId: hold?.reservationId ? String(hold.reservationId) : null,
+          userId: hold?.tenantId ? String(hold.tenantId) : null,
+          scheduledTransferEffectiveDate: hold?.effectiveTransferDate || null,
+        },
+      };
+    }
+
     const matchedReservation =
       reservationsByBedId.get(bed.id) ||
       (bed.occupiedBy?.reservationId
@@ -195,7 +240,11 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
   const availableBeds = beds.filter((bed) => bed.status === "available");
   const lockedBeds = beds.filter((bed) => bed.status === "locked");
   const maintenanceBeds = beds.filter((bed) => bed.status === "maintenance");
-  const currentOccupancy = reservations.length;
+  // Committed capacity = active reservations + OPEN inbound scheduled-transfer
+  // holds (bed-backed holds are already in `beds` as "reserved"; private/
+  // capacity-only holds have no bed row so are added here).
+  const scheduledIncomingCount = heldBedIds.size + bedlessHoldCount;
+  const currentOccupancy = reservations.length + scheduledIncomingCount;
   const isAvailable = getRoomAvailabilityFromBeds(room, beds, currentOccupancy);
   const readinessStatus = getRoomReadinessStatus(beds, isAvailable);
 
@@ -211,6 +260,7 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
     currentOccupancy,
     physicalOccupancy: occupiedBeds.length,
     reservedCount: reservedBeds.length,
+    scheduledIncomingCount,
     occupancyRate:
       room.capacity > 0
         ? `${Math.round((currentOccupancy / room.capacity) * 100)}%`

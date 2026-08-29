@@ -45,6 +45,7 @@ import BedCheckoutLock from "./BedCheckoutLock.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
+import ScheduledRoomTransfer from "./ScheduledRoomTransfer.js";
 import VisitAvailability from "./VisitAvailability.js";
 import VisitAvailabilityHistory from "./VisitAvailabilityHistory.js";
 import VisitConflictLog from "./VisitConflictLog.js";
@@ -112,6 +113,7 @@ export {
   User,
   Room,
   Reservation,
+  ScheduledRoomTransfer,
   Inquiry,
   AuditLog,
   Bill,
@@ -235,6 +237,7 @@ export default {
   User,
   Room,
   Reservation,
+  ScheduledRoomTransfer,
   Inquiry,
   SupportInquiry,
   AuditLog,

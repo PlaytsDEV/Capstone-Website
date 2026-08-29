@@ -104,11 +104,18 @@ const fmtMoney = (value) =>
       })}`
     : "—";
 
+// Local calendar date as YYYY-MM-DD — the same value a native
+// <input type="date"> produces. Must NOT use toISOString(), which converts to
+// UTC and can return the previous day for a Philippines (UTC+8) user shortly
+// after local midnight.
 const toDateInputValue = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
 
 function actionTone(action) {
