@@ -507,6 +507,14 @@
   flex-direction: column;
   gap: 20px;
   width: 100%;
+  padding-bottom: 36px;
+}
+
+.visit-blackout-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
 }
 
 /* ─── Status Dots ────────────────────────────────────────────── */
@@ -1908,6 +1916,13 @@
   flex-wrap: wrap;
 }
 
+.visit-blackout-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .visit-blackout-search {
   position: relative;
   display: flex;
@@ -1918,7 +1933,8 @@
   background: var(--bg-card, #ffffff);
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-md, 8px);
-  min-width: 220px;
+  width: 240px;
+  min-width: 180px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -2332,6 +2348,15 @@
 
   .visit-slot-table__head {
     display: none;
+  }
+
+  .visit-blackout-toolbar-left,
+  .visit-blackout-toolbar-right {
+    width: 100%;
+  }
+
+  .visit-blackout-search {
+    width: 100%;
   }
 
   .visit-blackout-row {

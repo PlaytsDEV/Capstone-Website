@@ -50,25 +50,33 @@ export default function BedOccupantDetailModal({
   const isReserved = rawStatus === "reserved";
   const isLocked = rawStatus === "locked";
 
-  const occupantName =
+  const resolvedName =
     occupant.name ||
     occupant.userName ||
     bed?.userName ||
     bed?.tenantName ||
     (occupant.firstName || occupant.lastName
       ? `${occupant.firstName || ""} ${occupant.lastName || ""}`.trim()
+      : null) ||
+    extraDetails?.tenant?.name ||
+    extraDetails?.user?.name ||
+    (extraDetails?.tenant?.firstName || extraDetails?.tenant?.lastName
+      ? `${extraDetails?.tenant?.firstName || ""} ${extraDetails?.tenant?.lastName || ""}`.trim()
+      : null) ||
+    (extraDetails?.firstName || extraDetails?.lastName
+      ? `${extraDetails?.firstName || ""} ${extraDetails?.lastName || ""}`.trim()
       : null);
 
-  const email = occupant.email || occupant.userEmail || bed?.userEmail || extraDetails?.tenant?.email || null;
-  const phone = occupant.phone || occupant.userPhone || bed?.userPhone || extraDetails?.tenant?.phone || null;
+  const email = occupant.email || occupant.userEmail || bed?.userEmail || extraDetails?.tenant?.email || extraDetails?.email || null;
+  const phone = occupant.phone || occupant.userPhone || bed?.userPhone || extraDetails?.tenant?.phone || extraDetails?.phone || null;
   const reservationId = occupant.reservationId || bed?.reservationId || extraDetails?.reservationId || extraDetails?._id || null;
   const occupiedSince = occupant.occupiedSince || bed?.occupiedSince || extraDetails?.moveInDate || extraDetails?.startDate || null;
   const expectedVacancy = bed?.expectedVacancyDate || occupant.expectedVacancyDate || extraDetails?.endDate || extraDetails?.expectedVacancyDate || null;
   const daysRemaining = bed?.daysRemaining ?? occupant.daysRemaining ?? (expectedVacancy ? Math.ceil((new Date(expectedVacancy) - new Date()) / (1000 * 60 * 60 * 24)) : null);
 
-  // Fetch extra details if reservationId is available and email/phone are missing
+  // Fetch extra details if reservationId is available and name/email/phone are missing
   useEffect(() => {
-    if (!reservationId || (email && phone)) return;
+    if (!reservationId || (email && phone && resolvedName)) return;
     let isMounted = true;
 
     reservationApi
@@ -87,10 +95,10 @@ export default function BedOccupantDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [reservationId, email, phone]);
+  }, [reservationId, email, phone, resolvedName]);
 
   const handleOpenTenantsPage = () => {
-    const searchStr = occupantName || email;
+    const searchStr = resolvedName || email;
     let url = "/admin/tenants";
     if (reservationId) {
       url = `/admin/tenants?reservationId=${reservationId}${
@@ -109,7 +117,7 @@ export default function BedOccupantDetailModal({
 
   const bedLabel = getBedDisplayLabel(bed || {});
   const roomName = room?.name || room?.roomNumber || "Room";
-  const initials = occupantName ? getInitials(occupantName) : isReserved ? "RES" : isLocked ? "PAY" : "OCC";
+  const initials = resolvedName ? getInitials(resolvedName) : isReserved ? "RES" : isLocked ? "PAY" : "OCC";
 
   const modalContent = (
     <div
@@ -132,7 +140,7 @@ export default function BedOccupantDetailModal({
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-sm text-foreground truncate leading-snug">
-                {occupantName || (isReserved ? "Reserved Bed" : isLocked ? "Payment Pending" : "Occupied Bed")}
+                {resolvedName || (isReserved ? "Reserved Bed" : isLocked ? "Payment Pending" : "Occupied Bed")}
               </h3>
               <p className="text-xs text-muted-foreground truncate mt-0.5">
                 {roomName} &bull; {bedLabel}

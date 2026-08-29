@@ -29,6 +29,7 @@ import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { useBusinessSettings } from "../../../../shared/hooks/queries/useSettings";
 import { showNotification } from "../../../../shared/utils/notification";
+import getFriendlyError from "../../../../shared/utils/friendlyError";
 
 /**
  * Generate default beds based on room type and capacity.
@@ -76,6 +77,13 @@ const CAPACITY_BY_TYPE = {
   private: 1,
   "double-sharing": 2,
   "quadruple-sharing": 4,
+};
+
+/** Standard base rates per room type */
+const STANDARD_ROOM_RATES = {
+  private: { basePrice: 15000, shortTermRate: 16000 },
+  "double-sharing": { basePrice: 9000, shortTermRate: 10000 },
+  "quadruple-sharing": { basePrice: 6000, shortTermRate: 7000 },
 };
 
 const ROOM_TYPE_META = {
@@ -179,7 +187,12 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         type: room.type || "",
         floor: room.floor || 1,
         capacity: room.capacity || (room.type ? CAPACITY_BY_TYPE[room.type] : 0),
-        price: room.price !== undefined && room.price !== null ? String(room.price) : "",
+        price:
+          room.price !== undefined && room.price !== null
+            ? String(room.price)
+            : room.type && STANDARD_ROOM_RATES[room.type]?.basePrice
+            ? String(STANDARD_ROOM_RATES[room.type].basePrice)
+            : "",
         monthlyPrice: room.monthlyPrice || 0,
         description: room.description || "",
         amenities: normalizeList(room.amenities),
@@ -235,11 +248,10 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     }
   });
 
-  // Calculate live long-term discount rates
+  // Calculate live long-term discount rates directly from System Settings standard room rates
   const pricingSummary = useMemo(() => {
-    const basePrice = Number(form.price) || 0;
-    if (basePrice <= 0 || basePrice > LIMITS.PRICE_MAX) return null;
-    if (!form.type) return null;
+    if (!form.type || !STANDARD_ROOM_RATES[form.type]) return null;
+    const { basePrice, shortTermRate } = STANDARD_ROOM_RATES[form.type];
 
     const isDiscountEnabled = settings?.isDiscountEnabled !== false;
     let discountPercent = 0;
@@ -262,23 +274,24 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     return {
       basePrice,
+      shortTermRate,
       isDiscountEnabled: isDiscountEnabled && effectiveDiscount > 0,
       discountPercent: effectiveDiscount,
       discountedPrice,
       monthlySavings,
       minMonths,
     };
-  }, [form.price, form.type, settings]);
+  }, [form.type, settings]);
 
   const handleChange = (field, value) => {
     let nextValue = value;
 
     if (field === "name") {
-      // Room name: letters, numbers, spaces, hyphens, and parentheses; max 50 chars
-      nextValue = value.replace(/[^a-zA-Z0-9\s()\-]/g, "").slice(0, LIMITS.NAME_MAX);
+      // Room name: letters, numbers, hyphens, and spaces; max 50 chars
+      nextValue = value.replace(/[^a-zA-Z0-9\s-]/g, "").slice(0, LIMITS.NAME_MAX);
     } else if (field === "roomNumber") {
-      // Room number: alphanumeric and hyphens; max 10 chars
-      nextValue = value.replace(/[^a-zA-Z0-9\-]/g, "").slice(0, LIMITS.ROOM_NUMBER_MAX);
+      // Room number: numbers only; max 10 digits
+      nextValue = value.replace(/\D/g, "").slice(0, LIMITS.ROOM_NUMBER_MAX);
     } else if (field === "floor") {
       // Floor: positive integer only, max 3 digits
       const digitsOnly = String(value).replace(/[^0-9]/g, "").slice(0, 3);
@@ -291,8 +304,24 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     setForm((prev) => {
       const updated = { ...prev, [field]: nextValue };
+      if (field === "roomNumber") {
+        // If room name is empty, "Room", or previously auto-named with the old room number, sync with new room number
+        const currentName = prev.name.trim();
+        const prevNumber = prev.roomNumber.trim();
+        const isDefaultOrMatchesRoom =
+          !currentName ||
+          currentName.toLowerCase() === "room" ||
+          (prevNumber && currentName.toLowerCase() === `room ${prevNumber}`.toLowerCase());
+
+        if (isDefaultOrMatchesRoom) {
+          updated.name = nextValue ? `Room ${nextValue}` : currentName.toLowerCase().startsWith("room") ? "Room" : currentName;
+        }
+      }
       if (field === "type") {
         updated.capacity = CAPACITY_BY_TYPE[nextValue] ?? 0;
+        if (STANDARD_ROOM_RATES[nextValue]?.basePrice) {
+          updated.price = String(STANDARD_ROOM_RATES[nextValue].basePrice);
+        }
       }
       return updated;
     });
@@ -318,8 +347,8 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         err = `Room name must be at least ${LIMITS.NAME_MIN} characters`;
       } else if (trimmed.length > LIMITS.NAME_MAX) {
         err = `Room name cannot exceed ${LIMITS.NAME_MAX} characters`;
-      } else if (!/[a-zA-Z]/.test(trimmed)) {
-        err = "Room name must contain letters (e.g. Deluxe Room)";
+      } else if (!/^[a-zA-Z0-9\s-]+$/.test(trimmed)) {
+        err = "Room name must contain letters, numbers, hyphens, and spaces only";
       }
     }
 
@@ -328,9 +357,9 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       if (!trimmed) {
         err = "Room number is required";
       } else if (trimmed.length > LIMITS.ROOM_NUMBER_MAX) {
-        err = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} characters`;
-      } else if (!/^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(trimmed)) {
-        err = "Room number must be alphanumeric (e.g. 101, 101-A, PH-1)";
+        err = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} digits`;
+      } else if (!/^[0-9]+$/.test(trimmed)) {
+        err = "Room number must contain numbers only";
       }
     }
 
@@ -386,17 +415,17 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       newErrors.name = `Room name must be at least ${LIMITS.NAME_MIN} characters`;
     } else if (trimmedName.length > LIMITS.NAME_MAX) {
       newErrors.name = `Room name cannot exceed ${LIMITS.NAME_MAX} characters`;
-    } else if (!/[a-zA-Z]/.test(trimmedName)) {
-      newErrors.name = "Room name must contain letters (e.g. Deluxe Room)";
+    } else if (!/^[a-zA-Z0-9\s-]+$/.test(trimmedName)) {
+      newErrors.name = "Room name must contain letters, numbers, hyphens, and spaces only";
     }
 
     const trimmedNumber = form.roomNumber.trim();
     if (!trimmedNumber) {
       newErrors.roomNumber = "Room number is required";
     } else if (trimmedNumber.length > LIMITS.ROOM_NUMBER_MAX) {
-      newErrors.roomNumber = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} characters`;
-    } else if (!/^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(trimmedNumber)) {
-      newErrors.roomNumber = "Room number must be alphanumeric (e.g. 101, 101-A, PH-1)";
+      newErrors.roomNumber = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} digits`;
+    } else if (!/^[0-9]+$/.test(trimmedNumber)) {
+      newErrors.roomNumber = "Room number must contain numbers only";
     }
 
     if (!form.type || !["private", "double-sharing", "quadruple-sharing"].includes(form.type)) {
@@ -405,17 +434,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     if (!form.capacity || form.capacity < 1) {
       newErrors.capacity = "Capacity must be at least 1";
-    }
-
-    if (form.price === "" || form.price === null || form.price === undefined) {
-      newErrors.price = "Base price is required";
-    } else {
-      const num = Number(form.price);
-      if (isNaN(num) || num < LIMITS.PRICE_MIN) {
-        newErrors.price = `Base rent must be at least ₱${LIMITS.PRICE_MIN.toLocaleString()}/month`;
-      } else if (num > LIMITS.PRICE_MAX) {
-        newErrors.price = `Base rent cannot exceed ₱${LIMITS.PRICE_MAX.toLocaleString()}/month`;
-      }
     }
 
     if (form.floor === "" || form.floor === null || form.floor === undefined) {
@@ -438,7 +456,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       name: true,
       roomNumber: true,
       type: true,
-      price: true,
       floor: true,
     });
     return Object.keys(newErrors).length === 0;
@@ -459,6 +476,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         (form.images || []).map((entry) => uploadRoomPhotoIfFile(entry.value, storageRoomId)),
       );
 
+      const baseRates = STANDARD_ROOM_RATES[form.type] || { basePrice: 15000, shortTermRate: 16000 };
       const payload = {
         name: form.name.trim(),
         roomNumber: form.roomNumber.trim(),
@@ -466,8 +484,9 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         type: form.type,
         floor: Number(form.floor),
         capacity: Number(form.capacity),
-        price: Number(form.price),
-        monthlyPrice: 0,
+        price: baseRates.basePrice,
+        regularLongRate: baseRates.basePrice,
+        regularShortRate: baseRates.shortTermRate,
         description: form.description.trim(),
         amenities: form.amenities || [],
         policies: form.policies || [],
@@ -483,9 +502,10 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     } catch (err) {
       console.error("[RoomFormModal] Save room failed:", err);
       if (!onSaveCalled) {
-        const errorMessage =
-          err?.message ||
-          "Unable to save room details. Please check the entered information and try again.";
+        const errorMessage = getFriendlyError(
+          err,
+          "Unable to save room details. Please check the entered information and try again.",
+        );
         showNotification(errorMessage, "error", 5000);
       }
     } finally {
@@ -606,18 +626,22 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     }));
   };
 
+  const effectivePrice =
+    Number(form.price) ||
+    (form.type && STANDARD_ROOM_RATES[form.type]?.basePrice ? STANDARD_ROOM_RATES[form.type].basePrice : 0);
+
   const isFormValid =
     form.name.trim().length >= LIMITS.NAME_MIN &&
     form.name.trim().length <= LIMITS.NAME_MAX &&
-    /[a-zA-Z]/.test(form.name.trim()) &&
+    /^[a-zA-Z0-9\s-]+$/.test(form.name.trim()) &&
     form.roomNumber.trim().length >= LIMITS.ROOM_NUMBER_MIN &&
     form.roomNumber.trim().length <= LIMITS.ROOM_NUMBER_MAX &&
     /^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(form.roomNumber.trim()) &&
     Boolean(form.type) &&
     ["private", "double-sharing", "quadruple-sharing"].includes(form.type) &&
     Number(form.capacity) >= 1 &&
-    Number(form.price) >= LIMITS.PRICE_MIN &&
-    Number(form.price) <= LIMITS.PRICE_MAX &&
+    effectivePrice >= LIMITS.PRICE_MIN &&
+    effectivePrice <= LIMITS.PRICE_MAX &&
     Number(form.floor) >= LIMITS.FLOOR_MIN &&
     Number(form.floor) <= LIMITS.FLOOR_MAX;
 
@@ -711,12 +735,14 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                       <input
                         id="rfm-number"
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         spellCheck={false}
                         maxLength={LIMITS.ROOM_NUMBER_MAX}
                         value={form.roomNumber}
                         onChange={(e) => handleChange("roomNumber", e.target.value)}
                         onBlur={() => handleBlur("roomNumber")}
-                        placeholder="e.g. 101 or 101-A"
+                        placeholder="e.g. 101"
                       />
                       {touched.roomNumber && errors.roomNumber && (
                         <span className="field-error" role="alert">
@@ -849,77 +875,31 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                     <DollarSign size={16} className="rfm-card-group__icon" />
                     <h3>Pricing &amp; Rent Billing</h3>
                   </div>
-                  <span className="rfm-card-group__hint">Monthly base rent and discount rates</span>
+                  <span className="rfm-card-group__hint">Automated rates from System Settings</span>
                 </div>
 
                 <div className="rfm-card-group__body">
-                  <div className="room-form-row">
-                    <div className={`room-form-group ${touched.price && errors.price ? "has-error" : ""}`}>
-                      <div className="rfm-field-header">
-                        <label htmlFor="rfm-price">
-                          Base Monthly Rent (₱) <span className="rfm-required">*</span>
-                        </label>
-                        <span className="rfm-char-counter">₱{LIMITS.PRICE_MIN.toLocaleString()} – ₱{LIMITS.PRICE_MAX.toLocaleString()}</span>
-                      </div>
-                      <div className="rfm-currency-input-wrap">
-                        <span className="rfm-currency-prefix">₱</span>
-                        <input
-                          id="rfm-price"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="e.g. 5500"
-                          value={form.price}
-                          onChange={(e) => handleChange("price", e.target.value)}
-                          onBlur={() => handleBlur("price")}
-                          className="rfm-currency-input"
-                        />
-                      </div>
-                      {touched.price && errors.price && (
-                        <span className="field-error" role="alert">
-                          <AlertCircle size={12} className="shrink-0" />
-                          {errors.price}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Live Lease Rent Calculation Preview */}
-                  {pricingSummary && (
-                    <div className="rfm-pricing-preview">
-                      <div className="rfm-pricing-preview__header">
-                        <Percent size={14} />
-                        <span>Live Lease Rent Calculation Preview</span>
-                      </div>
-                      <div className="rfm-pricing-preview__grid">
+                  {pricingSummary ? (
+                    <div className="rfm-pricing-preview" style={{ marginTop: 0 }}>
+                      <div className="rfm-pricing-preview__grid" style={{ gridTemplateColumns: "1fr" }}>
                         <div className="rfm-pricing-preview__card">
-                          <span className="rfm-pricing-preview__label">Short-Term (Monthly)</span>
+                          <span className="rfm-pricing-preview__label">Base Monthly Rent</span>
                           <span className="rfm-pricing-preview__value">
                             ₱{pricingSummary.basePrice.toLocaleString("en-PH")}/mo
                           </span>
-                          <span className="rfm-pricing-preview__sub">Undiscounted base rate</span>
+                          <span className="rfm-pricing-preview__sub">
+                            Standard rate for {ROOM_TYPE_META[form.type]?.label} (discounts apply dynamically based on applicant's lease term)
+                          </span>
                         </div>
-                        {pricingSummary.isDiscountEnabled ? (
-                          <div className="rfm-pricing-preview__card rfm-pricing-preview__card--highlight">
-                            <span className="rfm-pricing-preview__label">
-                              Long-Term ({pricingSummary.minMonths}+ mos)
-                            </span>
-                            <span className="rfm-pricing-preview__value rfm-pricing-preview__value--green">
-                              ₱{pricingSummary.discountedPrice.toLocaleString("en-PH")}/mo
-                            </span>
-                            <span className="rfm-pricing-preview__sub">
-                              {pricingSummary.discountPercent}% discount · Save ₱{pricingSummary.monthlySavings.toLocaleString("en-PH")}/mo
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="rfm-pricing-preview__card">
-                            <span className="rfm-pricing-preview__label">Long-Term Rent</span>
-                            <span className="rfm-pricing-preview__value">
-                              ₱{pricingSummary.basePrice.toLocaleString("en-PH")}/mo
-                            </span>
-                            <span className="rfm-pricing-preview__sub">No discount active</span>
-                          </div>
-                        )}
                       </div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted-foreground)" }}>
+                        ℹ Room base rates are managed globally in <strong>System Settings</strong>.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rfm-capacity-badge">
+                      <DollarSign size={13} />
+                      <span>Please select an occupancy classification above to view room base price</span>
                     </div>
                   )}
                 </div>
@@ -1253,7 +1233,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                     saving
                       ? "Saving room details..."
                       : !isFormValid
-                      ? "Please provide a valid Room Name (min 2 chars), Room Number (e.g. 101), Room Type, Base Rent (₱500–₱1,000,000), and Floor (1–100)"
+                      ? "Please provide a valid Room Name (min 2 chars), Room Number, Room Type, and Floor (1–100)"
                       : isEdit
                       ? "Save Changes"
                       : "Create Room"

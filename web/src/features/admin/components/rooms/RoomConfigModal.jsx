@@ -59,6 +59,13 @@ export const getMaxBedsForRoomType = (type) => {
   return 4;
 };
 
+/** Standard base rates per room type */
+const STANDARD_ROOM_RATES = {
+  private: { basePrice: 15000, shortTermRate: 16000 },
+  "double-sharing": { basePrice: 9000, shortTermRate: 10000 },
+  "quadruple-sharing": { basePrice: 6000, shortTermRate: 7000 },
+};
+
 export default function RoomConfigModal({
   room,
   onClose,
@@ -249,8 +256,8 @@ export default function RoomConfigModal({
 
   const handleFieldChange = (field, value) => {
     if (field === "name") {
-      const lettersOnly = value.replace(/[^a-zA-Z\s-]/g, "");
-      setDraftRoom((prev) => ({ ...prev, name: lettersOnly }));
+      const allowedName = value.replace(/[^a-zA-Z0-9\s-]/g, "").slice(0, 50);
+      setDraftRoom((prev) => ({ ...prev, name: allowedName }));
     } else if (field === "roomNumber") {
       const digitsOnly = value.replace(/\D/g, "");
       setDraftRoom((prev) => ({ ...prev, roomNumber: digitsOnly }));
@@ -363,9 +370,23 @@ export default function RoomConfigModal({
       });
       return;
     }
+    if (nameVal.length < 2) {
+      showNotification({
+        message: "Room name must be at least 2 characters.",
+        type: "warning",
+      });
+      return;
+    }
     if (nameVal.length > 50) {
       showNotification({
         message: "Room name cannot exceed 50 characters.",
+        type: "warning",
+      });
+      return;
+    }
+    if (!/^[a-zA-Z0-9\s-]+$/.test(nameVal)) {
+      showNotification({
+        message: "Room name must contain letters, numbers, hyphens, and spaces only.",
         type: "warning",
       });
       return;
@@ -387,12 +408,9 @@ export default function RoomConfigModal({
       });
       return;
     }
-
-    // 4. Base Price validation
-    const priceVal = Number(draftRoom.price || 0);
-    if (priceVal < 0 || priceVal > 1000000) {
+    if (!/^[0-9]+$/.test(roomNumVal)) {
       showNotification({
-        message: "Base price must be between ₱0 and ₱1,000,000.",
+        message: "Room number must contain numbers only.",
         type: "warning",
       });
       return;
@@ -417,13 +435,17 @@ export default function RoomConfigModal({
           ? draftRoom.policies.split(",").map((s) => s.trim()).filter(Boolean)
           : [];
 
+      const standardRates = STANDARD_ROOM_RATES[roomType] || { basePrice: 15000, shortTermRate: 16000 };
+      const basePriceVal = standardRates.basePrice;
+
       const updatedDraft = {
         ...draftRoom,
         name: nameVal,
         roomNumber: roomNumVal,
         description: (draftRoom.description || "").trim(),
-        price: priceVal,
-        monthlyPrice: 0,
+        price: basePriceVal,
+        regularLongRate: basePriceVal,
+        regularShortRate: standardRates.shortTermRate,
         isPopular: Boolean(draftRoom.isPopular),
         amenities: parsedAmenities,
         policies: parsedPolicies,
@@ -487,6 +509,15 @@ export default function RoomConfigModal({
       maintenanceCount: maintenanceInBunk,
     });
   }
+
+  const standardRates = STANDARD_ROOM_RATES[roomType] || { basePrice: 15000, shortTermRate: 16000 };
+  const currentBasePrice = standardRates.basePrice;
+  const discountPercent =
+    draftRoom.longTermDiscountPercent ??
+    (roomType === "double-sharing" ? 20 : 10);
+  const effectiveMonthlyPrice = Math.round(
+    currentBasePrice * (1 - discountPercent / 100),
+  );
 
   return createPortal(
     <div className="admin-modal-overlay" onClick={handleAttemptClose}>
@@ -598,17 +629,15 @@ export default function RoomConfigModal({
                 </div>
 
                 <div className="room-form-group">
-                  <label>Base Price (₱) <span className="rfm-required">*</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="1000000"
-                    value={draftRoom.price ?? 0}
-                    onChange={(e) => handleFieldChange("price", e.target.value)}
-                  />
-                  <span className="capacity-hint">
-                    Undiscounted rate per tenant/month. Effective long-term monthly rates are automatically calculated using your Business Settings discount percentages.
-                  </span>
+                  <label>Base Price</label>
+                  <div className="rfm-capacity-badge" style={{ marginTop: 2, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      ₱{currentBasePrice.toLocaleString("en-PH")} / mo
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                      Standard rate for {formatRoomType(draftRoom.type)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="room-form-group">

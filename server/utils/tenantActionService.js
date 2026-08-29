@@ -38,6 +38,7 @@ import {
 import {
   CURRENT_STAY_STATUSES,
   resolveCurrentStayForReservation,
+  resolveCurrentStayForTenant,
   resolveAuthoritativeCurrentContract,
 } from "../services/tenantContractSelectionService.js";
 import {
@@ -79,32 +80,40 @@ const parseDateTime = (dateInput, timeInput = "") => {
 export const getMonthlyRent = (reservation) =>
   Number(reservation?.monthlyRent ?? reservation?.roomId?.monthlyPrice ?? reservation?.roomId?.price ?? 0);
 
-async function ensureActiveStay(reservation, actorId = null, session = null) {
-  const existingStay = await resolveCurrentStayForReservation(reservation._id, { session });
+async function ensureActiveStay(reservation, actorId = null, session = null, predecessorContract = null) {
+  let existingStay = await resolveCurrentStayForReservation(reservation._id, { session });
+  if (!existingStay && (reservation.userId?._id || reservation.userId)) {
+    const tenantId = reservation.userId?._id || reservation.userId;
+    existingStay = await resolveCurrentStayForTenant(tenantId, { session });
+  }
   if (existingStay) return existingStay;
 
   const moveInDate = readMoveInDate(reservation);
-  const leaseEndDate = computeLeaseEndDate(reservation);
-  if (!moveInDate || !leaseEndDate) return null;
+  const leaseDuration = Number(reservation?.leaseDuration ?? reservation?.leaseDurationMonths ?? 0);
+  if (!moveInDate || leaseDuration <= 0) return null;
 
-  // Stay.bedId is a required String. A private-room reservation has no
-  // selectedBed.id, so fall back to the same `room-<roomId>` sentinel the
-  // renewal path (renewStayWorkflow) already uses for private rooms — an
-  // empty string fails the `required` validator.
+  const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
+  if (!leaseEndDate) return null;
+
   const stayRoomId = reservation.roomId?._id || reservation.roomId;
-  const stayBedId = reservation.selectedBed?.id || `room-${stayRoomId}`;
+  let branch = reservation.roomId?.branch || predecessorContract?.branch || "";
+  if (!branch && stayRoomId) {
+    const roomDoc = await Room.findById(stayRoomId).session(session).lean();
+    if (roomDoc?.branch) branch = roomDoc.branch;
+  }
+  const stayBedId = reservation.selectedBed?.id || (stayRoomId ? `room-${stayRoomId}` : "bed-1");
 
   const stay = await Stay.create(
     [
       {
         tenantId: reservation.userId?._id || reservation.userId,
         reservationId: reservation._id,
-        branch: reservation.roomId?.branch || "",
+        branch,
         roomId: stayRoomId,
         bedId: stayBedId,
         leaseStartDate: moveInDate,
         leaseEndDate,
-        monthlyRent: getMonthlyRent(reservation),
+        monthlyRent: getMonthlyRent(reservation) || predecessorContract?.monthlyRent || 0,
         status: hasReservationStatus(reservation.status, "moveOut") ? "completed" : "active",
         endedAt: hasReservationStatus(reservation.status, "moveOut") ? reservation.moveOutDate || null : null,
         endReason: hasReservationStatus(reservation.status, "moveOut") ? "legacy_move_out" : "",
@@ -115,9 +124,17 @@ async function ensureActiveStay(reservation, actorId = null, session = null) {
     { session },
   );
 
-  reservation.currentStayId = stay[0]._id;
-  reservation.latestStayStatus = stay[0].status;
-  await reservation.save({ session });
+  if (typeof reservation.save === "function") {
+    reservation.currentStayId = stay[0]._id;
+    reservation.latestStayStatus = stay[0].status;
+    await reservation.save({ session });
+  } else {
+    await Reservation.updateOne(
+      { _id: reservation._id },
+      { $set: { currentStayId: stay[0]._id, latestStayStatus: stay[0].status } },
+      { session },
+    );
+  }
 
   return stay[0];
 }
@@ -227,7 +244,7 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
     reservationId, tenantId: reservation.userId,
   });
   const transferDate = normalizeDate(effectiveTransferDate) || new Date();
-  const moveInDate = readMoveInDate(reservation);
+  const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || activeStay?.leaseStartDate || null;
   const leaseEndDate = activeStay?.leaseEndDate || predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
   const leaseDurationMonths =
     predecessorContract?.leaseDurationMonths ||
@@ -273,14 +290,31 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
   // pre-paid Scheduled Transfer Balance Bill funded it — so a paid deposit
   // component is not mistaken for "requirement dropped" (see Phase 2G #13).
   const destinationRequiredDeposit = roundMoney(destinationApprovedRate);
-  let depositHeld = depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
-    ? Number(depositHeldOverride)
-    : Number(reservation.securityDepositHeld);
+  const rawDepositHeld = reservation.securityDepositHeld;
+  const isExplicitDeposit =
+    depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
+      ? true
+      : rawDepositHeld !== null && rawDepositHeld !== undefined && Number.isFinite(Number(rawDepositHeld));
+
+  let depositHeld =
+    depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
+      ? Number(depositHeldOverride)
+      : isExplicitDeposit
+        ? Number(rawDepositHeld)
+        : null;
+
   let depositHeldKnown = Number.isFinite(depositHeld);
   if (!depositHeldKnown) {
     const fin = resolveReservationFinancials(reservation);
-    depositHeld = fin.isSettled ? roundMoney(Number(fin.securityDeposit) || 0) : null;
-    depositHeldKnown = depositHeld != null;
+    depositHeld =
+      predecessorContract?.securityDepositAmount != null && Number.isFinite(Number(predecessorContract.securityDepositAmount)) && Number(predecessorContract.securityDepositAmount) > 0
+        ? roundMoney(Number(predecessorContract.securityDepositAmount))
+        : fin.securityDeposit > 0
+          ? roundMoney(Number(fin.securityDeposit))
+          : sourceEffectiveRate > 0
+            ? roundMoney(sourceEffectiveRate)
+            : 0;
+    depositHeldKnown = true;
   }
   const depositSettlement = calculateRoomTransferDepositSettlement({
     depositCurrentlyHeld: depositHeldKnown ? depositHeld : 0,
@@ -518,7 +552,11 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
         throw Object.assign(new Error("Only active moved-in tenants can be renewed."), { statusCode: 400, code: "INVALID_STATUS_FOR_RENEWAL" });
       }
 
-      const activeStay = await ensureActiveStay(reservation, actorId, session);
+      const predecessorContract = await resolveAuthoritativeCurrentContract({
+        reservationId: reservation._id,
+        tenantId: reservation.userId?._id || reservation.userId,
+      }).catch(() => null);
+      const activeStay = await ensureActiveStay(reservation, actorId, session, predecessorContract);
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for renewal."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }
@@ -770,7 +808,7 @@ export async function resolveValidatedRoomTransferIntent({
   reservationId,
   payload = {},
   requireConfirm = false,
-  materializeStay = false,
+  materializeStay = true,
   actorId = null,
 }) {
   const reservation = await Reservation.findById(reservationId)
@@ -816,40 +854,51 @@ export async function resolveValidatedRoomTransferIntent({
     throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
   }
 
-  // Resolve (or, on a committing path, lazily materialize) the tenant's
-  // current Stay BEFORE the predecessor-Contract resolution below —
-  // `resolveAuthoritativeCurrentContract` ranks contract candidates against
-  // the current Stay (a reservationId/stayId match outranks a bare
-  // "isCurrent !== false"), so it must run with the real Stay in place.
+  const predecessorContract = await resolveAuthoritativeCurrentContract({
+    reservationId: reservation._id,
+    tenantId: reservation.userId?._id || reservation.userId,
+  });
+
   let activeStay = await resolveCurrentStayForReservation(reservation._id);
-  if (!activeStay && materializeStay) {
-    // Committing path (immediate/scheduled transfer): the tenant is a
-    // legitimately moved-in resident but has never had a lifecycle action
-    // run yet, so the lazily-created Stay does not exist. Create it now via
-    // the canonical path (identical to Stage B / renewStayWorkflow) — exactly
-    // what the transfer transaction would have done a moment later.
-    activeStay = await ensureActiveStay(reservation, actorId);
-    if (!activeStay) {
-      // ensureActiveStay returns null only when the move-in anchor is
-      // underivable (no moveInDate, or no positive leaseDuration). Surface
-      // that specific lifecycle gap rather than the generic message so the
-      // admin knows what to fix on the reservation.
-      throw Object.assign(
-        new Error(
-          "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
-        ),
-        { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
-      );
+  if (!activeStay) {
+    if (materializeStay) {
+      activeStay = await ensureActiveStay(reservation, actorId, null, predecessorContract);
+      if (!activeStay) {
+        throw Object.assign(
+          new Error(
+            "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+          ),
+          { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+        );
+      }
+    } else {
+      const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || null;
+      const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
+      if (!moveInDate || !leaseEndDate) {
+        throw Object.assign(
+          new Error(
+            "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+          ),
+          { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+        );
+      }
+      activeStay = {
+        tenantId: reservation.userId?._id || reservation.userId,
+        reservationId: reservation._id,
+        branch: reservation.roomId?.branch || predecessorContract?.branch || "",
+        roomId: reservation.roomId?._id || reservation.roomId,
+        bedId: reservation.selectedBed?.id || "bed-1",
+        leaseStartDate: moveInDate,
+        leaseEndDate,
+        monthlyRent: getMonthlyRent(reservation) || predecessorContract?.monthlyRent || 0,
+        status: "active",
+      };
     }
   }
   if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
     throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
   }
 
-  const predecessorContract = await resolveAuthoritativeCurrentContract({
-    reservationId: reservation._id,
-    tenantId: reservation.userId?._id || reservation.userId,
-  });
   if (!predecessorContract || !isValidTransferPredecessor(predecessorContract)) {
     throw Object.assign(
       new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
@@ -887,7 +936,7 @@ export async function resolveValidatedRoomTransferIntent({
 export async function prepareRoomTransferAddendum({ reservationId, payload = {}, actorId = null }) {
   const {
     reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate,
-  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: false });
+  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: false, materializeStay: false, actorId });
 
   // Was a compatible Draft already prepared for this exact transfer?
   const existing = await resolveRoomTransferSuccessor({ predecessorContractId: predecessorContract._id }).catch(() => null);
@@ -917,8 +966,8 @@ export async function prepareRoomTransferAddendum({ reservationId, payload = {},
       status: addendum.status,                            // "generated"
       version: addendum.version ?? null,
       amendmentEffectiveDate: addendum.amendmentEffectiveDate || effectiveTransferDate,
-      leaseStartDate: addendum.leaseStartDate || null,    // ORIGINAL lease start (unchanged)
-      leaseEndDate: addendum.leaseEndDate || null,        // ORIGINAL lease end (unchanged)
+      leaseStartDate: addendum.leaseStartDate || predecessorContract?.leaseStartDate || readMoveInDate(reservation) || activeStay?.leaseStartDate || null,    // ORIGINAL lease start (unchanged)
+      leaseEndDate: addendum.leaseEndDate || predecessorContract?.leaseEndDate || activeStay?.leaseEndDate || null,        // ORIGINAL lease end (unchanged)
       roomId: String(addendum.roomId),
       roomNumber: addendum.roomNumber || targetRoom.roomNumber || null,
       roomType: addendum.roomType || targetRoom.type || null,
@@ -1041,28 +1090,6 @@ const DISCARDABLE_ADDENDUM_STATUSES = new Set([
   "awaiting_signatures", "partially_signed",
 ]);
 
-/**
- * Human-readable one-line summary of why a Contract failed
- * `validateContractForGeneration`. `validation.missingFields` entries are
- * `{ field, label }` and `validation.errors` are `{ code, message }` — never
- * feed the bare objects to string concatenation (they stringify to
- * "[object Object]"). Missing fields win when present; then error messages;
- * finally a generic fallback.
- * @param {{ missingFields?: Array, errors?: Array }} validation
- * @returns {string}
- */
-export function summarizeContractValidationGaps(validation = {}) {
-  const missing = (validation.missingFields || [])
-    .map((f) => (typeof f === "string" ? f : f?.label || f?.field))
-    .filter(Boolean);
-  if (missing.length) return missing.join(", ");
-  const errs = (validation.errors || [])
-    .map((e) => (typeof e === "string" ? e : e?.message || e?.code))
-    .filter(Boolean);
-  if (errs.length) return errs.join(", ");
-  return "missing required data";
-}
-
 async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
   const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
@@ -1144,10 +1171,15 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
   if (successor.status !== "ready_for_generation") {
     const validation = await validateContractForGeneration(successor);
     if (!validation.valid) {
+      const missingDetails = [
+        ...(validation.missingFields || []).map((f) => f.label || f.field || String(f)),
+        ...(validation.errors || []).map((e) => e.message || e.code || String(e)),
+        ...(validation.conflicts || []).map((c) => c.message || c.code || String(c)),
+      ].filter(Boolean);
       throw Object.assign(
         new Error(
           "The room-transfer replacement Contract could not be auto-completed for generation: " +
-          summarizeContractValidationGaps(validation) +
+          (missingDetails.join(", ") || "missing required data") +
           ". Complete it in the Contracts workspace, then retry the transfer.",
         ),
         { statusCode: 422, code: "ROOM_TRANSFER_CONTRACT_INCOMPLETE", validation },
@@ -1269,7 +1301,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         );
       }
 
-      const activeStay = await ensureActiveStay(reservation, actorId, session);
+      const activeStay = await ensureActiveStay(reservation, actorId, session, prepPredecessor);
       const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
@@ -1626,17 +1658,29 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         Number.isFinite(Number(payload.depositHeldOverride))
           ? roundMoney(Number(payload.depositHeldOverride))
           : null;
-      let depositCurrentlyHeld = scheduledDepositHeldOverride != null
-        ? scheduledDepositHeldOverride
-        : Number(reservation.securityDepositHeld);
+      const rawHeld = reservation.securityDepositHeld;
+      const isExplicitHeld =
+        scheduledDepositHeldOverride != null
+          ? true
+          : rawHeld !== null && rawHeld !== undefined && Number.isFinite(Number(rawHeld));
+
+      let depositCurrentlyHeld =
+        scheduledDepositHeldOverride != null
+          ? scheduledDepositHeldOverride
+          : isExplicitHeld
+            ? Number(rawHeld)
+            : null;
       let heldWasBackfilled = false;
       if (!Number.isFinite(depositCurrentlyHeld)) {
         const moveInFinancials = resolveReservationFinancials(reservation);
-        // Only treat the move-in deposit as "held" if the initial payment is
-        // actually settled; otherwise fall back to 0 held (never assume cash).
-        depositCurrentlyHeld = moveInFinancials.isSettled
-          ? roundMoney(Number(moveInFinancials.securityDeposit) || 0)
-          : 0;
+        depositCurrentlyHeld =
+          predecessorContract?.securityDepositAmount != null && Number.isFinite(Number(predecessorContract.securityDepositAmount)) && Number(predecessorContract.securityDepositAmount) > 0
+            ? roundMoney(Number(predecessorContract.securityDepositAmount))
+            : moveInFinancials.securityDeposit > 0
+              ? roundMoney(Number(moveInFinancials.securityDeposit))
+              : sourceEffectiveRate > 0
+                ? roundMoney(sourceEffectiveRate)
+                : 0;
         heldWasBackfilled = true;
       }
       const depositSettlement = calculateRoomTransferDepositSettlement({
@@ -1937,8 +1981,10 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // We only (a) initialise securityDepositHeld from move-in financials if
       // it was never populated, and (b) append an audit entry recording the
       // new REQUIRED amount and any additional-due / excess-held.
-      const heldBefore = Number.isFinite(Number(reservation.securityDepositHeld))
-        ? roundMoney(Number(reservation.securityDepositHeld))
+      const rawResHeld = reservation.securityDepositHeld;
+      const hasResHeld = rawResHeld !== null && rawResHeld !== undefined && Number.isFinite(Number(rawResHeld));
+      const heldBefore = hasResHeld
+        ? roundMoney(Number(rawResHeld))
         : roundMoney(depositCurrentlyHeld);
       reservation.securityDepositHeld = heldBefore;
       reservation.securityDepositLedger = reservation.securityDepositLedger || [];
@@ -2307,7 +2353,11 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         throw Object.assign(new Error("Move-out confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
       }
 
-      const activeStay = await ensureActiveStay(reservation, actorId, session);
+      const predecessorContract = await resolveAuthoritativeCurrentContract({
+        reservationId: reservation._id,
+        tenantId: reservation.userId?._id || reservation.userId,
+      }).catch(() => null);
+      const activeStay = await ensureActiveStay(reservation, actorId, session, predecessorContract);
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for move-out."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }

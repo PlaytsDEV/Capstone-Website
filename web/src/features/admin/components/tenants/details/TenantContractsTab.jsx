@@ -1,4 +1,4 @@
-import { FileText, Eye, Download, Layers, CheckCircle2, Circle } from "lucide-react";
+import { FileText, Eye, Download, CheckCircle2, Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import SignedContractUploadSection from "../../SignedContractUploadSection";
 import { formatDate, formatMoney } from "./tenantDetailConstants";
@@ -23,8 +23,8 @@ const getContractStatusDot = (status) =>
 const getContractStatusLabel = (contract) => {
   if (!contract) return "Verified Active Stay";
   const meta = CONTRACT_STATUS_LABELS[contract?.status];
-  if (contract?.isCanonical) {
-    return meta ? `Canonical (${meta.adminLabel})` : "Canonical Contract";
+  if (contract?.isCanonical || contract?.isCurrent) {
+    return meta ? `Current Contract (${meta.adminLabel})` : "Current Contract";
   }
   return meta?.adminLabel || "Verified Active Stay";
 };
@@ -34,8 +34,6 @@ export default function TenantContractsTab({
   dedicatedContract,
   dedicatedContractError,
   allTenantContracts = [],
-  selectedContract = null,
-  onSelectContract = () => {},
   stayReference: stayReferenceProp,
   downloadingProof,
   onOpenDigitalContract,
@@ -43,9 +41,10 @@ export default function TenantContractsTab({
   onContractUpdated,
 }) {
   const displayContract =
-    selectedContract ||
     dedicatedContract ||
-    (allTenantContracts && allTenantContracts.length > 0 ? allTenantContracts[0] : null);
+    (allTenantContracts && allTenantContracts.length > 0
+      ? allTenantContracts.find((c) => c.isCanonical || c.isCurrent) || allTenantContracts[0]
+      : null);
 
   const stayReference =
     stayReferenceProp !== undefined
@@ -55,8 +54,6 @@ export default function TenantContractsTab({
       : dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" && !displayContract
       ? "Conflicting records"
       : tenant?.reservationCode || "LIL-RES-RECORD";
-
-  const hasMultipleContracts = Array.isArray(allTenantContracts) && allTenantContracts.length > 1;
 
   const displayContractId = displayContract?._id || displayContract?.id;
   const isRealContractId = /^[a-f\d]{24}$/i.test(String(displayContractId || ""));
@@ -112,89 +109,6 @@ export default function TenantContractsTab({
 
   return (
     <div className="space-y-4">
-      {/* Multi-Contract Version Selector Toolbar */}
-      {hasMultipleContracts && (
-        <div className="bg-card border border-border rounded-xl p-3.5 space-y-2.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                Contract Version Switcher
-              </span>
-              <span className="text-[11px] text-muted-foreground font-normal">
-                ({allTenantContracts.length} records on file)
-              </span>
-            </div>
-            {displayContract && (
-              <div className="flex items-center gap-1.5 text-xs text-foreground font-medium bg-transparent">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full inline-block ${getContractStatusDot(
-                    displayContract?.status,
-                  )}`}
-                />
-                <span>{getContractStatusLabel(displayContract)}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label
-                htmlFor="tenant-contract-select"
-                className="text-[11px] font-medium text-muted-foreground block mb-1"
-              >
-                Select Contract Record
-              </label>
-              <select
-                id="tenant-contract-select"
-                value={displayContract?._id || displayContract?.id || ""}
-                onChange={(e) => {
-                  const found = allTenantContracts.find(
-                    (c) => String(c._id || c.id) === e.target.value,
-                  );
-                  if (found) {
-                    onSelectContract(found);
-                  }
-                }}
-                className="w-full text-xs bg-background border border-border rounded-lg px-2.5 py-1.5 font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {allTenantContracts.map((c, index) => {
-                  const isCanonical =
-                    String(c._id || c.id) ===
-                      String(dedicatedContract?._id || dedicatedContract?.id) ||
-                    c.isCanonical;
-                  const number = c.contractNumber || `Contract #${index + 1}`;
-                  const date = c.createdAt ? formatDate(c.createdAt) : "No date";
-                  const status = (c.status || "active").toUpperCase();
-                  const label = `${number} • ${status} • ${date}${
-                    isCanonical ? " [Current / Canonical]" : ""
-                  }`;
-                  return (
-                    <option key={c._id || c.id || index} value={c._id || c.id}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className="flex flex-col justify-end text-xs text-muted-foreground bg-muted/40 rounded-lg p-2 border border-border/60">
-              <div className="flex items-center justify-between text-[11px]">
-                <span>Active Selection:</span>
-                <span className="font-mono font-semibold text-foreground">
-                  {displayContract?.contractNumber || "N/A"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[11px] mt-0.5">
-                <span>Created / Updated:</span>
-                <span className="font-medium text-foreground">
-                  {formatDate(displayContract?.createdAt || displayContract?.updatedAt)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Digital Stay Record & Tenancy Proof Card */}
       <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
@@ -203,7 +117,7 @@ export default function TenantContractsTab({
             <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             Digital Stay Record &amp; Proof
           </span>
-          <div className="flex items-center gap-1.5 text-xs text-foreground font-semibold bg-transparent">
+          <div className="flex items-center gap-1.5 text-xs text-foreground font-semibold bg-transparent normal-case">
             <span
               className={`w-1.5 h-1.5 rounded-full inline-block ${getContractStatusDot(
                 displayContract?.status,

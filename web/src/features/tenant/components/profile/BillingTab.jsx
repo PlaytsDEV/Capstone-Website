@@ -89,11 +89,22 @@ const fmtKwh = (n) =>
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-const getOutstandingAmount = (bill) =>
-  roundMoney(bill?.remainingAmount ?? bill?.totalAmount ?? 0);
+const getOutstandingAmount = (bill) => {
+  if (bill?.status === "voided") return 0;
+  const remaining = Number(bill?.remainingAmount);
+  if (Number.isFinite(remaining)) return roundMoney(Math.max(0, remaining));
+  const total = Number(bill?.totalAmount || 0);
+  const paid = Number(bill?.paidAmount || 0);
+  return roundMoney(Math.max(0, total - paid));
+};
 
-const isPaidBill = (bill) =>
-  bill?.status === "paid" || getOutstandingAmount(bill) <= 0;
+const isPaidBill = (bill) => {
+  if (!bill) return true;
+  if (bill?.status === "voided") return true;
+  const remaining = getOutstandingAmount(bill);
+  if (remaining > 0) return false;
+  return bill?.status === "paid" || remaining <= 0;
+};
 
 const getBillSortTimestamp = (bill = {}) => {
   const candidates = [
@@ -221,22 +232,16 @@ const getStatementPresentation = (bill = {}) => {
     };
   }
 
-  const hasRent = summary.hasRentCharges;
-  const hasElec = summary.hasElectricityCharge;
-  const hasWater = summary.hasWaterCharge;
+  const hasRent = summary.hasRentCharges && summary.rentAndFeesTotal > 0;
+  const hasElec = summary.hasElectricityCharge && summary.electricityTotal > 0;
+  const hasWater = summary.hasWaterCharge && summary.waterTotal > 0;
+  const rentOutstanding = Number(summary.outstandingBySection?.rent || 0);
+  const elecOutstanding = Number(summary.outstandingBySection?.electricity || 0);
+  const waterOutstanding = Number(summary.outstandingBySection?.water || 0);
+  const isOnlyElecOutstanding = hasElec && elecOutstanding > 0 && rentOutstanding === 0 && waterOutstanding === 0;
+  const isOnlyWaterOutstanding = hasWater && waterOutstanding > 0 && rentOutstanding === 0 && elecOutstanding === 0;
 
-  if (hasRent && (hasElec || hasWater)) {
-    return {
-      title: `${monthText} Rent & Utilities Statement`,
-      badgeType: "type-combined",
-      badgeLabel: "Combined",
-      category: "combined",
-      icon: Receipt,
-      dotColor: "#0A1628",
-    };
-  }
-
-  if (hasElec && !hasRent && !hasWater) {
+  if (isOnlyElecOutstanding || (hasElec && !hasRent && !hasWater)) {
     return {
       title: `${monthText} Electricity Statement`,
       badgeType: "type-electricity",
@@ -247,7 +252,7 @@ const getStatementPresentation = (bill = {}) => {
     };
   }
 
-  if (hasWater && !hasRent && !hasElec) {
+  if (isOnlyWaterOutstanding || (hasWater && !hasRent && !hasElec)) {
     return {
       title: `${monthText} Water Statement`,
       badgeType: "type-water",
@@ -255,6 +260,17 @@ const getStatementPresentation = (bill = {}) => {
       category: "water",
       icon: Droplets,
       dotColor: "#0284c7",
+    };
+  }
+
+  if (hasRent && (hasElec || hasWater)) {
+    return {
+      title: `${monthText} Rent & Utilities Statement`,
+      badgeType: "type-combined",
+      badgeLabel: "Combined",
+      category: "combined",
+      icon: Receipt,
+      dotColor: "#0A1628",
     };
   }
 
@@ -1001,7 +1017,7 @@ const StatementLedgerCard = ({
             <span className="statement-card__title" style={{ fontSize: 14, fontWeight: 700, color: "#0A1628" }}>
               {presentation.title}
             </span>
-            <StatusChip status={bill.status || "pending"} variant="text" />
+            <StatusChip status={isPaid ? "paid" : (bill.status === "paid" && remaining > 0 ? "partial" : bill.status || "pending")} variant="text" />
             <span className={`statement-type-badge ${presentation.badgeType}`}>
               <span
                 style={{

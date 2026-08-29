@@ -137,10 +137,18 @@ export const buildContractGenerationData = async (
     error.details = { user: Boolean(user), reservation: Boolean(reservation), room: Boolean(room) };
     throw error;
   }
+  const isTransferSuccessor =
+    ["amendment", "replacement"].includes(contract.contractPurpose) ||
+    Boolean(contract.replacesContractId) ||
+    Boolean(contract.parentContractId);
+
+  const reservationRoomId = String(reservation.roomId?._id || reservation.roomId || "");
+  const contractRoomId = String(contract.roomId?._id || contract.roomId || "");
+
   if (
     String(reservation.userId) !== String(contract.tenantId) ||
     String(reservation._id) !== String(contract.reservationId) ||
-    String(reservation.roomId) !== String(contract.roomId)
+    (!isTransferSuccessor && reservationRoomId !== contractRoomId)
   ) {
     const error = new Error("Contract source records do not belong to one approved tenant reservation.");
     error.code = "CONTRACT_SOURCE_IDENTITY_CONFLICT";

@@ -107,7 +107,7 @@ function ReservationFlowPage() {
             type="button"
             className="rf-exit-button"
             onClick={flow.handleExitToDashboard}
-            aria-label="Exit to dashboard"
+            aria-label={flow.isReservationConfirmed ? "Back to dashboard" : "Exit to dashboard"}
           >
             <svg
               width="16"
@@ -123,11 +123,16 @@ function ReservationFlowPage() {
               <path d="M19 12H5" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-            <span>Exit to Dashboard</span>
+            <span>{flow.isReservationConfirmed ? "Back to Dashboard" : "Exit to Dashboard"}</span>
           </button>
 
           <div className="rf-autosave-indicator" aria-live="polite">
-            {flow.saveStatus === "saving" ? (
+            {flow.isReservationConfirmed ? (
+              <span className="rf-autosave-status rf-autosave-saved">
+                <span className="rf-autosave-dot success" aria-hidden="true" />
+                Reservation confirmed
+              </span>
+            ) : flow.saveStatus === "saving" ? (
               <span className="rf-autosave-status rf-autosave-saving">
                 <span className="rf-autosave-spinner" aria-hidden="true" />
                 Saving draft...

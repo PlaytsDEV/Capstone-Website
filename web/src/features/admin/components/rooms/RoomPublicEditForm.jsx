@@ -40,7 +40,11 @@ export default function RoomPublicEditForm({ room, onUpdateDraft, onSavePublic, 
   }, [room]);
 
   const handleChange = (field, value) => {
-    const updated = { ...form, [field]: value };
+    let nextValue = value;
+    if (field === "name") {
+      nextValue = value.replace(/[^a-zA-Z\s]/g, "").slice(0, 50);
+    }
+    const updated = { ...form, [field]: nextValue };
     setForm(updated);
 
     // Live update live draft for instant preview reflection

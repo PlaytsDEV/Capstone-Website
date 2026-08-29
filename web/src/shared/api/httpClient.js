@@ -58,20 +58,60 @@ const getFirstApiValidationMessage = (errorPayload) => {
 
   if (Array.isArray(details)) {
     for (const detail of details) {
-      if (typeof detail === "string" && detail.trim()) return detail.trim();
-      if (detail?.message) return String(detail.message).trim();
-      if (detail?.msg) return String(detail.msg).trim();
+      if (typeof detail === "string" && detail.trim() && detail.trim().length > 3) {
+        return detail.trim();
+      }
+      if (detail?.message && typeof detail.message === "string" && detail.message.trim()) {
+        return detail.message.trim();
+      }
+      if (detail?.msg && typeof detail.msg === "string" && detail.msg.trim()) {
+        return detail.msg.trim();
+      }
     }
   }
 
   if (details && typeof details === "object") {
-    for (const value of Object.values(details)) {
-      if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof details.message === "string" && details.message.trim()) {
+      return details.message.trim();
+    }
+    if (typeof details.msg === "string" && details.msg.trim()) {
+      return details.msg.trim();
+    }
+
+    const METADATA_KEYS = new Set([
+      "field",
+      "code",
+      "value",
+      "path",
+      "statusCode",
+      "name",
+      "stack",
+    ]);
+
+    for (const [key, value] of Object.entries(details)) {
+      if (METADATA_KEYS.has(key)) continue;
+
+      if (typeof value === "string" && value.trim() && value.trim().length > 3) {
+        return value.trim();
+      }
       if (Array.isArray(value)) {
         const first = value.find(Boolean);
-        if (first) return typeof first === "string" ? first.trim() : String(first?.message || first).trim();
+        if (typeof first === "string" && first.trim() && first.trim().length > 3) {
+          return first.trim();
+        }
+        if (first?.message && typeof first.message === "string" && first.message.trim()) {
+          return first.message.trim();
+        }
+        if (first?.msg && typeof first.msg === "string" && first.msg.trim()) {
+          return first.msg.trim();
+        }
       }
-      if (value?.message) return String(value.message).trim();
+      if (value?.message && typeof value.message === "string" && value.message.trim()) {
+        return value.message.trim();
+      }
+      if (value?.msg && typeof value.msg === "string" && value.msg.trim()) {
+        return value.msg.trim();
+      }
     }
   }
 

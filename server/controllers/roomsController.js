@@ -58,7 +58,7 @@ const syncRealtimeBedStatuses = async (rooms) => {
       isArchived: { $ne: true },
     })
       .select(
-        "roomId selectedBed status moveInDate checkInDate targetMoveInDate createdAt leaseDuration leaseExtensions userId",
+        "roomId selectedBed status moveInDate checkInDate targetMoveInDate createdAt leaseDuration leaseExtensions userId firstName lastName billingEmail mobileNumber",
       )
       .populate("userId", "firstName lastName name email role user_id phone")
       .lean(),
@@ -66,12 +66,12 @@ const syncRealtimeBedStatuses = async (rooms) => {
       roomId: { $in: roomIds },
       status: { $in: ["active", "ending_soon", "expired_occupancy_continuing"] },
     })
-      .select("roomId bedId bunkBlock bedCode tenantId moveInDate checkInDate status monthlyRent")
+      .select("roomId bedId bunkBlock bedCode tenantId reservationId moveInDate checkInDate status monthlyRent")
       .populate("tenantId", "firstName lastName name email role user_id phone")
       .lean(),
   ]);
 
-  // Collect unpopulated userId references from active reservations and stays
+  // Collect unpopulated userId references from active reservations, stays, and room beds
   const unpopulatedUserIds = new Set();
   for (const resDoc of activeReservations) {
     if (resDoc.userId && typeof resDoc.userId !== "object") {
@@ -81,6 +81,15 @@ const syncRealtimeBedStatuses = async (rooms) => {
   for (const stayDoc of activeStays) {
     if (stayDoc.tenantId && typeof stayDoc.tenantId !== "object") {
       unpopulatedUserIds.add(String(stayDoc.tenantId));
+    }
+  }
+  for (const room of rooms) {
+    if (Array.isArray(room.beds)) {
+      for (const b of room.beds) {
+        if (b.occupiedBy?.userId && typeof b.occupiedBy.userId !== "object") {
+          unpopulatedUserIds.add(String(b.occupiedBy.userId));
+        }
+      }
     }
   }
 
@@ -190,12 +199,20 @@ const syncRealtimeBedStatuses = async (rooms) => {
         };
       }
 
+      const occBedUserId = bed.occupiedBy?.userId ? String(bed.occupiedBy.userId) : null;
+      const occBedResId = bed.occupiedBy?.reservationId ? String(bed.occupiedBy.reservationId) : null;
+
       const matchingHold = roomReservations.find((resDoc) => {
         if (matchedResIds.has(String(resDoc._id))) return false;
         const selId = resDoc.selectedBed?.id ? String(resDoc.selectedBed.id).trim().toLowerCase() : null;
         const selCode = resDoc.selectedBed?.code ? String(resDoc.selectedBed.code).trim().toLowerCase() : null;
         const selNum = resDoc.selectedBed?.bedNumber != null ? String(resDoc.selectedBed.bedNumber) : null;
+        const resUserId = resDoc.userId?._id ? String(resDoc.userId._id) : String(resDoc.userId || "");
+        const resIdStr = String(resDoc._id);
+
         return (
+          (occBedResId && occBedResId === resIdStr) ||
+          (occBedUserId && resUserId && occBedUserId === resUserId) ||
           (selId && (selId === bId || selId === bCode || selId === bMongoId || selId === bNum)) ||
           (selCode && (selCode === bCode || selCode === bId)) ||
           (selNum && (selNum === bNum || selNum === bId))
@@ -206,9 +223,13 @@ const syncRealtimeBedStatuses = async (rooms) => {
         ? roomStays.find((stayDoc) => {
             if (matchedStayIds.has(String(stayDoc._id))) return false;
             const sBedId = stayDoc.bedId ? String(stayDoc.bedId).trim().toLowerCase() : null;
+            const stayTenantId = stayDoc.tenantId?._id ? String(stayDoc.tenantId._id) : String(stayDoc.tenantId || "");
+            const stayResId = stayDoc.reservationId ? String(stayDoc.reservationId) : null;
+
             return (
-              sBedId &&
-              (sBedId === bId || sBedId === bCode || sBedId === bMongoId || sBedId === bNum)
+              (occBedResId && stayResId && occBedResId === stayResId) ||
+              (occBedUserId && stayTenantId && occBedUserId === stayTenantId) ||
+              (sBedId && (sBedId === bId || sBedId === bCode || sBedId === bMongoId || sBedId === bNum))
             );
           })
         : null;
@@ -251,6 +272,9 @@ const syncRealtimeBedStatuses = async (rooms) => {
             name = `${resUser.firstName || ""} ${resUser.lastName || ""}`.trim();
           } else if (resUser.email) name = resUser.email;
         }
+        if (!name && (matchingHold.firstName || matchingHold.lastName)) {
+          name = `${matchingHold.firstName || ""} ${matchingHold.lastName || ""}`.trim();
+        }
 
         return {
           ...bed,
@@ -259,14 +283,14 @@ const syncRealtimeBedStatuses = async (rooms) => {
           expectedVacancyDate: nextStatus !== "available" ? expectedVacancyDate : null,
           daysRemaining: nextStatus !== "available" ? daysRemaining : null,
           occupiedBy: nextStatus !== "available" ? {
-            userId: resUser?._id ? String(resUser._id) : null,
+            userId: resUser?._id ? String(resUser._id) : (matchingHold.userId ? String(matchingHold.userId) : null),
             reservationId: matchingHold._id || null,
             occupiedSince: matchingHold.moveInDate || matchingHold.createdAt || null,
             name: name || null,
-            firstName: resUser?.firstName || null,
-            lastName: resUser?.lastName || null,
-            email: resUser?.email || null,
-            phone: resUser?.phone || null,
+            firstName: resUser?.firstName || matchingHold.firstName || null,
+            lastName: resUser?.lastName || matchingHold.lastName || null,
+            email: resUser?.email || matchingHold.billingEmail || null,
+            phone: resUser?.phone || matchingHold.mobileNumber || null,
             role: resUser?.role || null,
             user_id: resUser?.user_id || null,
             status: matchingHold.status || null,
@@ -310,8 +334,8 @@ const syncRealtimeBedStatuses = async (rooms) => {
           expectedVacancyDate: null,
           daysRemaining: null,
           occupiedBy: {
-            userId: stayUser?._id ? String(stayUser._id) : null,
-            reservationId: null,
+            userId: stayUser?._id ? String(stayUser._id) : (matchingStay.tenantId ? String(matchingStay.tenantId) : null),
+            reservationId: matchingStay.reservationId || null,
             occupiedSince: matchingStay.moveInDate || matchingStay.checkInDate || null,
             name: name || null,
             firstName: stayUser?.firstName || null,
@@ -320,6 +344,37 @@ const syncRealtimeBedStatuses = async (rooms) => {
             phone: stayUser?.phone || null,
             role: stayUser?.role || null,
             user_id: stayUser?.user_id || null,
+            status: "active",
+          },
+        };
+      }
+
+      // If bed is explicitly marked occupied with an occupant userId in userMap, preserve and enrich it
+      if (occBedUserId && userMap.has(occBedUserId)) {
+        const occUser = userMap.get(occBedUserId);
+        let occName = null;
+        if (occUser) {
+          if (occUser.name) occName = occUser.name;
+          else if (occUser.firstName || occUser.lastName) {
+            occName = `${occUser.firstName || ""} ${occUser.lastName || ""}`.trim();
+          } else if (occUser.email) occName = occUser.email;
+        }
+        return {
+          ...bed,
+          status: "occupied",
+          available: false,
+          expectedVacancyDate: null,
+          daysRemaining: null,
+          occupiedBy: {
+            ...bed.occupiedBy,
+            userId: occUser._id ? String(occUser._id) : occBedUserId,
+            name: occName || bed.occupiedBy?.name || null,
+            firstName: occUser.firstName || bed.occupiedBy?.firstName || null,
+            lastName: occUser.lastName || bed.occupiedBy?.lastName || null,
+            email: occUser.email || bed.occupiedBy?.email || null,
+            phone: occUser.phone || bed.occupiedBy?.phone || null,
+            role: occUser.role || bed.occupiedBy?.role || null,
+            user_id: occUser.user_id || bed.occupiedBy?.user_id || null,
             status: "active",
           },
         };
@@ -553,6 +608,8 @@ const ROOM_CREATE_FIELDS = Object.freeze([
   "capacity",
   "price",
   "monthlyPrice",
+  "regularLongRate",
+  "regularShortRate",
   "amenities",
   "policies",
   "intendedTenant",
@@ -763,6 +820,12 @@ const sanitizeRoomPayload = (payload, { allowBeds }) => {
     sanitized.capacity = parseNumber(sanitized.capacity);
   }
   if (sanitized.price !== undefined) sanitized.price = parseNumber(sanitized.price);
+  if (sanitized.regularLongRate !== undefined) {
+    sanitized.regularLongRate = parseNumber(sanitized.regularLongRate);
+  }
+  if (sanitized.regularShortRate !== undefined) {
+    sanitized.regularShortRate = parseNumber(sanitized.regularShortRate);
+  }
   if (sanitized.monthlyPrice !== undefined) {
     sanitized.monthlyPrice = parseNumber(sanitized.monthlyPrice);
   }

@@ -166,7 +166,14 @@ input[list]::-webkit-list-button {
 }
 
 /* ── Standardize Date / Time Picker Indicators ─────────────── */
-/* Ensures interactive calendar/clock picker icon remains visible, clickable, and styled */
+/* Ensures entire field and interactive calendar/clock picker icon are clickable and styled */
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"] {
+  cursor: pointer;
+}
+
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator,

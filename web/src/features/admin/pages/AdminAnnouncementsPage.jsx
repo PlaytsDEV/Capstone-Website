@@ -792,6 +792,7 @@ export default function AdminAnnouncementsPage() {
       showNotification("Announcement deleted successfully.", "success", 3500);
       setAnnouncementToDelete(null);
     } catch (error) {
+      setAnnouncementToDelete(null);
       showNotification(error.message || "Failed to delete announcement.", "error", 4000);
     }
   };

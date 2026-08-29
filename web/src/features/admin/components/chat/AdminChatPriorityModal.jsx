@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ShieldAlert, X, Check, LoaderCircle } from "lucide-react";
 import { PRIORITY_OPTIONS, PRIORITY_DESCRIPTIONS } from "./chatConstants";
 
@@ -18,15 +19,15 @@ export default function AdminChatPriorityModal({
     }
   }, [isOpen, currentPriority]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const handleConfirm = () => {
     onConfirm(pendingPriority);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
@@ -117,6 +118,7 @@ export default function AdminChatPriorityModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

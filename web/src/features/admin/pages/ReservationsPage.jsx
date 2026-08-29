@@ -617,7 +617,7 @@ function ReservationsPage() {
         value: counts.total,
         icon: Calendar,
         color: "blue",
-        subtext: "Total active bookings",
+        subtext: "Total active reservations",
       },
       {
         key: "pending_review",
@@ -633,7 +633,7 @@ function ReservationsPage() {
         value: counts.reserved,
         icon: CheckCircle,
         color: "emerald",
-        subtext: "Confirmed paid bookings",
+        subtext: "Confirmed paid reservations",
       },
       {
         key: "moveIn",
@@ -831,17 +831,33 @@ function ReservationsPage() {
   const handleDelete = useCallback(
     (reservationId) => {
       const targetRes = reservations.find((r) => r.id === reservationId);
-      if (
-        targetRes &&
-        (hasReservationStatus(targetRes.status, "reserved", "approved_for_payment") ||
-          hasReservationStatus(targetRes.status, "moveIn"))
-      ) {
-        showNotification(
-          "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-in/move-out workflow first.",
-          "error",
-          5000,
-        );
-        return;
+      if (targetRes) {
+        if (hasReservationStatus(targetRes.status, "moveIn")) {
+          showNotification(
+            "This tenant has already moved in. To end their stay or remove this record, please process a move-out from the Tenants workspace.",
+            "warning",
+            5000,
+          );
+          return;
+        }
+
+        if (hasReservationStatus(targetRes.status, "reserved")) {
+          showNotification(
+            "This reservation is confirmed. Please complete the move-in process or cancel the reservation before deleting.",
+            "warning",
+            5000,
+          );
+          return;
+        }
+
+        if (hasReservationStatus(targetRes.status, "approved_for_payment")) {
+          showNotification(
+            "This application has been approved for payment. If the applicant is not proceeding, please cancel the reservation first.",
+            "warning",
+            5000,
+          );
+          return;
+        }
       }
 
       setConfirmModal({
@@ -877,7 +893,7 @@ function ReservationsPage() {
           } catch (error) {
             refetchReservations();
             showNotification(
-              error?.message || "Failed to delete reservation. Please try again.",
+              error?.message || "Unable to delete reservation. Please try again.",
               "error",
             );
           }
@@ -918,7 +934,7 @@ function ReservationsPage() {
           } catch (error) {
             refetchReservations();
             showNotification(
-              error?.message || "Failed to permanently delete reservation. Please try again.",
+              error?.message || "Unable to permanently delete reservation. Please try again.",
               "error",
             );
           }
@@ -966,7 +982,7 @@ function ReservationsPage() {
           } catch (error) {
             refetchReservations();
             showNotification(
-              error?.message || "Failed to restore reservation",
+              error?.message || "Unable to restore reservation. Please try again.",
               "error",
             );
           }
@@ -994,7 +1010,7 @@ function ReservationsPage() {
       });
     } catch (error) {
       console.error("[ReservationsExport] PDF generation failed:", error);
-      showNotification("Failed to generate PDF report. Please try again.", "error");
+      showNotification("Unable to generate PDF report. Please try again.", "error");
     }
   }, [branchFilter, counts, sortedReservations, statusFilter, searchTerm]);
 
@@ -1175,7 +1191,13 @@ function ReservationsPage() {
                   isReservedOrActive ? (
                     <span
                       className="inline-flex cursor-not-allowed opacity-35"
-                      title="Confirmed reserved bookings cannot be deleted directly. Process a cancellation or move-in first."
+                      title={
+                        hasReservationStatus(row.status, "moveIn")
+                          ? "This tenant has already moved in. Process a move-out from the Tenants workspace."
+                          : hasReservationStatus(row.status, "reserved")
+                            ? "This reservation is confirmed. Complete the move-in or cancel the reservation first."
+                            : "This application is approved for payment. Cancel the reservation first if not proceeding."
+                      }
                     >
                       <button
                         type="button"
@@ -1215,7 +1237,7 @@ function ReservationsPage() {
       {/* Pattern 1 Sticky Sub-Header */}
       <AdminPageHeader
         title="Reservations"
-        subtitle="Review applications, confirm documents, and move accepted residents toward assignment."
+        subtitle="Review applications, confirm documents, and move accepted tenants toward assignment."
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}

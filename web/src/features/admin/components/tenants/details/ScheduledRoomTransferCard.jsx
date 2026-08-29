@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, LoaderCircle } from "lucide-react";
 import { formatDate, formatMoney } from "./tenantDetailConstants";
@@ -233,35 +234,38 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
         onClose={() => setConfirmCancelOpen(false)}
       />
 
-      {reviewOpen ? (
-        <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4" onClick={() => setReviewOpen(false)}>
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-sm w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">Scheduled Transfer — Review</h3>
-            <div className="space-y-1">
-              <Row label="Current Room" value={currentRoom?.name || "—"} />
-              <Row label="Scheduled Room" value={scheduledRoom?.name || "—"} />
-              <Row label="Effective Date" value={formatDate(effectiveTransferDate)} />
-              <Row label="Status" value={statusLabel || status} />
-              {hasBalance ? (
-                <>
-                  <Row label="Transfer Balance" value={formatMoney(bal.amountDue)} />
-                  <Row label="Paid" value={formatMoney(bal.amountPaid || 0)} />
-                  <Row label="Remaining" value={formatMoney(bal.remaining ?? bal.amountDue)} />
-                </>
-              ) : null}
-              <Row label="Document" value={addendum?.label || "Room Transfer Addendum — Scheduled"} />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              {REVIEW_GUIDANCE[reasonCode] || "Review the details above and take the appropriate action."}
-            </p>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700" onClick={() => setReviewOpen(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {reviewOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setReviewOpen(false)} role="dialog" aria-modal="true">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-sm w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-sm font-bold text-foreground">Scheduled Transfer — Review</h3>
+                <div className="space-y-1">
+                  <Row label="Current Room" value={currentRoom?.name || "—"} />
+                  <Row label="Scheduled Room" value={scheduledRoom?.name || "—"} />
+                  <Row label="Effective Date" value={formatDate(effectiveTransferDate)} />
+                  <Row label="Status" value={statusLabel || status} />
+                  {hasBalance ? (
+                    <>
+                      <Row label="Transfer Balance" value={formatMoney(bal.amountDue)} />
+                      <Row label="Paid" value={formatMoney(bal.amountPaid || 0)} />
+                      <Row label="Remaining" value={formatMoney(bal.remaining ?? bal.amountDue)} />
+                    </>
+                  ) : null}
+                  <Row label="Document" value={addendum?.label || "Room Transfer Addendum — Scheduled"} />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {REVIEW_GUIDANCE[reasonCode] || "Review the details above and take the appropriate action."}
+                </p>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 cursor-pointer" onClick={() => setReviewOpen(false)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

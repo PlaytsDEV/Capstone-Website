@@ -169,6 +169,7 @@ const lifecycleNamingMock = {
   normalizeReservationStatus: jest.fn((status) => status),
   readMoveInDate: jest.fn(() => null),
   readMoveOutDate: jest.fn(() => null),
+  resolveMoveInConfirmationDate: jest.fn(({ moveInDate }) => moveInDate || new Date()),
   reservationStatusesForQuery: jest.fn((...statuses) => statuses.flat()),
   serializeReservation: jest.fn((value) => value),
   serializeReservations: jest.fn((values) => values),
