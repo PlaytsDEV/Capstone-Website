@@ -8,6 +8,7 @@ import { renderContractHtmlPdf, buildContractHtml } from "./contractHtmlPdfServi
 import { resolveRoomDiscountPricing } from "./contractPricingResolver.js";
 import { resolveContractBranch } from "../config/contractConfig.js";
 import { normalizeAddress, normalizeReservationAddress } from "../utils/addressUtils.js";
+import { resolveSignedScanForContract } from "./signedContractScanResolver.js";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -213,6 +214,13 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     throw err;
   }
 
+  // Canonical signed-scan identity for the resolved Contract (lineage-aware
+  // for a Room Transfer Addendum). The Digital Lease viewer (Admin + Tenant)
+  // reads this instead of guessing from the `contract` prop's signedDocuments.
+  const signedScan = contract
+    ? await resolveSignedScanForContract(contract).catch(() => null)
+    : null;
+
   const applicantName = [
     reservation?.firstName,
     reservation?.middleName,
@@ -390,6 +398,13 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
 
   return {
     referenceNumber,
+    // Canonical Contract identity + signed-scan pointer so DigitalContractPaper
+    // (Admin + Tenant) no longer depends on the `contract` prop being fully
+    // populated to render the Signed Scan tab.
+    contractId: contract ? String(contract._id || contract.id || "") : null,
+    contractNumber: contract?.contractNumber || referenceNumber,
+    contractPurpose: contract?.contractPurpose || null,
+    signedScan,
     tenantId: String(user?._id || ""),
     tenantName,
     tenantEmail: user?.email || reservation?.email || "—",

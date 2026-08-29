@@ -36,6 +36,25 @@ export const toDateInputValue = (value) => {
 export const localTodayStr = (now = new Date()) => toDateInputValue(now);
 
 /**
+ * The EARLIEST date a new Admin Room Transfer may be scheduled for: tomorrow,
+ * as a local calendar `YYYY-MM-DD` string. Under the future-only rule the
+ * wizard's date picker uses this as its `min`. Philippine users are UTC+8, so
+ * local calendar === Manila calendar; the backend
+ * (`isFutureManilaDate` / `getManilaToday`) stays authoritative and rejects
+ * anything not strictly after today Manila with TRANSFER_DATE_MUST_BE_FUTURE.
+ * Never derived via `toISOString()` (which shifts to UTC and can roll a day).
+ *
+ * @param {Date} [now] - injectable for tests
+ * @returns {string}
+ */
+export const minScheduleDateStr = (now = new Date()) => {
+  const d = new Date(now);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + 1);
+  return toDateInputValue(d);
+};
+
+/**
  * True when `effectiveTransferDate` (a `YYYY-MM-DD` string, or anything
  * `toDateInputValue` can normalize) is strictly AFTER today — i.e. this
  * Confirm SCHEDULES the transfer for a future date rather than executing it

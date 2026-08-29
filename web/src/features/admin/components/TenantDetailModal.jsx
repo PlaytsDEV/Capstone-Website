@@ -1458,6 +1458,11 @@ export default function TenantDetailModal({
                 fetchDocumentPdf={(c) => (c?.finalDocument
                   ? contractApi.getFinalContractFile(c._id || c.id, false)
                   : contractApi.getPreparedContractFile(c._id || c.id))}
+                // Signed scan resolves from the CANONICAL identity the backend
+                // returned (signedScan.contractId — may be an ancestor lease
+                // for a Room Transfer Addendum), via the ADMIN signed-file route.
+                fetchSignedDoc={({ contractId, version, download }) =>
+                  contractApi.getSignedContractFile(contractId, version, Boolean(download))}
               />
             )}
           </div>
