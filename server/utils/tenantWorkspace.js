@@ -676,6 +676,11 @@ export function buildTenantWorkspaceEntry({
   // room / rent / occupancy fields (the tenant stays in the source room
   // until the effective date).
   scheduledRoomTransfer = null,
+  // F3 — the complete Room Transfer audit trail (all ScheduledRoomTransfer
+  // statuses + derived legacy immediate transfers), from
+  // getRoomTransferHistoryForReservation. Surfaced verbatim under
+  // `roomTransferHistory`; NEVER feeds current room / rent / occupancy.
+  roomTransferHistory = [],
   now = new Date(),
 }) {
   const leaseEndDate = currentStay?.leaseEndDate || computeLeaseEndDate(reservation);
@@ -921,6 +926,12 @@ export function buildTenantWorkspaceEntry({
     // Display-only: the tenant remains in `basicInfo.room` / `paymentInfo`
     // rates until its effectiveDate.
     scheduledRoomTransfer: scheduledRoomTransfer || null,
+    // Complete Room Transfer audit trail (F3) — newest first. Audit-only:
+    // never feeds current room / rent / occupancy. The open transfer (if any)
+    // also appears here AND as `scheduledRoomTransfer` above — same serializer,
+    // one source of truth, two placements (Overview = live action, History =
+    // audit record).
+    roomTransferHistory: Array.isArray(roomTransferHistory) ? roomTransferHistory : [],
     systemWarnings: warningFlags,
     contracts: (contracts || []).map((c) => ({
       _id: String(c._id || c.id),

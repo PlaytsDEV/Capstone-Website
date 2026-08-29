@@ -419,6 +419,13 @@ export default function TenantDetailModal({
     }
   };
 
+  // "View Bill" from Room Transfer History — open the tenant's canonical
+  // Billing (Financials) tab where the transfer_settlement Bill is listed.
+  // History does NOT rebuild Billing; it only links to it.
+  const handleViewBillFromHistory = () => {
+    setActiveTab("financials");
+  };
+
   const [generatingReceiptId, setGeneratingReceiptId] = useState(null);
 
   const handleViewBillReceipt = async (item = null) => {
@@ -1056,6 +1063,7 @@ export default function TenantDetailModal({
                       setIsDocsPanelOpen={setIsDocsPanelOpen}
                       docsPanelRef={docsPanelRef}
                       onPreviewDoc={setPreviewDoc}
+                      onOpenDigitalContract={handleOpenDigitalContract}
                     />
                   </div>
                 )}
@@ -1080,8 +1088,10 @@ export default function TenantDetailModal({
                   <TenantHistoryTab
                     tenant={tenant}
                     roomHistory={roomHistory}
+                    roomTransferHistory={tenant?.roomTransferHistory || []}
                     dedicatedContract={dedicatedContract}
                     onOpenDigitalContract={handleOpenDigitalContract}
+                    onViewBill={handleViewBillFromHistory}
                   />
                 )}
 

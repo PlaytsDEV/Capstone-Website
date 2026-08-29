@@ -40,7 +40,7 @@ const Row = ({ label, value }) => (
  * The tenant's CURRENT room/rent elsewhere in this modal stay the SOURCE
  * values until the effective date; this card only describes what is scheduled.
  */
-export default function ScheduledRoomTransferCard({ transfer }) {
+export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContract }) {
   const queryClient = useQueryClient();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -51,7 +51,18 @@ export default function ScheduledRoomTransferCard({ transfer }) {
     reservationId, currentRoom, scheduledRoom, effectiveTransferDate,
     currentMonthlyRent, newMonthlyRent, statusLabel, status,
     transferBalance, addendum, actionRequiredReason,
+    destinationBed, scheduledAt, createdAt, initiatedBy, addendumContractId,
   } = transfer;
+
+  const openAddendum = () => {
+    if (!onOpenDigitalContract || !addendumContractId) return;
+    onOpenDigitalContract({
+      _id: addendumContractId,
+      id: addendumContractId,
+      contractNumber: addendum?.contractNumber,
+      contractPurpose: "amendment",
+    });
+  };
 
   const bal = transferBalance || {};
   const hasBalance = bal.hasBill && Number(bal.amountDue) > 0;
@@ -120,11 +131,16 @@ export default function ScheduledRoomTransferCard({ transfer }) {
         <div>
           <Row label="Current Room" value={currentRoom?.name || "—"} />
           <Row label="Scheduled Room" value={scheduledRoom?.name || "—"} />
+          {scheduledRoom?.needsBed && (
+            <Row label="Destination Bed" value={destinationBed || "—"} />
+          )}
           <Row label="Effective Date" value={formatDate(effectiveTransferDate)} />
         </div>
         <div>
           <Row label="Current Monthly Rent" value={formatMoney(currentMonthlyRent ?? 0)} />
           <Row label="New Monthly Rent" value={formatMoney(newMonthlyRent ?? 0)} />
+          <Row label="Scheduled" value={formatDate(scheduledAt || createdAt)} />
+          <Row label="Initiated By" value={initiatedBy?.name || "System"} />
         </div>
       </div>
 
@@ -153,7 +169,18 @@ export default function ScheduledRoomTransferCard({ transfer }) {
 
       <div className="text-[11px] text-muted-foreground space-y-0.5">
         <p>Utilities: to follow after the transfer cutoff.</p>
-        <p>Document: {addendum?.label || "Room Transfer Addendum — Scheduled"}</p>
+        <p className="flex items-center gap-1.5">
+          <span>Document: {addendum?.label || "Room Transfer Addendum — Scheduled"}</span>
+          {addendumContractId && onOpenDigitalContract && (
+            <button
+              type="button"
+              onClick={openAddendum}
+              className="font-semibold text-sky-700 dark:text-sky-300 hover:underline"
+            >
+              View Addendum
+            </button>
+          )}
+        </p>
       </div>
 
       {/* Actions — minimal: Cancel (safe states) + Review/Retry (action_required). */}

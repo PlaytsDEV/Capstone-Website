@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-import { Bill, Contract } from "../models/index.js";
+import { Bill, Contract, User } from "../models/index.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
   "awaiting_payment",
@@ -39,6 +39,48 @@ export const SCHEDULED_TRANSFER_STATUS_LABELS = Object.freeze({
   action_required: "Action Required",
   cancelled: "Cancelled",
 });
+
+// Short, friendly Admin-facing explanation for an `action_required` sub-reason
+// (`lastError`). The raw code is never the primary UI — this is. Mirrors the
+// vocabulary in scheduledRoomTransferExecutor's buildAdminMessage without
+// importing the executor (avoids a service<->service cycle).
+const ACTION_REQUIRED_MESSAGES = Object.freeze({
+  TRANSFER_BALANCE_UNPAID:
+    "The Scheduled Room Transfer Balance is not fully settled. The tenant remains in the current room. Settle the balance, then retry.",
+  ADDITIONAL_BALANCE_DUE:
+    "The settlement recomputed at the effective date is higher than what was billed. The extra amount was added to the transfer balance Bill. Settle it, then retry.",
+  FINANCIAL_ADJUSTMENT_REQUIRED:
+    "The final transfer amount is lower than what the tenant already paid. No automatic refund is made — please coordinate with the Administration Office, 2nd Floor.",
+  PAYMENT_ALREADY_RECEIVED:
+    "A payment was already received for this transfer. It cannot be cancelled automatically — please coordinate with the Administration Office, 2nd Floor.",
+  OPERATIONAL_VALIDATION_FAILED:
+    "The destination room or bed is no longer valid. Review the destination and retry after correcting it.",
+  EXECUTION_FAILED:
+    "The transfer could not be completed on the effective date. Review the destination room/bed and retry.",
+});
+
+export function describeScheduledTransferActionRequired(reason) {
+  if (!reason) return null;
+  const key = String(reason).split(":")[0].trim();
+  return ACTION_REQUIRED_MESSAGES[key] || "This scheduled transfer needs review before it can complete.";
+}
+
+/**
+ * Resolve a scheduledBy / cancelledBy ObjectId (or populated doc) into a safe
+ * Admin-facing identity. Never returns email / phone / account internals.
+ */
+async function resolveActorIdentity(actor, { session = null } = {}) {
+  if (!actor) return null;
+  if (typeof actor === "object" && (actor.firstName || actor.lastName || actor.name)) {
+    const name = actor.name || `${actor.firstName || ""} ${actor.lastName || ""}`.trim();
+    return { id: actor._id ? String(actor._id) : null, name: name || "Staff", role: actor.role || null };
+  }
+  const q = User.findById(actor).select("firstName lastName role");
+  const u = await (session ? q.session(session) : q).lean();
+  if (!u) return null;
+  const name = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+  return { id: String(u._id), name: name || "Staff", role: u.role || null };
+}
 
 /**
  * Resolve the payment state of a scheduled transfer's balance Bill.
@@ -127,6 +169,26 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
   const executed = doc.executedSettlement || null;
   const figures = executed || preview || null;
 
+  // Executed settlement is a FLAT shape (rentAdjustmentDue, additionalDepositDue,
+  // excessRentCredit, excessDepositHeld, totalImmediateDue); the preview is a
+  // NESTED shape (rent.*, deposit.*). Read both without conflating them.
+  const rentAdjustment = executed
+    ? executed.rentAdjustmentDue ?? null
+    : preview?.rent?.adjustmentDue ?? null;
+  const additionalDeposit = executed
+    ? executed.additionalDepositDue ?? null
+    : preview?.deposit?.balanceDue ?? null;
+  const rentCredit = executed
+    ? executed.excessRentCredit ?? null
+    : preview?.rent?.excessCredit ?? null;
+  const excessDepositHeld = executed
+    ? executed.excessDepositHeld ?? null
+    : preview?.deposit?.excessHeld ?? null;
+  const finalSettlementAmount = executed ? executed.totalImmediateDue ?? null : null;
+
+  const initiatedBy = await resolveActorIdentity(doc.scheduledBy, { session });
+  const cancelledByIdentity = await resolveActorIdentity(doc.cancelledBy, { session });
+
   // Addendum status — before execution it is a prepared, not-yet-current
   // Draft that becomes effective on `effectiveTransferDate`.
   let addendum = null;
@@ -166,20 +228,33 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
       needsBed: doc.destinationNeedsBed,
     },
 
+    // Destination bed — only meaningful for a shared destination.
+    destinationBed: doc.destinationNeedsBed ? (doc.destinationBedId || null) : null,
+
     effectiveTransferDate: doc.effectiveTransferDate,
+    reason: doc.reason || null,
     status: userStatus,
     statusLabel: SCHEDULED_TRANSFER_STATUS_LABELS[userStatus] || userStatus,
     actionRequiredReason: doc.status === "action_required" ? (doc.lastError || null) : null,
+    actionRequiredMessage:
+      doc.status === "action_required" ? describeScheduledTransferActionRequired(doc.lastError) : null,
 
     // Rent / deposit figures — the executed settlement once it exists,
-    // otherwise the scheduling-time preview.
-    currentMonthlyRent: figures?.rent?.sourceEffectiveRate ?? null,
-    newMonthlyRent: figures?.rent?.destinationApprovedRate ?? null,
-    rentAdjustment: figures?.rent?.adjustmentDue ?? null,
-    additionalSecurityDeposit: figures?.deposit?.balanceDue ?? null,
+    // otherwise the scheduling-time preview. (rent.* rates only exist on the
+    // preview; the executed settlement is a flat shape.)
+    currentMonthlyRent: preview?.rent?.sourceEffectiveRate ?? null,
+    newMonthlyRent: preview?.rent?.destinationApprovedRate ?? null,
+    rentAdjustment,
+    additionalSecurityDeposit: additionalDeposit,
+    // The canonical settled total, present only once the transfer has executed.
+    finalSettlementAmount,
     // Informational-until-execution figures for a cheaper destination.
-    estimatedRentCreditAfterTransfer: figures?.rent?.excessCredit ?? null,
-    estimatedExcessDepositHeld: figures?.deposit?.excessHeld ?? null,
+    estimatedRentCreditAfterTransfer: rentCredit,
+    estimatedExcessDepositHeld: excessDepositHeld,
+
+    // Safe Admin-facing identities.
+    initiatedBy,
+    cancelledBy: cancelledByIdentity,
 
     transferBalance: {
       hasBill: balance.hasBill,
@@ -194,9 +269,11 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
     utilitiesNote:
       "Electricity and water follow the normal utility billing after the room-transfer cutoff.",
 
+    settlementBillId: balance.billId || (doc.settlementBillId ? String(doc.settlementBillId) : null),
     addendumContractId: doc.addendumContractId ? String(doc.addendumContractId) : null,
     addendum,
 
+    createdAt: doc.createdAt || doc.scheduledAt || null,
     scheduledAt: doc.scheduledAt || doc.createdAt || null,
     executedAt: doc.executedAt || null,
     cancelledAt: doc.cancelledAt || null,
