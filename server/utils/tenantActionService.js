@@ -1042,7 +1042,7 @@ const DISCARDABLE_ADDENDUM_STATUSES = new Set([
 ]);
 
 async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
-  const successor = await createReplacementContractForTransfer({
+  const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
     stayId: activeStay?._id || predecessorContract.stayId,
     oldContract: predecessorContract,
@@ -1054,11 +1054,62 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
     actorId,
   });
 
+  let successor = await buildDraft();
+
+  // The idempotency guard in createReplacementContractForTransfer reuses ANY
+  // non-abandoned successor of the predecessor Contract. If that reused
+  // successor targets a DIFFERENT room than the one the admin is now
+  // transferring to, it is stale — left behind by an earlier attempt (a
+  // pre-future-only immediate transfer, or a scheduling attempt whose Addendum
+  // outlived its cancellation). Self-heal when it is safe to do so:
+  //   - the stale successor is a not-yet-current, not-yet-wet-signed Draft
+  //     (exactly what discardRoomTransferAddendum abandons), AND
+  //   - the tenant has NO open ScheduledRoomTransfer (so nothing live depends
+  //     on the stale Draft).
+  // Otherwise keep hard-blocking — a wet-signed successor, an already-current
+  // one, or a live scheduled transfer genuinely needs explicit admin action
+  // (Cancel Scheduled Transfer / discard-addendum).
   if (String(successor.roomId) !== String(targetRoom._id)) {
-    throw Object.assign(
-      new Error("An existing room-transfer replacement Contract for this tenant targets a different room. Resolve it before transferring."),
-      { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+    const { ScheduledRoomTransfer } = await import("../models/index.js");
+    const { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } = await import("../models/ScheduledRoomTransfer.js");
+    const openScheduled = await ScheduledRoomTransfer.exists({
+      reservationId: reservation._id,
+      status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
+      isArchived: { $ne: true },
+    });
+    const isDiscardableDraft =
+      successor.isCurrent !== true && DISCARDABLE_ADDENDUM_STATUSES.has(successor.status);
+
+    if (openScheduled || !isDiscardableDraft) {
+      throw Object.assign(
+        new Error(
+          openScheduled
+            ? "This tenant already has a scheduled room transfer to a different room. Cancel it before scheduling a new one."
+            : "An existing room-transfer replacement Contract for this tenant targets a different room and cannot be auto-resolved. Resolve it in the Contracts workspace before transferring.",
+        ),
+        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+      );
+    }
+
+    // Abandon the stale Draft (generated -> cancelled, same as
+    // discardRoomTransferAddendum — never deleted, stays as history) and build
+    // the correct successor for THIS destination.
+    await transitionContract(
+      successor,
+      "cancelled",
+      actorId,
+      `Stale Room Transfer Addendum superseded — re-targeted from room ${successor.roomNumber || successor.roomId} to ${targetRoom.roomNumber || targetRoom.name || targetRoom._id}`,
     );
+    successor = await buildDraft();
+
+    if (String(successor.roomId) !== String(targetRoom._id)) {
+      // The rebuilt Draft still points elsewhere — a second stale successor, or
+      // a data-integrity problem. Do not loop; surface it for admin repair.
+      throw Object.assign(
+        new Error("An existing room-transfer replacement Contract for this tenant targets a different room. Resolve it in the Contracts workspace before transferring."),
+        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+      );
+    }
   }
 
   // Already prepared (retry, or prepared earlier) — nothing to regenerate.
