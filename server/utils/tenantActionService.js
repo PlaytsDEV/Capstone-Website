@@ -2382,6 +2382,24 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         },
       };
     });
+
+    // ── Tenant is leaving the dorm: resolve any OPEN scheduled room transfer
+    //    so a future destination hold is never left blocking a room after the
+    //    tenant is gone. No payment -> safe auto-cancel; payment exists ->
+    //    hold released but Bill/Payment/deposit-ledger/Addendum history
+    //    preserved + action_required PAYMENT_ALREADY_RECEIVED. Never executes
+    //    the transfer. Best-effort — runs AFTER the move-out txn commits and
+    //    never fails the move-out itself. (Termination routes through this
+    //    same workflow.)
+    try {
+      const { resolveScheduledTransferBeforeTenantDeparture } = await import(
+        "../services/scheduledRoomTransferExecutor.js"
+      );
+      await resolveScheduledTransferBeforeTenantDeparture(reservationId, { actorId });
+    } catch (e) {
+      logger.warn({ err: e, reservationId }, "moveOutStayWorkflow: scheduled-transfer resolution failed (non-fatal)");
+    }
+
     return result;
   } finally {
     await session.endSession();
@@ -2587,6 +2605,18 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
   if (user) {
     user.tenantStatus = "abandoned";
     await user.save();
+  }
+
+  // Resolve any OPEN scheduled room transfer — same rule as move-out: no
+  // payment -> safe auto-cancel; payment exists -> hold released, financial
+  // history preserved, action_required. Never executes the transfer.
+  try {
+    const { resolveScheduledTransferBeforeTenantDeparture } = await import(
+      "../services/scheduledRoomTransferExecutor.js"
+    );
+    await resolveScheduledTransferBeforeTenantDeparture(reservationId, { actorId });
+  } catch (e) {
+    logger.warn({ err: e, reservationId }, "executeAbandonmentProtocolWorkflow: scheduled-transfer resolution failed (non-fatal)");
   }
 
   return {

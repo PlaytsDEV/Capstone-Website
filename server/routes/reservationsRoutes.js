@@ -74,6 +74,8 @@ import {
   transferTenant,
   prepareRoomTransferAddendumAction,
   discardRoomTransferAddendumAction,
+  cancelScheduledRoomTransferAction,
+  retryScheduledRoomTransferAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,
@@ -884,6 +886,40 @@ router.post(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   discardRoomTransferAddendumAction,
+);
+
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/cancel
+ *
+ * Cancel a NOT-yet-executed scheduled room transfer. Automatic only when no
+ * money was received; any payment -> action_required (Administration Office).
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/scheduled-transfer/cancel",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  cancelScheduledRoomTransferAction,
+);
+
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/retry
+ *
+ * Admin retry for an `action_required` scheduled room transfer. Re-runs every
+ * gate; not allowed for FINANCIAL_ADJUSTMENT_REQUIRED / PAYMENT_ALREADY_RECEIVED.
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/scheduled-transfer/retry",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  retryScheduledRoomTransferAction,
 );
 
 /**

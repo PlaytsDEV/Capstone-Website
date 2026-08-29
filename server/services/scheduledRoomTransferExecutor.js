@@ -70,6 +70,9 @@ export const SCHEDULED_TRANSFER_ACTION_REASONS = Object.freeze({
   FINANCIAL_ADJUSTMENT_REQUIRED: "FINANCIAL_ADJUSTMENT_REQUIRED",
   OPERATIONAL_VALIDATION_FAILED: "OPERATIONAL_VALIDATION_FAILED",
   EXECUTION_FAILED: "EXECUTION_FAILED",
+  // Set by cancellation / tenant-departure when the balance Bill already
+  // carries a real payment — nothing financial is reversed automatically.
+  PAYMENT_ALREADY_RECEIVED: "PAYMENT_ALREADY_RECEIVED",
 });
 
 /**
@@ -606,4 +609,236 @@ export async function executeDueScheduledRoomTransfers({ now = new Date() } = {}
  */
 export async function retryScheduledRoomTransfer(scheduledTransferId, { actorId = null, now = new Date() } = {}) {
   return executeScheduledRoomTransfer(scheduledTransferId, { trigger: "retry", actorId, now });
+}
+
+// ── CANCELLATION ─────────────────────────────────────────────────────────────
+
+export const SCHEDULED_TRANSFER_CANCEL_REASONS = Object.freeze({
+  PAYMENT_ALREADY_RECEIVED: "PAYMENT_ALREADY_RECEIVED",
+  TRANSFER_ALREADY_COMPLETED: "TRANSFER_ALREADY_COMPLETED",
+  NOT_CANCELLABLE: "NOT_CANCELLABLE",
+});
+
+/**
+ * Resolve how much real money has been received against a scheduled
+ * transfer's balance Bill (0 when there is no Bill).
+ */
+async function paidAmountOnBalanceBill(sched) {
+  if (!sched.settlementBillId) return 0;
+  const bill = await Bill.findById(sched.settlementBillId).select("paidAmount status").lean();
+  if (!bill || bill.status === "voided") return 0;
+  return round(Number(bill.paidAmount || 0));
+}
+
+/**
+ * Void the UNPAID balance Bill using the canonical Bill lifecycle status
+ * (`voided`, remainingAmount 0). NEVER deletes the Bill. No-op when there is
+ * no Bill or it already carries a payment (caller must have gated on that).
+ */
+async function voidUnpaidBalanceBill(sched, { session } = {}) {
+  if (!sched.settlementBillId) return { voided: false };
+  const q = Bill.findById(sched.settlementBillId);
+  const bill = await (session ? q.session(session) : q);
+  if (!bill) return { voided: false };
+  if (bill.status === "voided") return { voided: true, already: true };
+  if (Number(bill.paidAmount || 0) > 0) return { voided: false, hasPayment: true };
+  bill.status = "voided";
+  bill.remainingAmount = 0;
+  bill.notes = `${bill.notes || ""} | Voided — scheduled room transfer cancelled before cutover.`;
+  if (session) await bill.save({ session });
+  else await bill.save();
+  return { voided: true };
+}
+
+/**
+ * Cancel the prepared Room Transfer Addendum (generated / not-yet-current
+ * Draft -> "cancelled" via transitionContract — the same abandoned state
+ * `discardRoomTransferAddendum` uses). Never deletes the document/history;
+ * it just can never become current. Idempotent.
+ */
+async function cancelPreparedAddendum(sched, actorId) {
+  if (!sched.addendumContractId) return { cancelled: false };
+  const c = await Contract.findById(sched.addendumContractId);
+  if (!c) return { cancelled: false };
+  if (c.isCurrent === true) return { cancelled: false, isCurrent: true };
+  const ABANDONED = new Set(["cancelled", "voided", "rejected", "archived"]);
+  if (ABANDONED.has(c.status)) return { cancelled: true, already: true };
+  const { transitionContract } = await import("./contractService.js");
+  try {
+    await transitionContract(c, "cancelled", actorId, "Room Transfer Addendum cancelled — scheduled transfer cancelled before cutover");
+  } catch (e) {
+    logger.warn({ err: e, contractId: String(c._id) }, "[scheduledTransferExecutor] addendum cancel transition failed (non-fatal)");
+    return { cancelled: false, error: e.message };
+  }
+  return { cancelled: true };
+}
+
+/**
+ * Safe automatic cancellation of a NOT-yet-executed scheduled transfer.
+ *
+ * CANONICAL RULE: automatic cancellation is allowed ONLY when
+ * `paidAmount === 0` on the balance Bill (or there is no Bill). If ANY real
+ * money was received, nothing financial is reversed — the record goes to
+ * `action_required` PAYMENT_ALREADY_RECEIVED and an admin coordinates the
+ * settlement with the Administration Office.
+ *
+ * Safe path (no money): release the destination hold (idempotent, once),
+ * cancel the prepared Addendum, void the unpaid Bill (canonical `voided`
+ * status, never deleted), status -> `cancelled` + cancelledBy/At.
+ * Everything about the source tenancy is untouched.
+ *
+ * @param {string|ObjectId} scheduledTransferId
+ * @param {Object} [opts]
+ * @param {ObjectId|null} [opts.actorId]
+ * @param {boolean} [opts.system] — a lifecycle-driven call (tenant departure)
+ *   rather than an explicit admin click; only affects notification wording.
+ * @returns {{ outcome: "cancelled"|"action_required"|"skipped", reason?: string }}
+ */
+export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId = null, system = false } = {}) {
+  const sched = await ScheduledRoomTransfer.findById(scheduledTransferId);
+  if (!sched) return { outcome: "skipped", reason: "not_found" };
+
+  if (sched.status === "executed") {
+    return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.TRANSFER_ALREADY_COMPLETED };
+  }
+  if (sched.status === "cancelled") {
+    return { outcome: "skipped", reason: "already_cancelled" };
+  }
+  // Defence-in-depth: if the Addendum has somehow already become current, the
+  // transfer effectively occurred — do not "cancel" it here.
+  if (sched.addendumContractId) {
+    const addendumIsCurrent = await Contract.exists({ _id: sched.addendumContractId, isCurrent: true });
+    if (addendumIsCurrent) {
+      return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.TRANSFER_ALREADY_COMPLETED };
+    }
+  }
+
+  const paid = await paidAmountOnBalanceBill(sched);
+
+  // ── ANY money received -> manual settlement, NO financial reversal ──────────
+  if (paid > 0) {
+    const doc = await ScheduledRoomTransfer.findOneAndUpdate(
+      { _id: sched._id, status: { $ne: "cancelled" } },
+      {
+        $set: {
+          status: "action_required",
+          lastError: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED,
+          lastAttemptAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+    try {
+      await notifyBranchAdmins(
+        (doc || sched).branch,
+        "general",
+        "Scheduled Room Transfer Requires Review",
+        system
+          ? "The tenant departed before a paid scheduled room transfer could occur. Please coordinate with the Administration Office, 2nd Floor for financial settlement. The destination hold has been released."
+          : "This scheduled room transfer has an existing payment and cannot be cancelled automatically. Please coordinate with the Administration Office, 2nd Floor for settlement.",
+        {
+          entityType: "reservation",
+          entityId: String(sched.reservationId),
+          actionUrl: "/admin/tenants",
+          dedupeKey: `scheduled_transfer_payment_review:${String(sched._id)}`,
+        },
+      );
+    } catch { /* non-fatal */ }
+
+    // Physical resource release and financial refund are SEPARATE concerns:
+    // for a lifecycle-driven departure the future room must NOT stay blocked
+    // forever, so release the hold even though the money stays put. For an
+    // explicit admin cancel click we KEEP the hold (the admin may still push
+    // the transfer through after settling).
+    if (system && sched.holdApplied) {
+      await releaseHoldInOwnTxn(sched).catch((e) =>
+        logger.error({ err: e, scheduledTransferId: String(sched._id) }, "[cancelScheduledRoomTransfer] departure hold release failed"),
+      );
+    }
+    return { outcome: "action_required", reason: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED };
+  }
+
+  // ── No money -> safe automatic cancellation ───────────────────────────────
+  // Release the hold first (its own tiny txn, idempotent — releaseHoldInOwnTxn
+  // no-ops when holdApplied is already false, and releaseScheduledTransferHold
+  // only frees a bed still "reserved" for THIS reservation).
+  await releaseHoldInOwnTxn(sched).catch((e) => {
+    logger.error({ err: e, scheduledTransferId: String(sched._id) }, "[cancelScheduledRoomTransfer] hold release failed");
+    throw e;
+  });
+
+  const addendumResult = await cancelPreparedAddendum(sched, actorId);
+  const billResult = await voidUnpaidBalanceBill(sched);
+
+  const doc = await ScheduledRoomTransfer.findOneAndUpdate(
+    { _id: sched._id, status: { $ne: "cancelled" } },
+    {
+      $set: {
+        status: "cancelled",
+        cancelledBy: actorId || SYSTEM_ACTOR_ID,
+        cancelledAt: new Date(),
+        holdApplied: false,
+        lastError: null,
+        lastAttemptAt: new Date(),
+      },
+    },
+    { new: true },
+  );
+
+  try {
+    await notify.general(
+      sched.tenantId,
+      "Scheduled Room Transfer Cancelled",
+      "Your scheduled room transfer has been cancelled. You remain in your current room.",
+      { entityType: "reservation", entityId: String(sched.reservationId) },
+    );
+  } catch { /* non-fatal */ }
+
+  logger.info(
+    {
+      scheduledTransferId: String(sched._id),
+      reservationId: String(sched.reservationId),
+      addendumCancelled: addendumResult.cancelled,
+      billVoided: billResult.voided,
+      system,
+    },
+    "[cancelScheduledRoomTransfer] cancelled (safe, no payment)",
+  );
+  void doc;
+  return { outcome: "cancelled" };
+}
+
+/**
+ * Called by the departure workflows (move-out / early termination /
+ * abandonment) BEFORE the tenant permanently leaves the dorm. Resolves any
+ * OPEN scheduled transfer so a future room hold is never left blocking a room
+ * after the tenant is gone.
+ *
+ *   no payment  -> safe automatic cancellation (hold released, Addendum
+ *                  cancelled, unpaid Bill voided, status cancelled)
+ *   payment     -> hold RELEASED (physical resource freed) but Bill / Payment
+ *                  / deposit ledger / Addendum history PRESERVED; status
+ *                  action_required PAYMENT_ALREADY_RECEIVED; admin notified
+ *
+ * Never executes the transfer. Idempotent. Best-effort — a failure here is
+ * logged and swallowed so it can never block the departure workflow itself.
+ *
+ * @returns {{ handled: boolean, outcome?: string, reason?: string }}
+ */
+export async function resolveScheduledTransferBeforeTenantDeparture(reservationId, { actorId = null } = {}) {
+  try {
+    const { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } = await import("../models/ScheduledRoomTransfer.js");
+    const open = await ScheduledRoomTransfer.findOne({
+      reservationId,
+      status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
+      isArchived: { $ne: true },
+    }).sort({ createdAt: -1 });
+    if (!open) return { handled: false };
+
+    const res = await cancelScheduledRoomTransfer(open._id, { actorId, system: true });
+    return { handled: true, outcome: res.outcome, reason: res.reason };
+  } catch (e) {
+    logger.error({ err: e, reservationId: String(reservationId) }, "[resolveScheduledTransferBeforeTenantDeparture] failed (non-fatal)");
+    return { handled: false, error: e.message };
+  }
 }

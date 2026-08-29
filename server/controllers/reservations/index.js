@@ -57,6 +57,8 @@ export {
   transferTenant,
   prepareRoomTransferAddendumAction,
   discardRoomTransferAddendumAction,
+  cancelScheduledRoomTransferAction,
+  retryScheduledRoomTransferAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,

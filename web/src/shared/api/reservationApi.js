@@ -443,6 +443,27 @@ export const reservationApi = {
     }),
 
   /**
+   * Cancel a NOT-yet-executed scheduled room transfer. Automatic only when no
+   * money was received; any payment -> action_required (Administration Office
+   * settlement). Returns { outcome, reason, scheduledRoomTransfer }.
+   * @param {string} reservationId
+   */
+  cancelScheduledRoomTransfer: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/scheduled-transfer/cancel`, {
+      method: "POST",
+    }),
+
+  /**
+   * Admin retry for an `action_required` scheduled room transfer. Re-runs
+   * every gate. Returns { outcome, reason, scheduledRoomTransfer }.
+   * @param {string} reservationId
+   */
+  retryScheduledRoomTransfer: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/scheduled-transfer/retry`, {
+      method: "POST",
+    }),
+
+  /**
    * Get the latest electricity meter reading for a room.
    * Used by the Transfer modal to pre-fill baseline readings.
    */
