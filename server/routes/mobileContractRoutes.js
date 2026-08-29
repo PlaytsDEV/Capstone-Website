@@ -6,6 +6,7 @@ import {
   resolveTenantCanonicalContract,
   resolveTenantUpcomingContract,
 } from "../services/tenantContractSelectionService.js";
+import { getOpenScheduledRoomTransferForReservation } from "../services/scheduledRoomTransferView.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
 import {
@@ -122,6 +123,17 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     }
   }
 
+  // Upcoming Room Transfer (mobile) — same canonical serializer as web; no
+  // mobile-only calculation. Display-only; current room/rent stay source.
+  let scheduledRoomTransfer = null;
+  if (contract?.reservationId) {
+    try {
+      scheduledRoomTransfer = await getOpenScheduledRoomTransferForReservation(contract.reservationId);
+    } catch (error) {
+      logger.warn({ err: error, tenantId: req.mobileTenant?._id }, "Mobile scheduled room transfer resolution failed (non-fatal)");
+    }
+  }
+
   return res.json({
     contract: toTenantContractView(contract, new Date(), {
       preparedDocument,
@@ -132,6 +144,7 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     state: contract ? "CONTRACT_AVAILABLE" : "NO_PUBLISHED_CONTRACT",
     emptyState: contract ? null : "Contract Not Available Yet",
     upcoming: upcomingView,
+    scheduledRoomTransfer,
   });
 }));
 

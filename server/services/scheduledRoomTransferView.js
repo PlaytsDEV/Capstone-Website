@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-import { Bill } from "../models/index.js";
+import { Bill, Contract } from "../models/index.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
   "awaiting_payment",
@@ -31,6 +31,14 @@ export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
   "action_required",
   "cancelled",
 ]);
+
+export const SCHEDULED_TRANSFER_STATUS_LABELS = Object.freeze({
+  awaiting_payment: "Awaiting Payment",
+  ready: "Ready",
+  completed: "Completed",
+  action_required: "Action Required",
+  cancelled: "Cancelled",
+});
 
 /**
  * Resolve the payment state of a scheduled transfer's balance Bill.
@@ -119,6 +127,25 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
   const executed = doc.executedSettlement || null;
   const figures = executed || preview || null;
 
+  // Addendum status — before execution it is a prepared, not-yet-current
+  // Draft that becomes effective on `effectiveTransferDate`.
+  let addendum = null;
+  if (doc.addendumContractId) {
+    const q = Contract.findById(doc.addendumContractId).select("status isCurrent contractNumber amendmentEffectiveDate");
+    const c = await (session ? q.session(session) : q).lean();
+    if (c) {
+      addendum = {
+        contractId: String(c._id),
+        contractNumber: c.contractNumber || null,
+        status: c.status,
+        isCurrent: !!c.isCurrent,
+        effectiveDate: c.amendmentEffectiveDate || doc.effectiveTransferDate,
+        // User-facing: "Scheduled" until it actually becomes the current lease.
+        label: c.isCurrent ? "Room Transfer Addendum" : "Room Transfer Addendum — Scheduled",
+      };
+    }
+  }
+
   return {
     id: String(doc._id),
     reservationId: String(doc.reservationId),
@@ -141,6 +168,7 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
 
     effectiveTransferDate: doc.effectiveTransferDate,
     status: userStatus,
+    statusLabel: SCHEDULED_TRANSFER_STATUS_LABELS[userStatus] || userStatus,
     actionRequiredReason: doc.status === "action_required" ? (doc.lastError || null) : null,
 
     // Rent / deposit figures — the executed settlement once it exists,
@@ -167,6 +195,7 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
       "Electricity and water follow the normal utility billing after the room-transfer cutoff.",
 
     addendumContractId: doc.addendumContractId ? String(doc.addendumContractId) : null,
+    addendum,
 
     scheduledAt: doc.scheduledAt || doc.createdAt || null,
     executedAt: doc.executedAt || null,

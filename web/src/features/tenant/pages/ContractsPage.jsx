@@ -223,6 +223,74 @@ function AcknowledgeConfirmModal({ open, isDraft, isAddendum, busy, onConfirm, o
   );
 }
 
+const peso = (n) =>
+  `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Tenant — a compact "Upcoming Room Transfer" panel. The tenant's current
+ * room/rent shown elsewhere in the app stay the SOURCE values until the
+ * effective date; this only describes what is scheduled.
+ */
+function UpcomingRoomTransferPanel({ transfer }) {
+  if (!transfer) return null;
+  const {
+    currentRoom, scheduledRoom, effectiveTransferDate, newMonthlyRent,
+    status, statusLabel, transferBalance,
+  } = transfer;
+  const bal = transferBalance || {};
+  const hasBalance = bal.hasBill && Number(bal.amountDue) > 0;
+  const effLabel = effectiveTransferDate ? dayjs(effectiveTransferDate).format("MMM D, YYYY") : "—";
+
+  return (
+    <div className="mb-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 px-4 py-3.5">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-bold text-sky-900 dark:text-sky-200 flex items-center gap-1.5">
+          <ArrowRight size={15} className="text-sky-500" />
+          Upcoming Room Transfer
+        </h3>
+        <span
+          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+            status === "ready"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+              : status === "action_required"
+              ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          }`}
+        >
+          {statusLabel || status}
+        </span>
+      </div>
+      <div className="text-xs text-sky-800 dark:text-sky-300 space-y-1">
+        <p>
+          <span className="font-medium">{currentRoom?.name || "your room"}</span>
+          {"  →  "}
+          <span className="font-medium">{scheduledRoom?.name || "new room"}</span>
+          {"  ·  Effective "}
+          {effLabel}
+        </p>
+        {newMonthlyRent != null ? (
+          <p>New monthly rent: <span className="font-medium">{peso(newMonthlyRent)}</span></p>
+        ) : null}
+        {hasBalance ? (
+          <p>
+            Transfer balance: <span className="font-medium">{peso(bal.amountDue)}</span>
+            {Number(bal.amountPaid) > 0 ? ` · Paid ${peso(bal.amountPaid)} · Remaining ${peso(bal.remaining)}` : ""}
+            {"  ·  Due "}{effLabel}
+          </p>
+        ) : (
+          <p>Transfer balance: <span className="font-medium">₱0 — no payment required</span></p>
+        )}
+        <p className="text-sky-600 dark:text-sky-400">
+          Final electricity and water charges follow the normal billing process after the room-transfer cutoff.
+        </p>
+        {status === "ready" ? (
+          <p className="text-emerald-700 dark:text-emerald-400">Ready — scheduled for {effLabel}.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AcknowledgeContractBanner({ acknowledgement, onAcknowledge, busy, isAddendum = false }) {
   if (!acknowledgement || !acknowledgement.required) return null;
 
@@ -413,6 +481,7 @@ export default function ContractsPage() {
   const [contract, setContract] = useState(null);
   const [stayData, setStayData] = useState(null);
   const [contractHistory, setContractHistory] = useState([]);
+  const [scheduledRoomTransfer, setScheduledRoomTransfer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionBusyId, setActionBusyId] = useState(null);
@@ -437,6 +506,7 @@ export default function ContractsPage() {
       if (contractRes.status === "fulfilled") {
         resolvedContract = contractRes.value?.contract || null;
         setContract(resolvedContract);
+        setScheduledRoomTransfer(contractRes.value?.scheduledRoomTransfer || null);
       }
       if (stayProofRes.status === "fulfilled") {
         setStayData(stayProofRes.value?.stayProof || null);
@@ -668,6 +738,10 @@ export default function ContractsPage() {
           {error}
         </div>
       )}
+
+      {scheduledRoomTransfer ? (
+        <UpcomingRoomTransferPanel transfer={scheduledRoomTransfer} />
+      ) : null}
 
       <AcknowledgeContractBanner
         acknowledgement={acknowledgement}
