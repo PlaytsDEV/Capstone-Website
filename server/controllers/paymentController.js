@@ -1160,102 +1160,187 @@ export const getAdminPaymentLedger = async (req, res, next) => {
       filter.createdAt = createdAtFilter;
     }
 
+    const category = String(req.query.category || "").trim(); // all, reservation_fee, advance_deposit, rent, utility
+
     const payments = await Payment.find(filter)
       .populate("tenantId", "firstName lastName email profileImage avatar photoUrl")
-      .populate("billId", "billingMonth totalAmount status branch")
+      .populate({
+        path: "billId",
+        select: "billingMonth totalAmount status branch billType charges grossAmount reservationCreditApplied reservationId roomId",
+        populate: [
+          { path: "roomId", select: "name roomNumber branch type" },
+          {
+            path: "reservationId",
+            select: "reservationCode status roomId selectedBed totalPrice amountPaid branch",
+            populate: { path: "roomId", select: "name roomNumber branch type" },
+          },
+        ],
+      })
       .populate({
         path: "reservationId",
         select: "reservationCode status roomId selectedBed totalPrice amountPaid branch",
-        populate: { path: "roomId", select: "name roomNumber branch" },
+        populate: { path: "roomId", select: "name roomNumber branch type" },
       })
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
 
-    const filteredPayments = search
-      ? payments.filter((payment) => {
-          const tenantName =
-            `${payment.tenantId?.firstName || ""} ${payment.tenantId?.lastName || ""}`.trim();
-          const reservationCode = payment.reservationId?.reservationCode || "";
-          const roomName = payment.reservationId?.roomId?.name || payment.reservationId?.roomId?.roomNumber || "";
-          const haystack = [
-            payment.paymentId,
-            payment.referenceNumber,
-            payment.externalPaymentId,
-            payment.source,
-            payment.method,
-            payment.status,
-            payment.billId?._id,
-            payment.tenantId?._id,
-            payment.tenantId?.email,
-            tenantName,
-            reservationCode,
-            roomName,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(search);
-        })
-      : payments;
+    const resolvePaymentCategory = (payment) => {
+      if (
+        payment.purpose === "reservation_fee" ||
+        payment.purpose === "reservation_deposit" ||
+        (!payment.billId && payment.reservationId)
+      ) {
+        return "reservation_fee";
+      }
+      if (
+        payment.purpose === "initial_payment" ||
+        payment.billId?.billType === "initial_payment"
+      ) {
+        return "advance_deposit";
+      }
+      if (
+        payment.purpose === "rent" ||
+        payment.purpose === "regular_rent" ||
+        payment.billId?.billType === "rent"
+      ) {
+        return "rent";
+      }
+      if (payment.purpose === "utility" || payment.billId?.billType === "utility") {
+        return "utility";
+      }
+      return payment.purpose || "other";
+    };
+
+    let filteredPayments = payments;
+
+    if (category && category !== "all") {
+      filteredPayments = filteredPayments.filter((p) => {
+        const cat = resolvePaymentCategory(p);
+        if (category === "reservation_fee") return cat === "reservation_fee";
+        if (category === "advance_deposit") return cat === "advance_deposit";
+        return cat === category;
+      });
+    }
+
+    if (search) {
+      filteredPayments = filteredPayments.filter((payment) => {
+        const effectiveRes = payment.reservationId || payment.billId?.reservationId || null;
+        const effectiveRoom =
+          payment.reservationId?.roomId ||
+          payment.billId?.roomId ||
+          payment.billId?.reservationId?.roomId ||
+          null;
+        const tenantName =
+          `${payment.tenantId?.firstName || ""} ${payment.tenantId?.lastName || ""}`.trim();
+        const reservationCode = effectiveRes?.reservationCode || "";
+        const roomName = effectiveRoom?.name || effectiveRoom?.roomNumber || "";
+        const haystack = [
+          payment.paymentId,
+          payment.referenceNumber,
+          payment.externalPaymentId,
+          payment.source,
+          payment.method,
+          payment.status,
+          payment.billId?._id,
+          payment.tenantId?._id,
+          payment.tenantId?.email,
+          tenantName,
+          reservationCode,
+          roomName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(search);
+      });
+    }
 
     sendSuccess(res, {
-      data: filteredPayments.map((payment) => ({
-        id: payment._id,
-        _id: payment._id,
-        paymentId: payment.paymentId,
-        billId: payment.billId?._id || payment.billId || null,
-        billNumber: payment.billId?._id || null,
-        billStatus: payment.billId?.status || null,
-        reservationId: payment.reservationId?._id || payment.reservationId || null,
-        reservation: payment.reservationId && typeof payment.reservationId === "object"
-          ? {
-              id: payment.reservationId._id,
-              _id: payment.reservationId._id,
-              reservationCode: payment.reservationId.reservationCode || String(payment.reservationId._id),
-              status: payment.reservationId.status || null,
-              roomId: payment.reservationId.roomId || null,
-              selectedBed: payment.reservationId.selectedBed || null,
-              totalPrice: payment.reservationId.totalPrice || null,
-              branch: payment.reservationId.branch || null,
-            }
-          : null,
-        purpose: payment.purpose || "other",
-        branch: payment.branch || payment.reservationId?.branch || payment.billId?.branch || null,
-        tenantId: payment.tenantId || null,
-        tenant: payment.tenantId
-          ? {
-              id: payment.tenantId._id,
-              _id: payment.tenantId._id,
-              firstName: payment.tenantId.firstName || "",
-              lastName: payment.tenantId.lastName || "",
-              name:
-                `${payment.tenantId.firstName || ""} ${payment.tenantId.lastName || ""}`.trim() ||
-                "Tenant",
-              email: payment.tenantId.email || "",
-              profileImage:
-                payment.tenantId.profileImage ||
-                payment.tenantId.avatar ||
-                payment.tenantId.photoUrl ||
-                "",
-            }
-          : null,
-        amount: payment.amount || 0,
-        paidAmount: payment.paidAmount ?? payment.amount ?? 0,
-        expectedAmount: payment.expectedAmount ?? payment.amount ?? 0,
-        paymentMethod: payment.method || null,
-        method: payment.method || null,
-        status: payment.status || null,
-        externalPaymentId: payment.externalPaymentId || null,
-        referenceNumber: payment.referenceNumber || null,
-        paymentReference: payment.referenceNumber || payment.externalPaymentId || null,
-        source: payment.source || null,
-        proofUrl: payment.proofUrl || null,
-        proofImageUrl: payment.proofImageUrl || null,
-        createdAt: payment.createdAt || null,
-        submittedAt: payment.submittedAt || payment.createdAt || null,
-        processedAt: payment.processedAt || null,
-      })),
+      data: filteredPayments.map((payment) => {
+        const cat = resolvePaymentCategory(payment);
+        const effectiveRes = payment.reservationId || payment.billId?.reservationId || null;
+        const effectiveRoom =
+          payment.reservationId?.roomId ||
+          payment.billId?.roomId ||
+          payment.billId?.reservationId?.roomId ||
+          null;
+        const roomName = effectiveRoom?.name || effectiveRoom?.roomNumber || "";
+        const bedLabel =
+          payment.reservationId?.selectedBed?.label ||
+          payment.billId?.reservationId?.selectedBed?.label ||
+          "";
+        const reservationCode =
+          effectiveRes?.reservationCode ||
+          (effectiveRes?._id ? String(effectiveRes._id) : "") ||
+          "";
+
+        return {
+          id: payment._id,
+          _id: payment._id,
+          paymentId: payment.paymentId,
+          paymentCategory: cat,
+          category: cat,
+          billId: payment.billId?._id || payment.billId || null,
+          billNumber: payment.billId?._id || null,
+          billStatus: payment.billId?.status || null,
+          billType: payment.billId?.billType || null,
+          billCharges: payment.billId?.charges || null,
+          billGrossAmount: payment.billId?.grossAmount || null,
+          billReservationCreditApplied: payment.billId?.reservationCreditApplied || null,
+          reservationId: effectiveRes?._id || null,
+          reservation: effectiveRes && typeof effectiveRes === "object"
+            ? {
+                id: effectiveRes._id,
+                _id: effectiveRes._id,
+                reservationCode,
+                status: effectiveRes.status || null,
+                roomId: effectiveRoom,
+                selectedBed: effectiveRes.selectedBed || null,
+                totalPrice: effectiveRes.totalPrice || null,
+                branch: effectiveRes.branch || null,
+              }
+            : null,
+          purpose: payment.purpose || "other",
+          branch: payment.branch || effectiveRes?.branch || payment.billId?.branch || null,
+          roomName,
+          bedLabel,
+          reservationCode,
+          tenantId: payment.tenantId || null,
+          tenant: payment.tenantId
+            ? {
+                id: payment.tenantId._id,
+                _id: payment.tenantId._id,
+                firstName: payment.tenantId.firstName || "",
+                lastName: payment.tenantId.lastName || "",
+                name:
+                  `${payment.tenantId.firstName || ""} ${payment.tenantId.lastName || ""}`.trim() ||
+                  "Tenant",
+                email: payment.tenantId.email || "",
+                profileImage:
+                  payment.tenantId.profileImage ||
+                  payment.tenantId.avatar ||
+                  payment.tenantId.photoUrl ||
+                  "",
+              }
+            : null,
+          amount: payment.amount || 0,
+          paidAmount: payment.paidAmount ?? payment.amount ?? 0,
+          expectedAmount: payment.expectedAmount ?? payment.amount ?? 0,
+          paymentMethod: payment.method || null,
+          method: payment.method || null,
+          status: payment.status || null,
+          externalPaymentId: payment.externalPaymentId || null,
+          referenceNumber: payment.referenceNumber || null,
+          paymentReference: payment.referenceNumber || payment.externalPaymentId || null,
+          source: payment.source || null,
+          proofUrl: payment.proofUrl || null,
+          proofImageUrl: payment.proofImageUrl || null,
+          createdAt: payment.createdAt || null,
+          submittedAt: payment.submittedAt || payment.createdAt || null,
+          processedAt: payment.processedAt || null,
+        };
+      }),
     });
   } catch (error) {
     next(error);

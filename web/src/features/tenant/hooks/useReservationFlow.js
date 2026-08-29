@@ -3010,6 +3010,17 @@ export default function useReservationFlow() {
     }
   };
 
+  const isReservationConfirmed = useMemo(() => {
+    const status = normalizeReservationStatus(
+      reservationData?.reservationStatus || reservationData?.status || "",
+    );
+    return (
+      Number(currentStage) === 5 ||
+      hasReservationStatus(status, "reserved", "moveIn", "moveOut") ||
+      Boolean(paymentApproved)
+    );
+  }, [currentStage, reservationData, paymentApproved]);
+
   const handleExitToDashboard = async () => {
     // If user is in Stage 3 and has unsaved application changes, flush immediately
     if (currentStage === 3 && hasUnsavedApplicationChanges && reservationId) {
@@ -3055,11 +3066,13 @@ export default function useReservationFlow() {
     }
 
     navigatingAwayRef.current = true;
-    showNotification(
-      "Your reservation progress has been saved. You can resume at any time from your Dashboard.",
-      "success",
-      3000,
-    );
+    if (!isReservationConfirmed) {
+      showNotification(
+        "Your reservation progress has been saved. You can resume at any time from your Dashboard.",
+        "success",
+        3000,
+      );
+    }
     appNavigate("/applicant/profile", {
       state: { tab: "dashboard" },
     });
@@ -3174,6 +3187,7 @@ export default function useReservationFlow() {
     // Stage 5
     reservationCode,
     visitCode, setVisitCode,
+    isReservationConfirmed,
 
     // UI flags
     showLoginConfirm, setShowLoginConfirm,

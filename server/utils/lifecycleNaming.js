@@ -26,7 +26,14 @@ export const CANONICAL_RESERVATION_STATUSES = Object.freeze([
   "archived",
 ]);
 
-export const LEGACY_RESERVATION_STATUS_MAP = Object.freeze({});
+export const LEGACY_RESERVATION_STATUS_MAP = Object.freeze({
+  movein: "moveIn",
+  move_in: "moveIn",
+  moved_in: "moveIn",
+  moveout: "moveOut",
+  move_out: "moveOut",
+  moved_out: "moveOut",
+});
 
 export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
   pending: [
@@ -321,6 +328,27 @@ export const readMoveInDate = (value, { includeSource = false } = {}) => {
     }
   }
   return includeSource ? { value: null, sourceField: null } : null;
+};
+
+export const resolveMoveInConfirmationDate = ({
+  confirmedMoveInDate = null,
+  actualMoveInDate = null,
+  moveInDate = null,
+  reservation = null,
+  fallbackDate = new Date(),
+} = {}) => {
+  const candidate =
+    confirmedMoveInDate ??
+    actualMoveInDate ??
+    moveInDate ??
+    readMoveInDate(reservation) ??
+    fallbackDate;
+
+  if (candidate instanceof Date && !isNaN(candidate.getTime())) {
+    return candidate;
+  }
+  const parsed = new Date(candidate);
+  return !isNaN(parsed.getTime()) ? parsed : new Date(fallbackDate);
 };
 
 export const readMoveOutDate = (value) => value?.moveOutDate ?? null;

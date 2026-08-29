@@ -145,3 +145,14 @@ test("transfer modal never renders electricity/water as a charged settlement lin
   assert.match(transferModal, /follows the normal utility period close/i);
   assert.match(transferModal, /Water[\s\S]{0,300}settled at its normal period close/i);
 });
+
+// ── Security deposit preservation & legacy clarity invariants ──────────
+test("TenantBillingTab explains legacy security deposit carries over automatically upon room transfer", () => {
+  assert.match(billingTab, /carries over automatically upon room transfer|automatically recorded upon room transfer/i);
+});
+
+test("transfer modal explicitly states security deposit is preserved intact and deductions only occur at move-out", () => {
+  assert.match(transferModal, /Security deposits are carried over intact and never deducted during a room transfer/i);
+  assert.match(transferModal, /Deductions only apply during final move-out clearance/i);
+});
+

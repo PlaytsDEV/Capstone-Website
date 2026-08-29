@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   FileText,
   Upload,
@@ -908,10 +909,12 @@ export default function SignedContractUploadSection({
       )}
 
       {/* In-App Document Preview Modal */}
-      {viewingDoc && (
+      {viewingDoc && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={closeDocViewer}
+          role="dialog"
+          aria-modal="true"
         >
           <div
             className="bg-card border border-border rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
@@ -1061,16 +1064,19 @@ export default function SignedContractUploadSection({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirmDoc && (
+      {deleteConfirmDoc && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => {
             if (!deletingVersion) setDeleteConfirmDoc(null);
           }}
+          role="dialog"
+          aria-modal="true"
         >
           <div
             className="bg-card border border-border rounded-xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
@@ -1123,7 +1129,8 @@ export default function SignedContractUploadSection({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

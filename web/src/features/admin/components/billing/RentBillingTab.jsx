@@ -601,6 +601,8 @@ export default function RentBillingTab({
     [filteredRows],
   );
 
+  const hasEligibleRows = eligibleRows.length > 0;
+
   const selectedRows = useMemo(
     () =>
       eligibleRows.filter((r) =>
@@ -1018,7 +1020,7 @@ export default function RentBillingTab({
         <div className="overflow-x-auto min-h-[380px]">
           <table className="w-full min-w-[860px] table-fixed text-left text-xs">
             <colgroup>
-              <col className="w-[48px]" />
+              {hasEligibleRows && <col className="w-[48px]" />}
               <col className="w-[26%]" />
               <col className="w-[20%]" />
               <col className="w-[20%]" />
@@ -1027,23 +1029,24 @@ export default function RentBillingTab({
             </colgroup>
             <thead className="bg-background">
               <tr>
-                <th className="w-[48px] px-3 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all eligible tenants"
-                    checked={eligibleRows.length > 0 && selectedReservationIds.size === eligibleRows.length}
-                    ref={(el) => {
-                      if (el) {
-                        el.indeterminate =
-                          selectedReservationIds.size > 0 &&
-                          selectedReservationIds.size < eligibleRows.length;
-                      }
-                    }}
-                    disabled={eligibleRows.length === 0}
-                    onChange={handleSelectAll}
-                    className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                  />
-                </th>
+                {hasEligibleRows && (
+                  <th className="w-[48px] px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all eligible tenants"
+                      checked={selectedReservationIds.size === eligibleRows.length}
+                      ref={(el) => {
+                        if (el) {
+                          el.indeterminate =
+                            selectedReservationIds.size > 0 &&
+                            selectedReservationIds.size < eligibleRows.length;
+                        }
+                      }}
+                      onChange={handleSelectAll}
+                      className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="w-[26%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
                 <th className="w-[20%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">System Status</th>
                 <th className="w-[20%] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
@@ -1054,7 +1057,7 @@ export default function RentBillingTab({
             <tbody className="divide-y divide-border/50 bg-card">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={hasEligibleRows ? 6 : 5} className="py-16 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
                       <div className="flex shrink-0 items-center justify-center mb-2.5">
                         <CheckCircle size={28} className="text-emerald-600 dark:text-emerald-400" />
@@ -1128,19 +1131,19 @@ export default function RentBillingTab({
                   
                   return (
                     <tr key={rowKey} className={`group transition-colors hover:bg-muted/30 ${isSelected ? "bg-muted/20" : ""}`}>
-                      <td className="w-[48px] px-3 py-3 text-center">
-                        {isEligible ? (
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${row.tenantName}`}
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(reservationId)}
-                            className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                          />
-                        ) : (
-                          <span className="inline-block w-4 h-4" />
-                        )}
-                      </td>
+                      {hasEligibleRows && (
+                        <td className="w-[48px] px-3 py-3 text-center">
+                          {isEligible && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${row.tenantName}`}
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(reservationId)}
+                              className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                          )}
+                        </td>
+                      )}
                       <td className="w-[26%] px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">

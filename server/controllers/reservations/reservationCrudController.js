@@ -616,13 +616,24 @@ export const deleteReservation = async (req, res) => {
       });
     }
 
-    if (
-      hasReservationStatus(reservation.status, "reserved", "approved_for_payment") ||
-      hasReservationStatus(reservation.status, "moveIn")
-    ) {
+    if (hasReservationStatus(reservation.status, "moveIn")) {
       return res.status(400).json({
-        error: "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-out workflow first.",
+        error: "This tenant has already moved in. To end their stay or remove this record, please process a move-out from the Tenants workspace.",
+        code: "MOVED_IN_CANNOT_BE_DELETED",
+      });
+    }
+
+    if (hasReservationStatus(reservation.status, "reserved")) {
+      return res.status(400).json({
+        error: "This reservation is confirmed. Please complete the move-in process or cancel the reservation before deleting.",
         code: "RESERVED_CANNOT_BE_DELETED",
+      });
+    }
+
+    if (hasReservationStatus(reservation.status, "approved_for_payment")) {
+      return res.status(400).json({
+        error: "This application has been approved for payment. If the applicant is not proceeding, please cancel the reservation first.",
+        code: "APPROVED_PAYMENT_CANNOT_BE_DELETED",
       });
     }
 

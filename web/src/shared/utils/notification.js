@@ -193,13 +193,44 @@ export const showConfirmation = (
 };
 
 /**
- * Sanitizes notification message strings to remove legacy or accidental "N/A" placeholders
- * and any legacy appended "View in Announcements" suffixes.
- * E.g., "Your reservation N/A has been cancelled." -> "Your reservation has been cancelled."
+ * Sanitizes notification message strings to remove redundant title prefixes,
+ * legacy or accidental "N/A" placeholders, and legacy announcement suffixes.
+ * E.g., "Application Approved for Payment: Your application for GP - Room 201..."
+ *   -> "Application approved for GP - Room 201. You can now proceed to payment to secure your room."
  */
+export const cleanRedundantToastPrefix = (message) => {
+  if (!message || typeof message !== "string") return message;
+  let text = message.trim();
+
+  // 1. Application approval redundant prefix
+  text = text.replace(
+    /^(?:Application Approved for Payment|Application Approved):\s*(?:Your\s+application\s+(?:for\s+)?(.+?)\s+has\s+been\s+approved\.\s*)?(?:You\s+can\s+now\s+proceed\s+to\s+pay\s+the\s+reservation\s+fee\s+to\s+secure\s+your\s+room\.?)?/i,
+    (_match, room) => {
+      const targetRoom = room ? ` for ${room}` : "";
+      return `Application approved${targetRoom}. You can now proceed to payment to secure your room.`;
+    },
+  );
+
+  // 2. Redundant "Title: Message" patterns where the title repeats words in the body
+  text = text.replace(/^Reservation Confirmed:\s*(?:Your reservation\s+)?/i, "Your reservation ");
+  text = text.replace(/^Payment Confirmed:\s*(?:Your payment\s+)?/i, "Your payment ");
+  text = text.replace(/^Payment Approved:\s*(?:Your payment\s+)?/i, "Your payment ");
+  text = text.replace(/^Visit Schedule Confirmed:\s*(?:Your physical visit\s+|Your visit\s+)?/i, "Your visit schedule ");
+  text = text.replace(/^Visit Schedule Rejected:\s*(?:Your visit\s+)?/i, "Your visit request ");
+  text = text.replace(/^Cancellation Request Submitted:\s*(?:Your cancellation request\s+)?/i, "Your cancellation request ");
+  text = text.replace(/^Cancellation Request Not Approved:\s*(?:Your cancellation request\s+)?/i, "Your cancellation request ");
+  text = text.replace(/^Move-In Readiness Incomplete:\s*/i, "Move-in readiness: ");
+  text = text.replace(/^Maintenance Update:\s*(?:Your maintenance\s+)?/i, "Your maintenance request ");
+
+  // 3. General "Subject: Your subject..." prefix remover
+  text = text.replace(/^([A-Za-z\s–-]+):\s*(Your\s+\1|This\s+\1|The\s+\1)/i, "$2");
+
+  return text;
+};
+
 export const cleanNotificationMessage = (message) => {
   if (!message || typeof message !== "string") return message;
-  return message
+  let cleaned = message
     .replace(/^Your application requires revision:\s*•?\s*/gi, "")
     .replace(/\bYour reservation N\/A\b/gi, "Your reservation")
     .replace(/\b reservation N\/A\b/gi, " reservation")
@@ -208,6 +239,9 @@ export const cleanNotificationMessage = (message) => {
     .replace(/\s*View in Announcements\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  cleaned = cleanRedundantToastPrefix(cleaned);
+  return cleaned;
 };
 
 /**
@@ -264,7 +298,20 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
 
   let message = rawMessage.trim();
 
-  // 1. Technical & System Error Replacements
+  // 1. Specific robotic phrase conversions
+  const movedInDeleteRegex =
+    /\b(tenant\s+has\s+already\s+moved\s+in|already\s+moved\s+in.*process\s+a\s+move-out)\b/i;
+  if (movedInDeleteRegex.test(message)) {
+    return "This tenant has already moved in. To end their stay or remove this record, please process a move-out from the Tenants workspace.";
+  }
+
+  const reservedDeleteRegex =
+    /\b(confirmed\s+reserved\s+bookings\s+cannot\s+be\s+deleted|cannot\s+be\s+deleted\s+directly.*(?:workflow|process)\s+first|active\s+and\s+confirmed\s+reservations\s+cannot\s+be\s+deleted)\b/i;
+  if (reservedDeleteRegex.test(message)) {
+    return "This reservation is confirmed. Please complete the move-in process or cancel the reservation before deleting.";
+  }
+
+  // 2. Technical & System Error Replacements
   const serverErrorRegex =
     /\b(system\s*error|internal\s*server\s*error|500\s*internal|server\s*error\s*:\s*500|502\s*bad\s*gateway|503\s*service|504\s*gateway)\b/i;
   const networkErrorRegex =
@@ -302,7 +349,7 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
     return "Unable to complete your request right now. Please try again.";
   }
 
-  // 2. Lilycrest Terminology Invariants
+  // 3. Lilycrest Terminology Invariants & Friendly Phrasing
   message = message
     .replace(/\bResidents\b/g, "Tenants")
     .replace(/\bresidents\b/g, "tenants")
@@ -313,9 +360,16 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
     .replace(/\bSuper\s*Admin\b/g, "Owner")
     .replace(/\bsuper\s*admin\b/g, "owner")
     .replace(/\bRental\s*Fee\b/g, "Rent")
-    .replace(/\brental\s*fee\b/g, "rent");
+    .replace(/\brental\s*fee\b/g, "rent")
+    .replace(/\bbookings\b/gi, "reservations")
+    .replace(/\bbooking\b/gi, "reservation");
 
-  // 3. Clean and normalize revision prefixes & formatting
+  // 4. Polite conversion of "Failed to [action]" -> "Unable to [action]"
+  message = message
+    .replace(/^Failed to /i, "Unable to ")
+    .replace(/\. Failed to /gi, ". Unable to ");
+
+  // 5. Clean redundant prefixes and normalize formatting
   message = cleanNotificationMessage(message);
 
   return message;

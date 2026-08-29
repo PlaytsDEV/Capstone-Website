@@ -128,6 +128,7 @@ export default function TenantViolationManager({ branch }) {
       setViolationToDelete(null);
       fetchViolations();
     } catch (err) {
+      setViolationToDelete(null);
       console.error("Delete violation error:", err);
       const errText = err.message || "Failed to delete violation record.";
       showNotification(errText, "error");

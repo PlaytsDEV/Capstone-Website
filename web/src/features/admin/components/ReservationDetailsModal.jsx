@@ -525,16 +525,37 @@ export default function ReservationDetailsModal({
   const [showNotes, setShowNotes] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const todayDateStr = useMemo(() => toDateInputValue(new Date()), []);
+  const scheduledMoveInStr = useMemo(() => {
+    const raw =
+      reservation?.moveInDate ||
+      reservation?.intendedMoveInDate ||
+      reservation?.checkInDate;
+    if (!raw) return todayDateStr;
+    try {
+      return toDateInputValue(new Date(raw));
+    } catch {
+      return todayDateStr;
+    }
+  }, [
+    reservation?.moveInDate,
+    reservation?.intendedMoveInDate,
+    reservation?.checkInDate,
+    todayDateStr,
+  ]);
   const [rescheduleMoveInDate, setRescheduleMoveInDate] = useState("");
   const [showExtendPrompt, setShowExtendPrompt] = useState(false);
   const [meterReadingVal, setMeterReadingVal] = useState("");
-  const [actualMoveInDate, setActualMoveInDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [actualMoveInDate, setActualMoveInDate] = useState(scheduledMoveInStr);
   const isFutureMoveInDate = Boolean(actualMoveInDate && actualMoveInDate > todayDateStr);
- const [houseRulesPrepared, setHouseRulesPrepared] = useState(false);
- const [showMeterPrompt, setShowMeterPrompt] = useState(false);
- const cancellationPanelRef = useRef(null);
+  const [houseRulesPrepared, setHouseRulesPrepared] = useState(false);
+  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
+
+  useEffect(() => {
+    if (showMeterPrompt) {
+      setActualMoveInDate(scheduledMoveInStr);
+    }
+  }, [showMeterPrompt, scheduledMoveInStr]);
+  const cancellationPanelRef = useRef(null);
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -568,8 +589,17 @@ export default function ReservationDetailsModal({
   const visitStatusAppearance = visitStatusKey
     ? VISIT_STATUS_CONFIG[visitStatusKey]
     : null;
-  const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
-  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
+  const visitBranch =
+    (typeof reservation?.roomId === "object" ? reservation?.roomId?.branch : null) ||
+    (typeof reservation?.room === "object" ? reservation?.room?.branch : null) ||
+    reservation?.branch ||
+    "";
+  const visitRoomId =
+    (typeof reservation?.roomId === "object" ? reservation?.roomId?._id : reservation?.roomId) ||
+    (typeof reservation?.room === "object" ? reservation?.room?._id : reservation?.room) ||
+    reservation?.assignedRoom?._id ||
+    reservation?.assignedRoom ||
+    "";
   /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
   const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
   const appearance = getReservationStatusAppearance(status, reservation);
@@ -610,11 +640,23 @@ export default function ReservationDetailsModal({
     visitRoomId,
     { enabled: Boolean(visitRoomId) && branchUsesSubmeter },
   );
-  const previousMeterReading =
-    latestUtilityRes?.reading ??
-    latestUtilityRes?.data?.reading ??
-    reservation?.roomId?.lastMeterReading ??
-    null;
+  const previousMeterReading = useMemo(() => {
+    const raw =
+      latestUtilityRes?.reading?.reading ??
+      latestUtilityRes?.data?.reading?.reading ??
+      (typeof latestUtilityRes?.reading === "number" ? latestUtilityRes.reading : null) ??
+      (typeof latestUtilityRes?.data?.reading === "number" ? latestUtilityRes.data.reading : null) ??
+      reservation?.roomId?.lastMeterReading ??
+      reservation?.roomId?.lastReading ??
+      reservation?.room?.lastMeterReading ??
+      reservation?.room?.lastReading ??
+      reservation?.meterReading ??
+      null;
+
+    if (raw === null || raw === undefined) return null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }, [latestUtilityRes, reservation]);
   const visitHistory = Array.isArray(reservation?.visitHistory)
     ? reservation.visitHistory
         .slice()
@@ -958,6 +1000,7 @@ export default function ReservationDetailsModal({
           onUpdate?.();
           onClose();
         } catch (error) {
+          setConfirmModal((previous) => ({ ...previous, open: false }));
           const errorCode = error?.response?.data?.code;
           const isCancellationReviewAction =
             key === "approveCancellation" || key === "rejectCancellation";
@@ -977,7 +1020,6 @@ export default function ReservationDetailsModal({
                       latestReservation?.cancellationRequested === false);
 
               if (reviewWasApplied) {
-                setConfirmModal((previous) => ({ ...previous, open: false }));
                 showNotification(successMsg, "success");
                 onUpdate?.();
                 onClose();
@@ -991,7 +1033,6 @@ export default function ReservationDetailsModal({
             isCancellationReviewAction &&
             errorCode === "NO_PENDING_REQUEST"
           ) {
-            setConfirmModal((previous) => ({ ...previous, open: false }));
             showNotification(
               "This cancellation request was already reviewed. Refreshing reservation details.",
               "info",
@@ -1961,6 +2002,30 @@ export default function ReservationDetailsModal({
                         }}
                         className="rdm-inline-input"
                       />
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setActualMoveInDate(scheduledMoveInStr)}
+                          className={`px-2 py-0.5 text-[11px] rounded transition-colors ${
+                            actualMoveInDate === scheduledMoveInStr
+                              ? "bg-slate-200 dark:bg-slate-700 text-foreground font-semibold"
+                              : "text-muted-foreground hover:text-foreground bg-transparent"
+                          }`}
+                        >
+                          Scheduled: {fmtDate(scheduledMoveInStr)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActualMoveInDate(todayDateStr)}
+                          className={`px-2 py-0.5 text-[11px] rounded transition-colors ${
+                            actualMoveInDate === todayDateStr
+                              ? "bg-slate-200 dark:bg-slate-700 text-foreground font-semibold"
+                              : "text-muted-foreground hover:text-foreground bg-transparent"
+                          }`}
+                        >
+                          Today: {fmtDate(todayDateStr)}
+                        </button>
+                      </div>
                     </div>
 
                     {branchUsesSubmeter && (
@@ -2004,7 +2069,11 @@ export default function ReservationDetailsModal({
                             value={meterReadingVal}
                             onChange={(event) => setMeterReadingVal(event.target.value)}
                             className="rdm-inline-addon-input"
-                            placeholder="e.g. 1250"
+                            placeholder={
+                              previousMeterReading != null && !Number.isNaN(Number(previousMeterReading))
+                                ? `e.g. ${Number(previousMeterReading).toLocaleString("en-PH")}`
+                                : "e.g. 1250"
+                            }
                             autoFocus
                           />
                           <span className="rdm-inline-addon-label">kWh</span>
@@ -2041,6 +2110,20 @@ export default function ReservationDetailsModal({
                             );
                             return;
                           }
+                          if (
+                            branchUsesSubmeter &&
+                            reading !== null &&
+                            previousMeterReading != null &&
+                            Number.isFinite(Number(previousMeterReading)) &&
+                            reading < Number(previousMeterReading)
+                          ) {
+                            showNotification(
+                              `Initial meter reading (${reading} kWh) cannot be lower than the room's previous reading (${Number(previousMeterReading).toLocaleString("en-PH")} kWh).`,
+                              "error",
+                              5000,
+                            );
+                            return;
+                          }
                           if (!actualMoveInDate) {
                             showNotification("The actual move-in date is required.", "error", 4000);
                             return;
@@ -2054,6 +2137,7 @@ export default function ReservationDetailsModal({
                                   status: "moveIn",
                                   ...(branchUsesSubmeter && reading !== null ? { meterReading: reading } : {}),
                                   actualMoveInDate,
+                                  confirmedMoveInDate: actualMoveInDate,
                                   houseRulesPrepared: true,
                                 });
                                 // Invalidate utility caches so the billing timeline auto-updates.
@@ -2623,6 +2707,7 @@ export default function ReservationDetailsModal({
               onUpdate?.();
               onClose();
             } catch (error) {
+              setRevisionModal({ open: false });
               console.error(error);
               showNotification(
                 getFriendlyError(error, "Failed to send revision request. Please try again."),

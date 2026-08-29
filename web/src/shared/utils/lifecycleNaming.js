@@ -260,7 +260,14 @@ export const ADMIN_RESERVATION_ACTIONS_BY_STATUS = Object.freeze({
   archived: [],
 });
 
-const LEGACY_RESERVATION_STATUS_MAP = Object.freeze({});
+const LEGACY_RESERVATION_STATUS_MAP = Object.freeze({
+  movein: "moveIn",
+  move_in: "moveIn",
+  moved_in: "moveIn",
+  moveout: "moveOut",
+  move_out: "moveOut",
+  moved_out: "moveOut",
+});
 const LEGACY_UTILITY_EVENT_TYPE_MAP = Object.freeze({});
 
 export const normalizeReservationStatus = (status) => {

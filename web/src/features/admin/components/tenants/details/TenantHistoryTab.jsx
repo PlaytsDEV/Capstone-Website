@@ -114,7 +114,7 @@ export default function TenantHistoryTab({
                         <div className="flex items-center gap-1.5 min-w-0">
                           <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
                           <span className="text-muted-foreground truncate">
-                            {isCurrent ? "Current Lease Contract" : "Contract"}:{" "}
+                            {isCurrent ? "Current Lease Contract" : "Previous Lease Contract"}:{" "}
                             <strong className="text-foreground font-mono">
                               {stayContract.contractNumber || "Pending"}
                             </strong>

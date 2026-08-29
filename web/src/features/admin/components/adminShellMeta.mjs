@@ -7,7 +7,7 @@ const PAGE_META = {
   "/admin/reservations": {
     title: "Reservations",
     description:
-      "Review applications, confirm documents, and move accepted residents toward assignment.",
+      "Review applications, confirm documents, and move accepted tenants toward assignment.",
   },
   "/admin/tenants": {
     title: "Tenants",

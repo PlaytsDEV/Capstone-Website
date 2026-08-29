@@ -3,6 +3,7 @@
  * Consolidated Live Occupancy & Vacancy Forecast View
  */
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import {
   LayoutGrid,
@@ -56,6 +57,7 @@ import {
   handleExportRoomsCSV,
   handleExportRoomsPDF,
 } from "../utils/roomExportUtils.js";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 
 // Styles
 import "../styles/admin-room-availability.css";
@@ -252,6 +254,20 @@ function RoomAvailabilityPage() {
   useEffect(() => {
     setVacancyPage(1);
   }, [vacancySearch, vacancyUrgencyFilter]);
+
+  // Escape key close listener and body scroll lock for vacancy modal
+  useEffect(() => {
+    if (!showVacancyModal) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setShowVacancyModal(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.classList.add("modal-open");
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.classList.remove("modal-open");
+    };
+  }, [showVacancyModal]);
 
   const totalVacancyPages = Math.ceil(filteredUpcomingVacancies.length / VACANCIES_PER_PAGE) || 1;
 
@@ -455,7 +471,8 @@ function RoomAvailabilityPage() {
         type: updatedRoom.type,
         capacity: updatedRoom.capacity,
         price: updatedRoom.price,
-        monthlyPrice: updatedRoom.monthlyPrice,
+        regularLongRate: updatedRoom.regularLongRate || updatedRoom.price,
+        regularShortRate: updatedRoom.regularShortRate || updatedRoom.price,
         amenities: updatedRoom.amenities,
         policies: updatedRoom.policies,
         intendedTenant: updatedRoom.intendedTenant,
@@ -540,9 +557,10 @@ function RoomAvailabilityPage() {
       setEditingRoom(null);
     } catch (err) {
       console.error("[RoomAvailabilityPage] Save room failed:", err);
-      const errorMessage =
-        err?.message ||
-        "Unable to save room details. Please check the entered information and try again.";
+      const errorMessage = getFriendlyError(
+        err,
+        "Unable to save room details. Please check the entered information and try again.",
+      );
       showNotification(errorMessage, "error", 5000);
       throw err;
     }
@@ -1227,8 +1245,8 @@ function RoomAvailabilityPage() {
       )}
 
       {/* Upcoming Vacancies Modal */}
-      {showVacancyModal && (
-        <div className="admin-modal-overlay" onClick={() => setShowVacancyModal(false)}>
+      {showVacancyModal && typeof document !== "undefined" && createPortal(
+        <div className="admin-modal-overlay" onClick={() => setShowVacancyModal(false)} role="dialog" aria-modal="true">
           <div
             className="admin-modal-content vacancy-modal-wide p-6 space-y-4 rounded-2xl shadow-xl border border-border bg-card max-h-[88vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -1260,7 +1278,7 @@ function RoomAvailabilityPage() {
               {[
                 {
                   id: "urgent",
-                  label: "Urgent (\u226430 Days)",
+                  label: "Urgent (≤30 Days)",
                   icon: AlertTriangle,
                   count: vacancyKPIs.urgent,
                   subtext: "Immediate turnovers",
@@ -1268,7 +1286,7 @@ function RoomAvailabilityPage() {
                 },
                 {
                   id: "upcoming",
-                  label: "31 \u2013 90 Days",
+                  label: "31 – 90 Days",
                   icon: Calendar,
                   count: vacancyKPIs.upcoming,
                   subtext: "Next quarter move-outs",
@@ -1354,7 +1372,7 @@ function RoomAvailabilityPage() {
                   },
                   {
                     id: "upcoming",
-                    label: "31\u201390 Days",
+                    label: "31–90 Days",
                     count: vacancyKPIs.upcoming,
                     icon: Calendar,
                     iconColor: "text-amber-600 dark:text-amber-400",
@@ -1413,13 +1431,13 @@ function RoomAvailabilityPage() {
                 </div>
               ) : (
                 <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-muted/90 backdrop-blur-xs sticky top-0 z-10 border-b border-border text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">
+                  <thead className="sticky top-0 z-10 border-b border-border bg-slate-100 dark:bg-slate-800 text-muted-foreground font-semibold uppercase text-[10px] tracking-wider shadow-xs">
                     <tr>
-                      <th className="p-3.5 pl-4">Room & Bed</th>
-                      <th className="p-3.5">Occupant</th>
-                      <th className="p-3.5">Expected Vacancy Date</th>
-                      <th className="p-3.5">Timeline Status</th>
-                      <th className="p-3.5 pr-4 text-right">Action</th>
+                      <th className="p-3.5 pl-4 bg-slate-100 dark:bg-slate-800">Room & Bed</th>
+                      <th className="p-3.5 bg-slate-100 dark:bg-slate-800">Occupant</th>
+                      <th className="p-3.5 bg-slate-100 dark:bg-slate-800">Expected Vacancy Date</th>
+                      <th className="p-3.5 bg-slate-100 dark:bg-slate-800">Timeline Status</th>
+                      <th className="p-3.5 pr-4 text-right bg-slate-100 dark:bg-slate-800">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70">
@@ -1539,7 +1557,8 @@ function RoomAvailabilityPage() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Room Bed History Drawer */}

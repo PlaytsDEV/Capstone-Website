@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Clock,
   Percent,
+  RotateCcw,
 } from "lucide-react";
 import { formatDisplayReference } from "../../../../shared/utils/formatPaymentReference";
 import { reservationApi } from "../../../../shared/api/reservationApi";
@@ -78,6 +79,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all"); // "all", "reservation_fee", "advance_deposit"
   const [filterTab, setFilterTab] = useState("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [timeframeFilter, setTimeframeFilter] = useState("all");
@@ -159,7 +161,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
   // Reset pagination on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterTab, paymentMethodFilter, timeframeFilter, branch, sortBy]);
+  }, [searchQuery, filterTab, categoryFilter, paymentMethodFilter, timeframeFilter, branch, sortBy]);
 
   const normalizedPayments = useMemo(() => {
     return payments.map((p) => {
@@ -174,25 +176,33 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       const tenantEmail = p.tenant?.email || p.tenantId?.email || "";
 
       const reservationCode =
+        p.reservationCode ||
         p.reservation?.reservationCode ||
         p.reservationId?.reservationCode ||
+        p.billId?.reservationId?.reservationCode ||
         (typeof p.reservationId === "string" ? p.reservationId : "") ||
         p.paymentId ||
         "RES-PENDING";
 
       const roomName =
+        p.roomName ||
         p.reservation?.room ||
         p.reservation?.roomId?.name ||
         p.reservation?.roomId?.roomNumber ||
         p.reservationId?.roomId?.name ||
         p.reservationId?.roomId?.roomNumber ||
-        p.roomName ||
+        p.billId?.roomId?.name ||
+        p.billId?.roomId?.roomNumber ||
+        p.billId?.reservationId?.roomId?.name ||
+        p.billId?.reservationId?.roomId?.roomNumber ||
         "—";
 
       const bedLabel =
+        p.bedLabel ||
         p.reservation?.bed ||
         p.reservation?.selectedBed?.label ||
         p.reservationId?.selectedBed?.label ||
+        p.billId?.reservationId?.selectedBed?.label ||
         "";
 
       const tenantProfileImage =
@@ -206,11 +216,20 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         p.photoUrl ||
         "";
 
-      const paymentBranch = p.branch || p.reservation?.branch || p.reservationId?.branch || "";
+      const paymentBranch = p.branch || p.reservation?.branch || p.reservationId?.branch || p.billId?.branch || "";
       const rawAmount = p.paidAmount ?? p.amount ?? 0;
       const rawExpected = p.expectedAmount ?? p.totalPrice ?? p.reservation?.totalPrice ?? rawAmount;
       const status = String(p.status || "confirmed").toLowerCase();
       const source = p.source || "paymongo";
+
+      const paymentCategory =
+        p.paymentCategory ||
+        p.category ||
+        (p.purpose === "reservation_fee" || p.purpose === "reservation_deposit" || (!p.billId && p.reservationId)
+          ? "reservation_fee"
+          : p.purpose === "initial_payment" || p.billType === "initial_payment" || p.billId?.billType === "initial_payment"
+          ? "advance_deposit"
+          : p.purpose || "other");
 
       return {
         ...p,
@@ -223,6 +242,11 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         roomName,
         bedLabel,
         branch: paymentBranch,
+        paymentCategory,
+        category: paymentCategory,
+        billCharges: p.billCharges || p.billId?.charges || null,
+        billGrossAmount: p.billGrossAmount || p.billId?.grossAmount || null,
+        billReservationCreditApplied: p.billReservationCreditApplied || p.billId?.reservationCreditApplied || null,
         amount: Number(rawAmount),
         paidAmount: Number(rawAmount),
         expectedAmount: Number(rawExpected),
@@ -254,14 +278,42 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
     );
   }, [normalizedPayments, branch]);
 
-  // Financial KPI Metrics
+  // Category counts for the segmented buttons
+  const categoryCounts = useMemo(() => {
+    let all = branchFilteredPayments.length;
+    let reservation_fee = 0;
+    let advance_deposit = 0;
+
+    for (const p of branchFilteredPayments) {
+      if (p.paymentCategory === "reservation_fee") {
+        reservation_fee++;
+      } else if (p.paymentCategory === "advance_deposit") {
+        advance_deposit++;
+      }
+    }
+
+    return { all, reservation_fee, advance_deposit };
+  }, [branchFilteredPayments]);
+
+  // Category-scoped payments for dynamic KPI calculations and list filtering
+  const categoryFilteredPayments = useMemo(() => {
+    if (categoryFilter === "reservation_fee") {
+      return branchFilteredPayments.filter((p) => p.paymentCategory === "reservation_fee");
+    }
+    if (categoryFilter === "advance_deposit") {
+      return branchFilteredPayments.filter((p) => p.paymentCategory === "advance_deposit");
+    }
+    return branchFilteredPayments;
+  }, [branchFilteredPayments, categoryFilter]);
+
+  // Financial KPI Metrics (Dynamically computed based on active category)
   const summaryStats = useMemo(() => {
     let totalCollected = 0;
     let confirmedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
 
-    for (const p of branchFilteredPayments) {
+    for (const p of categoryFilteredPayments) {
       const isConfirmed =
         p.status === "confirmed" ||
         p.status === "approved" ||
@@ -282,7 +334,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       }
     }
 
-    const totalCount = branchFilteredPayments.length;
+    const totalCount = categoryFilteredPayments.length;
     const settlementRate = totalCount > 0 ? (confirmedCount / totalCount) * 100 : 100;
 
     return {
@@ -293,10 +345,10 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       settlementRate,
       totalCount,
     };
-  }, [branchFilteredPayments]);
+  }, [categoryFilteredPayments]);
 
   const filteredPayments = useMemo(() => {
-    let list = branchFilteredPayments;
+    let list = categoryFilteredPayments;
 
     // Status filter
     if (filterTab === "confirmed") {
@@ -418,7 +470,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
 
     return sorted;
   }, [
-    branchFilteredPayments,
+    categoryFilteredPayments,
     filterTab,
     paymentMethodFilter,
     timeframeFilter,
@@ -477,7 +529,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
     if (!payment) return;
     try {
       setGeneratingReceipt(true);
-      const { generateDepositReceipt } = await import(
+      const { generateDepositReceipt, generateMoveInReceipt } = await import(
         "../../../../shared/utils/receiptGenerator.js"
       );
 
@@ -490,6 +542,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         branch: payment.branch,
         totalPrice: payment.amount || payment.paidAmount,
         amount: payment.amount || payment.paidAmount,
+        reservationFeeAmount: payment.paymentCategory === "reservation_fee" ? (payment.amount || 2000) : 2000,
+        monthlyRent: payment.billCharges?.rent || (payment.expectedAmount ? payment.expectedAmount / 2 : payment.amount / 2),
         paymentDetails: {
           referenceNumber: payment.referenceNumber,
           paymentMethod: payment.paymentMethod,
@@ -502,12 +556,23 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         lastName: payment.tenantFullName?.split(" ").slice(1).join(" ") || "",
         name: payment.tenantFullName,
         email: payment.tenantEmail,
-      };
-
-      await generateDepositReceipt(reservationPayload, userPayload);
-      showNotification("Receipt generated and downloaded successfully.", "success");
+      };      if (payment.paymentCategory === "advance_deposit") {
+        const billPayload = {
+          _id: payment.billId?._id || payment.billId || payment._id,
+          totalAmount: payment.amount || payment.paidAmount,
+          paidAmount: payment.amount || payment.paidAmount,
+          paymentMethod: payment.paymentMethod,
+          paymentReference: payment.referenceNumber,
+          charges: payment.billCharges || {},
+        };
+        await generateMoveInReceipt(reservationPayload, userPayload, billPayload);
+        showNotification("Move-In settlement receipt downloaded successfully.", "success");
+      } else {
+        await generateDepositReceipt(reservationPayload, userPayload);
+        showNotification("Reservation deposit receipt downloaded successfully.", "success");
+      }
     } catch (err) {
-      console.error("Failed to generate deposit receipt:", err);
+      console.error("Failed to generate receipt:", err);
       setError("Could not generate PDF receipt. Please try again.");
       showNotification("Could not generate PDF receipt. Please try again.", "error");
     } finally {
@@ -526,10 +591,10 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
             <CreditCard size={18} className="text-emerald-600 dark:text-emerald-400" />
-            Reservation Payments
+            Reservation & Move-In Payments
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            View applicant reservation fee transactions, deposit records, and automated PayMongo settlement logs.
+            Monitor applicant slot reservation holding fees, 1-month advance & security deposit settlements, and automated PayMongo transaction logs.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -540,12 +605,16 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         </div>
       </div>
 
-      {/* Top Financial KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+      {/* Top Financial KPI Summary Cards (Dynamic 3-Column Grid) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-4">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-colors duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Total Deposits Collected
+              {categoryFilter === "reservation_fee"
+                ? "Total Reservation Fees"
+                : categoryFilter === "advance_deposit"
+                ? "Total Advance & Deposit"
+                : "Total Collected"}
             </span>
             <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
               <Coins size={18} />
@@ -556,7 +625,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-colors duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Confirmed Settlements
@@ -570,21 +639,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Pending / In Review
-            </span>
-            <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
-            {summaryStats.pendingCount} Pending
-          </div>
-        </div>
-
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-colors duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Settlement Rate
@@ -598,7 +653,6 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </div>
         </div>
       </div>
-
 
       {error ? (
         <div
@@ -619,7 +673,6 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </button>
         </div>
       ) : null}
-
 
       {/* Split-screen Master / Detail */}
       <div className="flex min-h-[580px] overflow-hidden rounded-xl border border-border bg-card shadow-xs">
@@ -667,15 +720,70 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   <option value="room_asc">Room Number</option>
                 </select>
               </div>
+
+              {/* Reset Active Filters Button (Stable Non-Jumping Slot) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCategoryFilter("all");
+                  setFilterTab("all");
+                  setPaymentMethodFilter("all");
+                  setTimeframeFilter("all");
+                }}
+                disabled={
+                  paymentMethodFilter === "all" &&
+                  timeframeFilter === "all" &&
+                  !searchQuery &&
+                  filterTab === "all" &&
+                  categoryFilter === "all"
+                }
+                className={`h-9 shrink-0 px-2.5 rounded-lg border text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5 ${
+                  paymentMethodFilter !== "all" ||
+                  timeframeFilter !== "all" ||
+                  searchQuery ||
+                  filterTab !== "all" ||
+                  categoryFilter !== "all"
+                    ? "border-border bg-card text-card-foreground hover:bg-muted/80 cursor-pointer opacity-100"
+                    : "border-border/40 bg-muted/20 text-muted-foreground/40 cursor-not-allowed opacity-40"
+                }`}
+                title={
+                  paymentMethodFilter !== "all" ||
+                  timeframeFilter !== "all" ||
+                  searchQuery ||
+                  filterTab !== "all" ||
+                  categoryFilter !== "all"
+                    ? "Reset all active filters"
+                    : "No active filters to reset"
+                }
+                aria-label="Reset all active filters"
+              >
+                <RotateCcw size={12} />
+                Reset
+              </button>
             </div>
 
-            {/* Secondary Filter Dropdowns (Payment Method & Timeframe) */}
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
+            {/* Secondary Filter Dropdowns (Payment Type & Payment Method - Balanced 2-Col Grid) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer truncate"
+                  title="Filter by payment type"
+                  aria-label="Filter by payment type"
+                >
+                  <option value="all">All Payments ({categoryCounts.all})</option>
+                  <option value="reservation_fee">Reservation Fees ({categoryCounts.reservation_fee})</option>
+                  <option value="advance_deposit">1-Month Advance & Deposit ({categoryCounts.advance_deposit})</option>
+                </select>
+              </div>
+
+              <div>
                 <select
                   value={paymentMethodFilter}
                   onChange={(e) => setPaymentMethodFilter(e.target.value)}
-                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer truncate"
                   title="Filter by payment method"
                   aria-label="Filter by payment method"
                 >
@@ -686,12 +794,16 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   <option value="cash">Cash / OTC</option>
                 </select>
               </div>
+            </div>
 
-              <div className="flex-1">
+            {/* Filter Status Tabs & Compact Timeframe Row */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+              {/* Compact Timeframe Selector */}
+              <div className="shrink-0 w-[115px]">
                 <select
                   value={timeframeFilter}
                   onChange={(e) => setTimeframeFilter(e.target.value)}
-                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+                  className="w-full h-7 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer truncate"
                   title="Filter by timeframe"
                   aria-label="Filter by timeframe"
                 >
@@ -702,60 +814,40 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 </select>
               </div>
 
-              {(paymentMethodFilter !== "all" ||
-                timeframeFilter !== "all" ||
-                searchQuery ||
-                filterTab !== "all") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setFilterTab("all");
-                    setPaymentMethodFilter("all");
-                    setTimeframeFilter("all");
-                  }}
-                  className="h-8 shrink-0 px-2 rounded-lg border border-dashed border-border bg-card text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition cursor-pointer flex items-center gap-1"
-                  title="Reset all active filters"
-                >
-                  <X size={11} />
-                  Reset
-                </button>
-              )}
-            </div>
-
-            {/* Filter Status Buttons */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
-              {[
-                { id: "all", label: "All", count: summaryStats.totalCount },
-                { id: "confirmed", label: "Confirmed", count: summaryStats.confirmedCount },
-                { id: "pending", label: "Pending", count: summaryStats.pendingCount },
-                { id: "failed", label: "Failed", count: summaryStats.failedCount },
-              ].map((t) => {
-                const isActiveTab = filterTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setFilterTab(t.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border shadow-xs cursor-pointer ${
-                      isActiveTab
-                        ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100"
-                        : "bg-card text-card-foreground border-border hover:bg-muted/80 hover:border-slate-300 dark:hover:border-slate-700"
-                    }`}
-                  >
-                    <span>{t.label}</span>
-                    <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+              {/* Status Filter Buttons */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {[
+                  { id: "all", label: "All", count: summaryStats.totalCount },
+                  { id: "confirmed", label: "Confirmed", count: summaryStats.confirmedCount },
+                  { id: "pending", label: "Pending", count: summaryStats.pendingCount },
+                  { id: "failed", label: "Failed", count: summaryStats.failedCount },
+                ].map((t) => {
+                  const isActiveTab = filterTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setFilterTab(t.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap flex items-center gap-1 border shadow-xs cursor-pointer ${
                         isActiveTab
-                          ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900"
-                          : "bg-muted text-muted-foreground border border-border/50"
+                          ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100"
+                          : "bg-card text-card-foreground border-border hover:bg-muted/80 hover:border-slate-300 dark:hover:border-slate-700"
                       }`}
                     >
-                      {t.count}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span>{t.label}</span>
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold min-w-[18px] text-center inline-flex items-center justify-center ${
+                          isActiveTab
+                            ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900"
+                            : "bg-muted text-muted-foreground border border-border/50"
+                        }`}
+                      >
+                        {t.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -766,9 +858,9 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 <FileCheck2 size={32} className="text-slate-400 mb-2.5" />
                 <p className="font-bold text-card-foreground text-sm">No payment records found</p>
                 <p className="mt-1 text-[11px] max-w-xs">
-                  {searchQuery || paymentMethodFilter !== "all" || timeframeFilter !== "all"
-                    ? "No reservation payments match the selected search/filters. Try clearing or resetting your filters."
-                    : "No reservation payment records match the current tab filter."}
+                  {searchQuery || paymentMethodFilter !== "all" || timeframeFilter !== "all" || categoryFilter !== "all"
+                    ? "No payment records match the selected search/filters. Try clearing or resetting your filters."
+                    : "No payment records match the current tab filter."}
                 </p>
               </div>
             ) : (
@@ -789,8 +881,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                         : "border-border bg-card hover:bg-muted/40 hover:border-slate-300 dark:hover:border-slate-700"
                     }`}
                   >
-                    {/* Top row: Avatar, Name, and Status Badge */}
-                    <div className="flex items-center justify-between gap-2 w-full">
+                    {/* Top row: Avatar, Name, Category Tag and Status Badge */}
+                    <div className="flex items-start justify-between gap-2 w-full">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <ProfileAvatar
                           user={payment.tenantUser || { name: fullName }}
@@ -799,7 +891,13 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                           size={32}
                           defaultOnly
                         />
-                        <p className="truncate text-xs font-bold text-card-foreground leading-none">{fullName}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold text-card-foreground leading-none">{fullName}</p>
+                          <span className="inline-flex items-center gap-1 mt-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 dark:text-slate-300">
+                            <span className={`h-1.5 w-1.5 rounded-full ${payment.paymentCategory === "reservation_fee" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                            {payment.paymentCategory === "reservation_fee" ? "Reservation Fee" : payment.paymentCategory === "advance_deposit" ? "1-Mo Advance & Deposit" : "Billing Payment"}
+                          </span>
+                        </div>
                       </div>
                       <span
                         className={`shrink-0 rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
@@ -920,7 +1018,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   </div>
                   <div>
                     <p className="text-xs font-bold text-card-foreground">Gateway Verification</p>
-                    <p className="text-[11px] text-muted-foreground">All reservation deposits are reconciled via PayMongo</p>
+                    <p className="text-[11px] text-muted-foreground">All reservation fees &amp; move-in settlements are reconciled via PayMongo</p>
                   </div>
                 </div>
 
@@ -962,6 +1060,10 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                       <h4 className="text-sm font-bold text-card-foreground">
                         {selectedPayment.tenantFullName}
                       </h4>
+                      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent px-2 py-0.5 text-[9px] font-semibold text-slate-700 dark:text-slate-300">
+                        <span className={`h-1.5 w-1.5 rounded-full ${selectedPayment.paymentCategory === "reservation_fee" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                        {selectedPayment.paymentCategory === "reservation_fee" ? "Reservation Fee" : selectedPayment.paymentCategory === "advance_deposit" ? "1-Mo Advance & Deposit" : "Payment"}
+                      </span>
                       <span
                         className={`rounded-md border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
                           selectedPayment.status,
@@ -1028,10 +1130,12 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     selectedPayment.status === "confirmed" ||
                     selectedPayment.status === "verified" ||
                     selectedPayment.status === "paid"
-                      ? "Download official PDF deposit receipt"
+                      ? selectedPayment.paymentCategory === "advance_deposit"
+                        ? "Download official Move-In Settlement PDF receipt"
+                        : "Download official PDF reservation deposit receipt"
                       : "Receipt unavailable — Payment is not yet confirmed"
                   }
-                  aria-label="Download official PDF deposit receipt"
+                  aria-label={selectedPayment.paymentCategory === "advance_deposit" ? "Download official Move-In Settlement PDF receipt" : "Download official PDF reservation deposit receipt"}
                 >
                   {generatingReceipt ? (
                     <>
@@ -1044,51 +1148,89 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                         size={14}
                         className="transition-transform duration-150 group-hover:translate-y-0.5 shrink-0"
                       />
-                      <span>Download Deposit Receipt</span>
+                      <span>
+                        {selectedPayment.paymentCategory === "advance_deposit"
+                          ? "Download Move-In Settlement Receipt"
+                          : "Download Reservation Receipt"}
+                      </span>
                     </>
                   )}
                 </button>
               </div>
 
-              {/* KPI Mini-Cards */}
-              <div className="grid grid-cols-3 gap-2.5">
-                <div className="rounded-xl border border-border bg-muted/20 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Expected Deposit
-                  </span>
-                  <p className="text-sm font-bold text-card-foreground mt-1">
-                    {money(selectedPayment.expectedAmount)}
-                  </p>
+              {/* Move-in Financial Breakdown or Deposit Variance Mini-Cards */}
+              {selectedPayment.paymentCategory === "advance_deposit" ? (
+                <div className="rounded-xl border border-border bg-muted/10 p-3.5 space-y-2.5">
+                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Move-In Financial Settlement Breakdown
+                  </h5>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="rounded-lg border border-border bg-card p-2.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground">1-Mo Advance Rent</span>
+                      <p className="font-bold text-card-foreground mt-0.5">
+                        {money(selectedPayment.billCharges?.rent || (selectedPayment.expectedAmount ? selectedPayment.expectedAmount / 2 : selectedPayment.amount / 2))}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-2.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground">Security Deposit</span>
+                      <p className="font-bold text-card-foreground mt-0.5">
+                        {money(selectedPayment.expectedAmount ? selectedPayment.expectedAmount / 2 : selectedPayment.amount / 2)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-2.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground">Reservation Credit</span>
+                      <p className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {selectedPayment.billReservationCreditApplied ? `-${money(selectedPayment.billReservationCreditApplied)}` : (selectedPayment.expectedAmount && Number(selectedPayment.expectedAmount) > Number(selectedPayment.amount) ? `-${money(Number(selectedPayment.expectedAmount) - Number(selectedPayment.amount))}` : "—")}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-2.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground">Net Amount Paid</span>
+                      <p className="font-bold text-card-foreground mt-0.5">
+                        {money(selectedPayment.amount)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Submitted Amount
-                  </span>
-                  <p className="text-sm font-bold text-card-foreground mt-1">
-                    {money(selectedPayment.amount)}
-                  </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Expected Deposit
+                    </span>
+                    <p className="text-sm font-bold text-card-foreground mt-1">
+                      {money(selectedPayment.expectedAmount)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Submitted Amount
+                    </span>
+                    <p className="text-sm font-bold text-card-foreground mt-1">
+                      {money(selectedPayment.amount)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Settlement Variance
+                    </span>
+                    <p
+                      className={`text-sm font-bold mt-1 ${
+                        Number(selectedPayment.amount) >= Number(selectedPayment.expectedAmount || 0)
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : "text-red-600 dark:text-red-400"
+                      }`}
+                    >
+                      {Number(selectedPayment.amount) >= Number(selectedPayment.expectedAmount || 0)
+                        ? "+"
+                        : ""}
+                      {money(
+                        Number(selectedPayment.amount) -
+                          Number(selectedPayment.expectedAmount || 0),
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Settlement Variance
-                  </span>
-                  <p
-                    className={`text-sm font-bold mt-1 ${
-                      Number(selectedPayment.amount) >= Number(selectedPayment.expectedAmount || 0)
-                        ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-red-600 dark:text-red-400"
-                    }`}
-                  >
-                    {Number(selectedPayment.amount) >= Number(selectedPayment.expectedAmount || 0)
-                      ? "+"
-                      : ""}
-                    {money(
-                      Number(selectedPayment.amount) -
-                        Number(selectedPayment.expectedAmount || 0),
-                    )}
-                  </p>
-                </div>
-              </div>
+              )}
 
               {/* Payment Details Definition Grid */}
               <div className="rounded-xl border border-border bg-muted/10 p-3.5">
@@ -1178,7 +1320,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300 flex items-center gap-2.5">
                 <ShieldCheck size={18} className="shrink-0 text-emerald-700 dark:text-emerald-500" />
                 <span className="font-medium leading-relaxed">
-                  Verified via PayMongo Gateway — this reservation payment was processed and reconciled with the dormitory reservation.
+                  Verified via PayMongo Gateway — this {selectedPayment.paymentCategory === "advance_deposit" ? "move-in settlement payment" : "reservation deposit payment"} was processed and reconciled with the dormitory records.
                 </span>
               </div>
 

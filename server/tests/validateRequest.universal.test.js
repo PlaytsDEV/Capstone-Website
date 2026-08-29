@@ -44,7 +44,7 @@ describe("Universal Zod Validation Suite", () => {
   describe("createRoomSchema & updateRoomSchema", () => {
     it("validates valid room creation with all fields", () => {
       const result = createRoomSchema.safeParse({
-        name: "Quad Room 101",
+        name: "Quad Sharing Room",
         roomNumber: "101",
         branch: "gil-puyat",
         type: "quadruple-sharing",
@@ -65,7 +65,7 @@ describe("Universal Zod Validation Suite", () => {
         ],
       });
       expect(result.success).toBe(true);
-      expect(result.data.name).toBe("Quad Room 101");
+      expect(result.data.name).toBe("Quad Sharing Room");
       expect(result.data.price).toBe(4500);
       expect(result.data.beds).toHaveLength(4);
       expect(result.data.isPopular).toBe(true);
@@ -74,7 +74,7 @@ describe("Universal Zod Validation Suite", () => {
 
     it("transforms baseRate into price and sets default values", () => {
       const result = createRoomSchema.safeParse({
-        name: "Private Room 201",
+        name: "Private Deluxe Room",
         roomNumber: "201",
         branch: "guadalupe",
         type: "private",
@@ -93,7 +93,7 @@ describe("Universal Zod Validation Suite", () => {
 
     it("rejects room creation when neither price nor baseRate is provided", () => {
       const result = createRoomSchema.safeParse({
-        name: "Room 101",
+        name: "Standard Quad Room",
         roomNumber: "101",
         branch: "gil-puyat",
         type: "quadruple-sharing",
@@ -102,6 +102,53 @@ describe("Universal Zod Validation Suite", () => {
       expect(result.success).toBe(false);
       const issues = result.error.issues;
       expect(issues.some((issue) => issue.path.includes("price"))).toBe(true);
+    });
+
+    it("accepts room creation when room name contains numbers (e.g. Room 101)", () => {
+      const result = createRoomSchema.safeParse({
+        name: "Room 101",
+        roomNumber: "101",
+        branch: "gil-puyat",
+        type: "private",
+        capacity: 1,
+        price: 5000,
+      });
+      expect(result.success).toBe(true);
+      expect(result.data.name).toBe("Room 101");
+    });
+
+    it("rejects room creation when room name contains invalid special symbols", () => {
+      const result = createRoomSchema.safeParse({
+        name: "Room @101!",
+        roomNumber: "101",
+        branch: "gil-puyat",
+        type: "private",
+        capacity: 1,
+        price: 5000,
+      });
+      expect(result.success).toBe(false);
+      expect(
+        result.error.issues.some((issue) =>
+          issue.message.includes("Room name must contain letters, numbers, hyphens, and spaces only"),
+        ),
+      ).toBe(true);
+    });
+
+    it("rejects room creation when room number contains letters or special symbols", () => {
+      const result = createRoomSchema.safeParse({
+        name: "Deluxe Suite",
+        roomNumber: "asdad1312",
+        branch: "gil-puyat",
+        type: "private",
+        capacity: 1,
+        price: 5000,
+      });
+      expect(result.success).toBe(false);
+      expect(
+        result.error.issues.some((issue) =>
+          issue.message.includes("Room number must contain numbers only"),
+        ),
+      ).toBe(true);
     });
 
     it("rejects invalid room capacity, invalid branch, or missing required fields", () => {
@@ -239,7 +286,7 @@ describe("Universal Zod Validation Suite", () => {
     it("passes through valid room request to next() and transforms payload", async () => {
       const req = {
         body: {
-          name: "Double Room 201",
+          name: "Double Sharing Room",
           roomNumber: "201",
           branch: "guadalupe",
           type: "double-sharing",
