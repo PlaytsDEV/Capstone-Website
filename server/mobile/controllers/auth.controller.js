@@ -7,6 +7,7 @@ const { invalidateUserSessionsCore } = require('../../security/sessionInvalidati
 const { validateNewPassword: validateCanonicalNewPassword } = require('../../security/passwordPolicy.cjs');
 const { createSession } = require('../security/mobileSession');
 const { hashResetToken, resetTokenEligibilityFilter } = require('../security/resetTokenEligibility');
+const { evaluateTenant } = require('../../security/mobileTenantEligibility.cjs');
 const {
   firebaseIdentityToolkitBaseUrl,
   signInWithPasswordUrl,
@@ -72,6 +73,11 @@ function generateUserId() {
 
 const PASSWORD_LOCK_THRESHOLD = 3;
 const PASSWORD_LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const LOGIN_ERROR_CODES = Object.freeze({
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  TENANT_NOT_REGISTERED: 'TENANT_NOT_REGISTERED',
+  TENANT_INACTIVE: 'TENANT_INACTIVE',
+});
 
 function maskEmail(email = '') {
   const [user, domain] = email.split('@');
@@ -192,6 +198,35 @@ function authenticationFailed(res) {
     detail: 'Authentication failed. If you believe this account should be available, contact the administrator.',
     code: 'AUTHENTICATION_FAILED',
   });
+}
+
+function loginError(res, status, code, detail, extra = {}) {
+  return res.status(status).json({ detail, code, ...extra });
+}
+
+function tenantLoginRestriction(user) {
+  if (!user) {
+    return {
+      status: 403,
+      code: LOGIN_ERROR_CODES.TENANT_NOT_REGISTERED,
+      detail: 'This account is not registered as an active tenant.',
+    };
+  }
+
+  const eligibility = evaluateTenant(user);
+  if (eligibility.allowed) return null;
+  if (['ACCOUNT_ACCESS_RESTRICTED', 'TENANT_NOT_ACTIVE'].includes(eligibility.code)) {
+    return {
+      status: 403,
+      code: LOGIN_ERROR_CODES.TENANT_INACTIVE,
+      detail: 'This tenant account is inactive. Please contact the admin office.',
+    };
+  }
+  return {
+    status: 403,
+    code: LOGIN_ERROR_CODES.TENANT_NOT_REGISTERED,
+    detail: 'This account is not registered as an active tenant.',
+  };
 }
 
 async function invalidateMobileIdentity(db, user, reason, req) {
@@ -341,21 +376,24 @@ async function login(req, res) {
     const msg = fbErr.response?.data?.error?.message || '';
 
     if (msg.includes('EMAIL_NOT_FOUND')) {
-      await logAttempt(db, emailRaw, false, tenantByEmail ? 'firebase_identity_missing' : 'authentication_failed', req);
-      return authenticationFailed(res);
+      const restriction = tenantLoginRestriction(tenantByEmail);
+      await logAttempt(db, emailRaw, false, restriction?.code === LOGIN_ERROR_CODES.TENANT_INACTIVE
+        ? 'inactive'
+        : tenantByEmail ? 'firebase_identity_missing' : 'not_tenant', req);
+      if (restriction) {
+        return loginError(res, restriction.status, restriction.code, restriction.detail);
+      }
+      return loginError(res, 401, LOGIN_ERROR_CODES.INVALID_CREDENTIALS, 'Incorrect email or password.');
     } else if (msg.includes('INVALID_PASSWORD') || msg.includes('INVALID_LOGIN_CREDENTIALS')) {
       // Check MongoDB before responding — if the account is inactive or not a tenant,
       // return the correct 403 instead of a generic 401.
       // This also covers Google-only accounts attempting email/password login.
       const mongoUser = tenantByEmail || await findTenantByEmail(db, emailRaw);
-      if (!mongoUser) {
-        // Has a Firebase account but is not in our system as a tenant
-        logAttempt(db, emailRaw, false, 'not_tenant', req);
-        return authenticationFailed(res);
-      }
-      if (mongoUser.is_active === false) {
-        logAttempt(db, emailRaw, false, 'inactive', req);
-        return authenticationFailed(res);
+      const restriction = tenantLoginRestriction(mongoUser);
+      if (restriction) {
+        logAttempt(db, emailRaw, false,
+          restriction.code === LOGIN_ERROR_CODES.TENANT_INACTIVE ? 'inactive' : 'not_tenant', req);
+        return loginError(res, restriction.status, restriction.code, restriction.detail);
       }
       // User is an active tenant but the password is genuinely wrong
       const lockState = await registerFailedPasswordAttempt(db, mongoUser);
@@ -364,10 +402,21 @@ async function login(req, res) {
         return res.status(429).json({ detail: buildPasswordLockMessage(lockState.lockUntil) });
       }
       logAttempt(db, emailRaw, false, 'invalid_password', req);
-      return authenticationFailed(res);
+      return loginError(
+        res,
+        401,
+        LOGIN_ERROR_CODES.INVALID_CREDENTIALS,
+        'Incorrect email or password.',
+        { attempts_remaining: lockState.remainingAttempts },
+      );
     } else if (msg.includes('USER_DISABLED')) {
       logAttempt(db, emailRaw, false, 'user_disabled', req);
-      return authenticationFailed(res);
+      return loginError(
+        res,
+        403,
+        LOGIN_ERROR_CODES.TENANT_INACTIVE,
+        'This tenant account is inactive. Please contact the admin office.',
+      );
     } else if (msg.includes('TOO_MANY_ATTEMPTS')) {
       logAttempt(db, emailRaw, false, 'too_many_attempts', req);
       return res.status(429).json({ detail: 'Too many failed attempts. Please try again later.' });
@@ -384,7 +433,12 @@ async function login(req, res) {
   });
   if (!tenant) {
     logAttempt(db, emailRaw, false, 'not_tenant', req);
-    return authenticationFailed(res);
+    return loginError(
+      res,
+      403,
+      LOGIN_ERROR_CODES.TENANT_NOT_REGISTERED,
+      'This account is not registered as an active tenant.',
+    );
   }
 
   if (!tenant.user_id) {
@@ -394,9 +448,11 @@ async function login(req, res) {
     return res.status(500).json({ detail: 'Account configuration error. Please contact the admin office.' });
   }
 
-  if (tenant.is_active === false) {
-    logAttempt(db, emailRaw, false, 'inactive', req);
-    return authenticationFailed(res);
+  const restriction = tenantLoginRestriction(tenant);
+  if (restriction) {
+    logAttempt(db, emailRaw, false,
+      restriction.code === LOGIN_ERROR_CODES.TENANT_INACTIVE ? 'inactive' : 'not_tenant', req);
+    return loginError(res, restriction.status, restriction.code, restriction.detail);
   }
 
   console.log('[Login] Tenant found', { user_fingerprint: shortFingerprint(tenant.user_id) });
@@ -1386,5 +1442,6 @@ module.exports = {
     setDependencies(overrides) { Object.assign(authTestDependencies, overrides); },
     createSession,
     validateNewPassword,
+    tenantLoginRestriction,
   },
 };
