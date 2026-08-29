@@ -297,6 +297,16 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
     effectiveTransferDate: transferDate,
     leaseStartDate: moveInDate || null,
     leaseEndDate: leaseEndDate || null,
+    // The move-in-anchored rent cycle the transfer date falls in — used to
+    // stamp billingCycleStart/End on a Scheduled Room Transfer Balance Bill so
+    // it lines up with the settlement the executor later recomputes.
+    billingCycle: currentBillingCycle
+      ? {
+          billingCycleStart: currentBillingCycle.billingCycleStart,
+          billingCycleEnd: currentBillingCycle.billingCycleEnd,
+          cycleIndex: currentBillingCycle.cycleIndex ?? null,
+        }
+      : null,
     rent: {
       sourceEffectiveRate: roundMoney(sourceEffectiveRate),
       sourceRateSource,

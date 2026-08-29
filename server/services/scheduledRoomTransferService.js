@@ -24,15 +24,19 @@ import {
   Room,
   Stay,
   Contract,
+  Bill,
   ScheduledRoomTransfer,
 } from "../models/index.js";
 import { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } from "../models/ScheduledRoomTransfer.js";
 import { getManilaToday, toManilaStartOfDay } from "../utils/dateUtils.js";
+import { sumBillCharges } from "./billing/billingPolicy.js";
 import {
   resolveValidatedRoomTransferIntent,
   prepareRoomTransferAddendum,
   computeRoomTransferPreview,
 } from "../utils/tenantActionService.js";
+
+const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 const err = (message, statusCode, code, extra = {}) =>
   Object.assign(new Error(message), { statusCode, code, ...extra });
@@ -353,7 +357,18 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
       ? String(activeStay.bedId)
       : reservation.selectedBed?.id || null;
 
-  // 7. Transaction: hold + record together.
+  // 6b. Derive the pre-transfer payable — ONLY the deterministically-known
+  //     amounts: positive Rent Adjustment + positive Additional Security
+  //     Deposit. NEVER electricity / water (those follow the effective-date
+  //     cutoff via the normal utility workflow). Zero total => no Bill.
+  const rentDue = roundMoney(Math.max(0, Number(previewSnapshot?.rent?.adjustmentDue) || 0));
+  const depositDue = roundMoney(Math.max(0, Number(previewSnapshot?.deposit?.balanceDue) || 0));
+  const balanceTotal = roundMoney(rentDue + depositDue);
+  const effectiveDateObj = toManilaStartOfDay(effectiveTransferDate).toDate();
+  const cycleStart = previewSnapshot?.billingCycle?.billingCycleStart || effectiveDateObj;
+  const cycleEnd = previewSnapshot?.billingCycle?.billingCycleEnd || effectiveDateObj;
+
+  // 7. Transaction: hold + record (+ Bill if there is one) together.
   const session = await mongoose.startSession();
   let created;
   try {
@@ -412,6 +427,73 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
         { session },
       );
       created = doc;
+
+      // 7b. The Scheduled Room Transfer Balance Bill — one canonical Bill,
+      //     billType "transfer_settlement", rent + securityDeposit ONLY, due
+      //     on the effective transfer date. Skipped entirely when nothing is
+      //     owed (no ₱0 payable Bill).
+      if (balanceTotal > 0) {
+        const charges = {
+          rent: rentDue,
+          electricity: 0,
+          water: 0,
+          applianceFees: 0,
+          corkageFees: 0,
+          penalty: 0,
+          securityDeposit: depositDue,
+          discount: 0,
+        };
+        const total = sumBillCharges(charges);
+        const noteParts = [
+          `Scheduled Room Transfer: ${previewSnapshot?.fromRoom?.name || "current room"} → ` +
+            `${previewSnapshot?.toRoom?.name || "new room"}, effective ` +
+            `${toManilaStartOfDay(effectiveTransferDate).format("YYYY-MM-DD")}`,
+        ];
+        if (rentDue > 0) noteParts.push(`rent adjustment ₱${rentDue.toFixed(2)}`);
+        if (depositDue > 0) noteParts.push(`additional security deposit ₱${depositDue.toFixed(2)}`);
+        noteParts.push("Electricity and water follow the normal utility billing after the transfer cutoff.");
+
+        const [bill] = await Bill.create(
+          [
+            {
+              billType: "transfer_settlement",
+              reservationId: reservation._id,
+              userId: reservation.userId?._id || reservation.userId,
+              branch: activeStay.branch || targetRoom.branch,
+              roomId: activeStay.roomId, // still the SOURCE room until cutover
+              billingMonth: effectiveDateObj,
+              billingCycleStart: cycleStart,
+              billingCycleEnd: cycleEnd,
+              dueDate: effectiveDateObj, // on or before the effective transfer date
+              charges,
+              totalAmount: total,
+              grossAmount: total,
+              remainingAmount: total,
+              paidAmount: 0,
+              status: "pending",
+              publicationState: "published",
+              notes: noteParts.join("; "),
+              transferSnapshot: {
+                fromRoomId: activeStay.roomId,
+                fromRoomName: previewSnapshot?.fromRoom?.name || "",
+                fromRoomType: previewSnapshot?.fromRoom?.type || "",
+                toRoomId: targetRoom._id,
+                toRoomName: previewSnapshot?.toRoom?.name || targetRoom.roomNumber || "",
+                toRoomType: targetRoom.type || "",
+                effectiveTransferDate: effectiveDateObj,
+                // Pre-transfer payable — the executor recomputes the canonical
+                // settlement at execution and reconciles any difference.
+                scheduledRentAdjustment: rentDue,
+                scheduledAdditionalDeposit: depositDue,
+                isScheduledTransferBalance: true,
+              },
+            },
+          ],
+          { session },
+        );
+        created.settlementBillId = bill._id;
+        await created.save({ session });
+      }
     });
   } catch (e) {
     // A duplicate-key error from the partial-unique index => concurrent schedule.
@@ -434,9 +516,11 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
       destinationRoomId: String(targetRoom._id),
       destinationBedId: created.destinationBedId,
       effectiveTransferDate,
+      settlementBillId: created.settlementBillId ? String(created.settlementBillId) : null,
+      balanceTotal,
     },
     "[scheduleRoomTransfer] scheduled",
   );
 
-  return { scheduledTransfer: created, addendum, previewSnapshot };
+  return { scheduledTransfer: created, addendum, previewSnapshot, balanceTotal };
 }

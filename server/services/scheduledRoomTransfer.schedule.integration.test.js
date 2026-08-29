@@ -240,9 +240,15 @@ describe("scheduleRoomTransfer — private destination", () => {
     expect(stayAfter.status).toBe("active");
     expect(roomAAfter.currentOccupancy).toBe(roomAOccBefore);
 
-    expect(await Bill.countDocuments({ reservationId: reservation._id })).toBe(0);
+    // A Quad->Private schedule raises rent + deposit, so a balance Bill IS
+    // created (Phase 2D) — but NO TenantCredit and NO UtilityReading cutoff.
     expect(await TenantCredit.countDocuments({ reservationId: reservation._id })).toBe(0);
     expect(await UtilityReading.countDocuments({})).toBe(0);
+    const balBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
+    expect(balBill).toBeTruthy();
+    expect(String(scheduledTransfer.settlementBillId)).toBe(String(balBill._id));
+    expect(balBill.charges.electricity).toBe(0);
+    expect(balBill.charges.water).toBe(0);
 
     // Addendum: generated + not current.
     const addendum = await Contract.findById(scheduledTransfer.addendumContractId);

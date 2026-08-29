@@ -28,12 +28,20 @@ const fmtMoney = (value) =>
       })}`
     : "—";
 
+// Local calendar date as YYYY-MM-DD — matches a native <input type="date">.
+// NOT toISOString(), which shifts to UTC and can return the previous day for a
+// Philippines (UTC+8) user shortly after local midnight.
 const toDateInputValue = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
+
+const localTodayStr = () => toDateInputValue(new Date());
 
 function TenantModalShell({ open, title, children, footer, onClose }) {
   useBodyScrollLock(open);
@@ -722,7 +730,7 @@ export function TransferTenantModal({
     setReason("Room transfer");
     setForceOverride(false);
     setPreparedAddendum(null);
-    setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
+    setEffectiveTransferDate(localTodayStr());
     setSourceRoomMeterReading(
       sourceRoomLatestReading?.reading != null
         ? String(sourceRoomLatestReading.reading)
@@ -788,6 +796,11 @@ export function TransferTenantModal({
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
+
+  // A future Effective Transfer Date => this Confirm SCHEDULES the transfer
+  // (executes automatically on the date) rather than transferring now.
+  const isScheduledTransfer =
+    !!effectiveTransferDate && effectiveTransferDate > localTodayStr();
 
   // ── Canonical transfer financial preview (server-computed) ────────────────
   // The same rent-settlement + deposit-settlement math the executed transfer
@@ -1065,7 +1078,7 @@ export function TransferTenantModal({
             ) : (
               <>
                 <CheckCircle2 size={16} />
-                <span>Confirm Transfer</span>
+                <span>{isScheduledTransfer ? "Confirm Schedule" : "Confirm Transfer"}</span>
               </>
             )}
           </button>
@@ -1214,13 +1227,15 @@ export function TransferTenantModal({
             <input
               type="date"
               value={effectiveTransferDate}
-              max={new Date().toISOString().slice(0, 10)}
+              min={localTodayStr()}
               onChange={(e) => setEffectiveTransferDate(e.target.value)}
             />
             <span className="twm-meter-hint">
               <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
               <span>
-                Future dates cannot be selected because room transfers take effect immediately upon administrative confirmation. Partial rent and utility usage are calculated up to today.
+                <strong>Transfer timing.</strong> Select today to transfer immediately.
+                Select a future date to schedule the transfer. Room, rent, and utility
+                responsibility will switch on the effective date.
               </span>
             </span>
           </div>
