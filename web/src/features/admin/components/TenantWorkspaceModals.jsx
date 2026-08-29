@@ -254,6 +254,7 @@ export function RenewLeaseModal({
               "Send Extension Offer"
             ) : (
               "Extend Reservation"
+            )}
           </button>
         </>
       }
@@ -379,6 +380,7 @@ export function RenewLeaseModal({
             />
           </label>
         </div>
+      )}
 
       {mode === "offer" && (
         <div className="bg-muted/40 border border-border/80 rounded-xl p-3.5 mb-5 space-y-1.5 shadow-2xs">
@@ -420,7 +422,9 @@ export function RenewLeaseModal({
             </>
           ) : (
             <div className="text-xs text-muted-foreground">Select a duration to resolve pricing.</div>
+          )}
         </div>
+      )}
 
       <label className="tenant-modal-field">
         <span>Notes / Message to Tenant</span>
@@ -491,6 +495,7 @@ export function RenewLeaseModal({
                       <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-foreground border border-border/80">
                         {durationText}
                       </span>
+                    )}
                     {entry.monthlyRent ? (
                       <div className="text-[11px] text-muted-foreground font-medium mt-0.5">
                         {fmtMoney(entry.monthlyRent)}/mo
@@ -501,6 +506,7 @@ export function RenewLeaseModal({
               );
             })}
           </div>
+        )}
       </div>
       <ConfirmModal
         isOpen={showOfferConfirm}
@@ -662,10 +668,11 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
                   </span>
                 </div>
               );
-            })
-        </div>
-    </div>
-  );
+            }))}
+          </div>
+        )}
+      </div>
+    );
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -934,6 +941,7 @@ export function TransferTenantModal({
             <ChevronLeft size={16} />
             <span>Back</span>
           </button>
+        )}
         {!isReviewStep ? (
           <button
             type="button"
@@ -977,7 +985,9 @@ export function TransferTenantModal({
                 <CheckCircle2 size={16} />
                 <span>Confirm Schedule</span>
               </>
+            )}
           </button>
+        )}
       </div>
     </div>
   );
@@ -1015,6 +1025,7 @@ export function TransferTenantModal({
                 I acknowledge the outstanding balance and confirm this transfer
               </label>
             </div>
+          )}
 
           <div className="tenant-modal-grid">
             <label className="tenant-modal-field">
@@ -1081,6 +1092,7 @@ export function TransferTenantModal({
                   readOnly
                 />
               </label>
+            )}
           </div>
 
           {roomId && (
@@ -1091,9 +1103,11 @@ export function TransferTenantModal({
               <strong>{prettyRoomType(selectedRoomType)}</strong>
               {isCrossTypeTransfer && (
                 <span> (was {prettyRoomType(currentRoomType)} — room type changes with this transfer)</span>
+              )}
               {" · "}
               {destinationNeedsBed ? "bed required" : "no bed (private room)"}
             </div>
+          )}
 
           {roomId && priceDiff !== 0 && (
             <div className="twm-callout twm-callout--price">
@@ -1108,6 +1122,7 @@ export function TransferTenantModal({
                 {isCrossTypeTransfer ? " This transfer also changes the room type." : ""}
               </span>
             </div>
+          )}
 
           <div className={`tenant-modal-field ${attemptedStep1 && (!effectiveTransferDate || effectiveTransferDate < minScheduleDateStr()) ? "tenant-modal-field--invalid" : ""}`}>
             <span>Effective Transfer Date</span>
@@ -1139,6 +1154,7 @@ export function TransferTenantModal({
             />
           </label>
         </>
+      )}
 
       {/* ── STEP 2: Review & Scheduled Transfer Balance ─────────────────── */}
       {isReviewStep && (
@@ -1174,6 +1190,7 @@ export function TransferTenantModal({
                   <span className="twm-review-card__subtext">
                     (Changed from {prettyRoomType(currentRoomType)})
                   </span>
+                )}
               </span>
             </div>
 
@@ -1219,6 +1236,7 @@ export function TransferTenantModal({
               <span className="twm-remarks-card__label">Reason for Transfer</span>
               <p className="twm-remarks-card__text">{reason}</p>
             </div>
+          )}
 
           <div className="twm-callout twm-callout--info">
             <strong>Utilities</strong>
@@ -1279,6 +1297,8 @@ export function TransferTenantModal({
                         </span>
                         <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
                       </div>
+                    )}
+                  </div>
 
                   {/* ── ELECTRICITY — informational only, NOT in the Scheduled Transfer Balance ── */}
                   <div className="twm-settlement-row twm-settlement-row--muted">
@@ -1322,6 +1342,7 @@ export function TransferTenantModal({
                         <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
                         <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
                       </div>
+                    )}
                     {preview.deposit.excessHeld > 0 && (
                       <div className="twm-settlement-row twm-settlement-row--success">
                         <span className="twm-settlement-row__label">
@@ -1332,6 +1353,7 @@ export function TransferTenantModal({
                         </span>
                         <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
                       </div>
+                    )}
                   </div>
 
                   {/* ── UTILITIES GROUP (Informational / Period Close) ── */}
@@ -1366,6 +1388,7 @@ export function TransferTenantModal({
                       <span className="twm-settlement-row__label">Prior Outstanding Balance (existing, unrelated)</span>
                       <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
                     </div>
+                  )}
 
                   {/* ── THE ONE BALANCE FIGURE: rent adjustment + additional deposit only ── */}
                   <div className="twm-settlement-row twm-settlement-row--total">
@@ -1388,6 +1411,7 @@ export function TransferTenantModal({
                   water follow the new room at their normal period close.
                 </p>
               </div>
+            )}
           </div>
 
           {/* ── Room Transfer Addendum — preview BEFORE confirming (R2) ── */}
@@ -1469,6 +1493,7 @@ export function TransferTenantModal({
                         : ""}
                   </span>
                 </div>
+              )}
               {preparedAddendum && (
                 <div className="twm-settlement-row twm-settlement-row--success">
                   <span className="twm-settlement-row__label">
@@ -1478,6 +1503,7 @@ export function TransferTenantModal({
                     Prepared — this exact draft is used when you Confirm.
                   </span>
                 </div>
+              )}
             </div>
             <p className="twm-settlement-card__note">
               This is a <strong>Room Transfer Addendum</strong>, not a replacement lease. The original lease
@@ -1492,7 +1518,9 @@ export function TransferTenantModal({
             <div className="twm-callout twm-callout--warning">
               ⚠ You have acknowledged the outstanding balance of {fmtMoney(outstandingBalance)} and are force-proceeding.
             </div>
+          )}
         </>
+      )}
     </TenantModalShell>
   );
 }
@@ -1628,6 +1656,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
             <ChevronLeft size={16} />
             <span>Back</span>
           </button>
+        )}
         {step < 3 ? (
           <button
             type="button"
@@ -1664,7 +1693,9 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                 <LogOut size={16} />
                 <span>Confirm Move-Out</span>
               </>
+            )}
           </button>
+        )}
       </div>
     </div>
   );
@@ -1697,6 +1728,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
 
           {moveOutReason && (
             <div className="twm-callout twm-callout--warning">{moveOutReason}</div>
+          )}
 
           <div className="tenant-modal-grid">
             <label className="tenant-modal-field">
@@ -1723,7 +1755,9 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
             <div className="twm-callout twm-callout--danger">
               ⚠ Early Vacancy Detected: Moving out before lease end ({fmtDate(leaseEndDate)}) will result in automatic deposit forfeiture per contract Section 4.
             </div>
+          )}
         </>
+      )}
 
       {/* ── STEP 2: Final Meter & Room Condition ──────────────────────── */}
       {step === 2 && (
@@ -1755,6 +1789,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                 </span>
               ) : (
                 <span className="twm-meter-hint">Enter the current kWh reading from the room meter.</span>
+              )}
             </label>
             <label className="tenant-modal-field">
               <span>Key / Access Card Returned</span>
@@ -1791,6 +1826,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
             />
           </label>
         </>
+      )}
 
       {/* ── STEP 3: Review & Deposit Clearance ────────────────────────── */}
       {step === 3 && (
@@ -1817,12 +1853,14 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                 <span className="twm-review-field__label">Notes</span>
                 <span className="twm-review-field__value">{notes}</span>
               </div>
+            )}
           </div>
 
           {isEarlyVacancy && (
             <div className="twm-callout twm-callout--danger">
               ⚠ Early Vacancy — The security deposit will be forfeited per the lease contract.
             </div>
+          )}
 
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
@@ -1848,16 +1886,19 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                   <span className="twm-settlement-row__label">Less: Unpaid Balance</span>
                   <span className="twm-settlement-row__value">({fmtMoney(outstandingBal)})</span>
                 </div>
+              )}
               {keyFee > 0 && (
                 <div className="twm-settlement-row twm-settlement-row--danger">
                   <span className="twm-settlement-row__label">Less: Key Replacement Fee</span>
                   <span className="twm-settlement-row__value">({fmtMoney(keyFee)})</span>
                 </div>
+              )}
               {damageFee > 0 && (
                 <div className="twm-settlement-row twm-settlement-row--danger">
                   <span className="twm-settlement-row__label">Less: Damage / Cleaning Fee</span>
                   <span className="twm-settlement-row__value">({fmtMoney(damageFee)})</span>
                 </div>
+              )}
               {estimatedElectricityCostMoveOut !== null && estimatedElectricityCostMoveOut > 0 && (
                 <div className="twm-settlement-row twm-settlement-row--danger">
                   <span className="twm-settlement-row__label">
@@ -1868,6 +1909,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                   </span>
                   <span className="twm-settlement-row__value">({fmtMoney(estimatedElectricityCostMoveOut)})</span>
                 </div>
+              )}
               {isEarlyVacancy ? (
                 <div className="twm-settlement-row twm-settlement-row--total twm-settlement-row--forfeited">
                   <span className="twm-settlement-row__label">Deposit Status</span>
@@ -1883,6 +1925,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
                   <span className="twm-settlement-row__label">Estimated Refundable Deposit</span>
                   <span className="twm-settlement-row__value">{fmtMoney(netSettlement)}</span>
                 </div>
+              )}
             </div>
             <p className="twm-settlement-card__note">
               {estimatedElectricityCostMoveOut !== null
@@ -1891,6 +1934,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
             </p>
           </div>
         </>
+      )}
     </TenantModalShell>
   );
 }

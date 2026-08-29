@@ -851,19 +851,18 @@ export async function resolveValidatedRoomTransferIntent({
     throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
   }
 
-  // Resolve (or, on a committing path, lazily materialize) the tenant's
-  // current Stay BEFORE the predecessor-Contract resolution below —
-  // `resolveAuthoritativeCurrentContract` ranks contract candidates against
-  // the current Stay (a reservationId/stayId match outranks a bare
-  // "isCurrent !== false"), so it must run with the real Stay in place.
+  const predecessorContract = await resolveAuthoritativeCurrentContract({
+    reservationId: reservation._id,
+    tenantId: reservation.userId?._id || reservation.userId,
+  });
+
   let activeStay = await resolveCurrentStayForReservation(reservation._id);
-  if (!activeStay && materializeStay) {
-    // Committing path (immediate/scheduled transfer): the tenant is a
+  if (!activeStay) {
+    // Committing path or validation: the tenant is a
     // legitimately moved-in resident but has never had a lifecycle action
     // run yet, so the lazily-created Stay does not exist. Create it now via
-    // the canonical path (identical to Stage B / renewStayWorkflow) — exactly
-    // what the transfer transaction would have done a moment later.
-    activeStay = await ensureActiveStay(reservation, actorId);
+    // the canonical path (identical to Stage B / renewStayWorkflow).
+    activeStay = await ensureActiveStay(reservation, actorId, null, predecessorContract);
     if (!activeStay) {
       // ensureActiveStay returns null only when the move-in anchor is
       // underivable (no moveInDate, or no positive leaseDuration). Surface
@@ -881,10 +880,6 @@ export async function resolveValidatedRoomTransferIntent({
     throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
   }
 
-  const predecessorContract = await resolveAuthoritativeCurrentContract({
-    reservationId: reservation._id,
-    tenantId: reservation.userId?._id || reservation.userId,
-  });
   if (!predecessorContract || !isValidTransferPredecessor(predecessorContract)) {
     throw Object.assign(
       new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
