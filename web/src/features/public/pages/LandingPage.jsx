@@ -1,20 +1,33 @@
+import { lazy, Suspense } from "react";
 import Navbar from "../components/Navbar";
-import { ContactFooter } from "../components/ContactFooter";
 import { HeroSection } from "../components/HeroSection";
 import { JourneyHighlightsSection } from "../components/JourneyHighlightsSection";
 import { BenefitsSection } from "../components/BenefitsSection";
 import { RoomInventory } from "../components/RoomInventory";
 import { FacilitiesSection } from "../components/FacilitiesSection";
 import { LocationSection } from "../components/LocationSection";
-import { RulesSection } from "../components/RulesSection";
-import { FAQSection } from "../components/faq/FAQSection";
-import { StorytellingSection } from "../components/StorytellingSection";
-import { InquiryForm } from "../components/InquiryForm";
-import { CTASection } from "../components/CTASection";
 import ScrollReveal from "../../../shared/components/ScrollReveal";
 import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import RouteErrorBoundary from "../../../shared/components/RouteErrorBoundary";
+
+// Code-split below-the-fold sections to minimize initial main-thread execution time
+const StorytellingSection = lazy(() =>
+  import("../components/StorytellingSection").then((m) => ({ default: m.StorytellingSection }))
+);
+const RulesSection = lazy(() =>
+  import("../components/RulesSection").then((m) => ({ default: m.RulesSection }))
+);
+const FAQSection = lazy(() =>
+  import("../components/faq/FAQSection").then((m) => ({ default: m.FAQSection }))
+);
+const InquiryForm = lazy(() =>
+  import("../components/InquiryForm").then((m) => ({ default: m.InquiryForm }))
+);
+const CTASection = lazy(() =>
+  import("../components/CTASection").then((m) => ({ default: m.CTASection }))
+);
+const ContactFooter = lazy(() => import("../components/ContactFooter"));
 
 import SEOHead from "../../../shared/components/SEOHead";
 
@@ -259,7 +272,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-left">
           <RouteErrorBoundary name="StorytellingSection" fallback={<SectionFallback name="About" />}>
-            <StorytellingSection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+              <StorytellingSection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -268,7 +283,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade">
           <RouteErrorBoundary name="RulesSection" fallback={<SectionFallback name="Rules" />}>
-            <RulesSection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+              <RulesSection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -277,7 +294,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-up">
           <RouteErrorBoundary name="FAQSection" fallback={<SectionFallback name="FAQs" />}>
-            <FAQSection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+              <FAQSection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -286,7 +305,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-up">
           <RouteErrorBoundary name="InquiryForm" fallback={<SectionFallback name="Inquiry Form" />}>
-            <InquiryForm />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+              <InquiryForm />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -295,7 +316,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="zoom">
           <RouteErrorBoundary name="CTASection" fallback={<SectionFallback name="CTA" />}>
-            <CTASection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '200px' }} />}>
+              <CTASection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -305,7 +328,9 @@ function LandingPageContent() {
       {/* FOOTER */}
       <ScrollReveal variant="fade">
         <RouteErrorBoundary name="ContactFooter" fallback={<SectionFallback name="Footer" />}>
-          <ContactFooter />
+          <Suspense fallback={<div className="py-8" style={{ minHeight: '200px' }} />}>
+            <ContactFooter />
+          </Suspense>
         </RouteErrorBoundary>
       </ScrollReveal>
 

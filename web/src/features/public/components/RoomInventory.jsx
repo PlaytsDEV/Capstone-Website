@@ -218,8 +218,8 @@ export function RoomInventory() {
                 >
                   {room.hasDiscount && (
                     <span
-                      className="text-xs line-through opacity-60 font-normal"
-                      style={{ color: 'var(--lp-text-muted)' }}
+                      className="text-xs line-through font-normal"
+                      style={{ color: 'var(--lp-text-secondary)' }}
                     >
                       {room.regularPrice}
                     </span>
@@ -243,11 +243,11 @@ export function RoomInventory() {
                   )}
                 </div>
 
-                {/* Corner Ribbon — replaces full-width bar */}
+                {/* Corner Ribbon — high contrast text #0A1628 on gold */}
                 {room.popular && (
                   <span
-                    className="absolute top-4 right-4 text-white text-xs font-medium tracking-wider uppercase px-3 py-1.5 rounded-full"
-                    style={{ backgroundColor: 'var(--lp-accent)' }}
+                    className="absolute top-4 right-4 text-xs font-bold tracking-wider uppercase px-3.5 py-1.5 rounded-full shadow-sm"
+                    style={{ backgroundColor: 'var(--lp-accent, #D4AF37)', color: '#0A1628' }}
                   >
                     ★ Most Popular
                   </span>
@@ -293,15 +293,16 @@ export function RoomInventory() {
                   )}
                 </div>
 
-                {/* CTA Button — improved ghost contrast */}
+                {/* CTA Button — high contrast #0A1628 on gold */}
                 <Link
                   to={room.linkUrl || "/applicant/check-availability"}
                   className="flex items-center justify-center gap-2 w-full py-4 rounded-full text-sm font-medium transition-all duration-300"
                   style={
                     room.popular
                       ? {
-                          backgroundColor: 'var(--lp-accent)',
-                          color: '#ffffff',
+                          backgroundColor: 'var(--lp-accent, #D4AF37)',
+                          color: '#0A1628',
+                          fontWeight: '600',
                           boxShadow: '0 4px 12px rgba(212, 175, 55, 0.25)',
                         }
                       : {
@@ -314,7 +315,7 @@ export function RoomInventory() {
                   onMouseEnter={(e) => {
                     if (!room.popular) {
                       e.currentTarget.style.backgroundColor = 'var(--lp-accent)';
-                      e.currentTarget.style.color = '#ffffff';
+                      e.currentTarget.style.color = '#0A1628';
                     }
                   }}
                   onMouseLeave={(e) => {
