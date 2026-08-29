@@ -48,7 +48,29 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Contract: {},
   TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
   BusinessSettings: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+  ScheduledRoomTransfer: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn(), countDocuments: jest.fn() },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
+}));
+
+// Scheduled-room-transfer surface pulled in transitively by
+// tenancyActionsController. This authz suite does not exercise transfer
+// scheduling, so the whole subsystem is stubbed.
+await jest.unstable_mockModule("../services/scheduledRoomTransferService.js", () => ({
+  scheduleRoomTransfer: jest.fn(),
+  isFutureManilaDate: jest.fn(() => false),
+  isPastManilaDate: jest.fn(() => false),
+  computeRoomTransferPreview: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/scheduledRoomTransferView.js", () => ({
+  serializeScheduledRoomTransfer: jest.fn(),
+  getOpenScheduledRoomTransferForReservation: jest.fn().mockResolvedValue(null),
+}));
+await jest.unstable_mockModule("../services/scheduledRoomTransferExecutor.js", () => ({
+  cancelScheduledRoomTransfer: jest.fn(),
+  retryScheduledRoomTransfer: jest.fn(),
+  resolveScheduledTransferBeforeTenantDeparture: jest.fn().mockResolvedValue({ handled: false }),
+  executeScheduledRoomTransfer: jest.fn(),
+  executeDueScheduledRoomTransfers: jest.fn(),
 }));
 
 await jest.unstable_mockModule("../models/BusinessSettings.js", () => ({
