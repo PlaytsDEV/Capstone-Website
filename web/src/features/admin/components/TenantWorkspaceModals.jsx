@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import { useRoomTransferPreview } from "../../../shared/hooks/queries/useReservations";
@@ -9,10 +9,12 @@ import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../..
 import { reservationApi } from "../../../shared/api/reservationApi";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import SearchableRoomSelect from "./SearchableRoomSelect.jsx";
 import {
   toDateInputValue,
   minScheduleDateStr,
 } from "../utils/transferScheduleDate";
+import { destinationRoomNeedsBed } from "../utils/transferDestinationBed";
 import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
@@ -548,134 +550,6 @@ function WizardStepper({ steps, currentStep }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Searchable Room Dropdown Component
-   ───────────────────────────────────────────────────────────────────────────── */
-function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = "Select a room...", fmtMoney, isInvalid }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const containerRef = useRef(null);
-
-  const selectedRoom = useMemo(
-    () => rooms.find((r) => String(r._id || r.id) === String(value)),
-    [rooms, value],
-  );
-
-  useEffect(() => {
-    if (!isOpen) {
-      if (selectedRoom) {
-        setSearchTerm(
-          `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`,
-        );
-      } else {
-        setSearchTerm("");
-      }
-    }
-  }, [value, selectedRoom, isOpen, fmtMoney]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const filteredRooms = useMemo(() => {
-    const selectedLabel = selectedRoom
-      ? `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`
-      : "";
-    if (!searchTerm || (selectedRoom && searchTerm === selectedLabel)) {
-      return rooms;
-    }
-    const q = searchTerm.toLowerCase().trim();
-    return rooms.filter((r) => {
-      const name = String(r.name || r.roomNumber || "").toLowerCase();
-      const price = String(r.monthlyPrice || r.price || "").toLowerCase();
-      const floor = String(r.floor || "").toLowerCase();
-      return name.includes(q) || price.includes(q) || floor.includes(q);
-    });
-  }, [rooms, searchTerm, selectedRoom, fmtMoney]);
-
-  return (
-    <div className="twm-search-select" ref={containerRef}>
-      <div className="twm-search-select__input-wrap">
-        <input
-          type="text"
-          className={`twm-search-select__input ${isInvalid ? "tenant-modal-field--invalid" : ""}`}
-          placeholder={disabled ? "Loading available rooms..." : placeholder}
-          value={searchTerm}
-          disabled={disabled}
-          onFocus={() => setIsOpen(true)}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            if (!isOpen) setIsOpen(true);
-          }}
-        />
-        <span className={`twm-search-select__arrow ${isOpen ? "twm-search-select__arrow--open" : ""}`}>
-          ▼
-        </span>
-      </div>
-
-      {isOpen && !disabled && (
-        <div className="twm-search-select__dropdown">
-          {filteredRooms.length === 0 ? (
-            <div className="twm-search-select__empty">No matching rooms found</div>
-          ) : (
-            filteredRooms.map((room) => {
-              const rId = String(room._id || room.id);
-              const isSelected = String(value) === rId;
-              const hasAvail =
-                Array.isArray(room.beds) &&
-                room.beds.some(
-                  (b) => b.status === "available" || (b.status === undefined && b.available !== false),
-                );
-              const roomLabel = `${room.name || room.roomNumber} (${fmtMoney(room.monthlyPrice || room.price)})`;
-
-              return (
-                <div
-                  key={rId}
-                  className={`twm-search-select__option ${isSelected ? "twm-search-select__option--selected" : ""} ${!hasAvail ? "twm-search-select__option--disabled" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!hasAvail) {
-                      showNotification(
-                        `Room ${room.name || room.roomNumber} has no available beds.`,
-                        "warning",
-                      );
-                      return;
-                    }
-                    onChange(rId);
-                    setIsOpen(false);
-                    if (containerRef.current) {
-                      const inputEl = containerRef.current.querySelector("input");
-                      if (inputEl) inputEl.blur();
-                    }
-                  }}
-                >
-                  <span style={{ fontWeight: isSelected ? 700 : 500 }}>{roomLabel}</span>
-                  <span
-                    className={`twm-search-select__badge ${
-                      hasAvail ? "twm-search-select__badge--avail" : "twm-search-select__badge--full"
-                    }`}
-                  >
-                    {hasAvail ? "Available" : "Full"}
-                  </span>
-                </div>
-              );
-            }))}
-          </div>
-        )}
-      </div>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
    Transfer Tenant Modal — FUTURE-ONLY scheduled wizard
      Step 1: Target Room & Date  →  Step 2: Review
    Every new Admin Room Transfer is SCHEDULED for a future Manila business date
@@ -755,12 +629,15 @@ export function TransferTenantModal({
     (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
-  // Bed selection is required only for shared destination rooms — a private
-  // room has no bed to pick (matches the backend rule in transferStayWorkflow,
-  // which keys off the DESTINATION Room.type, independent of the source).
+  // Bed selection is required for every NON-private destination room — a
+  // private room has no bed to pick. This mirrors the backend canonical rule
+  // (roomRequiresIndividualBed in reservationContractEligibilityService.js:
+  // "private" is the only exemption, every other/unknown room type requires a
+  // bed, fail-safe). Do NOT re-enumerate shared room types here — anything
+  // that is not literally "private" needs a bed, and the backend Contract
+  // validation will reject a non-private transfer that arrives without one.
   const selectedRoomType = selectedRoom?.type || selectedRoom?.roomType || "";
-  const destinationNeedsBed =
-    selectedRoomType === "double-sharing" || selectedRoomType === "quadruple-sharing";
+  const destinationNeedsBed = destinationRoomNeedsBed(selectedRoomType);
   const isCrossTypeTransfer =
     !!selectedRoomType && !!currentRoomType && selectedRoomType !== currentRoomType;
   const prettyRoomType = (t) => String(t || "").replace(/-/g, " ") || "—";
@@ -1050,8 +927,10 @@ export function TransferTenantModal({
                 value={roomId}
                 onChange={(newRoomId) => {
                   setRoomId(newRoomId);
+                  // Any bed picked for a previous destination is stale once the
+                  // room changes — a shared room reloads its own bed list, a
+                  // private room needs none.
                   setBedId("");
-                  fetchTargetBaseline(newRoomId);
                 }}
                 disabled={roomsLoading}
                 placeholder="Search and select room..."

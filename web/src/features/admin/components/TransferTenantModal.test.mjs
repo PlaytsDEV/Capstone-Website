@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import { destinationRoomNeedsBed } from "../utils/transferDestinationBed.js";
+
 const modalSource = fs.readFileSync(
   new URL("./TenantWorkspaceModals.jsx", import.meta.url),
   "utf8",
@@ -136,6 +138,46 @@ test("Step 1 gate: room + (bed for shared) + future date + reason + acknowledged
   );
 });
 
+test("Step 1 gate honours the canonical bed rule for EVERY non-private destination type", () => {
+  const MIN = "2026-08-30";
+  const base = { roomId: "r1", effectiveTransferDate: "2026-09-05", minDateStr: MIN, reason: "x" };
+  const gate = (roomType, bedId) =>
+    validateTransferStep1({
+      ...base,
+      bedId,
+      destinationNeedsBed: destinationRoomNeedsBed(roomType),
+    }).valid;
+
+  // Private destination — schedulable with no bed.
+  assert.equal(gate("private", ""), true);
+
+  // Double / quadruple / any other non-private type — blocked until a bed is set.
+  for (const t of ["double-sharing", "quadruple-sharing", "triple-sharing", "bunk", "some-new-shared-type"]) {
+    assert.equal(gate(t, ""), false, `${t} with no bed must be blocked`);
+    assert.equal(gate(t, "bed-123"), true, `${t} with a bed must be allowed`);
+  }
+});
+
+test("Room-type transitions: shared↔private flips the bed requirement", () => {
+  // Shared → private: requirement drops, a bed is no longer needed and the
+  // payload sends no targetBedId (the modal passes `destinationNeedsBed ? bedId : undefined`).
+  assert.equal(destinationRoomNeedsBed("double-sharing"), true);
+  assert.equal(destinationRoomNeedsBed("private"), false);
+
+  // Private → shared: requirement returns immediately; with the bed cleared on
+  // room change, step1Valid is false until the admin picks one.
+  const MIN = "2026-08-30";
+  const afterSwitchToShared = validateTransferStep1({
+    roomId: "r-shared",
+    bedId: "", // cleared by onChange when the room changed
+    destinationNeedsBed: destinationRoomNeedsBed("quadruple-sharing"),
+    effectiveTransferDate: "2026-09-05",
+    minDateStr: MIN,
+    reason: "x",
+  }).valid;
+  assert.equal(afterSwitchToShared, false);
+});
+
 test("Settlement is server-canonical: transferPreview, no front-end proration", () => {
   assert.match(transferModalSource, /useRoomTransferPreview/);
   assert.match(transferModalSource, /transferPreview/);
@@ -169,4 +211,24 @@ test("Strict terminology invariants are maintained throughout TransferTenantModa
   assert.match(transferModalSource, /Transfer Tenant/i);
   assert.doesNotMatch(transferModalSource, /\bResident\b/);
   assert.doesNotMatch(transferModalSource, /\bRental Fee\b/);
+});
+
+test("New Room onChange has NO leftover meter-baseline fetch (undefined `fetchTargetBaseline` was stranding the dropdown open on first click)", () => {
+  // The future-only rewrite deleted the `fetchTargetBaseline` useCallback but
+  // left its call in the SearchableRoomSelect onChange. It threw a
+  // ReferenceError before `setIsOpen(false)` could run, so a room pick only
+  // visibly settled after an outside click. The call must be gone.
+  assert.doesNotMatch(modalSource, /fetchTargetBaseline/);
+  // The onChange still commits the room and clears any stale bed.
+  assert.match(
+    transferModalSource,
+    /onChange=\{\(newRoomId\) => \{\s*setRoomId\(newRoomId\);[\s\S]*?setBedId\(""\);\s*\}\}/,
+  );
+});
+
+test("New Room field uses the shared SearchableRoomSelect (pointer-down commit, keyboard support)", () => {
+  assert.match(modalSource, /import SearchableRoomSelect from "\.\/SearchableRoomSelect\.jsx"/);
+  assert.match(transferModalSource, /<SearchableRoomSelect/);
+  // The inline copy is gone from this file.
+  assert.doesNotMatch(modalSource, /function SearchableRoomSelect\(/);
 });

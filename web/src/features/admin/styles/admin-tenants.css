@@ -858,7 +858,8 @@
   transition: background 0.12s ease;
 }
 
-.twm-search-select__option:hover:not(.twm-search-select__option--disabled) {
+.twm-search-select__option:hover:not(.twm-search-select__option--disabled),
+.twm-search-select__option--highlighted:not(.twm-search-select__option--disabled) {
   background: #f1f5f9;
 }
 
