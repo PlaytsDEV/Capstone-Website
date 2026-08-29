@@ -108,6 +108,21 @@ const syncRealtimeBedStatuses = async (rooms) => {
     }
   }
 
+  // Scheduled Room Transfer: OPEN inbound schedules ({scheduled,
+  // action_required}) hold a real destination-capacity slot BEFORE the
+  // effective date — for a shared room a specific "reserved" bed, for a
+  // private room a bare capacity slot. Their tenant reservation is still in
+  // the SOURCE room, so without this the sync would render the held bed as
+  // "available" and reconcile currentOccupancy down. See
+  // scheduledRoomTransferService.js.
+  let scheduledHoldsByRoom = new Map();
+  try {
+    const { openHoldsByRoom } = await import("../services/scheduledRoomTransferService.js");
+    scheduledHoldsByRoom = await openHoldsByRoom(roomIds);
+  } catch (holdErr) {
+    logger.warn({ err: holdErr }, "syncRealtimeBedStatuses: failed to load scheduled-transfer holds (non-fatal)");
+  }
+
   const resByRoom = new Map();
   for (const resDoc of activeReservations) {
     const key = String(resDoc.roomId);
@@ -127,6 +142,16 @@ const syncRealtimeBedStatuses = async (rooms) => {
     const roomStays = staysByRoom.get(String(room._id)) || [];
     const beds = Array.isArray(room.beds) ? room.beds : [];
 
+    const scheduledHolds = scheduledHoldsByRoom.get(String(room._id)) || [];
+    const heldBedIds = new Set(
+      scheduledHolds
+        .map((h) => (h.destinationBedId ? String(h.destinationBedId) : null))
+        .filter(Boolean),
+    );
+    // Private / capacity-only holds (no bed) — added to the derived occupancy
+    // separately since there is no bed row to carry them.
+    const bedlessScheduledHolds = scheduledHolds.filter((h) => !h.destinationBedId).length;
+
     const matchedResIds = new Set();
     const matchedStayIds = new Set();
 
@@ -135,6 +160,35 @@ const syncRealtimeBedStatuses = async (rooms) => {
       const bCode = bed.code ? String(bed.code).trim().toLowerCase() : null;
       const bMongoId = bed._id ? String(bed._id).trim() : null;
       const bNum = bed.bedNumber != null ? String(bed.bedNumber) : null;
+
+      // Scheduled inbound transfer hold: render as "reserved" (committed
+      // capacity) with a scheduledIncoming marker. Display metadata only — the
+      // tenant's actual current room is unchanged.
+      if (bed.id && heldBedIds.has(String(bed.id))) {
+        const hold = scheduledHolds.find((h) => String(h.destinationBedId) === String(bed.id));
+        return {
+          ...bed,
+          status: "reserved",
+          available: false,
+          scheduledIncoming: true,
+          expectedVacancyDate: null,
+          daysRemaining: null,
+          occupiedBy: {
+            userId: hold?.tenantId ? String(hold.tenantId) : null,
+            reservationId: hold?.reservationId ? String(hold.reservationId) : null,
+            occupiedSince: null,
+            name: null,
+            firstName: null,
+            lastName: null,
+            email: null,
+            phone: null,
+            role: null,
+            user_id: null,
+            status: "scheduled_transfer_incoming",
+            scheduledTransferEffectiveDate: hold?.effectiveTransferDate || null,
+          },
+        };
+      }
 
       const matchingHold = roomReservations.find((resDoc) => {
         if (matchedResIds.has(String(resDoc._id))) return false;
@@ -404,13 +458,16 @@ const syncRealtimeBedStatuses = async (rooms) => {
       .filter(Boolean)
       .sort((a, b) => new Date(a) - new Date(b));
 
-    // Ground-truth occupancy: count beds that are occupied, reserved, or locked
-    const liveOccupancy = updatedBeds.filter(
-      (b) =>
-        b.status === "occupied" ||
-        b.status === "reserved" ||
-        b.status === "locked",
-    ).length;
+    // Ground-truth occupancy: count beds that are occupied, reserved, or
+    // locked, PLUS any private/capacity-only scheduled-transfer holds (which
+    // have no bed row to be counted above).
+    const liveOccupancy =
+      updatedBeds.filter(
+        (b) =>
+          b.status === "occupied" ||
+          b.status === "reserved" ||
+          b.status === "locked",
+      ).length + bedlessScheduledHolds;
 
     if (room.currentOccupancy !== liveOccupancy) {
       Room.updateOne(

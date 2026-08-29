@@ -205,6 +205,15 @@ const contractSchema = new mongoose.Schema(
     replacementReason: { type: String, default: "", trim: true },
     amendmentReason: { type: String, default: "", trim: true },
     amendmentFields: { type: [String], default: [] },
+    // The date the amended terms take effect — for a Room Transfer Addendum
+    // this is the transfer effective date. It is DELIBERATELY SEPARATE from
+    // leaseStartDate: a room transfer amends the room/rate/bed of the
+    // CONTINUING lease and never resets the lease term. On an "amendment"
+    // Contract, leaseStartDate/leaseEndDate/leaseDurationMonths carry the
+    // ORIGINAL lease's values verbatim; amendmentEffectiveDate is the "these
+    // listed terms change on this date" marker. Null on non-amendment
+    // Contracts.
+    amendmentEffectiveDate: { type: Date, default: null },
     duplicateOfContractId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Contract",

@@ -11,7 +11,8 @@ const paper = readFileSync(
 
 test("acknowledge action calls the acknowledge endpoint, never a signature/legal-acceptance wording", () => {
   assert.match(api, /acknowledgeMyContract:[\s\S]*\/contracts\/my\/\$\{contractId\}\/acknowledge/);
-  assert.match(page, /Acknowledge Draft|Acknowledge Contract/);
+  // Phase 9: the affordance label is templated — Draft / Contract / Addendum.
+  assert.match(page, /Acknowledge \$\{isAddendum \? "Addendum" : isDraft \? "Draft" : "Contract"\}/);
   // The confirmation modal must explicitly say this is NOT a signature.
   assert.match(page, /not<\/strong> a signature/i);
   assert.doesNotMatch(page, /electronic(ally)? (sign|accept)/i);
@@ -21,10 +22,13 @@ test("acknowledged state shows a timestamp, not a repeatable action", () => {
   assert.match(page, /You acknowledged this \{subject\}/);
 });
 
-test("a generated Draft gets its own 'Acknowledge Draft' affordance and distinct wording", () => {
+test("a generated Draft gets its own 'Draft' affordance and distinct wording (lease vs. addendum)", () => {
   assert.match(page, /documentKind === "draft"/);
-  assert.match(page, /Acknowledge Draft/);
+  // Draft affordance is one branch of the templated label.
+  assert.match(page, /isDraft \? "Draft" : "Contract"/);
   assert.match(page, /received and reviewed the generated draft/i);
+  // Addendum path has its own, mid-stay-appropriate wording.
+  assert.match(page, /Room Transfer Addendum[\s\S]{0,120}recording your room change/i);
 });
 
 test("acknowledgement is confirmed through a modal explaining it is not signing", () => {

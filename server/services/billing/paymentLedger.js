@@ -7,11 +7,94 @@
  */
 
 import Payment from "../../models/Payment.js";
+import { Reservation } from "../../models/index.js";
 import { getBillRemainingAmount, roundMoney, syncBillAmounts } from "./billingPolicy.js";
 import {
   generatePaymentReference,
   isRawPaymentGatewayId,
 } from "../../utils/referenceGenerator.js";
+
+/**
+ * Fund reservation.securityDepositHeld from a transfer_settlement Bill whose
+ * charges.securityDeposit is being settled. Idempotent + partial-payment
+ * aware: the held amount is DERIVED from the Bill's cumulative paid state,
+ * not incremented, so a duplicate webhook / retry converges to the same
+ * value and never double-funds.
+ *
+ * Allocation order on a partially-paid Bill: RENT (and any electricity)
+ * first, then SECURITY DEPOSIT — so the deposit is only considered funded
+ * once the rent/utility portion is covered.
+ */
+async function reconcileTransferDepositHeld({ bill, paymentId, session, now }) {
+  const depositComponent = roundMoney(Number(bill?.charges?.securityDeposit || 0));
+  if (bill?.billType !== "transfer_settlement" || depositComponent <= 0) return;
+  if (!bill?.reservationId) return;
+
+  const reservation = await Reservation.findById(bill.reservationId).session(session || null);
+  if (!reservation) return;
+
+  const nonDepositComponent = roundMoney(
+    Number(bill.charges?.rent || 0) +
+      Number(bill.charges?.electricity || 0) +
+      Number(bill.charges?.water || 0) +
+      Number(bill.charges?.applianceFees || 0) +
+      Number(bill.charges?.corkageFees || 0) +
+      Number(bill.charges?.penalty || 0) -
+      Number(bill.charges?.discount || 0),
+  );
+  const paidSoFar = roundMoney(Number(bill.paidAmount || 0));
+  // How much of what's been paid is attributable to the deposit component.
+  const depositFunded = roundMoney(
+    Math.max(0, Math.min(depositComponent, paidSoFar - nonDepositComponent)),
+  );
+  if (depositFunded <= 0) return;
+
+  // Idempotency: a ledger entry keyed to this Bill already recorded the
+  // deposit settlement for the same (or greater) funded amount -> no-op.
+  const key = `room_transfer_deposit_settlement:${String(bill._id)}`;
+  reservation.securityDepositLedger = reservation.securityDepositLedger || [];
+  const existing = reservation.securityDepositLedger.find((e) => e.idempotencyKey === key);
+
+  // Baseline held = whatever was held BEFORE this Bill's deposit settlement.
+  // Prefer the value captured on the first settlement entry; else current.
+  const heldBefore = existing
+    ? roundMoney(Number(existing.previousHeld ?? reservation.securityDepositHeld ?? 0))
+    : roundMoney(
+        Number.isFinite(Number(reservation.securityDepositHeld))
+          ? Number(reservation.securityDepositHeld)
+          : 0,
+      );
+  const resultingHeld = roundMoney(heldBefore + depositFunded);
+
+  if (existing) {
+    if (roundMoney(Number(existing.adjustmentAmount || 0)) >= depositFunded) return; // already at/above
+    existing.adjustmentAmount = depositFunded;
+    existing.resultingHeld = resultingHeld;
+    existing.paymentId = paymentId || existing.paymentId || null;
+    existing.createdAt = now || new Date();
+    existing.reason = `Deposit component of transfer settlement Bill funded (₱${depositFunded.toFixed(2)}).`;
+  } else {
+    reservation.securityDepositLedger.push({
+      kind: "transfer_deposit_settlement",
+      previousHeld: heldBefore,
+      adjustmentAmount: depositFunded,
+      resultingHeld,
+      sourceRef: { kind: "bill", id: bill._id },
+      transferReference: bill.transferSnapshot?.transferReference || null,
+      billId: bill._id,
+      paymentId: paymentId || null,
+      idempotencyKey: key,
+      reason: `Deposit component of transfer settlement Bill funded (₱${depositFunded.toFixed(2)}).`,
+    });
+  }
+  reservation.securityDepositHeld = resultingHeld;
+
+  if (session && typeof reservation.save === "function") {
+    await reservation.save({ session });
+  } else {
+    await reservation.save();
+  }
+}
 
 async function rollbackCreatedPayment(payment, paymentModel) {
   if (!payment) {
@@ -142,6 +225,15 @@ async function finalizeBillPayment({
     } else {
       await bill.save();
     }
+    // Fund the tenant's held security deposit from the deposit component of
+    // a transfer_settlement Bill — only on confirmed payment, idempotent,
+    // partial-payment aware. Participates in the caller's transaction.
+    await reconcileTransferDepositHeld({
+      bill,
+      paymentId: payment?._id || null,
+      session,
+      now,
+    });
   } catch (error) {
     if (!session) {
       await rollbackCreatedPayment(payment, paymentModel);

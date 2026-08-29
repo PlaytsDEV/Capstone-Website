@@ -56,6 +56,48 @@ describe("resolveSourceEffectiveRentForTransfer", () => {
     });
     expect(result).toEqual({ sourceEffectiveRate: 6300, sourceRateSource: "contract_approved_monthly_rate" });
   });
+
+  // ── B9: multi-transfer source rate ──────────────────────────────────────
+  // recurringRentRate is set by a PRIOR transfer's cutover to that transfer's
+  // destination approved rate. On the NEXT transfer it is the tenant's
+  // current effective recurring rent and must be the SOURCE rate.
+
+  test("B9 — prior-transfer recurringRentRate wins over the immutable original pricingSnapshot", () => {
+    const result = resolveSourceEffectiveRentForTransfer({
+      // Structured tenant, originally Quad @ 5400 (still on the snapshot),
+      // already transferred once to Double @ 8000 (recurringRentRate).
+      reservation: {
+        financialWorkflowVersion: "structured-initial-payment-v1",
+        pricingSnapshot: { approvedAt: new Date(), regularMonthlyRate: 6000, finalMonthlyRate: 5400 },
+        recurringRentRate: 8000,
+      },
+      predecessorContract: { approvedMonthlyRate: 5400 },
+    });
+    expect(result).toEqual({ sourceEffectiveRate: 8000, sourceRateSource: "prior_transfer_recurring_rate" });
+  });
+
+  test("B9 — prior-transfer recurringRentRate wins over the predecessor Contract rate for a flat-rate tenant", () => {
+    const result = resolveSourceEffectiveRentForTransfer({
+      reservation: { financialWorkflowVersion: null, recurringRentRate: 8000 },
+      predecessorContract: { approvedMonthlyRate: 6300 },
+    });
+    expect(result).toEqual({ sourceEffectiveRate: 8000, sourceRateSource: "prior_transfer_recurring_rate" });
+  });
+
+  test("no prior transfer (recurringRentRate unset/null/0): precedence is unchanged", () => {
+    expect(
+      resolveSourceEffectiveRentForTransfer({
+        reservation: { financialWorkflowVersion: null, recurringRentRate: null },
+        predecessorContract: { approvedMonthlyRate: 6300 },
+      }),
+    ).toEqual({ sourceEffectiveRate: 6300, sourceRateSource: "contract_approved_monthly_rate" });
+    expect(
+      resolveSourceEffectiveRentForTransfer({
+        reservation: { financialWorkflowVersion: null, recurringRentRate: 0 },
+        predecessorContract: { approvedMonthlyRate: 6300 },
+      }),
+    ).toEqual({ sourceEffectiveRate: 6300, sourceRateSource: "contract_approved_monthly_rate" });
+  });
 });
 
 describe("resolveApplicablePrepaidRentForTransfer", () => {

@@ -26,7 +26,10 @@ export function sumBillCharges(charges = {}) {
     (charges.water || 0) +
     (charges.applianceFees || 0) +
     (charges.corkageFees || 0) +
-    (charges.penalty || 0) -
+    (charges.penalty || 0) +
+    // Security-deposit component (transfer_settlement Bills only today).
+    // Additive like every other positive charge; absent/0 on all legacy Bills.
+    (charges.securityDeposit || 0) -
     (charges.discount || 0),
   );
 }
@@ -78,6 +81,7 @@ export function getVisibleBillCharges(billLike = {}) {
     applianceFees: Number(billLike?.charges?.applianceFees || 0),
     corkageFees: Number(billLike?.charges?.corkageFees || 0),
     penalty: Number(billLike?.charges?.penalty || 0),
+    securityDeposit: Number(billLike?.charges?.securityDeposit || 0),
     discount: Number(billLike?.charges?.discount || 0),
   };
 
@@ -95,7 +99,8 @@ export function getVisibleBillIssuedAt(billLike = {}) {
     (billLike?.charges?.rent || 0) +
       (billLike?.charges?.applianceFees || 0) +
       (billLike?.charges?.corkageFees || 0) +
-      (billLike?.charges?.penalty || 0) -
+      (billLike?.charges?.penalty || 0) +
+      (billLike?.charges?.securityDeposit || 0) -
       (billLike?.charges?.discount || 0),
   );
 
@@ -122,7 +127,8 @@ export function getVisibleBillDueDate(billLike = {}) {
     (billLike?.charges?.rent || 0) +
       (billLike?.charges?.applianceFees || 0) +
       (billLike?.charges?.corkageFees || 0) +
-      (billLike?.charges?.penalty || 0) -
+      (billLike?.charges?.penalty || 0) +
+      (billLike?.charges?.securityDeposit || 0) -
       (billLike?.charges?.discount || 0),
   );
 
@@ -145,6 +151,29 @@ export function getVisibleBillDueDate(billLike = {}) {
 
 export function getVisibleBillSnapshot(billLike = {}, now = new Date()) {
   const charges = getVisibleBillCharges(billLike);
+
+  // A voided Bill (e.g. an unpaid Scheduled Room Transfer Balance Bill whose
+  // schedule was cancelled before cutover) keeps its historical total, charge
+  // breakdown and paidAmount for audit, but is NEVER outstanding. Its
+  // tenant-facing remaining balance is zero on every surface (web + mobile),
+  // and syncBillAmounts() must not recompute total - paid back into it.
+  if (billLike?.status === "voided") {
+    const grossAmount = sumBillCharges(charges);
+    const totalAmount = roundMoney(
+      Math.max(grossAmount - (billLike?.reservationCreditApplied || 0), 0),
+    );
+    return {
+      charges,
+      grossAmount,
+      totalAmount,
+      paidAmount: roundMoney(billLike?.paidAmount || 0),
+      remainingAmount: 0,
+      dueDate: getVisibleBillDueDate(billLike),
+      issuedAt: getVisibleBillIssuedAt(billLike),
+      status: "voided",
+    };
+  }
+
   if (billLike?.billType === "initial_payment") {
     const breakdownGross = Number(billLike?.initialPaymentBreakdown?.grossInitialAmount || 0);
     const breakdownTotal = Number(billLike?.initialPaymentBreakdown?.initialPaymentTotal || 0);

@@ -278,6 +278,21 @@ const buildRequestDoc = (overrides = {}) => {
   return doc;
 };
 
+const mockTenantOwner = () => {
+  userFindOne.mockReturnValue(
+    buildLeanQuery({
+      _id: "mongo_user_1",
+      user_id: "user_95f39d5b4ea4",
+      firstName: "Lily",
+      lastName: "Tenant",
+      email: "lily@example.com",
+      phone: "0917",
+      branch: "gil-puyat",
+      role: "tenant",
+    }),
+  );
+};
+
 const withoutGeminiEnv = async (callback) => {
   const previous = {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
@@ -3281,6 +3296,89 @@ describe("maintenanceController", () => {
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([1, 2, 3, 4, 5])("confirmResolution: accepts integer tenant rating %i", async (rating) => {
+    const requestDoc = buildRequestDoc({ status: "resolved" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await confirmResolution({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: { action: "confirm", confirmed: true, rating },
+    }, {}, next);
+
+    expect(requestDoc.resolutionConfirmation.rating).toBe(rating);
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [0, "INVALID_MAINTENANCE_RATING"],
+    [6, "INVALID_MAINTENANCE_RATING"],
+    [-1, "INVALID_MAINTENANCE_RATING"],
+    [2.5, "INVALID_MAINTENANCE_RATING"],
+    ["5", "INVALID_MAINTENANCE_RATING"],
+    [undefined, "MAINTENANCE_RATING_REQUIRED"],
+  ])("confirmResolution: rejects rating %p with %s", async (rating, code) => {
+    const requestDoc = buildRequestDoc({ status: "resolved" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await confirmResolution({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: { action: "confirm", confirmed: true, rating },
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400, code }));
+    expect(requestDoc.save).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: rejects a malformed body without changing the request", async () => {
+    const requestDoc = buildRequestDoc({ status: "resolved" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await confirmResolution({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {},
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 400,
+      code: "RESOLUTION_CHOICE_REQUIRED",
+    }));
+    expect(requestDoc.save).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: rejects a duplicate rating instead of overwriting it", async () => {
+    const confirmedAt = new Date("2026-08-18T00:00:00.000Z");
+    const requestDoc = buildRequestDoc({
+      status: "completed",
+      resolutionConfirmation: { confirmedAt, rating: 4, action: "confirm" },
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await confirmResolution({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: { action: "confirm", confirmed: true, rating: 5 },
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 409,
+      code: "MAINTENANCE_RATING_ALREADY_SUBMITTED",
+    }));
+    expect(requestDoc.resolutionConfirmation).toEqual({ confirmedAt, rating: 4, action: "confirm" });
+    expect(requestDoc.save).not.toHaveBeenCalled();
   });
 
   test("confirmResolution: tenant reports issue unresolved ('no show naman') returning ticket to in_progress", async () => {

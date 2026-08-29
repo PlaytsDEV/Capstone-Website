@@ -180,10 +180,26 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
         // left untouched — see this file's module header / the Phase 2B
         // report for why that's a documented, separate gap rather than a
         // silent omission.
+        //
+        // PHASE 10 — `recurringRentRate` is a ROOM-TRANSFER override that
+        // wins over EVERYTHING in resolveReservationRentAmount (including
+        // monthlyRent and the structured pricingSnapshot). A renewal is a
+        // NEW lease term with its own canonically-approved rate, so the
+        // transfer override must NOT survive renewal activation — otherwise
+        // a transferred-then-renewed tenant keeps being billed the old
+        // transfer rate forever. Clear it here so the renewal's
+        // approvedMonthlyRate (written to monthlyRent just above) becomes
+        // the one authoritative current rate. A tenant who transfers AGAIN
+        // after renewing gets a fresh override from that transfer's cutover.
         if (successor.reservationId && Number.isFinite(Number(successor.approvedMonthlyRate))) {
           await Reservation.updateOne(
             { _id: successor.reservationId },
-            { $set: { monthlyRent: Number(successor.approvedMonthlyRate) } },
+            {
+              $set: {
+                monthlyRent: Number(successor.approvedMonthlyRate),
+                recurringRentRate: null, // clear the room-transfer override — see comment above
+              },
+            },
             { session },
           );
         }

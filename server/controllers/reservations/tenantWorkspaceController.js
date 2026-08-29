@@ -38,6 +38,7 @@ import {
   buildWorkspaceEntries,
   buildTenantWorkspaceEntry,
 } from "./_helpers.js";
+import { getOpenScheduledRoomTransferForReservation } from "../../services/scheduledRoomTransferView.js";
 
 // In-memory throttle for tenant scope reconciliation (prevents redundant MongoDB write scans on repeated GET reads)
 const lastScopeReconcileTime = new Map();
@@ -282,6 +283,13 @@ export const getTenantWorkspaceById = async (req, res) => {
       { $set: { lastAdminViewedAt: readAt, isViewedByAdmin: true } },
     );
 
+    const scheduledRoomTransfer = await getOpenScheduledRoomTransferForReservation(
+      reservation._id,
+    ).catch((e) => {
+      logger.warn({ err: e, reservationId: String(reservation._id) }, "resolve scheduled room transfer (non-fatal)");
+      return null;
+    });
+
     const tenant = buildTenantWorkspaceEntry({
       reservation: { ...reservation, lastAdminViewedAt: readAt, isViewedByAdmin: true },
       currentStay,
@@ -292,6 +300,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       violations,
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
+      scheduledRoomTransfer,
       now: new Date(),
     });
 
@@ -369,7 +378,13 @@ export const getTenantActionContext = async (req, res) => {
       });
     }
 
-    const context = await loadTenantActionContext(reservationId);
+    const previewParams = req.query?.targetRoomId
+      ? {
+          targetRoomId: String(req.query.targetRoomId),
+          effectiveTransferDate: req.query.effectiveTransferDate || null,
+        }
+      : null;
+    const context = await loadTenantActionContext(reservationId, previewParams);
     if (!context) {
       return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
     }

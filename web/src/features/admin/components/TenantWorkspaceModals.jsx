@@ -1,31 +1,15 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import { useRoomTransferPreview } from "../../../shared/hooks/queries/useReservations";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
-import { contractApi } from "../../../shared/api/contractApi";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
-import {
-  Clock,
-  History,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  CheckCircle2,
-  LogOut,
-  LoaderCircle,
-  AlertTriangle,
-  ArrowRight,
-  FileText,
-  Upload,
-  Printer,
-  FileCheck2,
-  Info,
-} from "lucide-react";
+import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -44,12 +28,20 @@ const fmtMoney = (value) =>
       })}`
     : "—";
 
+// Local calendar date as YYYY-MM-DD — matches a native <input type="date">.
+// NOT toISOString(), which shifts to UTC and can return the previous day for a
+// Philippines (UTC+8) user shortly after local midnight.
 const toDateInputValue = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
+
+const localTodayStr = () => toDateInputValue(new Date());
 
 function TenantModalShell({ open, title, children, footer, onClose }) {
   useBodyScrollLock(open);
@@ -685,10 +677,13 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Transfer Tenant Modal — 3-Step Guided Wizard
-   Step 1: Target Room & Paperwork (Select room/bed, calculate financial summary, prepare replacement contract)
-   Step 2: Sign & Upload Contract (Download draft, upload wet-signed/notarized PDF, verify)
-   Step 3: Meter Readings & Review (Departure/destination kWh meters, live settlement, confirm transfer)
+   Transfer Tenant Modal — adaptive wizard
+   IMMEDIATE transfer (effective date = today):
+     Step 1: Target Room & Date  →  Step 2: Meter Readings  →  Step 3: Review
+   FUTURE SCHEDULED transfer (effective date > today, Manila):
+     Step 1: Target Room & Date  →  Step 2: Review  (no Meter Readings step)
+   The tenant has not moved on a scheduled transfer, so today's readings are not
+   the real cutover readings — the executor finalizes them on the effective date.
    ───────────────────────────────────────────────────────────────────────────── */
 export function TransferTenantModal({
   open,
@@ -709,40 +704,18 @@ export function TransferTenantModal({
   // ── Wizard step state ─────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [attemptedStep1, setAttemptedStep1] = useState(false);
-  const [attemptedStep3, setAttemptedStep3] = useState(false);
+  const [attemptedStep2, setAttemptedStep2] = useState(false);
 
-  // ── Step 1 Form state (Target Room & Paperwork) ───────────────────────────
+  // ── Form state ────────────────────────────────────────────────────────────
   const [roomId, setRoomId] = useState("");
   const [bedId, setBedId] = useState("");
-  const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
-  const [forceOverride, setForceOverride] = useState(false);
-  const [preparingContract, setPreparingContract] = useState(false);
-  const [preparedContractId, setPreparedContractId] = useState(null);
-  const [preparedContractNumber, setPreparedContractNumber] = useState(null);
-  const [contractStatus, setContractStatus] = useState("draft");
-  const [contractIncomplete, setContractIncomplete] = useState(false);
-
-  // ── Step 2 Form state (Sign & Upload Contract) ────────────────────────────
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [downloadingDraft, setDownloadingDraft] = useState(false);
-  const [uploadingContract, setUploadingContract] = useState(false);
-  const [contractUploaded, setContractUploaded] = useState(false);
-
-  // ── Step 3 Form state (Meter Readings & Review) ───────────────────────────
   const [sourceRoomMeterReading, setSourceRoomMeterReading] = useState("");
   const [targetRoomMeterReading, setTargetRoomMeterReading] = useState("");
   const [reason, setReason] = useState("Room transfer");
   const [targetRoomBaseline, setTargetRoomBaseline] = useState(null);
   const [targetBaselineLoading, setTargetBaselineLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-
-  // ── Cancellation & confirmation tracking ──────────────────────────────────
-  const transferConfirmedRef = useRef(false);
-  const preparedContractIdRef = useRef(null);
-
-  useEffect(() => {
-    preparedContractIdRef.current = preparedContractId;
-  }, [preparedContractId]);
+  const [forceOverride, setForceOverride] = useState(false);
+  const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
 
   const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
   const hasOutstanding = outstandingBalance > 0;
@@ -752,25 +725,15 @@ export function TransferTenantModal({
     if (!open) return;
     setStep(1);
     setAttemptedStep1(false);
-    setAttemptedStep3(false);
+    setAttemptedStep2(false);
     setRoomId("");
     setBedId("");
-    setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
-    setForceOverride(false);
-    setPreparingContract(false);
-    setPreparedContractId(null);
-    setPreparedContractNumber(null);
-    setContractStatus("draft");
-    setContractIncomplete(false);
-    setSelectedFile(null);
-    setDownloadingDraft(false);
-    setUploadingContract(false);
-    setContractUploaded(false);
-    setReason("Room transfer");
     setTargetRoomBaseline(null);
     setTargetRoomMeterReading("");
-    transferConfirmedRef.current = false;
-    preparedContractIdRef.current = null;
+    setReason("Room transfer");
+    setForceOverride(false);
+    setPreparedAddendum(null);
+    setEffectiveTransferDate(localTodayStr());
     setSourceRoomMeterReading(
       sourceRoomLatestReading?.reading != null
         ? String(sourceRoomLatestReading.reading)
@@ -809,27 +772,61 @@ export function TransferTenantModal({
     tenant?.roomType ||
     tenant?.roomId?.type ||
     "";
+  // A room transfer MAY cross room types — the only destination filter is
+  // "not the tenant's current room" and (implicitly, from the query) same
+  // branch. Room-type differences are allowed; the backend and the bed
+  // selector below adapt to the DESTINATION room type.
   const targetRooms = useMemo(
     () =>
       rooms.filter(
-        (r) =>
-          String(r._id || r.id) !== String(tenant?.roomId) &&
-          (!currentRoomType || (r.type || r.roomType) === currentRoomType),
+        (r) => String(r._id || r.id) !== String(tenant?.roomId),
       ),
-    [rooms, tenant?.roomId, currentRoomType],
+    [rooms, tenant?.roomId],
   );
   const selectedRoom = targetRooms.find(
     (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
+  // Bed selection is required only for shared destination rooms — a private
+  // room has no bed to pick (matches the backend rule in transferStayWorkflow,
+  // which keys off the DESTINATION Room.type, independent of the source).
+  const selectedRoomType = selectedRoom?.type || selectedRoom?.roomType || "";
+  const destinationNeedsBed =
+    selectedRoomType === "double-sharing" || selectedRoomType === "quadruple-sharing";
+  const isCrossTypeTransfer =
+    !!selectedRoomType && !!currentRoomType && selectedRoomType !== currentRoomType;
+  const prettyRoomType = (t) => String(t || "").replace(/-/g, " ") || "—";
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
-  const securityDeposit =
-    resolveDepositFromPaymentInfo(
-      detail?.paymentInfo || tenant?.paymentInfo || tenant?.deposit,
-    ) || Number(detail?.billingInfo?.securityDeposit || tenant?.securityDeposit || 0);
+  // A future Effective Transfer Date => this Confirm SCHEDULES the transfer
+  // (executes automatically on the date) rather than transferring now.
+  const isScheduledTransfer =
+    !!effectiveTransferDate && effectiveTransferDate > localTodayStr();
+
+  // ── Adaptive wizard shape ────────────────────────────────────────────────
+  // Immediate: Target Room → Meter Readings → Review (3 steps).
+  // Future scheduled: Target Room → Review (2 steps). No Meter Readings step —
+  // the tenant has not moved, so today's readings are not the cutover readings;
+  // the executor finalizes them on the effective date.
+  const wizardSteps = isScheduledTransfer
+    ? ["Target Room", "Review"]
+    : ["Target Room", "Meter Readings", "Review"];
+  // Canonical index of the Review step for the CURRENT wizard shape.
+  const reviewStep = isScheduledTransfer ? 2 : 3;
+  const isReviewStep = step === reviewStep;
+
+  // ── Canonical transfer financial preview (server-computed) ────────────────
+  // The same rent-settlement + deposit-settlement math the executed transfer
+  // runs. Fetched only once a destination room is selected.
+  const reservationId = tenant?.reservationId || detail?.reservationId || null;
+  const { data: previewResp, isFetching: previewLoading } = useRoomTransferPreview(
+    reservationId,
+    { targetRoomId: roomId || null, effectiveTransferDate: effectiveTransferDate || null },
+    { enabled: !!reservationId && !!roomId && isReviewStep },
+  );
+  const preview = previewResp?.data?.transferPreview ?? previewResp?.transferPreview ?? null;
 
   // ── Meter delta & anomaly guards ──────────────────────────────────────────
   const sourceBaseline = sourceRoomLatestReading?.reading != null
@@ -847,44 +844,20 @@ export function TransferTenantModal({
   const targetEntered = targetRoomMeterReading !== "" ? Number(targetRoomMeterReading) : null;
   const targetBelowBaseline = targetBaseline !== null && targetEntered !== null && targetEntered < targetBaseline;
 
-  // ── Live settlement preview math ──────────────────────────────────────────
-  const cycleStart = detail?.billingInfo?.cycleStart || detail?.billingInfo?.billingCycleStart || null;
-  const transferDateObj = effectiveTransferDate ? new Date(effectiveTransferDate) : new Date();
-  const daysInMonth = new Date(
-    transferDateObj.getFullYear(),
-    transferDateObj.getMonth() + 1,
-    0,
-  ).getDate();
-  const daysSinceCycleStart = cycleStart
-    ? Math.max(1, Math.ceil((transferDateObj - new Date(cycleStart)) / 86400000))
-    : null;
-  const proRataPreview =
-    daysSinceCycleStart != null && currentPrice > 0
-      ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
-      : null;
-
-  // Electricity cost estimate
+  // ── Electricity kWh delta (informational only) ────────────────────────────
+  // The authoritative transfer settlement is the server `preview`
+  // (transferPreview). The only thing computed here is the source-room meter
+  // delta, shown as an informational "estimated electricity" figure — it is
+  // NEVER part of Total Immediate Due (electricity is billed at period close).
   const kwhPreview =
     sourceDelta !== null && sourceDelta > 0 ? Math.round(sourceDelta * 100) / 100 : null;
-  const rate = electricityRatePerUnit != null ? Number(electricityRatePerUnit) : null;
-  const estimatedElectricityCost =
-    kwhPreview !== null && rate !== null && rate > 0
-      ? Math.round(kwhPreview * rate * 100) / 100
-      : null;
-  const estimatedTotal =
-    (proRataPreview || 0) +
-    (estimatedElectricityCost || 0) +
-    (outstandingBalance || 0);
 
-  // ── Input filtering & validation gates ────────────────────────────────────
+  // ── Step gate validation ──────────────────────────────────────────────────
   const handleFloatKeyDown = (e) => {
     if (["e", "E", "-", "+"].includes(e.key)) {
       e.preventDefault();
     }
   };
-
-  const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
-  const step2Ready = contractStatus === "published" || contractUploaded;
 
   const sourceValid =
     sourceRoomMeterReading.trim() !== "" &&
@@ -894,37 +867,57 @@ export function TransferTenantModal({
     targetRoomMeterReading.trim() !== "" &&
     !isNaN(Number(targetRoomMeterReading)) &&
     Number(targetRoomMeterReading) >= 0;
-  const step3Valid =
-    sourceValid &&
-    targetValid &&
-    !sourceBelowBaseline &&
-    !targetBelowBaseline &&
-    reason.trim().length > 0;
 
-  // ── Cancel & cleanup handler ──────────────────────────────────────────────
-  const handleClose = useCallback(async () => {
-    if (preparedContractIdRef.current && !transferConfirmedRef.current) {
-      const resId = tenant?.reservationId || tenant?._id || tenant?.id;
-      if (resId) {
-        try {
-          await reservationApi.cancelTransfer(resId);
-          showNotification("Pending transfer contract voided and bed lock released.", "info");
-        } catch (err) {
-          console.error("Failed to cancel pending transfer on close:", err);
-        }
-      }
+  const step1Valid =
+    !!roomId &&
+    (!destinationNeedsBed || !!bedId) &&
+    (!hasOutstanding || forceOverride);
+  // Meter-reading gate. For a FUTURE scheduled transfer there is no Meter
+  // Readings step, so it is trivially satisfied (readings are finalized on the
+  // effective date); only the reason is still required.
+  const meterStepValid = isScheduledTransfer
+    ? reason.trim().length > 0
+    : sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+
+  // ── Meter-reading STATE SAFETY on immediate ⇄ scheduled switching ─────────
+  // If the admin entered readings for an immediate transfer, then went Back and
+  // pushed the effective date into the future, those readings must NOT be
+  // carried into the scheduled request. Clear them (and any attempted-step
+  // flag) whenever the wizard is in scheduled mode, and clamp `step` so it
+  // never points past the now-shorter wizard. Switching back to today restores
+  // the Meter Readings step; the fields re-seed from the latest baseline and
+  // must be re-validated before Review.
+  useEffect(() => {
+    if (!open) return;
+    if (isScheduledTransfer) {
+      setSourceRoomMeterReading("");
+      setTargetRoomMeterReading("");
+      setAttemptedStep2(false);
+      setStep((s) => (s > reviewStep ? reviewStep : s));
+    } else {
+      // Back to immediate mode: re-seed the source field from the known
+      // baseline so the restored Meter Readings step is not blank, and force
+      // the admin back through it (never straight to an immediate Review with
+      // no readings).
+      setSourceRoomMeterReading(
+        sourceRoomLatestReading?.reading != null ? String(sourceRoomLatestReading.reading) : "",
+      );
+      setTargetRoomMeterReading(
+        targetRoomBaseline?.reading != null ? String(targetRoomBaseline.reading) : "",
+      );
+      setStep((s) => (s >= 2 ? 2 : s));
     }
-    onClose();
-  }, [tenant, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScheduledTransfer, open]);
 
-  // ── Step 1: Prepare Replacement Contract ──────────────────────────────────
-  const handlePrepareContract = async () => {
+  // ── Step transition validation handlers with friendly toasts ────────────────
+  const handleNextStep1 = () => {
     setAttemptedStep1(true);
     if (!roomId) {
       showNotification("Please select a target room for the transfer.", "warning");
       return;
     }
-    if (!bedId) {
+    if (destinationNeedsBed && !bedId) {
       showNotification("Please select an available bed in the target room.", "warning");
       return;
     }
@@ -935,110 +928,84 @@ export function TransferTenantModal({
       );
       return;
     }
-    const resId = tenant?.reservationId || tenant?._id || tenant?.id;
-    if (!resId) {
-      showNotification("Missing reservation identifier for tenant.", "error");
-      return;
-    }
-
-    setPreparingContract(true);
-    try {
-      const res = await reservationApi.prepareTransferContract(resId, {
-        targetRoomId: roomId,
-        targetBedId: bedId,
-        effectiveTransferDate: effectiveTransferDate || toDateInputValue(new Date()),
-      });
-      const contractId = res?.contractId || res?.data?.contractId || res?.data?.id;
-      const contractNum = res?.contractNumber || res?.data?.contractNumber || "Pending";
-      const status = res?.status || res?.data?.status || "draft";
-      setPreparedContractId(contractId);
-      setPreparedContractNumber(contractNum);
-      setContractStatus(status);
-      setContractIncomplete(Boolean(res?.incomplete || res?.data?.incomplete));
-      showNotification("Replacement contract draft prepared successfully.", "success");
-      setStep(2);
-    } catch (err) {
-      console.error("Contract preparation failed:", err);
-      showNotification(err?.message || "Failed to prepare room transfer contract.", "error");
-    } finally {
-      setPreparingContract(false);
-    }
+    // Immediate → Meter Readings (step 2). Future scheduled → straight to
+    // Review (also step 2 in the 2-step wizard; there is no Meter Readings
+    // step because the tenant has not moved yet).
+    setStep(2);
   };
 
-  // ── Step 2: Download / Print Contract Draft ───────────────────────────────
-  const handleDownloadContractDraft = async () => {
-    if (!preparedContractId) return;
-    setDownloadingDraft(true);
-    try {
-      const fetcher = contractApi.getPreparedContractPdfBlob || contractApi.getPreparedContractFile;
-      const blob = await fetcher(preparedContractId, 1);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Contract-Draft-${preparedContractNumber || preparedContractId}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showNotification("Contract draft downloaded.", "success");
-    } catch (err) {
-      console.error("Draft download failed:", err);
-      showNotification(err?.message || "Failed to download contract draft.", "error");
-    } finally {
-      setDownloadingDraft(false);
-    }
-  };
-
-  // ── Step 2: Upload Wet-Signed / Notarized Contract ────────────────────────
-  const handleUploadSignedContract = async () => {
-    if (!preparedContractId) {
-      showNotification("No active replacement contract found.", "error");
+  const handleNextStep2 = () => {
+    setAttemptedStep2(true);
+    if (!sourceValid) {
+      showNotification("Please enter a valid final meter reading (kWh) for the current room.", "warning");
       return;
     }
-    if (!selectedFile) {
-      showNotification("Please select a signed contract PDF file to upload.", "warning");
+    if (!targetValid) {
+      showNotification("Please enter a valid opening meter reading (kWh) for the new room.", "warning");
       return;
     }
-    setUploadingContract(true);
-    try {
-      await contractApi.uploadFinalNotarizedContract({
-        contractId: preparedContractId,
-        file: selectedFile,
-        preparedDocumentVersion: 1,
-      });
-      setContractStatus("published");
-      setContractUploaded(true);
-      showNotification("Wet-signed contract uploaded and verified successfully.", "success");
-    } catch (err) {
-      console.error("Signed contract upload failed:", err);
-      showNotification(err?.message || "Failed to upload signed contract.", "error");
-    } finally {
-      setUploadingContract(false);
+    if (sourceBelowBaseline) {
+      showNotification(
+        `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
     }
+    if (targetBelowBaseline) {
+      showNotification(
+        `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
+    }
+    if (!reason.trim()) {
+      showNotification("Please enter a reason for the room transfer.", "warning");
+      return;
+    }
+    setStep(3);
   };
 
-  // ── Step 3: PDF Settlement Download ───────────────────────────────────────
+  // ── Bed label helper ─────────────────────────────────────────────────────
+  const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
+  const selectedBedLabel = selectedBed
+    ? getBedDisplayLabel(selectedBed, roomBeds.indexOf(selectedBed), selectedRoom?.type || selectedRoom?.roomType)
+    : bedId || "—";
+
+  // -- PDF download handler (lazy-import -- jsPDF only loaded on demand) ------
+  // The PDF MUST mirror the on-screen canonical server `preview` (transferPreview)
+  // exactly — no separate frontend proration. If the server preview has not
+  // resolved yet the button is disabled, so `preview` is always present here.
+  const [pdfLoading, setPdfLoading] = useState(false);
   const handleDownloadTransferPDF = async () => {
+    if (!preview) {
+      showNotification("Settlement preview is still loading — please wait.", "warning");
+      return;
+    }
     setPdfLoading(true);
     try {
       const { generateSettlementReceiptPDF } = await import("../../../shared/utils/receiptGenerator.js");
+      const estElectricity =
+        kwhPreview != null && preview.electricity?.ratePerUnit
+          ? Math.round(kwhPreview * preview.electricity.ratePerUnit * 100) / 100
+          : null;
       await generateSettlementReceiptPDF({
         type: "transfer",
         tenantName: tenant?.tenantName || "",
         branch: detail?.basicInfo?.branch || tenant?.branch || "",
-        fromRoom: tenant?.room || "",
+        fromRoom: preview.fromRoom?.name || tenant?.room || "",
         fromBed: formatBedPosition(tenant?.bed) || "",
-        toRoom: selectedRoom?.name || selectedRoom?.roomNumber || "",
+        toRoom: preview.toRoom?.name || selectedRoom?.name || selectedRoom?.roomNumber || "",
         toBed: selectedBedLabel,
-        effectiveDate: effectiveTransferDate,
-        daysSinceCycleStart,
-        daysInMonth,
-        currentRent: currentPrice,
-        newRent: newPrice,
-        proRataPreview,
+        effectiveDate: preview.effectiveTransferDate || effectiveTransferDate,
+        // ── Canonical server settlement preview (identical to what Admin sees) ──
+        transferPreview: preview,
+        currentRent: preview.rent?.sourceEffectiveRate ?? currentPrice,
+        newRent: preview.rent?.destinationApprovedRate ?? newPrice,
+        // Electricity is informational only (billed at period close).
         kwhPreview,
-        electricityRate: rate,
-        estimatedElectricityCost,
+        electricityRate: preview.electricity?.ratePerUnit ?? null,
+        estimatedElectricityCost: estElectricity,
         outstandingBalance,
-        estimatedTotal,
       });
     } catch (err) {
       console.error("Settlement PDF generation failed:", err);
@@ -1048,128 +1015,119 @@ export function TransferTenantModal({
     }
   };
 
-  // ── Step 3: Confirm Transfer Submit ───────────────────────────────────────
-  const handleConfirmTransfer = () => {
-    setAttemptedStep3(true);
-    if (!step3Valid) {
-      if (!sourceValid) {
-        showNotification("Please enter a valid final meter reading (kWh) for the current room.", "warning");
-        return;
-      }
-      if (!targetValid) {
-        showNotification("Please enter a valid opening meter reading (kWh) for the new room.", "warning");
-        return;
-      }
-      if (sourceBelowBaseline) {
-        showNotification(
-          `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
-          "warning",
-        );
-        return;
-      }
-      if (targetBelowBaseline) {
-        showNotification(
-          `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
-          "warning",
-        );
-        return;
-      }
-      if (!reason.trim()) {
-        showNotification("Please enter a reason for the room transfer.", "warning");
-        return;
-      }
+  // -- R2: Room Transfer Addendum preview (prepare Draft, no cutover) --------
+  // Calls POST /transfer/prepare-addendum (idempotent, mutates nothing
+  // physical), then opens the prepared Addendum PDF in a new tab. A later
+  // "Confirm Transfer" reuses this same Draft.
+  const [addendumLoading, setAddendumLoading] = useState(false);
+  const [preparedAddendum, setPreparedAddendum] = useState(null);
+  const handlePreviewAddendum = async () => {
+    const resId = tenant?.reservationId || detail?.reservationId || null;
+    if (!resId || !roomId) {
+      showNotification("Choose a destination room first.", "warning");
       return;
     }
-
-    transferConfirmedRef.current = true;
-    onSubmit({
-      roomId,
-      bedId,
-      reason,
-      forceOverride,
-      effectiveTransferDate: effectiveTransferDate || undefined,
-      sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
-      targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
-      contractId: preparedContractId,
-    });
+    setAddendumLoading(true);
+    try {
+      const resp = await reservationApi.prepareRoomTransferAddendum(resId, {
+        targetRoomId: roomId,
+        targetBedId: destinationNeedsBed ? bedId : undefined,
+        effectiveTransferDate: effectiveTransferDate || undefined,
+      });
+      const addendum = resp?.addendum || resp?.data?.addendum || null;
+      setPreparedAddendum(addendum);
+      if (addendum?.contractId) {
+        try {
+          const { contractApi } = await import("../../../shared/api/contractApi");
+          const blob = await contractApi.getPreparedContractPdfBlob(addendum.contractId, addendum.preparedDocument?.version || undefined);
+          const url = URL.createObjectURL(blob);
+          const win = window.open(url, "_blank");
+          // Revoke after the new tab has had time to load the PDF; if the
+          // popup was blocked, revoke immediately.
+          if (win) {
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          } else {
+            URL.revokeObjectURL(url);
+            showNotification("Addendum prepared. Allow pop-ups to preview the PDF, or download it from the tenant's Contracts tab.", "info");
+          }
+        } catch {
+          showNotification("Room Transfer Addendum prepared. Open it from the tenant's Contracts tab to view/print.", "info");
+        }
+      }
+      showNotification(
+        resp?.reused ? "Existing Room Transfer Addendum draft reused." : "Room Transfer Addendum draft prepared.",
+        "success",
+      );
+    } catch (err) {
+      console.error("Prepare Room Transfer Addendum failed:", err);
+      showNotification(err?.message || "Failed to prepare the Room Transfer Addendum.", "error");
+    } finally {
+      setAddendumLoading(false);
+    }
   };
 
-  // ── Bed label helper ─────────────────────────────────────────────────────
-  const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
-  const selectedBedLabel = selectedBed
-    ? getBedDisplayLabel(selectedBed, roomBeds.indexOf(selectedBed), selectedRoom?.type || selectedRoom?.roomType)
-    : bedId || "—";
-
-  // ── Footer renderer ──────────────────────────────────────────────────────
+  // -- Footer renderer ------------------------------------------------------
   const renderFooter = () => (
     <div className="twm-footer">
-      <button
-        type="button"
-        className="tenant-modal-btn tenant-modal-btn--ghost"
-        onClick={handleClose}
-        disabled={loading || preparingContract || uploadingContract}
-      >
+      <button type="button" className="tenant-modal-btn tenant-modal-btn--ghost" onClick={onClose}>
         Cancel
       </button>
       <div className="twm-footer__spacer" />
       <div className="twm-footer__actions">
-        {step === 2 && (
+        {step > 1 && (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--back"
-            onClick={() => setStep(1)}
-            disabled={uploadingContract || downloadingDraft}
+            onClick={() => setStep((s) => s - 1)}
           >
             <ChevronLeft size={16} />
             <span>Back</span>
           </button>
         )}
-        {step === 3 && (
-          <button
-            type="button"
-            className="tenant-modal-btn tenant-modal-btn--back"
-            onClick={() => setStep(2)}
-            disabled={loading}
-          >
-            <ChevronLeft size={16} />
-            <span>Back</span>
-          </button>
-        )}
-        {step === 1 ? (
+        {!isReviewStep && step === 1 ? (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={preparingContract || !step1Valid}
-            onClick={handlePrepareContract}
+            onClick={handleNextStep1}
           >
-            {preparingContract ? (
-              <>
-                <LoaderCircle size={16} className="animate-spin" />
-                <span>Preparing Contract...</span>
-              </>
-            ) : (
-              <>
-                <span>Prepare Replacement Contract</span>
-                <ChevronRight size={16} />
-              </>
-            )}
+            <span>Next</span>
+            <ChevronRight size={16} />
           </button>
-        ) : step === 2 ? (
+        ) : !isReviewStep && step === 2 ? (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={!step2Ready}
-            onClick={() => setStep(3)}
+            onClick={handleNextStep2}
           >
-            <span>Next: Meter Readings</span>
+            <span>Next</span>
             <ChevronRight size={16} />
           </button>
         ) : (
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--success"
-            disabled={loading || !step1Valid || !step3Valid}
-            onClick={handleConfirmTransfer}
+            disabled={loading || !step1Valid || !meterStepValid}
+            onClick={() => {
+              if (!step1Valid || !meterStepValid) {
+                showNotification("Please make sure all transfer details are valid.", "warning");
+                return;
+              }
+              onSubmit({
+                roomId,
+                bedId,
+                reason,
+                forceOverride,
+                effectiveTransferDate: effectiveTransferDate || undefined,
+                // A FUTURE scheduled transfer never carries scheduling-day
+                // meter readings — the executor finalizes the boundary readings
+                // on the effective date. Immediate transfers still submit the
+                // admin's transfer-day readings.
+                sourceRoomMeterReading:
+                  isScheduledTransfer || !sourceRoomMeterReading ? null : Number(sourceRoomMeterReading),
+                targetRoomMeterReading:
+                  isScheduledTransfer || !targetRoomMeterReading ? null : Number(targetRoomMeterReading),
+              });
+            }}
           >
             {loading ? (
               <>
@@ -1179,7 +1137,7 @@ export function TransferTenantModal({
             ) : (
               <>
                 <CheckCircle2 size={16} />
-                <span>Confirm Transfer</span>
+                <span>{isScheduledTransfer ? "Confirm Schedule" : "Confirm Transfer"}</span>
               </>
             )}
           </button>
@@ -1192,23 +1150,18 @@ export function TransferTenantModal({
     <TenantModalShell
       open={open}
       title={`Transfer Tenant${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
-      onClose={handleClose}
+      onClose={onClose}
       footer={renderFooter()}
     >
-      <WizardStepper
-        steps={[
-          "Target Room & Paperwork",
-          "Sign & Upload Contract",
-          "Meter Readings & Review",
-        ]}
-        currentStep={step}
-      />
+      <WizardStepper steps={wizardSteps} currentStep={step} />
 
-      {/* ── STEP 1: Target Room & Paperwork ───────────────────────────── */}
+      {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
       {step === 1 && (
         <>
           <div className="twm-callout twm-callout--info">
-            Transfers are restricted to available same-branch rooms of the same room type{currentRoomType ? ` (${currentRoomType.replace(/-/g, " ")})` : ""}. To change room types, a contract termination and new lease booking is required.
+            Transfer to any available room in the same branch{currentRoomType ? ` (currently ${prettyRoomType(currentRoomType)})` : ""}. The
+            room type may change &mdash; a shared destination requires a bed, a private one does not, and the monthly rate follows the
+            destination room type.
           </div>
 
           {hasOutstanding && (
@@ -1261,226 +1214,92 @@ export function TransferTenantModal({
               />
             </div>
 
-            <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
-              <span>New Bed</span>
-              <select
-                value={bedId}
-                onChange={(event) => setBedId(event.target.value)}
-                disabled={!roomId}
-                className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
-              >
-                <option value="">Select a bed</option>
-                {roomBeds.map((bed, index) => {
-                  const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
-                  const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
-                  const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
-                  const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
-                  return (
-                    <option key={bed.id || bed._id || index} value={bed.id || bed._id} disabled={!isAvailable}>
-                      {bedCode ? `${bedCode} (${displayLabel})` : displayLabel}{statusTag}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
+            {destinationNeedsBed ? (
+              <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
+                <span>New Bed</span>
+                <select
+                  value={bedId}
+                  onChange={(event) => setBedId(event.target.value)}
+                  disabled={!roomId}
+                  className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
+                >
+                  <option value="">Select a bed</option>
+                  {roomBeds.map((bed, index) => {
+                    const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
+                    const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
+                    const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
+                    const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
+                    return (
+                      <option key={bed.id || bed._id || index} value={bed.id || bed._id} disabled={!isAvailable}>
+                        {bedCode ? `${bedCode} (${displayLabel})` : displayLabel}{statusTag}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            ) : (
+              <label className="tenant-modal-field">
+                <span>New Bed</span>
+                <input
+                  type="text"
+                  value={roomId ? "Not applicable — private room" : "Select a room first"}
+                  readOnly
+                />
+              </label>
+            )}
           </div>
+
+          {roomId && (
+            <div className="twm-callout twm-callout--info">
+              Destination:{" "}
+              <strong>{selectedRoom?.name || selectedRoom?.roomNumber || "—"}</strong>
+              {" · "}
+              <strong>{prettyRoomType(selectedRoomType)}</strong>
+              {isCrossTypeTransfer && (
+                <span> (was {prettyRoomType(currentRoomType)} — room type changes with this transfer)</span>
+              )}
+              {" · "}
+              {destinationNeedsBed ? "bed required" : "no bed (private room)"}
+            </div>
+          )}
+
+          {roomId && priceDiff !== 0 && (
+            <div className="twm-callout twm-callout--price">
+              Estimated Monthly Rent Change:{" "}
+              <strong>
+                {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
+              </strong>{" "}
+              (Now: {fmtMoney(currentPrice)}/mo → New room: ~{fmtMoney(newPrice)}/mo)
+              <span style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+                Exact new rent is confirmed on the next step from the destination room type &amp; lease term,
+                and then applies to every future bill automatically.
+                {isCrossTypeTransfer ? " This transfer also changes the room type." : ""}
+              </span>
+            </div>
+          )}
 
           <div className="tenant-modal-field">
             <span>Effective Transfer Date</span>
             <input
               type="date"
               value={effectiveTransferDate}
-              max={new Date().toISOString().slice(0, 10)}
+              min={localTodayStr()}
               onChange={(e) => setEffectiveTransferDate(e.target.value)}
             />
             <span className="twm-meter-hint">
               <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
               <span>
-                Future dates cannot be selected because room transfers take effect immediately upon administrative confirmation. Partial rent and utility usage are calculated up to today.
+                <strong>Transfer timing.</strong> Select today to transfer immediately.
+                Select a future date to schedule the transfer. Room, rent, and utility
+                responsibility will switch on the effective date.
               </span>
             </span>
           </div>
-
-          {/* Financial Summary Callout */}
-          <div className="bg-card border border-border rounded-xl p-4 space-y-2.5 shadow-2xs">
-            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Financial Summary & Terms
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Current Monthly Rent:</span>
-                <span className="font-semibold text-foreground">{fmtMoney(currentPrice)}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">New Monthly Rent:</span>
-                <span className="font-semibold text-primary">{fmtMoney(newPrice)}</span>
-              </div>
-              {priceDiff !== 0 && (
-                <div className="flex justify-between py-1 border-b border-border/50 sm:col-span-2">
-                  <span className="text-muted-foreground">Monthly Rent Adjustment:</span>
-                  <span className={`font-semibold ${priceDiff > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                    {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
-                  </span>
-                </div>
-              )}
-              {proRataPreview != null && (
-                <div className="flex justify-between py-1 border-b border-border/50 sm:col-span-2">
-                  <span className="text-muted-foreground">Estimated Cycle Proration:</span>
-                  <span className="font-medium text-foreground">{fmtMoney(proRataPreview)} ({daysSinceCycleStart}d / {daysInMonth}d)</span>
-                </div>
-              )}
-              <div className="flex justify-between py-1 sm:col-span-2">
-                <span className="text-muted-foreground">Security Deposit Carryover:</span>
-                <span className="font-medium text-foreground">
-                  {securityDeposit > 0 ? `${fmtMoney(securityDeposit)} will carry over to the new room assignment` : "Transfers to new room assignment"}
-                </span>
-              </div>
-            </div>
-          </div>
         </>
       )}
 
-      {/* ── STEP 2: Sign & Upload Contract ────────────────────────────── */}
-      {step === 2 && (
-        <>
-          <div className="twm-callout twm-callout--info">
-            Download and print the official replacement contract draft. Have the tenant and dorm owner/lessor sign the document, then upload the wet-signed / notarized PDF copy.
-          </div>
-
-          {/* Contract Summary Card */}
-          <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-2xs">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                <span className="font-semibold text-sm text-foreground">
-                  {preparedContractNumber || "Draft Replacement Contract"}
-                </span>
-              </div>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium text-foreground bg-transparent">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    step2Ready ? "bg-emerald-500" : "bg-amber-500"
-                  }`}
-                />
-                {step2Ready ? "Signed & Published" : "Draft Prepared"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs border-t border-border/60 pt-2.5">
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Target Assignment</span>
-                <span className="font-medium text-foreground">
-                  {selectedRoom?.name || selectedRoom?.roomNumber || "Target Room"} • {selectedBedLabel}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">New Monthly Rent</span>
-                <span className="font-semibold text-foreground">{fmtMoney(newPrice)}/mo</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Effective Date</span>
-                <span className="font-medium text-foreground">{fmtDate(effectiveTransferDate)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Contract Status</span>
-                <span className="font-medium text-foreground capitalize">{contractStatus.replace(/_/g, " ")}</span>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                className="tenant-modal-btn tenant-modal-btn--ghost text-xs inline-flex items-center gap-1.5"
-                onClick={handleDownloadContractDraft}
-                disabled={downloadingDraft}
-              >
-                {downloadingDraft ? (
-                  <>
-                    <LoaderCircle size={14} className="animate-spin" />
-                    <span>Downloading...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download size={14} />
-                    <span>Download / Print Contract Draft</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Signed Contract Upload Dropzone */}
-          <div className="bg-card border border-dashed border-border rounded-xl p-5 text-center space-y-3 shadow-2xs">
-            <div className="flex flex-col items-center justify-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                <Upload size={20} />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-foreground">Upload Wet-Signed / Notarized Contract PDF</div>
-                <div className="text-[11px] text-muted-foreground">Select scanned document (PDF, PNG, JPG up to 15MB)</div>
-              </div>
-            </div>
-
-            <input
-              type="file"
-              id="signed-contract-file-input"
-              accept=".pdf,application/pdf,image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setSelectedFile(file);
-              }}
-            />
-
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              <label
-                htmlFor="signed-contract-file-input"
-                className="tenant-modal-btn tenant-modal-btn--ghost text-xs cursor-pointer inline-flex items-center gap-1.5"
-              >
-                <FileText size={14} />
-                <span>{selectedFile ? "Choose Different File" : "Browse Signed PDF"}</span>
-              </label>
-
-              {selectedFile && (
-                <button
-                  type="button"
-                  className="tenant-modal-btn tenant-modal-btn--primary text-xs inline-flex items-center gap-1.5"
-                  onClick={handleUploadSignedContract}
-                  disabled={uploadingContract}
-                >
-                  {uploadingContract ? (
-                    <>
-                      <LoaderCircle size={14} className="animate-spin" />
-                      <span>Uploading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={14} />
-                      <span>Upload Signed Contract</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {selectedFile && (
-              <div className="text-[11px] text-foreground font-medium pt-1">
-                Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-              </div>
-            )}
-
-            {step2Ready && (
-              <div className="border border-border rounded-lg p-2.5 bg-muted/40 text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center justify-center gap-1.5">
-                <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>Wet-signed contract uploaded and verified. Ready to proceed to meter readings.</span>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* ── STEP 3: Meter Readings & Review ───────────────────────────── */}
-      {step === 3 && (
+      {/* ── STEP 2 (immediate only): Meter Readings ────────────────────── */}
+      {step === 2 && !isScheduledTransfer && (
         <>
           <div className="twm-callout twm-callout--info">
             Record the final kWh reading for the current room and the opening reading for the new room. These anchor the billing segments.
@@ -1488,7 +1307,7 @@ export function TransferTenantModal({
 
           <div className="tenant-modal-grid">
             {/* Source Room Meter */}
-            <div className={`tenant-modal-field ${attemptedStep3 && (!sourceValid || sourceBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep2 && (!sourceValid || sourceBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>Current Room — Final Meter (kWh)</span>
               <input
                 type="number"
@@ -1502,8 +1321,8 @@ export function TransferTenantModal({
               <div className="twm-meter-wrap">
                 {sourceBaseline !== null ? (
                   <span className="twm-meter-hint">
-                    Last recorded: {sourceBaseline.toLocaleString()} kWh on {fmtDate(sourceRoomLatestReading?.date)}
-                    {" "}({sourceRoomLatestReading?.eventType || "baseline"})
+                    Last recorded: {sourceBaseline.toLocaleString()} kWh on {fmtDate(sourceRoomLatestReading.date)}
+                    {" "}({sourceRoomLatestReading.eventType})
                   </span>
                 ) : (
                   <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
@@ -1520,7 +1339,7 @@ export function TransferTenantModal({
             </div>
 
             {/* Target Room Meter */}
-            <div className={`tenant-modal-field ${attemptedStep3 && (!targetValid || targetBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep2 && (!targetValid || targetBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room — Opening Meter (kWh)</span>
               <input
                 type="number"
@@ -1536,8 +1355,8 @@ export function TransferTenantModal({
                   <div className="twm-meter-skeleton" />
                 ) : targetBaseline !== null ? (
                   <span className="twm-meter-hint">
-                    Last recorded: {targetBaseline.toLocaleString()} kWh on {fmtDate(targetRoomBaseline?.date)}
-                    {" "}({targetRoomBaseline?.eventType || "baseline"})
+                    Last recorded: {targetBaseline.toLocaleString()} kWh on {fmtDate(targetRoomBaseline.date)}
+                    {" "}({targetRoomBaseline.eventType})
                   </span>
                 ) : roomId ? (
                   <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
@@ -1551,7 +1370,7 @@ export function TransferTenantModal({
             </div>
           </div>
 
-          <label className={`tenant-modal-field ${attemptedStep3 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
+          <label className={`tenant-modal-field ${attemptedStep2 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
             <textarea
               rows={3}
@@ -1560,7 +1379,12 @@ export function TransferTenantModal({
               placeholder="Required — describe the reason for this transfer"
             />
           </label>
+        </>
+      )}
 
+      {/* ── Review & Settlement Preview — step 3 (immediate) or step 2 (scheduled) ── */}
+      {isReviewStep && (
+        <>
           <div className="twm-review-summary">
             <div className="twm-review-field">
               <span className="twm-review-field__label">From</span>
@@ -1568,95 +1392,275 @@ export function TransferTenantModal({
             </div>
             <div className="twm-review-field">
               <span className="twm-review-field__label">To</span>
-              <span className="twm-review-field__value">{selectedRoom?.name || selectedRoom?.roomNumber || "—"} • {selectedBedLabel}</span>
+              <span className="twm-review-field__value">
+                {selectedRoom?.name || selectedRoom?.roomNumber || "—"}
+                {destinationNeedsBed ? ` • ${selectedBedLabel}` : " • (private — no bed)"}
+              </span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Room Type</span>
+              <span className="twm-review-field__value">
+                {prettyRoomType(selectedRoomType)}
+                {isCrossTypeTransfer && (
+                  <span style={{ fontSize: 11, fontWeight: 400 }}> (changed from {prettyRoomType(currentRoomType)})</span>
+                )}
+              </span>
             </div>
             <div className="twm-review-field">
               <span className="twm-review-field__label">Effective Date</span>
               <span className="twm-review-field__value">{fmtDate(effectiveTransferDate)}</span>
             </div>
+            {isScheduledTransfer && (
+              <div className="twm-review-field">
+                <span className="twm-review-field__label">Meter readings</span>
+                <span className="twm-review-field__value">
+                  To be finalized on {fmtDate(effectiveTransferDate)}
+                </span>
+              </div>
+            )}
             <div className="twm-review-field">
-              <span className="twm-review-field__label">New Rent</span>
+              <span className="twm-review-field__label">New Monthly Rent</span>
               <span className="twm-review-field__value">
-                {fmtMoney(newPrice)}/mo
-                {priceDiff !== 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 400, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
-                    {" "}({priceDiff > 0 ? `+${fmtMoney(priceDiff)}` : `-${fmtMoney(Math.abs(priceDiff))}`})
-                  </span>
-                )}
+                {/* Authoritative destination rate from the server preview when
+                    available (room-type + lease-term table), else the room
+                    master price as a rough hint. */}
+                {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
+                {(() => {
+                  const shownNew = Number(preview?.rent?.destinationApprovedRate ?? newPrice);
+                  const diff = shownNew - currentPrice;
+                  if (!diff) return null;
+                  return (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: diff > 0 ? "var(--danger)" : "var(--success)" }}>
+                      {" "}({diff > 0 ? `+${fmtMoney(diff)}` : `-${fmtMoney(Math.abs(diff))}`} from {fmtMoney(currentPrice)}/mo)
+                    </span>
+                  );
+                })()}
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                  Applies to every future rent bill automatically — no manual change needed. The original lease term is unchanged.
+                </span>
               </span>
             </div>
             <div className="twm-review-field twm-review-field--wide">
-              <span className="twm-review-field__label">Replacement Contract</span>
-              <span className="twm-review-field__value font-mono text-xs">{preparedContractNumber || "Attached"}</span>
+              <span className="twm-review-field__label">Reason</span>
+              <span className="twm-review-field__value">{reason}</span>
             </div>
           </div>
 
+          {isScheduledTransfer && (
+            <div className="twm-callout twm-callout--info">
+              <strong>Utilities</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 13 }}>
+                Meter readings will be finalized on the effective transfer date.
+                Electricity and applicable water charges will follow the normal
+                utility billing process and are not included in the Scheduled
+                Room Transfer Balance.
+              </p>
+            </div>
+          )}
+
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
-              <p className="twm-settlement-card__title">Transfer Settlement Estimate</p>
+              <p className="twm-settlement-card__title">Transfer Financial Summary</p>
               <button
                 type="button"
                 className="twm-settlement-card__download-btn"
-                disabled={pdfLoading}
+                disabled={pdfLoading || !preview}
                 onClick={handleDownloadTransferPDF}
-                title="Download printable settlement estimate"
+                title={preview ? "Download printable settlement estimate" : "Preview still loading…"}
               >
                 <Download size={13} />
                 <span>{pdfLoading ? "Generating..." : "Download Estimate PDF"}</span>
               </button>
             </div>
-            <div className="twm-settlement-card__body">
-              {daysSinceCycleStart != null && (
+
+            {previewLoading && !preview ? (
+              <div className="twm-settlement-card__body">
                 <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">Days in old room this cycle</span>
-                  <span className="twm-settlement-row__value">{daysSinceCycleStart} day{daysSinceCycleStart !== 1 ? "s" : ""}</span>
+                  <span className="twm-settlement-row__label">Calculating settlement…</span>
                 </div>
-              )}
-              {proRataPreview != null && (
-                <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">
-                    Prorated Old Room Rent
-                    {daysSinceCycleStart != null && <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                      {daysSinceCycleStart}d / {daysInMonth}d × {fmtMoney(currentPrice)}
-                    </span>}
-                  </span>
-                  <span className="twm-settlement-row__value">{fmtMoney(proRataPreview)}</span>
-                </div>
-              )}
-              {kwhPreview != null && (
-                <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">
-                    Estimated Electricity Usage
-                    <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                      {estimatedElectricityCost !== null
-                        ? `${kwhPreview.toLocaleString()} kWh × ₱${rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh`
-                        : `${kwhPreview.toLocaleString()} kWh — rate applied at generation`}
+              </div>
+            ) : preview ? (
+              <>
+                <div className="twm-settlement-card__body">
+                  {/* ── RENT ADJUSTMENT — a separate category ── */}
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">
+                      Rent Adjustment
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        {preview.rent.destinationDays}d new-room prorated ({fmtMoney(preview.rent.destinationProratedValue)}) − unused prepaid ({fmtMoney(preview.rent.unusedPrepaidCredit)})
+                      </span>
                     </span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.rent.adjustmentDue)}</span>
+                  </div>
+                  {preview.rent.excessCredit > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--success">
+                      <span className="twm-settlement-row__label">
+                        Excess Prepaid Rent → Rent Credit
+                        <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                          Applied automatically to future rent bills. Not a refund.
+                        </span>
+                      </span>
+                      <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
+                    </div>
+                  )}
+
+                  {/* ── SECURITY DEPOSIT — a separate category, never netted with rent ── */}
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Security Deposit — Required (new room)</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.required)}</span>
+                  </div>
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Security Deposit — Currently Held</span>
+                    <span className="twm-settlement-row__value">
+                      {preview.deposit.heldKnown ? fmtMoney(preview.deposit.held) : "Unavailable (legacy record)"}
+                    </span>
+                  </div>
+                  {preview.deposit.balanceDue > 0 && (
+                    <div className="twm-settlement-row">
+                      <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
+                      <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
+                    </div>
+                  )}
+                  {preview.deposit.excessHeld > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--success">
+                      <span className="twm-settlement-row__label">
+                        Excess Held Deposit
+                        <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                          Stays as refundable held deposit. Not auto-refunded, not a rent credit.
+                        </span>
+                      </span>
+                      <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
+                    </div>
+                  )}
+
+                  {/* ── ELECTRICITY — informational only, NOT in the immediate total ── */}
+                  <div className="twm-settlement-row twm-settlement-row--muted">
+                    <span className="twm-settlement-row__label">
+                      {isScheduledTransfer ? "Source-room electricity" : "Estimated source-room electricity"}
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        {isScheduledTransfer
+                          ? `Meter readings will be finalized on ${fmtDate(effectiveTransferDate)}; the final charge follows the normal utility period close.`
+                          : "Final charge is generated during the normal utility period close — not charged here."}
+                      </span>
+                    </span>
+                    <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
+                      {!isScheduledTransfer && kwhPreview != null && preview.electricity.ratePerUnit
+                        ? fmtMoney(kwhPreview * preview.electricity.ratePerUnit)
+                        : "billed at period close"}
+                    </span>
+                  </div>
+                  <div className="twm-settlement-row twm-settlement-row--muted">
+                    <span className="twm-settlement-row__label">
+                      Water
+                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                        Follows the current room/branch policy; settled at its normal period close (or not billed separately where included in rent).
+                      </span>
+                    </span>
+                    <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>—</span>
+                  </div>
+
+                  {outstandingBalance > 0 && (
+                    <div className="twm-settlement-row twm-settlement-row--danger">
+                      <span className="twm-settlement-row__label">Prior Outstanding Balance (existing, unrelated)</span>
+                      <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
+                    </div>
+                  )}
+
+                  {/* ── THE ONE IMMEDIATE FIGURE: rent adjustment + additional deposit only ── */}
+                  <div className="twm-settlement-row twm-settlement-row--total">
+                    <span className="twm-settlement-row__label">Total Immediate Due</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.totalImmediateDue)}</span>
+                  </div>
+                </div>
+                <p className="twm-settlement-card__note">
+                  Total Immediate Due = Rent Adjustment + Additional Security Deposit. Electricity and water are
+                  billed once, during their normal utility period close, following the new room's billing setup.
+                  No manual rent/meter changes are needed after this transfer.
+                </p>
+              </>
+            ) : (
+              <div className="twm-settlement-card__body">
+                <p className="twm-settlement-card__note">
+                  Settlement preview unavailable — the exact figures will be computed server-side when the
+                  transfer is confirmed. Rent and deposit adjustments are billed separately; electricity and
+                  water follow the new room at their normal period close.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Room Transfer Addendum — preview BEFORE confirming (R2) ── */}
+          <div className="twm-settlement-card">
+            <div className="twm-settlement-card__header">
+              <p className="twm-settlement-card__title">Room Transfer Addendum</p>
+              <button
+                type="button"
+                className="twm-settlement-card__download-btn"
+                disabled={addendumLoading || !roomId || (destinationNeedsBed && !bedId)}
+                onClick={handlePreviewAddendum}
+                title="Prepare and open the Room Transfer Addendum draft (no changes are made to the tenant yet)"
+              >
+                <Download size={13} />
+                <span>{addendumLoading ? "Preparing…" : "Preview / Download Addendum"}</span>
+              </button>
+            </div>
+            <div className="twm-settlement-card__body">
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Original lease dates</span>
+                <span className="twm-settlement-row__value">
+                  {preparedAddendum?.leaseStartDate
+                    ? `${fmtDate(preparedAddendum.leaseStartDate)} → ${fmtDate(preparedAddendum.leaseEndDate)}`
+                    : `${fmtDate(detail?.basicInfo?.leaseStartDate || tenant?.leaseStartDate)} → ${fmtDate(detail?.basicInfo?.leaseEndDate || tenant?.leaseEndDate)}`}
+                  <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                    Unchanged — a room transfer does not start a new lease or reset the term.
                   </span>
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Old room → New room</span>
+                <span className="twm-settlement-row__value">
+                  {tenant?.room || "—"} → {selectedRoom?.name || selectedRoom?.roomNumber || "—"}
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Old rent → New rent</span>
+                <span className="twm-settlement-row__value">
+                  {fmtMoney(preview?.rent?.sourceEffectiveRate ?? currentPrice)}/mo → {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
+                </span>
+              </div>
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Effective transfer date</span>
+                <span className="twm-settlement-row__value">{fmtDate(effectiveTransferDate)}</span>
+              </div>
+              {preview?.deposit && (
+                <div className="twm-settlement-row">
+                  <span className="twm-settlement-row__label">Security deposit requirement</span>
                   <span className="twm-settlement-row__value">
-                    {estimatedElectricityCost !== null
-                      ? fmtMoney(estimatedElectricityCost)
-                      : `${kwhPreview.toLocaleString()} kWh`}
+                    {fmtMoney(preview.deposit.required)}
+                    {preview.deposit.balanceDue > 0
+                      ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
+                      : preview.deposit.excessHeld > 0
+                        ? ` (${fmtMoney(preview.deposit.excessHeld)} excess stays held)`
+                        : ""}
                   </span>
                 </div>
               )}
-              {outstandingBalance > 0 && (
-                <div className="twm-settlement-row twm-settlement-row--danger">
-                  <span className="twm-settlement-row__label">Prior Outstanding Balance</span>
-                  <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
-                </div>
-              )}
-              {proRataPreview != null && (
-                <div className="twm-settlement-row twm-settlement-row--total">
-                  <span className="twm-settlement-row__label">Estimated Settlement Total</span>
-                  <span className="twm-settlement-row__value">{fmtMoney(estimatedTotal)}</span>
+              {preparedAddendum && (
+                <div className="twm-settlement-row twm-settlement-row--success">
+                  <span className="twm-settlement-row__label">
+                    Addendum draft {preparedAddendum.contractNumber ? `#${preparedAddendum.contractNumber}` : "ready"}
+                  </span>
+                  <span className="twm-settlement-row__value" style={{ fontSize: 11, fontWeight: 400 }}>
+                    Prepared — this exact draft is used when you Confirm.
+                  </span>
                 </div>
               )}
             </div>
             <p className="twm-settlement-card__note">
-              {estimatedElectricityCost !== null
-                ? `Rate: ₱${rate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh (active billing period). Final amount confirmed at billing generation.`
-                : "Final electricity amount is calculated at billing generation time using the current room rate."}
+              This is a <strong>Room Transfer Addendum</strong>, not a replacement lease. Your original lease
+              continues unchanged except for the amended room and rate. It is prepared here for your review;
+              nothing is changed for the tenant until you press <strong>Confirm Transfer</strong>. Wet-signing /
+              notarization is not required before the transfer — the tenant acknowledges the Addendum afterward.
             </p>
           </div>
 

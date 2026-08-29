@@ -37,6 +37,7 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
     deleteMany: jest.fn(),
   },
   Payment: {},
+  TenantCredit: { find: jest.fn(() => ({ sort: jest.fn().mockReturnThis(), session: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) })), findOne: jest.fn(() => ({ session: jest.fn().mockResolvedValue(null) })), create: jest.fn() },
   AuditLog: { create: jest.fn() },
   UtilityReading: { findOne: jest.fn() },
   UtilityPeriod: { findOne: jest.fn() },

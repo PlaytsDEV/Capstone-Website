@@ -45,6 +45,7 @@ import BedCheckoutLock from "./BedCheckoutLock.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
+import ScheduledRoomTransfer from "./ScheduledRoomTransfer.js";
 import VisitAvailability from "./VisitAvailability.js";
 import VisitAvailabilityHistory from "./VisitAvailabilityHistory.js";
 import VisitConflictLog from "./VisitConflictLog.js";
@@ -55,6 +56,7 @@ import UtilityPeriod from "./UtilityPeriod.js";
 import UtilityReading from "./UtilityReading.js";
 import Bill from "./Bill.js";
 import Payment from "./Payment.js";
+import TenantCredit from "./TenantCredit.js";
 import AcknowledgmentAccount from "./AcknowledgmentAccount.js";
 
 // 4b. Legacy Billing Models (@deprecated - replaced by UtilityPeriod, UtilityReading, Bill)
@@ -111,6 +113,7 @@ export {
   User,
   Room,
   Reservation,
+  ScheduledRoomTransfer,
   Inquiry,
   AuditLog,
   Bill,
@@ -121,6 +124,7 @@ export {
   MaintenanceRequest,
   Notification,
   Payment,
+  TenantCredit,
   LoginLog,
   UserSession,
   AcknowledgmentAccount,
@@ -233,6 +237,7 @@ export default {
   User,
   Room,
   Reservation,
+  ScheduledRoomTransfer,
   Inquiry,
   SupportInquiry,
   AuditLog,
@@ -269,6 +274,7 @@ export default {
   MoveOutClearance,
   Notification,
   Payment,
+  TenantCredit,
   LoginLog,
   UserSession,
   PaymongoWebhookEvent,

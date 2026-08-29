@@ -18,6 +18,7 @@ import {
   inspectNotarizedContractDocument,
 } from "../services/contractDocumentStorageService.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
+import { getOpenScheduledRoomTransferForReservation } from "../services/scheduledRoomTransferView.js";
 import {
   resolveCurrentPreparedDocument,
   selectCurrentPreparedDocument,
@@ -1465,6 +1466,18 @@ export const getMyCurrentContract = async (req, res) => {
       upcomingView = null;
     }
 
+    // Upcoming Room Transfer (tenant-facing): an open ScheduledRoomTransfer,
+    // if the tenant has one. Display-only — the tenant's current room / rent
+    // (contract `view` above) stay the SOURCE values until its effectiveDate.
+    let scheduledRoomTransfer = null;
+    try {
+      if (contract.reservationId) {
+        scheduledRoomTransfer = await getOpenScheduledRoomTransferForReservation(contract.reservationId);
+      }
+    } catch (schedErr) {
+      logger.warn({ err: schedErr }, "[getMyCurrentContract] scheduled room transfer resolve failed (non-fatal)");
+    }
+
     res.json({
       contractAvailable: true,
       state: preparedDocument
@@ -1475,6 +1488,7 @@ export const getMyCurrentContract = async (req, res) => {
       contract: view,
       documents: { prepared: view.preparedDocument },
       upcoming: upcomingView,
+      scheduledRoomTransfer,
     });
   } catch (error) {
     if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {

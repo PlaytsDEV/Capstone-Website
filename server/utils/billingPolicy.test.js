@@ -306,6 +306,7 @@ describe("syncBillAmounts", () => {
       applianceFees: 0,
       corkageFees: 0,
       penalty: 0,
+      securityDeposit: 0,
       discount: 0,
     });
 
@@ -838,5 +839,153 @@ describe("utility billing dates", () => {
 
     expect(localYmd(issuedAt)).toBe("2026-5-19");
     expect(localYmd(getUtilityDueDate(issuedAt))).toBe("2026-5-26");
+  });
+});
+
+describe("getVisibleBillSnapshot — voided bill is never outstanding", () => {
+  const chargesOf = (over = {}) => ({
+    rent: 0,
+    electricity: 0,
+    water: 0,
+    applianceFees: 0,
+    corkageFees: 0,
+    penalty: 0,
+    discount: 0,
+    securityDeposit: 0,
+    ...over,
+  });
+
+  test("voided UNPAID transfer balance bill: remainingAmount 0, total/breakdown preserved", () => {
+    const bill = {
+      billType: "transfer_settlement",
+      status: "voided",
+      charges: chargesOf({ rent: 12450, securityDeposit: 6000 }),
+      paidAmount: 0,
+      dueDate: new Date("2026-09-05T00:00:00.000Z"),
+    };
+
+    const snap = getVisibleBillSnapshot(bill, new Date("2026-09-10T00:00:00.000Z"));
+
+    expect(snap.remainingAmount).toBe(0);
+    expect(snap.status).toBe("voided");
+    // Historical total + charge breakdown intact for audit.
+    expect(snap.grossAmount).toBe(18450);
+    expect(snap.totalAmount).toBe(18450);
+    expect(snap.charges.rent).toBe(12450);
+    expect(snap.charges.securityDeposit).toBe(6000);
+    expect(snap.paidAmount).toBe(0);
+  });
+
+  test("voided regular rent bill: remainingAmount 0, past due date does NOT make it overdue", () => {
+    const bill = {
+      billType: "rent",
+      status: "voided",
+      charges: chargesOf({ rent: 5500 }),
+      paidAmount: 0,
+      dueDate: new Date("2026-06-05T00:00:00.000Z"),
+    };
+
+    const snap = getVisibleBillSnapshot(bill, new Date("2026-07-01T00:00:00.000Z"));
+
+    expect(snap.remainingAmount).toBe(0);
+    expect(snap.status).toBe("voided");
+    expect(snap.totalAmount).toBe(5500);
+  });
+
+  test("voided PARTIALLY-PAID bill: paidAmount preserved, remainingAmount still 0", () => {
+    const bill = {
+      billType: "transfer_settlement",
+      status: "voided",
+      charges: chargesOf({ rent: 10000 }),
+      paidAmount: 4000,
+      dueDate: new Date("2026-09-05T00:00:00.000Z"),
+    };
+
+    const snap = getVisibleBillSnapshot(bill);
+
+    expect(snap.remainingAmount).toBe(0);
+    expect(snap.paidAmount).toBe(4000);
+    expect(snap.totalAmount).toBe(10000);
+  });
+
+  test("syncBillAmounts does not recompute total - paid back into a voided bill", () => {
+    const bill = {
+      billType: "transfer_settlement",
+      status: "voided",
+      charges: chargesOf({ rent: 12450, securityDeposit: 6000 }),
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      dueDate: new Date("2026-09-05T00:00:00.000Z"),
+    };
+
+    syncBillAmounts(bill, { now: new Date("2026-09-10T00:00:00.000Z") });
+
+    expect(bill.remainingAmount).toBe(0);
+    expect(bill.totalAmount).toBe(18450); // original total kept
+    expect(bill.status).toBe("voided");
+  });
+
+  test("buildBillingSummary excludes a voided bill from the outstanding balance", async () => {
+    const { buildBillingSummary } = await import("./tenantWorkspace.js");
+    const now = new Date("2026-09-10T00:00:00.000Z");
+    const bills = [
+      {
+        _id: "a",
+        billType: "rent",
+        status: "pending",
+        charges: chargesOf({ rent: 5500 }),
+        paidAmount: 0,
+        dueDate: new Date("2026-09-20T00:00:00.000Z"),
+      },
+      {
+        _id: "b",
+        billType: "transfer_settlement",
+        status: "voided",
+        charges: chargesOf({ rent: 12450, securityDeposit: 6000 }),
+        paidAmount: 0,
+        dueDate: new Date("2026-09-05T00:00:00.000Z"),
+      },
+    ];
+
+    const summary = buildBillingSummary(bills, now);
+
+    // Only the live 5,500 rent bill counts — the voided 18,450 is excluded.
+    expect(summary.currentBalance).toBe(5500);
+    expect(summary.hasOutstanding).toBe(true);
+  });
+});
+
+describe("resolveMobileBillStatus / toMobileBill — voided bill", () => {
+  test("voided bill maps to mobile status 'cancelled' with remaining_amount 0", async () => {
+    const { toMobileBill } = await import("../services/mobileBillingBridge.js");
+    const bill = {
+      _id: "aa11bb22cc33dd44ee55ff66",
+      billType: "transfer_settlement",
+      status: "voided",
+      billingMonth: new Date("2026-09-01T00:00:00.000Z"),
+      charges: {
+        rent: 12450,
+        electricity: 0,
+        water: 0,
+        applianceFees: 0,
+        corkageFees: 0,
+        penalty: 0,
+        discount: 0,
+        securityDeposit: 6000,
+      },
+      paidAmount: 0,
+      dueDate: new Date("2026-09-05T00:00:00.000Z"),
+      createdAt: new Date("2026-08-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-25T00:00:00.000Z"),
+    };
+
+    const mobile = toMobileBill(bill);
+
+    expect(mobile.status).toBe("cancelled");
+    expect(mobile.remaining_amount).toBe(0);
+    // Historical figures still exposed.
+    expect(mobile.total).toBe(18450);
+    expect(mobile.rent).toBe(12450);
+    expect(mobile.security_deposit).toBe(6000);
   });
 });

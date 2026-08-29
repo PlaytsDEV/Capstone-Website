@@ -805,6 +805,61 @@ const reservationSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // --- Security deposit — ACTUAL cash held (authoritative) ---
+    // The amount of security-deposit money currently held for this tenancy.
+    // Distinct from Contract.securityDepositAmount (the REQUIRED deposit for
+    // the current room/contract): the two can differ temporarily when a
+    // room transfer raised the requirement and the additional deposit
+    // component of the transfer settlement Bill has not been paid yet.
+    //
+    //   - Set at move-in to the deposit actually collected.
+    //   - A room transfer to a LOWER-deposit room does NOT reduce this
+    //     (excess held deposit stays refundable via move-out clearance).
+    //   - A room transfer to a HIGHER-deposit room increases this ONLY when
+    //     the deposit component of the transfer Bill is confirmed paid
+    //     (never on Bill creation / checkout creation).
+    //   - null = not yet populated (legacy record). Consumers fall back to
+    //     the canonical 1x-monthly-rate rule; see moveOutClearanceService.
+    securityDepositHeld: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    // Append-only audit log of every change to securityDepositHeld.
+    securityDepositLedger: {
+      type: [
+        new mongoose.Schema(
+          {
+            kind: {
+              type: String,
+              enum: ["move_in", "transfer_adjustment_due", "transfer_deposit_settlement", "backfill", "manual_correction"],
+              required: true,
+            },
+            previousHeld: { type: Number, default: null },
+            adjustmentAmount: { type: Number, default: 0 }, // signed; + funds held, - releases (rare)
+            resultingHeld: { type: Number, required: true, min: 0 },
+            // Where this change came from.
+            sourceRef: {
+              kind: { type: String, default: "" }, // "bill" | "payment" | "contract" | "reservation"
+              id: { type: mongoose.Schema.Types.ObjectId, default: null },
+            },
+            transferReference: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
+            billId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", default: null },
+            paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
+            // Unique per logical event so a duplicate webhook / retry does
+            // not append twice or double-fund the held balance.
+            idempotencyKey: { type: String, default: null },
+            reason: { type: String, default: "", trim: true },
+            createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+            createdAt: { type: Date, default: Date.now },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+
     // Timestamp of when the internal receipt email was successfully sent.
     // Prevents duplicate receipt emails on repeated webhook deliveries.
     receiptSentAt: {
@@ -930,6 +985,16 @@ const reservationSchema = new mongoose.Schema(
     monthlyRent: {
       type: Number,
       default: null, // null = fallback to totalPrice or room.price
+    },
+    // Authoritative recurring rent rate AFTER a room transfer changed the
+    // room/room-type. resolveReservationRentAmount (rentGenerator.js) prefers
+    // this over the immutable structured pricingSnapshot.finalMonthlyRate so
+    // the next monthly Bill uses the destination room's approved rate.
+    // null = no transfer has overridden the rate; use the normal resolution.
+    recurringRentRate: {
+      type: Number,
+      default: null,
+      min: 0,
     },
     // Recurring custom charges (appliance fees etc.)
     // Auto-populated into each monthly bill; admin can add/remove anytime

@@ -15,9 +15,11 @@ import {
   Check,
   X,
   Loader2,
+  ArrowRightLeft,
 } from "lucide-react";
 import { formatCodedRoomAndBed } from "../../../../../shared/utils/bedIdentifier";
-import { formatDate } from "./tenantDetailConstants";
+import { formatDate, formatMoney } from "./tenantDetailConstants";
+import ScheduledRoomTransferCard from "./ScheduledRoomTransferCard.jsx";
 import { adminApi } from "../../../services/adminApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
@@ -151,8 +153,15 @@ export default function TenantOverviewTab({
     setIsEditingAppliances(false);
   };
 
+  const scheduledRoomTransfer =
+    fetchedDetail?.scheduledRoomTransfer || tenant?.scheduledRoomTransfer || null;
+
   return (
     <div className="space-y-4">
+      {scheduledRoomTransfer ? (
+        <ScheduledRoomTransferCard transfer={scheduledRoomTransfer} />
+      ) : null}
+
       {/* Submitted Tenant Application Form Card */}
       <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
         <h4 className="text-xs font-semibold text-foreground flex items-center justify-between uppercase tracking-wide">

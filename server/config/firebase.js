@@ -71,7 +71,14 @@ const requiredEnvVars = [
 
 const missingEnvVars = requiredEnvVars.filter((name) => !process.env[name]);
 
-const canInitialize = missingEnvVars.length === 0;
+const authEmulatorHost = String(process.env.FIREBASE_AUTH_EMULATOR_HOST || "").trim();
+const emulatorProjectId = String(process.env.FIREBASE_PROJECT_ID || "").trim();
+const canUseAuthEmulator = Boolean(authEmulatorHost)
+  && !authEmulatorHost.includes("://")
+  && /^(127\.0\.0\.1|localhost|\[?::1\]?):\d+$/.test(authEmulatorHost)
+  && emulatorProjectId.startsWith("demo-")
+  && process.env.NODE_ENV !== "production";
+const canInitialize = canUseAuthEmulator || missingEnvVars.length === 0;
 
 /**
  * Initialize Firebase Admin SDK
@@ -127,18 +134,26 @@ export function resolveFirebaseStorageBucket() {
 const resolvedStorageBucket = resolveFirebaseStorageBucket();
 
 try {
-  if (!canInitialize) {
+  if (authEmulatorHost && !canUseAuthEmulator) {
+    console.error(
+      "Firebase Auth Emulator configuration refused: use a loopback host, demo- project, and non-production runtime.",
+    );
+  } else if (!canInitialize) {
     console.error(
       "❌ Firebase Admin SDK initialization failed: Missing required env vars",
     );
     console.error("⚠️ Missing:", missingEnvVars.join(", "));
   } else if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: resolvedStorageBucket || undefined,
-    });
+    admin.initializeApp(canUseAuthEmulator
+      ? { projectId: emulatorProjectId }
+      : {
+        credential: admin.credential.cert(serviceAccount),
+        storageBucket: resolvedStorageBucket || undefined,
+      });
     console.log("✅ Firebase Admin SDK initialized successfully");
-    if (!process.env.FIREBASE_STORAGE_BUCKET && resolvedStorageBucket) {
+    if (canUseAuthEmulator) {
+      console.log("Firebase Admin is isolated to the loopback Auth Emulator.");
+    } else if (!process.env.FIREBASE_STORAGE_BUCKET && resolvedStorageBucket) {
       console.log(`ℹ️ FIREBASE_STORAGE_BUCKET not set — using derived bucket: ${resolvedStorageBucket}`);
     }
   } else {

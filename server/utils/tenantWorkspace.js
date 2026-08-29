@@ -670,6 +670,12 @@ export function buildTenantWorkspaceEntry({
   violations = [],
   tenantStatus = "",
   hasAvailableBedsInBranch = true,
+  // Serialized open ScheduledRoomTransfer (serializeScheduledRoomTransfer)
+  // when the detail view has resolved one; null for the list view. Surfaced
+  // verbatim under `scheduledRoomTransfer` — it NEVER feeds into current
+  // room / rent / occupancy fields (the tenant stays in the source room
+  // until the effective date).
+  scheduledRoomTransfer = null,
   now = new Date(),
 }) {
   const leaseEndDate = currentStay?.leaseEndDate || computeLeaseEndDate(reservation);
@@ -777,7 +783,25 @@ export function buildTenantWorkspaceEntry({
     daysUntilLeaseEnd,
     monthlyRate: financialSummary.monthlyRate,
     advanceRent: financialSummary.advanceRent,
+    // REQUIRED deposit for the current room (1x the current approved rate).
     securityDeposit: financialSummary.securityDeposit,
+    // ── Deposit state (Phase 9): the UI must never show "required" as if it
+    //    were already paid. `securityDepositHeld` is the ACTUAL cash held
+    //    (Phases 3-6); null on a legacy tenancy that predates the field ->
+    //    the UI shows "Unavailable", never a false ₱0. balanceDue / excess
+    //    are derived only when held is known.
+    securityDepositHeld:
+      reservation.securityDepositHeld === null || reservation.securityDepositHeld === undefined
+        ? null
+        : Number(reservation.securityDepositHeld),
+    securityDepositBalanceDue:
+      reservation.securityDepositHeld === null || reservation.securityDepositHeld === undefined
+        ? null
+        : roundMoney(Math.max(0, Number(financialSummary.securityDeposit || 0) - Number(reservation.securityDepositHeld || 0))),
+    securityDepositExcessHeld:
+      reservation.securityDepositHeld === null || reservation.securityDepositHeld === undefined
+        ? null
+        : roundMoney(Math.max(0, Number(reservation.securityDepositHeld || 0) - Number(financialSummary.securityDeposit || 0))),
     reservationFee: financialSummary.reservationFee,
     selectedAppliances: Array.isArray(reservation.selectedAppliances) ? reservation.selectedAppliances : [],
     applianceFees: Number(reservation.applianceFees || 0),
@@ -893,6 +917,10 @@ export function buildTenantWorkspaceEntry({
     },
     financialSummary,
     roomHistory,
+    // An upcoming (not-yet-effective) room transfer, if one is scheduled.
+    // Display-only: the tenant remains in `basicInfo.room` / `paymentInfo`
+    // rates until its effectiveDate.
+    scheduledRoomTransfer: scheduledRoomTransfer || null,
     systemWarnings: warningFlags,
     contracts: (contracts || []).map((c) => ({
       _id: String(c._id || c.id),
