@@ -151,6 +151,23 @@ test("the input shows the selected room label, not stale partial search text", (
   unmount();
 });
 
+test("reopening after a selection shows the FULL room list — no 'No matching rooms found'", () => {
+  // Regression: after a pick, the input held the selected room's label. On
+  // reopen that label was used as the filter query and matched nothing, so
+  // the menu showed "No matching rooms found" and the user could not pick a
+  // different room. Reopening must clear the query and list every room.
+  const { container, unmount } = mount(React.createElement(Harness));
+  openMenu(container);
+  mouseDown(options(container).find((o) => o.textContent.includes("Room 802")));
+  assert.equal(input(container).value, "GP - Room 802 (PHP 13,500)", "closed field shows the label");
+
+  openMenu(container); // reopen
+  assert.equal(input(container).value, "", "reopening clears the search text");
+  assert.equal(q(container, ".twm-search-select__empty"), null, "no empty-state message");
+  assert.equal(options(container).length, 3, "all rooms listed again");
+  unmount();
+});
+
 test("reopening after a selection lets the user search again from scratch", () => {
   const { container, unmount } = mount(React.createElement(Harness));
   openMenu(container);
@@ -161,6 +178,22 @@ test("reopening after a selection lets the user search again from scratch", () =
   const opts = options(container);
   assert.equal(opts.length, 1);
   assert.ok(opts[0].textContent.includes("Room 501"));
+  unmount();
+});
+
+test("re-picking works with a single pointer-down after a prior selection", () => {
+  const calls = [];
+  const { container, unmount } = mount(
+    React.createElement(Harness, { onChangeSpy: (id) => calls.push(id) }),
+  );
+  openMenu(container);
+  mouseDown(options(container).find((o) => o.textContent.includes("Room 802")));
+  openMenu(container); // reopen, no typing
+  // one click on a different room — must commit immediately, no outside click
+  mouseDown(options(container).find((o) => o.textContent.includes("Room 501")));
+  assert.deepEqual(calls, ["r-802", "r-501"]);
+  assert.equal(menu(container), null, "menu closed after the re-pick");
+  assert.equal(input(container).value, "GP - Room 501 (PHP 9,000)");
   unmount();
 });
 

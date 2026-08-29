@@ -49,14 +49,22 @@ export default function SearchableRoomSelect({
     [rooms, value],
   );
 
-  // When closed, the input mirrors the selected room's label (never stale
-  // partial search text). When open, the user is free to type and filter.
+  // The input has two modes:
+  //  - CLOSED: it mirrors the selected room's label (or is empty).
+  //  - OPEN:   it starts empty so the full room list is shown and the user can
+  //            type to filter — a previously-selected label must never linger
+  //            as a search query (that made re-picking show "No matching rooms
+  //            found").
+  // Toggling `isOpen` drives the swap; typing while open is preserved because
+  // this effect only runs on an open/close transition, not on every keystroke.
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      setSearchTerm("");
+    } else {
       setSearchTerm(selectedRoom ? roomLabelOf(selectedRoom) : "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, selectedRoom, isOpen, fmtMoney]);
+  }, [isOpen, value]);
 
   // Dismiss-without-selection on an outside pointer-down. Native listener
   // because the modal is portalled outside the React root.
@@ -71,19 +79,15 @@ export default function SearchableRoomSelect({
   }, []);
 
   const filteredRooms = useMemo(() => {
-    const selectedLabel = selectedRoom ? roomLabelOf(selectedRoom) : "";
-    if (!searchTerm || (selectedRoom && searchTerm === selectedLabel)) {
-      return rooms;
-    }
-    const q = searchTerm.toLowerCase().trim();
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return rooms;
     return rooms.filter((r) => {
       const name = String(r.name || r.roomNumber || "").toLowerCase();
       const price = String(r.monthlyPrice || r.price || "").toLowerCase();
       const floor = String(r.floor || "").toLowerCase();
       return name.includes(q) || price.includes(q) || floor.includes(q);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rooms, searchTerm, selectedRoom, fmtMoney]);
+  }, [rooms, searchTerm]);
 
   // Keep the keyboard highlight in range as the filtered list changes.
   useEffect(() => {
@@ -151,7 +155,13 @@ export default function SearchableRoomSelect({
           aria-controls="twm-search-select__listbox"
           aria-autocomplete="list"
           className={`twm-search-select__input ${isInvalid ? "tenant-modal-field--invalid" : ""}`}
-          placeholder={disabled ? "Loading available rooms..." : placeholder}
+          placeholder={
+            disabled
+              ? "Loading available rooms..."
+              : isOpen && selectedRoom
+                ? `${roomLabelOf(selectedRoom)} — type to change`
+                : placeholder
+          }
           value={searchTerm}
           disabled={disabled}
           onFocus={() => setIsOpen(true)}
