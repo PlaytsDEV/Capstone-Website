@@ -25,9 +25,18 @@ export function Navigation({ type } = {}) {
       : theme;
   const isDark = resolvedTheme === "dark";
 
-  // Scroll listener — compact navbar after 20px
+  // Scroll listener — compact navbar after 20px (rAF debounced to prevent forced reflow)
   useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 20);
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          setIsScrolled(window.scrollY > 20);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
