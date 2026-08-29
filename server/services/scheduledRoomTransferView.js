@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-import { Bill, Contract, User } from "../models/index.js";
+import { Bill, Contract } from "../models/index.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
   "awaiting_payment",
@@ -75,6 +75,9 @@ async function resolveActorIdentity(actor, { session = null } = {}) {
     const name = actor.name || `${actor.firstName || ""} ${actor.lastName || ""}`.trim();
     return { id: actor._id ? String(actor._id) : null, name: name || "Staff", role: actor.role || null };
   }
+  // Lazy import so route-mount unit tests that mock ../models/index.js without
+  // User (mobile mount-order suites) still load this module.
+  const { User } = await import("../models/index.js");
   const q = User.findById(actor).select("firstName lastName role");
   const u = await (session ? q.session(session) : q).lean();
   if (!u) return null;
