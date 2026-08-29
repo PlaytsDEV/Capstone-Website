@@ -37,8 +37,9 @@ export function toManilaStartOfDay(dateLike) {
 /**
  * Get current date at midnight (00:00:00.000) in Asia/Manila timezone.
  */
-export function getManilaToday() {
-  return dayjs().tz(APP_TIMEZONE).startOf("day");
+export function getManilaToday(referenceDate) {
+  const base = referenceDate ? dayjs(referenceDate) : dayjs();
+  return base.tz(APP_TIMEZONE).startOf("day");
 }
 
 /**

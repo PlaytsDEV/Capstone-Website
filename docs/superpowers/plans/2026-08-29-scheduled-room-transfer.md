@@ -113,9 +113,44 @@ NOT 00:15 and NOT before Job 0. Rationale:
 - Never executes on Sep 4 Manila: due-scan cutoff = `toManilaStartOfDay(now).add(1,'day')`, identical
   to `activateDueRenewalContracts` (`contractRenewalActivationService.js:55`).
 
-(If the "correct an already-generated Bill" repair proves too invasive in 2G, fall back to Job 20 at
-`50 23 * * *` Manila — 23:50, i.e. the night BEFORE the effective date's 00:00 — so the cutover and
-rate change are in place before Job 0 ever runs for the effective date. Documented as the alternative.)
+### 2G RESOLUTION — no repair logic, Job 20 at `10 0 * * *` Manila
+
+`generateAutomatedRentBills` -> `ensureCurrentCycleRentBill` -> `buildRentBillingCycle`:
+`generationDate = billingCycleStart - RENT_GENERATION_LEAD_DAYS` (= 14), and Job 0 only creates a Bill
+when `toManilaStartOfDay(now).isSame(generationDate, "day")`. So Job 0 NEVER generates the transferred
+tenant's rent Bill at 00:00 on the effective date — it was created 14 days earlier (cycle spanning the
+transfer, at the source rate, correct then) or is created 14 days before the next cycle (after
+cutover, at `recurringRentRate` = destination). Nothing to repair.
+
+**Decision: Job 20 at `10 0 * * *` (00:10 Asia/Manila), right after Job 0. No pre-midnight trigger, no
+same-day rent-bill reconciliation.** The settlement's `resolveApplicablePrepaidRentForTransfer`
+already reads the current cycle Bill's `paidAmount`; future cycles use `recurringRentRate`.
+
+### 2G — Bill reuse
+
+`transferStayWorkflow` always `Bill.create`s a `transfer_settlement` Bill. Minimal adaptation:
+`payload.scheduledTransferBillId` (+ `payload.__scheduledTransferId`). When present, the workflow
+re-uses that Bill: recompute `transferCharges`, assert its `charges.rent`/`charges.securityDeposit`
+equal the recompute (mismatch => abort `ROOM_TRANSFER_SCHEDULED_BILL_MISMATCH`), refresh
+cycle/notes/transferSnapshot to execution-time values, keep `paidAmount`/`status`/history,
+`syncBillAmounts`. Excess-rent `TenantCredit` + deposit ledger keep their predecessor-Contract
+idempotency keys, so a retried execution never double-creates.
+
+**The EXECUTOR owns the financial gate; the workflow only runs when already safe:**
+1. re-fetch + operational validation -> fail => `action_required`
+2. payment gate: unpaid/partial Bill => `action_required` TRANSFER_BALANCE_UNPAID
+3. live revalidation: `computeRoomTransferPreview(effectiveDate)`, compare
+   `rentAdjustment + deposit.balanceDue` vs the Bill's `rent + securityDeposit`:
+     - equal (<=P0.01)               -> proceed, pass `scheduledTransferBillId`
+     - higher                        -> add the delta to the Bill, => `action_required` ADDITIONAL_BALANCE_DUE
+     - lower AND Bill was paid        -> => `action_required` FINANCIAL_ADJUSTMENT_REQUIRED (Bill untouched)
+     - zero-balance schedule now owes -> create the Bill, => `action_required` ADDITIONAL_BALANCE_DUE
+4. cutover via `transferStayWorkflow({ payload: { ...intent, scheduledTransferBillId, __scheduledTransferId } })`
+5. success -> `executed` + `executedSettlement` + notify (dedupe); failure -> `action_required` +
+   `lastError` (workflow txn already rolled back everything).
+
+`retryScheduledRoomTransfer` re-runs 1-5 for an `action_required` record only. Job 20 selects ONLY
+`status: "scheduled"`.
 
 ---
 
