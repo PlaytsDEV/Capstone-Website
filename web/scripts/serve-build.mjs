@@ -38,10 +38,24 @@ function safePathFromUrl(urlPath) {
   return normalized === path.sep ? "index.html" : normalized.replace(/^[/\\]/, "");
 }
 
+const defaultSecurityHeaders = {
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
+  "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.lilycrest.space http://localhost:5000 wss://api.lilycrest.space ws://localhost:5000 https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://firebasestorage.googleapis.com https://storage.googleapis.com https://psgc.cloud https://*.psgc.cloud https://accounts.google.com; frame-src 'self' blob: data: https://www.google.com https://*.firebaseapp.com https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests",
+};
+
 function sendFile(res, filePath, statusCode = 200) {
   const ext = path.extname(filePath).toLowerCase();
   const contentType = contentTypes[ext] || "application/octet-stream";
-  res.writeHead(statusCode, { "Content-Type": contentType });
+  res.writeHead(statusCode, {
+    "Content-Type": contentType,
+    ...defaultSecurityHeaders,
+  });
   fs.createReadStream(filePath).pipe(res);
 }
 
