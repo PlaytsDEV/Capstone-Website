@@ -57,6 +57,8 @@ export function LocationSection() {
         {/* Branch Tabs */}
         <div className="flex justify-center mb-8">
           <div
+            role="tablist"
+            aria-label="Dormitory branch locations"
             className="inline-flex rounded-full p-1.5"
             style={{
               backgroundColor: 'var(--lp-bg-card)',
@@ -66,8 +68,13 @@ export function LocationSection() {
             {locations.map((loc, i) => (
               <button
                 key={loc.branch}
+                id={`location-tab-${i}`}
+                role="tab"
+                type="button"
+                aria-selected={activeTab === i}
+                aria-controls={`location-panel-${i}`}
                 onClick={() => setActiveTab(i)}
-                className="relative px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300"
+                className="relative px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 cursor-pointer focus:outline-none"
                 style={{
                   backgroundColor: activeTab === i ? 'var(--lp-accent)' : 'transparent',
                   color: activeTab === i ? '#ffffff' : 'var(--lp-text-secondary)',
@@ -86,6 +93,9 @@ export function LocationSection() {
 
         {/* Tab Content */}
         <div
+          id={`location-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`location-tab-${activeTab}`}
           key={activeTab}
           className="grid lg:grid-cols-2 gap-8 items-start"
           style={{ animation: 'locFadeIn 0.3s ease forwards' }}

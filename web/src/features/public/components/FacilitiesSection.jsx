@@ -241,22 +241,26 @@ export function FacilitiesSection() {
         </div>
 
         {/* Navigation Indicators */}
-        <div className="flex justify-center items-center gap-2 sm:gap-3">
+        <div className="flex justify-center items-center gap-1 sm:gap-1.5">
           {facilities.map((_, index) => (
             <button
               key={index}
+              type="button"
               onClick={() => goToSlide(index)}
-              className="transition-all duration-300"
-              style={{
-                width: index === currentIndex ? "24px" : "8px",
-                height: "8px",
-                borderRadius: "5px",
-                backgroundColor: index === currentIndex ? "var(--lp-accent)" : "var(--lp-border)",
-                border: "none",
-                cursor: "pointer",
-              }}
+              className="flex items-center justify-center p-2 bg-transparent border-none cursor-pointer focus:outline-none"
+              style={{ minWidth: "32px", minHeight: "32px" }}
               aria-label={`Go to facility ${index + 1}`}
-            />
+            >
+              <span
+                className="transition-all duration-300 block"
+                style={{
+                  width: index === currentIndex ? "24px" : "8px",
+                  height: "8px",
+                  borderRadius: "5px",
+                  backgroundColor: index === currentIndex ? "var(--lp-accent)" : "var(--lp-border)",
+                }}
+              />
+            </button>
           ))}
         </div>
       </div>

@@ -193,29 +193,28 @@ export function HeroSection() {
 
             {/* CTA Buttons */}
             <motion.div {...fadeUp(0.8)} className="flex flex-wrap gap-4 mb-6">
-              <Link to="/applicant/check-availability">
-                <button
-                  className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300"
-                  style={{
-                    color: isDark ? "white" : "var(--lp-navy)",
-                    backgroundColor: "var(--lp-accent)",
-                    boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow =
-                      "0 6px 30px rgba(212, 175, 55, 0.4)";
-                    e.currentTarget.style.transform =
-                      "translateY(-2px) scale(1.02)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow =
-                      "0 4px 20px rgba(212, 175, 55, 0.25)";
-                    e.currentTarget.style.transform = "translateY(0) scale(1)";
-                  }}
-                >
-                  Browse Available Rooms
-                  <ArrowRight className="w-5 h-5" />
-                </button>
+              <Link
+                to="/applicant/check-availability"
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300 no-underline cursor-pointer"
+                style={{
+                  color: isDark ? "white" : "var(--lp-navy)",
+                  backgroundColor: "var(--lp-accent)",
+                  boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 6px 30px rgba(212, 175, 55, 0.4)";
+                  e.currentTarget.style.transform =
+                    "translateY(-2px) scale(1.02)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 20px rgba(212, 175, 55, 0.25)";
+                  e.currentTarget.style.transform = "translateY(0) scale(1)";
+                }}
+              >
+                Browse Available Rooms
+                <ArrowRight className="w-5 h-5" />
               </Link>
               <a
                 href="#inquiry"
@@ -296,27 +295,31 @@ export function HeroSection() {
 
         {/* Slide Indicators — right side */}
         <div
-          className="absolute z-10 hidden md:flex flex-col items-center gap-3"
-          style={{ right: "48px", top: "50%", transform: "translateY(-50%)" }}
+          className="absolute z-10 hidden md:flex flex-col items-center gap-1"
+          style={{ right: "40px", top: "50%", transform: "translateY(-50%)" }}
         >
           {heroImages.map((_, i) => (
             <button
               key={i}
+              type="button"
               onClick={() => setCurrentImage(i)}
               aria-label={`Go to slide ${i + 1}`}
-              style={{
-                width: "2px",
-                height: currentImage === i ? "32px" : "20px",
-                borderRadius: "1px",
-                backgroundColor: currentImage === i
-                  ? (isDark ? "white" : "var(--lp-navy)")
-                  : (isDark ? "rgba(255,255,255,0.35)" : "rgba(10,22,40,0.35)"),
-                border: "none",
-                cursor: "pointer",
-                transition: "all 0.4s ease",
-                padding: 0,
-              }}
-            />
+              className="flex items-center justify-center p-2 bg-transparent border-none cursor-pointer focus:outline-none"
+              style={{ minWidth: "32px", minHeight: "32px" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  width: "2px",
+                  height: currentImage === i ? "32px" : "20px",
+                  borderRadius: "1px",
+                  backgroundColor: currentImage === i
+                    ? (isDark ? "white" : "var(--lp-navy)")
+                    : (isDark ? "rgba(255,255,255,0.35)" : "rgba(10,22,40,0.35)"),
+                  transition: "all 0.4s ease",
+                }}
+              />
+            </button>
           ))}
         </div>
       </section>

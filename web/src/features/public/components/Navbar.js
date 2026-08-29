@@ -317,31 +317,29 @@ export function Navigation({ type } = {}) {
                 )}
               </>
             )}
-            <Link to="/applicant/check-availability">
-              <RippleButton
-                rippleColor="rgba(10, 22, 40, 0.4)"
-                className="hidden md:block rounded-full"
-                style={{
-                  color: "white",
-                  backgroundColor: "var(--lp-accent)",
-                  fontSize: "15px",
-                  fontWeight: "500",
-                  padding: isScrolled ? "10px 28px" : "12px 34px",
-                  transition:
-                    "all 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 16px rgba(212, 175, 55, 0.35)";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = "none";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                Book Now
-              </RippleButton>
+            <Link
+              to="/applicant/check-availability"
+              className="hidden md:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
+              style={{
+                color: "white",
+                backgroundColor: "var(--lp-accent)",
+                fontSize: "15px",
+                fontWeight: "500",
+                padding: isScrolled ? "10px 28px" : "12px 34px",
+                transition:
+                  "all 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, transform 0.2s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow =
+                  "0 4px 16px rgba(212, 175, 55, 0.35)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              Book Now
             </Link>
             <button
               className="md:hidden bg-transparent border-none cursor-pointer"
@@ -459,23 +457,18 @@ export function Navigation({ type } = {}) {
                 ))}
               <Link
                 to="/applicant/check-availability"
-                className="no-underline"
+                className="no-underline flex items-center justify-center rounded-full text-center cursor-pointer transition-all"
                 onClick={() => setIsMenuOpen(false)}
-                style={{ flex: 1 }}
+                style={{
+                  flex: 1,
+                  color: "white",
+                  backgroundColor: "var(--lp-accent)",
+                  fontWeight: "500",
+                  fontSize: "15px",
+                  padding: "14px 0",
+                }}
               >
-                <RippleButton
-                  rippleColor="rgba(10, 22, 40, 0.4)"
-                  className="w-full rounded-full"
-                  style={{
-                    color: "white",
-                    backgroundColor: "var(--lp-accent)",
-                    fontWeight: "500",
-                    fontSize: "15px",
-                    padding: "14px 0",
-                  }}
-                >
-                  Book Now
-                </RippleButton>
+                Book Now
               </Link>
             </div>
           </div>
