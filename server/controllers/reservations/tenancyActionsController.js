@@ -1355,7 +1355,9 @@ export const earlyTerminationAction = async (req, res, next) => {
     const { reservationId } = req.params;
     const {
       penaltyFee = 0,
-      forfeitureReason = "early_termination",
+      // Schema-valid depositForfeitureReason (['early_vacancy','admin_decision',null]).
+      // Early termination = actualMoveOutDate < leaseEndDate = "early_vacancy".
+      forfeitureReason = "early_vacancy",
       moveOutDate,
       actualVacateTime,
       finalUtilityReading,

@@ -2322,7 +2322,14 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         reservation.earlyTerminationPenalty = Number(payload.earlyTerminationPenalty);
       }
       if (payload.forfeitureReason && payload.reason === "terminated") {
-        reservation.depositForfeitureReason = payload.forfeitureReason;
+        // Only accept schema-valid depositForfeitureReason values
+        // (['early_vacancy','admin_decision',null]); an early termination maps
+        // to "early_vacancy". Anything else is ignored so a bad caller value
+        // can't fail the move-out save.
+        const VALID_FORFEITURE_REASONS = new Set(["early_vacancy", "admin_decision"]);
+        if (VALID_FORFEITURE_REASONS.has(payload.forfeitureReason)) {
+          reservation.depositForfeitureReason = payload.forfeitureReason;
+        }
       }
 
       reservation.finalSettlementSummary = {
@@ -2472,7 +2479,12 @@ export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
  * penalty/forfeiture fields specific to early termination.
  */
 export async function executeEarlyTerminationWorkflow(reservationId, payload = {}, actorId = null) {
-  const { penaltyFee = 0, forfeitureReason = "early_termination", ...rest } = payload;
+  // depositForfeitureReason enum is ['early_vacancy','admin_decision',null].
+  // Early termination = actualMoveOutDate < leaseEndDate, which IS the schema's
+  // definition of "early_vacancy" (see models/Reservation.js). moveOutStayWorkflow
+  // already sets this for an early vacancy; we keep the value schema-valid so the
+  // "terminated"-reason override at line ~2331 does not write an invalid enum.
+  const { penaltyFee = 0, forfeitureReason = "early_vacancy", ...rest } = payload;
   const result = await moveOutStayWorkflow({
     reservationId,
     payload: {
@@ -2582,12 +2594,23 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
     throw new Error("Reservation not found");
   }
 
-  reservation.status = "abandoned";
+  // Abandonment is a permanent departure. The canonical Reservation status set
+  // (CANONICAL_RESERVATION_STATUSES in utils/lifecycleNaming.js — the enum the
+  // `status` field actually validates against) has NO "abandoned" value; the
+  // terminal "tenant has left" state is "moveOut", same as a normal move-out.
+  // The abandonment-specific meaning is carried by the deposit-forfeiture
+  // fields + the human-readable note below, exactly as before.
+  reservation.status = "moveOut";
   reservation.depositForfeited = true;
-  reservation.depositForfeitureReason = "unannounced_abandonment";
+  // depositForfeitureReason enum is ['early_vacancy','admin_decision',null].
+  // An admin-triggered ghost-tenant forfeiture is an "admin_decision"; the
+  // specific "unannounced abandonment" wording is preserved in notes.
+  reservation.depositForfeitureReason = "admin_decision";
+  reservation.depositForfeitedAt = new Date();
+  reservation.depositRefundStatus = "forfeited";
   reservation.depositRefundAmount = 0;
-  reservation.abandonedAt = new Date();
-  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Abandonment protocol triggered by admin ${actorId || ""}`;
+  reservation.moveOutDate = reservation.moveOutDate || new Date();
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Unannounced abandonment protocol triggered by admin ${actorId || ""}`;
   await reservation.save();
 
   // Free bed inventory immediately
@@ -2603,7 +2626,12 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
   // Update user status
   const user = await User.findById(reservation.userId);
   if (user) {
-    user.tenantStatus = "abandoned";
+    // User.tenantStatus enum: ['applicant','active','inactive','moved_out',
+    // 'evicted','blacklisted']. "moved_out" is the canonical departed-tenant
+    // value the rest of the codebase recognises (inactivity guards check
+    // ['inactive','moved_out']); the punitive/forfeiture context lives on the
+    // Reservation, not here.
+    user.tenantStatus = "moved_out";
     await user.save();
   }
 

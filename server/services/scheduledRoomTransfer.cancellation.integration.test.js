@@ -64,7 +64,11 @@ const {
   resolveScheduledTransferBeforeTenantDeparture,
   executeScheduledRoomTransfer,
 } = await import("./scheduledRoomTransferExecutor.js");
-const { moveOutStayWorkflow } = await import("../utils/tenantActionService.js");
+const {
+  moveOutStayWorkflow,
+  executeEarlyTerminationWorkflow,
+  executeAbandonmentProtocolWorkflow,
+} = await import("../utils/tenantActionService.js");
 const { applyBillPayment } = await import("./billing/paymentLedger.js");
 const { serializeScheduledRoomTransfer, getOpenScheduledRoomTransferForReservation } =
   await import("./scheduledRoomTransferView.js");
@@ -438,35 +442,88 @@ describe("tenant departure before effective date", () => {
     void roomA;
   });
 
-  test("termination (reason:terminated move-out) + unpaid schedule -> auto-cancel", async () => {
+  test("executeEarlyTerminationWorkflow + unpaid schedule -> workflow completes, schedule auto-cancelled", async () => {
     const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    // executeEarlyTerminationWorkflow routes through moveOutStayWorkflow; drive
-    // that directly with the termination reason (the early-termination wrapper
-    // has an unrelated pre-existing depositForfeitureReason enum bug).
-    await moveOutStayWorkflow({
-      reservationId: String(reservation._id),
-      payload: { ...moveOutPayload(), reason: "terminated" },
+
+    // The real wrapper — proves the enum fix (forfeitureReason -> "early_vacancy")
+    // lets the move-out save succeed and the departure hook run.
+    const result = await executeEarlyTerminationWorkflow(
+      String(reservation._id),
+      {
+        penaltyFee: 1500,
+        moveOutDate: moveOutPayload().moveOutDate,
+        finalUtilityReading: 100,
+        keyReturned: true,
+        forceOverride: true,
+      },
       actorId,
-    });
-    expect((await ScheduledRoomTransfer.findById(scheduledTransfer._id)).status).toBe("cancelled");
+    );
+    expect(result.success).toBe(true);
+
+    const r = await Reservation.findById(reservation._id);
+    expect(r.status).toBe("moveOut");
+    expect(r.depositForfeitureReason).toBe("early_vacancy"); // schema-valid enum
+
+    const s = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
+    expect(s.status).toBe("cancelled");
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+    expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
+    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
   });
 
-  test("resolveScheduledTransferBeforeTenantDeparture is wired into the abandonment workflow", async () => {
-    // executeAbandonmentProtocolWorkflow has unrelated pre-existing enum bugs
-    // (status:"abandoned", depositForfeitureReason:"unannounced_abandonment")
-    // that make it un-runnable end-to-end here. This asserts the hook is
-    // present so a future fix to that workflow gets scheduled-transfer cleanup
-    // for free.
-    const src = await import("fs").then((fs) =>
-      fs.readFileSync(new URL("../utils/tenantActionService.js", import.meta.url), "utf8"),
-    );
-    const abandonBody = src.split("export async function executeAbandonmentProtocolWorkflow")[1].split("export async function")[0];
-    expect(abandonBody).toMatch(/resolveScheduledTransferBeforeTenantDeparture/);
+  test("executeAbandonmentProtocolWorkflow + unpaid schedule -> workflow completes, schedule auto-cancelled", async () => {
+    const { reservation, tenant, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
+    const dest = await emptyRoom("private", "205");
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
+    });
+
+    // The real workflow — proves the enum fixes (status -> "moveOut",
+    // depositForfeitureReason -> "admin_decision", tenantStatus -> "moved_out")
+    // let every save succeed and the departure hook run end-to-end.
+    const result = await executeAbandonmentProtocolWorkflow(String(reservation._id), {}, actorId);
+    expect(result.success).toBe(true);
+
+    const r = await Reservation.findById(reservation._id);
+    expect(r.status).toBe("moveOut"); // canonical terminal departure state
+    expect(r.depositForfeited).toBe(true);
+    expect(r.depositForfeitureReason).toBe("admin_decision"); // schema-valid enum
+    expect(r.notes).toMatch(/[Aa]bandonment/); // human-readable detail preserved
+    expect((await User.findById(tenant._id)).tenantStatus).toBe("moved_out");
+
+    const s = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
+    expect(s.status).toBe("cancelled");
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+    expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
+    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
+  });
+
+  test("executeAbandonmentProtocolWorkflow + PAID schedule -> hold released, financials PRESERVED, action_required", async () => {
+    const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
+    const dest = await emptyRoom("private", "205");
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
+    });
+    await payFull(scheduledTransfer.settlementBillId);
+
+    const result = await executeAbandonmentProtocolWorkflow(String(reservation._id), {}, actorId);
+    expect(result.success).toBe(true);
+
+    const s = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
+    expect(s.status).toBe("action_required");
+    expect(s.lastError).toBe("PAYMENT_ALREADY_RECEIVED");
+    // Physical resource freed, money untouched.
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    expect(bill.status).not.toBe("voided");
+    expect(bill.paidAmount).toBeCloseTo(bill.totalAmount, 2);
+    expect(await Payment.countDocuments({ billId: bill._id })).toBe(1);
+    // Transfer never executed.
+    expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
   });
 
   test("departure + PAID schedule -> destination hold RELEASED, financial history PRESERVED, action_required, transfer NOT executed", async () => {

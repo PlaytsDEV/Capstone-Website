@@ -56,8 +56,11 @@ await jest.unstable_mockModule("../../services/scheduledRoomTransferService.js",
   ...realSched,
   scheduleRoomTransfer: scheduleRoomTransferMock,
 }));
+const realSchedView = await import("../../services/scheduledRoomTransferView.js");
 await jest.unstable_mockModule("../../services/scheduledRoomTransferView.js", () => ({
+  ...realSchedView,
   serializeScheduledRoomTransfer: jest.fn(async (d) => ({ id: String(d._id), effectiveTransferDate: d.effectiveTransferDate })),
+  getOpenScheduledRoomTransferForReservation: jest.fn().mockResolvedValue(null),
 }));
 
 const { transferTenant } = await import("./tenancyActionsController.js");
