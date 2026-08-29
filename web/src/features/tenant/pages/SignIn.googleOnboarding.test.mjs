@@ -9,18 +9,23 @@ const webRoot = path.resolve(here, "../../../..");
 const read = (relative) => fs.readFileSync(path.join(webRoot, relative), "utf8");
 const signIn = read("src/features/tenant/pages/SignIn.jsx");
 
-test("SignIn handleSocialLogin auto-onboards Google users when backend returns 404", () => {
-  // Must automatically register the user in the backend when 404 occurs during social sign in
-  assert.match(signIn, /authApi\.register/);
-  // Must not simply show dead-end warning and bail
-  assert.doesNotMatch(signIn, /This Google account isn't registered yet\. Please sign up first\./);
-  // Must preserve Firebase identity token during 404 auto-registration instead of prematurely signing out
+test("SignIn handleSocialLogin notifies user and redirects to SignUp when Google account is not registered (404)", () => {
+  // 1. Must check for 404 / unregistered backend status
+  assert.match(signIn, /status === 404/);
+
+  // 2. Must display clear notification toast informing the user to sign up first
   assert.match(
     signIn,
-    /catch\s*\(\s*loginError\s*\)\s*\{\s*const status = loginError\.response\?\.status;[\s\S]*?if\s*\(\s*status === 404/,
+    /This Google account is not registered yet\. Please sign up first\./,
   );
-  // Must forward linked Google phone number if present
-  assert.match(signIn, /phone:\s*firebaseUser\.phoneNumber\s*\|\|\s*""/);
-  // Must provide timestamp-backed collision fallback for deterministic uniqueness
-  assert.match(signIn, /Date\.now\(\)\.toString\(36\)/);
+
+  // 3. Must safely sign out / recover auth failure to avoid orphan sessions
+  assert.match(signIn, /await auth\.signOut\(\)|await recoverFromAuthFailure\(auth/);
+
+  // 4. Must redirect to /signup
+  assert.match(signIn, /navigate\(["']\/signup["']/);
+
+  // 5. Must support redirect auth fallback
+  assert.match(signIn, /signInWithRedirect/);
+  assert.match(signIn, /getRedirectResult/);
 });

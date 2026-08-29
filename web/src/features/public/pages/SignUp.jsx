@@ -19,6 +19,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
 } from "firebase/auth";
@@ -555,112 +557,69 @@ function SignUp() {
     }
   };
 
-  const handleSocialSignup = async (provider, providerName = "Google") => {
-    setLoading(true);
-    socialAuthRef.current = true;
-    sessionStorage.setItem("socialAuthInProgress", "1"); // tell RequireNonAdmin to skip redirect
+  const processSocialSignupUser = async (firebaseUser) => {
+    if (!firebaseUser.email) {
+      await recoverFromAuthFailure(auth);
+      socialAuthRef.current = false;
+      showNotification(
+        "We could not get your email address from Google. Please try again or use a different sign-in method.",
+        "error",
+      );
+      setLoading(false);
+      return;
+    }
     try {
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-      if (!firebaseUser.email) {
-        await recoverFromAuthFailure(auth);
-        socialAuthRef.current = false;
-        showNotification(
-          "We could not get your email address from Google. Please try again or use a different sign-in method.",
-          "error",
-        );
-        setLoading(false);
-        return;
-      }
-      try {
-        await authApi.checkUser();
-        // User already exists — sign out and redirect to sign-in
-        await auth.signOut();
-        socialAuthRef.current = false;
-        appNavigate("/signin", {
-          flash: {
-            type: "info",
-            message: "An account already exists with this email address. Please sign in instead.",
-          },
-          replace: true,
-        });
-        setLoading(false);
-        return;
-      } catch (loginError) {
-        if (loginError.response?.status === 404) {
-          try {
-            const rawName = (firebaseUser.displayName || "")
-              .replace(/[^a-zA-Z\s'-]/g, "")
-              .replace(/\s+/g, " ")
-              .trim();
-            const parts = rawName.split(" ");
-            const firstName = formatProperCase(parts[0] || "User");
-            const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
-            const registration = await registerUserInBackend(
-              firebaseUser,
-              "",
+      await authApi.checkUser();
+      // User already exists — sign out and redirect to sign-in
+      await auth.signOut();
+      socialAuthRef.current = false;
+      appNavigate("/signin", {
+        flash: {
+          type: "info",
+          message: "An account already exists with this email address. Please sign in instead.",
+        },
+        replace: true,
+      });
+      setLoading(false);
+      return;
+    } catch (loginError) {
+      if (loginError.response?.status === 404) {
+        try {
+          const rawName = (firebaseUser.displayName || "")
+            .replace(/[^a-zA-Z\s'-]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          const parts = rawName.split(" ");
+          const firstName = formatProperCase(parts[0] || "User");
+          const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
+          const registration = await registerUserInBackend(
+            firebaseUser,
+            "",
+            firstName,
+            lastName,
+          );
+          const username = registration?.user?.username;
+          await loginBackend();
+          showNotification(
+            buildAuthWelcomeMessage(
+              {
+                displayName: firebaseUser.displayName,
+                username,
+                email: firebaseUser.email,
+              },
               firstName,
-              lastName,
-            );
-            const username = registration?.user?.username;
-            await loginBackend();
-            showNotification(
-              buildAuthWelcomeMessage(
-                {
-                  displayName: firebaseUser.displayName,
-                  username,
-                  email: firebaseUser.email,
-                },
-                firstName,
-              ),
-              "success",
-              AUTH_TOAST_DURATION,
-            );
-            appNavigate("/applicant/check-availability");
-          } catch (regError) {
-            const errMsg =
-              regError.response?.data?.message || regError.message || "";
-            const errCode = regError.response?.data?.code || regError.code || "";
+            ),
+            "success",
+            AUTH_TOAST_DURATION,
+          );
+          appNavigate("/applicant/check-availability");
+        } catch (regError) {
+          const errMsg =
+            regError.response?.data?.message || regError.message || "";
+          const errCode = regError.response?.data?.code || regError.code || "";
 
-            if (errCode === "IDENTITY_CONFLICT") {
-              await recoverFromAuthFailure(auth, regError);
-              showNotification(
-                "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
-                "warning",
-                7000,
-              );
-              return;
-            }
-
-            // If the error is about duplicate email/username, redirect to sign-in
-            if (
-              errCode === "USERNAME_TAKEN" ||
-              errCode === "EMAIL_TAKEN" ||
-              errMsg.includes("already") ||
-              errMsg.includes("duplicate")
-            ) {
-              await auth.signOut();
-              socialAuthRef.current = false;
-              appNavigate("/signin", {
-                flash: {
-                  type: "info",
-                  message:
-                    "An account already exists with this email address. Please sign in instead.",
-                },
-                replace: true,
-              });
-              setLoading(false);
-              return;
-            }
-
-            // Preserve the Firebase identity; onboarding can be retried safely.
+          if (errCode === "IDENTITY_CONFLICT") {
             await recoverFromAuthFailure(auth, regError);
-            showNotification(getRegistrationErrorMessage(regError, "signup"), "error");
-            setLoading(false);
-          }
-        } else {
-          await recoverFromAuthFailure(auth, loginError);
-          if (loginError.response?.data?.code === "IDENTITY_CONFLICT") {
             showNotification(
               "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
               "warning",
@@ -668,14 +627,101 @@ function SignUp() {
             );
             return;
           }
+
+          // If the error is about duplicate email/username, redirect to sign-in
+          if (
+            errCode === "USERNAME_TAKEN" ||
+            errCode === "EMAIL_TAKEN" ||
+            errMsg.includes("already") ||
+            errMsg.includes("duplicate")
+          ) {
+            await auth.signOut();
+            socialAuthRef.current = false;
+            appNavigate("/signin", {
+              flash: {
+                type: "info",
+                message:
+                  "An account already exists with this email address. Please sign in instead.",
+              },
+              replace: true,
+            });
+            setLoading(false);
+            return;
+          }
+
+          // Preserve the Firebase identity; onboarding can be retried safely.
+          await recoverFromAuthFailure(auth, regError);
+          showNotification(getRegistrationErrorMessage(regError, "signup"), "error");
+          setLoading(false);
+        }
+      } else {
+        await recoverFromAuthFailure(auth, loginError);
+        if (loginError.response?.data?.code === "IDENTITY_CONFLICT") {
           showNotification(
-            "An error occurred while checking your account. Please try again.",
-            "error",
+            "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+            "warning",
+            7000,
           );
+          return;
+        }
+        showNotification(
+          "An error occurred while checking your account. Please try again.",
+          "error",
+        );
+        setLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user && isMounted) {
+          setLoading(true);
+          socialAuthRef.current = true;
+          sessionStorage.setItem("socialAuthInProgress", "1");
+          await processSocialSignupUser(result.user);
+        }
+      } catch (error) {
+        if (isMounted) {
+          await recoverFromAuthFailure(auth, error);
+          showNotification(getRegistrationErrorMessage(error, "signup"), "error");
+        }
+      } finally {
+        if (isMounted) {
+          socialAuthRef.current = false;
+          sessionStorage.removeItem("socialAuthInProgress");
           setLoading(false);
         }
       }
+    };
+    checkRedirect();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSocialSignup = async (provider, providerName = "Google") => {
+    setLoading(true);
+    socialAuthRef.current = true;
+    sessionStorage.setItem("socialAuthInProgress", "1"); // tell RequireNonAdmin to skip redirect
+    try {
+      const result = await signInWithPopup(auth, provider);
+      if (result?.user) {
+        await processSocialSignupUser(result.user);
+      }
     } catch (error) {
+      if (error.code === "auth/popup-blocked" || error.code === "auth/cancelled-popup-request") {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectError) {
+          await recoverFromAuthFailure(auth, redirectError);
+          showNotification(getRegistrationErrorMessage(redirectError, "signup"), "error");
+        }
+      }
       await recoverFromAuthFailure(auth, error);
       if (error.code !== "auth/cancelled-popup-request")
         showNotification(
@@ -689,8 +735,11 @@ function SignUp() {
     }
   };
 
-  const handleGoogleSignup = () =>
-    handleSocialSignup(new GoogleAuthProvider(), "Google");
+  const handleGoogleSignup = () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    handleSocialSignup(provider, "Google");
+  };
   const handleFacebookSignup = () =>
     handleSocialSignup(new FacebookAuthProvider(), "Facebook");
 

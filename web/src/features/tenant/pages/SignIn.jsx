@@ -18,6 +18,8 @@ import PasswordVisibilityButton from "../../../shared/components/PasswordVisibil
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
 } from "firebase/auth";
@@ -470,159 +472,175 @@ function SignIn() {
  showNotification(getFirebaseErrorMessage(error, "login"), "error");
   } finally {
   clearLoginInProgress();
-  setSubmitting(false);
- setGlobalLoading(false);
- }
- };
+    setGlobalLoading(false);
+  }
+};
 
- const handleSocialLogin = async (provider) => {
- setSocialLoading(true);
- setGlobalLoading(true);
- sessionStorage.setItem("socialAuthInProgress", "1");
- try {
- const result = await signInWithPopup(auth, provider);
- const firebaseUser = result.user;
+  const processSocialUser = async (firebaseUser) => {
+    // Branch admins and owners bypass email verification checks.
+    const tokenResult = await firebaseUser.getIdTokenResult();
+    const isAdmin = hasAdminClaims(tokenResult);
+    if (!firebaseUser.emailVerified && !isAdmin) {
+      await auth.signOut();
+      showNotification(
+        "Please verify your email before logging in. Check your inbox for the verification link.",
+        "warning",
+      );
+      setGlobalLoading(false);
+      return;
+    }
 
- // Branch admins and owners bypass email verification checks.
- const tokenResult = await firebaseUser.getIdTokenResult();
- const isAdmin = hasAdminClaims(tokenResult);
- if (!firebaseUser.emailVerified && !isAdmin) {
- await auth.signOut();
- showNotification(
- "Please verify your email before logging in. Check your inbox for the verification link.",
- "warning",
- );
- setGlobalLoading(false);
- return;
- }
+    try {
+      const loginResponse = await login();
+      resetLockoutState();
+      handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
+    } catch (loginError) {
+      const status = loginError.response?.status;
+      const errMsg = loginError.message || "";
 
- try {
- const loginResponse = await login();
- resetLockoutState();
- handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
- } catch (loginError) {
- const status = loginError.response?.status;
- const errMsg = loginError.message || "";
+      if (
+        status === 404 ||
+        /not found|not registered|register first/i.test(errMsg)
+      ) {
+        await recoverFromAuthFailure(auth, loginError);
+        showNotification(
+          "This Google account is not registered yet. Please sign up first.",
+          "warning",
+          6000,
+        );
+        navigate("/signup", {
+          state: {
+            email: firebaseUser.email,
+            name: firebaseUser.displayName,
+          },
+          replace: true,
+        });
+        return;
+      }
 
- if (
- status === 404 ||
- /not found|not registered|register first/i.test(errMsg)
- ) {
- try {
- const rawName = (firebaseUser.displayName || "")
- .replace(/[^a-zA-Z\s'-]/g, "")
- .replace(/\s+/g, " ")
- .trim();
- const parts = rawName.split(" ");
- const firstName = formatProperCase(parts[0] || "User");
- const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
+      // Preserve the Firebase identity for non-404 backend failures.
+      await recoverFromAuthFailure(auth, loginError);
 
-          for (let attempt = 0; attempt < 5; attempt += 1) {
-            try {
-              const usernameCandidate =
-                attempt < 4
-                  ? generateUsername(firebaseUser.email, attempt)
-                  : `${generateUsername(firebaseUser.email, 0)}_${Date.now().toString(36).slice(-4)}`;
-              await authApi.register({
-                email: firebaseUser.email,
-                username: usernameCandidate,
-                firstName: sanitizeName(firstName).trim(),
-                lastName: sanitizeName(lastName).trim(),
-                phone: firebaseUser.phoneNumber || "",
-              });
-              break;
-            } catch (regAttemptError) {
-              const code = regAttemptError?.code || regAttemptError?.response?.data?.code;
-              if (code !== "USERNAME_TAKEN") throw regAttemptError;
-            }
+      if (status === 403) {
+        const code = loginError.response?.data?.code;
+        if (code === "EMAIL_NOT_VERIFIED") {
+          showNotification(
+            "Please verify your email before logging in.",
+            "warning",
+          );
+        } else {
+          showNotification(
+            "Your account is inactive. Please contact support.",
+            "error",
+          );
+        }
+      } else if (status === 409 && loginError.response?.data?.code === "IDENTITY_CONFLICT") {
+        showNotification(
+          "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+          "warning",
+          7000,
+        );
+      } else {
+        showNotification(
+          "Login failed. Please try again or contact support.",
+          "error",
+        );
+      }
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user && isMounted) {
+          setSocialLoading(true);
+          setGlobalLoading(true);
+          sessionStorage.setItem("socialAuthInProgress", "1");
+          await processSocialUser(result.user);
+        }
+      } catch (error) {
+        if (isMounted) {
+          if (
+            error.code === "auth/account-exists-with-different-credential" ||
+            error.code === "auth/email-already-in-use"
+          ) {
+            try { await auth.signOut(); } catch (_) { /* ignore */ }
+            showNotification(
+              "This email is already registered with a password. Please sign in with your email and password instead.",
+              "warning",
+              6000,
+            );
+          } else {
+            await recoverFromAuthFailure(auth, error);
+            showNotification(getFirebaseErrorMessage(error, "login"), "error");
           }
- const postRegLogin = await login();
- resetLockoutState();
- handlePostAuthFlow(postRegLogin, firebaseUser.displayName || firebaseUser.email || "there");
- return;
- } catch (autoRegError) {
- await recoverFromAuthFailure(auth, autoRegError);
- const regErrCode = autoRegError.response?.data?.code || autoRegError.code || "";
- if (regErrCode === "IDENTITY_CONFLICT") {
- showNotification(
- "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
- "warning",
- 7000,
- );
- return;
- }
- showNotification(
- "Account registration could not be completed. Please try signing up or contact support.",
- "error",
- );
- return;
- }
- }
+        }
+      } finally {
+        if (isMounted) {
+          sessionStorage.removeItem("socialAuthInProgress");
+          setSocialLoading(false);
+          setGlobalLoading(false);
+        }
+      }
+    };
+    checkRedirect();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
- // Preserve the Firebase identity for non-404 backend failures.
- await recoverFromAuthFailure(auth, loginError);
+  const handleSocialLogin = async (provider) => {
+    setSocialLoading(true);
+    setGlobalLoading(true);
+    sessionStorage.setItem("socialAuthInProgress", "1");
+    try {
+      const result = await signInWithPopup(auth, provider);
+      if (result?.user) {
+        await processSocialUser(result.user);
+      }
+    } catch (error) {
+      if (error.code === "auth/popup-blocked" || error.code === "auth/cancelled-popup-request") {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectError) {
+          await recoverFromAuthFailure(auth, redirectError);
+          showNotification(getFirebaseErrorMessage(redirectError, "login"), "error");
+        }
+      }
+      if (error.code === "auth/popup-closed-by-user") {
+        setGlobalLoading(false);
+        showNotification("Sign-in cancelled", "info");
+        return;
+      }
+      if (
+        error.code === "auth/account-exists-with-different-credential" ||
+        error.code === "auth/email-already-in-use"
+      ) {
+        try { await auth.signOut(); } catch (_) { /* ignore */ }
+        showNotification(
+          "This email is already registered with a password. Please sign in with your email and password instead.",
+          "warning",
+          6000,
+        );
+        return;
+      }
+      await recoverFromAuthFailure(auth, error);
+      showNotification(getFirebaseErrorMessage(error, "login"), "error");
+    } finally {
+      sessionStorage.removeItem("socialAuthInProgress");
+      setSocialLoading(false);
+      setGlobalLoading(false);
+    }
+  };
 
- if (status === 403) {
- const code = loginError.response?.data?.code;
- if (code === "EMAIL_NOT_VERIFIED") {
- showNotification(
- "Please verify your email before logging in.",
- "warning",
- );
- } else {
- showNotification(
- "Your account is inactive. Please contact support.",
- "error",
- );
- }
- } else if (status === 409 && loginError.response?.data?.code === "IDENTITY_CONFLICT") {
- showNotification(
- "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
- "warning",
- 7000,
- );
- } else {
- showNotification(
- "Login failed. Please try again or contact support.",
- "error",
- );
- }
- }
- } catch (error) {
- if (error.code === "auth/popup-closed-by-user") {
- setGlobalLoading(false);
- showNotification("Sign-in cancelled", "info");
- return;
- }
- if (error.code === "auth/cancelled-popup-request") {
- setGlobalLoading(false);
- return;
- }
- // Provider conflict: user registered with email/password, attempted Google sign-in.
- // Do NOT delete — the existing account belongs to this user.
- if (
- error.code === "auth/account-exists-with-different-credential" ||
- error.code === "auth/email-already-in-use"
- ) {
- try { await auth.signOut(); } catch (_) { /* ignore */ }
- showNotification(
- "This email is already registered with a password. Please sign in with your email and password instead.",
- "warning",
- 6000,
- );
- return;
- }
- await recoverFromAuthFailure(auth, error);
- showNotification(getFirebaseErrorMessage(error, "login"), "error");
- } finally {
- sessionStorage.removeItem("socialAuthInProgress");
- setSocialLoading(false);
- setGlobalLoading(false);
- }
- };
-
- const handleGoogleLogin = () =>
- handleSocialLogin(new GoogleAuthProvider());
+  const handleGoogleLogin = () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    handleSocialLogin(provider);
+  };
  const handleFacebookLogin = () =>
  handleSocialLogin(new FacebookAuthProvider());
 

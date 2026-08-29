@@ -1372,6 +1372,7 @@ function ReservationsPage() {
                         <optgroup label="Active Workflow">
                           <option value="new">New Applications ({counts.isNew})</option>
                           <option value="under_review">Under Review ({counts.pendingReview})</option>
+                          <option value="needs_revision">Needs Revision ({counts.needsRevision})</option>
                           <option value="approved_for_payment">Approved for Payment ({counts.approvedForPayment})</option>
                           <option value="reserved">Reserved ({counts.reserved})</option>
                           <option value="moveIn">Move In ({counts.movedIn})</option>
@@ -1393,6 +1394,7 @@ function ReservationsPage() {
                         <option value="all">All Active Stages ({counts.categoryActiveWorkflow})</option>
                         <option value="new">New Applications ({counts.isNew})</option>
                         <option value="under_review">Under Review ({counts.pendingReview})</option>
+                        <option value="needs_revision">Needs Revision ({counts.needsRevision})</option>
                         <option value="approved_for_payment">Approved for Payment ({counts.approvedForPayment})</option>
                         <option value="reserved">Reserved ({counts.reserved})</option>
                         <option value="moveIn">Move In ({counts.movedIn})</option>
@@ -1519,20 +1521,7 @@ function ReservationsPage() {
                 setAdvancedFilters(next);
                 setCurrentPage(1);
               }}
-              categoryFilter={categoryFilter}
-              onCategoryFilterChange={(newCat) => {
-                setCategoryFilter(newCat);
-                setStatusFilter("all");
-                setCurrentPage(1);
-              }}
-              statusFilter={statusFilter}
-              onStatusFilterChange={(newStatus) => {
-                setStatusFilter(newStatus);
-                setCurrentPage(1);
-              }}
               onReset={() => {
-                setCategoryFilter("all");
-                setStatusFilter("all");
                 setAdvancedFilters({
                   moveIn: "any",
                   applicationDate: "any",
