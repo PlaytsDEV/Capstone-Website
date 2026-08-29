@@ -284,6 +284,14 @@ app.use(
   }),
 );
 
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
+  );
+  next();
+});
+
 app.use(
   helmet({
     contentSecurityPolicy: {
