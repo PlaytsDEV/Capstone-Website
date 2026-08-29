@@ -4,14 +4,18 @@ import { HeroSection } from "../components/HeroSection";
 import { JourneyHighlightsSection } from "../components/JourneyHighlightsSection";
 import { BenefitsSection } from "../components/BenefitsSection";
 import { RoomInventory } from "../components/RoomInventory";
-import { FacilitiesSection } from "../components/FacilitiesSection";
-import { LocationSection } from "../components/LocationSection";
 import ScrollReveal from "../../../shared/components/ScrollReveal";
 import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import RouteErrorBoundary from "../../../shared/components/RouteErrorBoundary";
 
 // Code-split below-the-fold sections to minimize initial main-thread execution time
+const FacilitiesSection = lazy(() =>
+  import("../components/FacilitiesSection").then((m) => ({ default: m.FacilitiesSection }))
+);
+const LocationSection = lazy(() =>
+  import("../components/LocationSection").then((m) => ({ default: m.LocationSection }))
+);
 const StorytellingSection = lazy(() =>
   import("../components/StorytellingSection").then((m) => ({ default: m.StorytellingSection }))
 );
@@ -252,7 +256,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-up">
           <RouteErrorBoundary name="FacilitiesSection" fallback={<SectionFallback name="Facilities" />}>
-            <FacilitiesSection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
+              <FacilitiesSection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
@@ -261,7 +267,9 @@ function LandingPageContent() {
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-up">
           <RouteErrorBoundary name="LocationSection" fallback={<SectionFallback name="Location" />}>
-            <LocationSection />
+            <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
+              <LocationSection />
+            </Suspense>
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
