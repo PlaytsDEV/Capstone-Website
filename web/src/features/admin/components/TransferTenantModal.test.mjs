@@ -170,3 +170,23 @@ test("Strict terminology invariants are maintained throughout TransferTenantModa
   assert.doesNotMatch(transferModalSource, /\bResident\b/);
   assert.doesNotMatch(transferModalSource, /\bRental Fee\b/);
 });
+
+test("New Room onChange has NO leftover meter-baseline fetch (undefined `fetchTargetBaseline` was stranding the dropdown open on first click)", () => {
+  // The future-only rewrite deleted the `fetchTargetBaseline` useCallback but
+  // left its call in the SearchableRoomSelect onChange. It threw a
+  // ReferenceError before `setIsOpen(false)` could run, so a room pick only
+  // visibly settled after an outside click. The call must be gone.
+  assert.doesNotMatch(modalSource, /fetchTargetBaseline/);
+  // The onChange still commits the room and clears any stale bed.
+  assert.match(
+    transferModalSource,
+    /onChange=\{\(newRoomId\) => \{\s*setRoomId\(newRoomId\);[\s\S]*?setBedId\(""\);\s*\}\}/,
+  );
+});
+
+test("New Room field uses the shared SearchableRoomSelect (pointer-down commit, keyboard support)", () => {
+  assert.match(modalSource, /import SearchableRoomSelect from "\.\/SearchableRoomSelect\.jsx"/);
+  assert.match(transferModalSource, /<SearchableRoomSelect/);
+  // The inline copy is gone from this file.
+  assert.doesNotMatch(modalSource, /function SearchableRoomSelect\(/);
+});
