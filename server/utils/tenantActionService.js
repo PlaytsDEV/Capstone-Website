@@ -1041,6 +1041,28 @@ const DISCARDABLE_ADDENDUM_STATUSES = new Set([
   "awaiting_signatures", "partially_signed",
 ]);
 
+/**
+ * Human-readable one-line summary of why a Contract failed
+ * `validateContractForGeneration`. `validation.missingFields` entries are
+ * `{ field, label }` and `validation.errors` are `{ code, message }` — never
+ * feed the bare objects to string concatenation (they stringify to
+ * "[object Object]"). Missing fields win when present; then error messages;
+ * finally a generic fallback.
+ * @param {{ missingFields?: Array, errors?: Array }} validation
+ * @returns {string}
+ */
+export function summarizeContractValidationGaps(validation = {}) {
+  const missing = (validation.missingFields || [])
+    .map((f) => (typeof f === "string" ? f : f?.label || f?.field))
+    .filter(Boolean);
+  if (missing.length) return missing.join(", ");
+  const errs = (validation.errors || [])
+    .map((e) => (typeof e === "string" ? e : e?.message || e?.code))
+    .filter(Boolean);
+  if (errs.length) return errs.join(", ");
+  return "missing required data";
+}
+
 async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
   const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
@@ -1125,7 +1147,7 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
       throw Object.assign(
         new Error(
           "The room-transfer replacement Contract could not be auto-completed for generation: " +
-          (validation.missingFields?.join(", ") || validation.errors?.join(", ") || "missing required data") +
+          summarizeContractValidationGaps(validation) +
           ". Complete it in the Contracts workspace, then retry the transfer.",
         ),
         { statusCode: 422, code: "ROOM_TRANSFER_CONTRACT_INCOMPLETE", validation },

@@ -14,6 +14,7 @@ import {
   toDateInputValue,
   minScheduleDateStr,
 } from "../utils/transferScheduleDate";
+import { destinationRoomNeedsBed } from "../utils/transferDestinationBed";
 import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
@@ -618,12 +619,15 @@ export function TransferTenantModal({
     (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
-  // Bed selection is required only for shared destination rooms — a private
-  // room has no bed to pick (matches the backend rule in transferStayWorkflow,
-  // which keys off the DESTINATION Room.type, independent of the source).
+  // Bed selection is required for every NON-private destination room — a
+  // private room has no bed to pick. This mirrors the backend canonical rule
+  // (roomRequiresIndividualBed in reservationContractEligibilityService.js:
+  // "private" is the only exemption, every other/unknown room type requires a
+  // bed, fail-safe). Do NOT re-enumerate shared room types here — anything
+  // that is not literally "private" needs a bed, and the backend Contract
+  // validation will reject a non-private transfer that arrives without one.
   const selectedRoomType = selectedRoom?.type || selectedRoom?.roomType || "";
-  const destinationNeedsBed =
-    selectedRoomType === "double-sharing" || selectedRoomType === "quadruple-sharing";
+  const destinationNeedsBed = destinationRoomNeedsBed(selectedRoomType);
   const isCrossTypeTransfer =
     !!selectedRoomType && !!currentRoomType && selectedRoomType !== currentRoomType;
   const prettyRoomType = (t) => String(t || "").replace(/-/g, " ") || "—";

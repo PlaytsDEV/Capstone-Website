@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import { destinationRoomNeedsBed } from "../utils/transferDestinationBed.js";
+
 const modalSource = fs.readFileSync(
   new URL("./TenantWorkspaceModals.jsx", import.meta.url),
   "utf8",
@@ -134,6 +136,46 @@ test("Step 1 gate: room + (bed for shared) + future date + reason + acknowledged
     validateTransferStep1({ roomId: "r2", destinationNeedsBed: false, effectiveTransferDate: "2026-09-05", minDateStr: MIN, reason: "x", hasOutstanding: true, forceOverride: true }).valid,
     true,
   );
+});
+
+test("Step 1 gate honours the canonical bed rule for EVERY non-private destination type", () => {
+  const MIN = "2026-08-30";
+  const base = { roomId: "r1", effectiveTransferDate: "2026-09-05", minDateStr: MIN, reason: "x" };
+  const gate = (roomType, bedId) =>
+    validateTransferStep1({
+      ...base,
+      bedId,
+      destinationNeedsBed: destinationRoomNeedsBed(roomType),
+    }).valid;
+
+  // Private destination — schedulable with no bed.
+  assert.equal(gate("private", ""), true);
+
+  // Double / quadruple / any other non-private type — blocked until a bed is set.
+  for (const t of ["double-sharing", "quadruple-sharing", "triple-sharing", "bunk", "some-new-shared-type"]) {
+    assert.equal(gate(t, ""), false, `${t} with no bed must be blocked`);
+    assert.equal(gate(t, "bed-123"), true, `${t} with a bed must be allowed`);
+  }
+});
+
+test("Room-type transitions: shared↔private flips the bed requirement", () => {
+  // Shared → private: requirement drops, a bed is no longer needed and the
+  // payload sends no targetBedId (the modal passes `destinationNeedsBed ? bedId : undefined`).
+  assert.equal(destinationRoomNeedsBed("double-sharing"), true);
+  assert.equal(destinationRoomNeedsBed("private"), false);
+
+  // Private → shared: requirement returns immediately; with the bed cleared on
+  // room change, step1Valid is false until the admin picks one.
+  const MIN = "2026-08-30";
+  const afterSwitchToShared = validateTransferStep1({
+    roomId: "r-shared",
+    bedId: "", // cleared by onChange when the room changed
+    destinationNeedsBed: destinationRoomNeedsBed("quadruple-sharing"),
+    effectiveTransferDate: "2026-09-05",
+    minDateStr: MIN,
+    reason: "x",
+  }).valid;
+  assert.equal(afterSwitchToShared, false);
 });
 
 test("Settlement is server-canonical: transferPreview, no front-end proration", () => {
