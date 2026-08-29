@@ -429,7 +429,7 @@ export function FAQSection() {
         <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
           <p
             className="text-xs mb-3 tracking-widest uppercase font-semibold select-none"
-            style={{ color: "var(--lp-accent, #D4AF37)" }}
+            style={{ color: "var(--lp-accent-text, #8C6200)" }}
           >
             Instant Answers
           </p>

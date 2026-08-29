@@ -34,12 +34,136 @@ function SectionFallback({ name }) {
   );
 }
 
+const LILYCREST_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Hostel",
+      "@id": "https://www.lilycrest.space/#dormitory",
+      "name": "Lilycrest Dormitory",
+      "url": "https://www.lilycrest.space",
+      "logo": "https://www.lilycrest.space/logo192.png",
+      "image": "https://www.lilycrest.space/og-image.png",
+      "description": "Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Providing quality urban living with 24/7 security and high-speed internet.",
+      "telephone": "+639123456789",
+      "email": "lilycrestadmin@gmail.com",
+      "priceRange": "₱3,500 - ₱15,000",
+      "currenciesAccepted": "PHP",
+      "paymentAccepted": "Bank Transfer, GCash, Maya, Cash",
+      "checkinTime": "14:00",
+      "checkoutTime": "12:00",
+      "amenityFeature": [
+        { "@type": "LocationFeatureSpecification", "name": "Air Conditioning", "value": true },
+        { "@type": "LocationFeatureSpecification", "name": "High-Speed Fiber WiFi", "value": true },
+        { "@type": "LocationFeatureSpecification", "name": "24/7 RFID Biometric Security", "value": true },
+        { "@type": "LocationFeatureSpecification", "name": "Study Lounge", "value": true },
+        { "@type": "LocationFeatureSpecification", "name": "Pantry & Microwave Station", "value": true },
+        { "@type": "LocationFeatureSpecification", "name": "Drinking Water Refill", "value": true }
+      ],
+      "department": [
+        {
+          "@type": "Hostel",
+          "name": "Lilycrest Gil Puyat Branch",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Sen. Gil J. Puyat Ave",
+            "addressLocality": "Makati City",
+            "addressRegion": "Metro Manila",
+            "postalCode": "1200",
+            "addressCountry": "PH"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 14.5552,
+            "longitude": 121.0003
+          }
+        },
+        {
+          "@type": "Hostel",
+          "name": "Lilycrest Guadalupe Branch",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "1212, 9431 Magallanes, Brgy. Guadalupe Nuevo",
+            "addressLocality": "Makati City",
+            "addressRegion": "Metro Manila",
+            "postalCode": "1212",
+            "addressCountry": "PH"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 14.5618,
+            "longitude": 121.0446
+          }
+        }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://www.lilycrest.space/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What are the room rates for Gil Puyat and Guadalupe branches?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Lilycrest offers Quadruple Sharing Rooms (₱3,500–₱4,200/bed/mo), Double Sharing Rooms (₱5,500–₱6,500/bed/mo), and Private Single Rooms (₱9,000–₱11,000/room/mo). All room tiers include air conditioning, private or shared bathrooms, study lockers, and fiber WiFi."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the initial deposit required to secure a reservation?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "To secure a room reservation, Lilycrest requires 1 Month Advance Rent and 1 Month Security Deposit with zero hidden processing charges. The deposit is 100% refundable upon contract completion following standard clearance."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What payment methods are accepted?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Online bank transfers (BDO, BPI, UnionBank), e-wallets (GCash, Maya), and over-the-counter cashier payments at the branch administrative office."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What are the building curfew hours and late entry rules?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Main biometric entrance doors lock securely at 11:00 PM and reopen at 5:00 AM daily. Night-shift professionals (BPO, Healthcare) and students with late classes can obtain late-entry passes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Are visitors allowed inside the dormitory?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Registered daytime guests are welcome in the ground-floor study lounge and lobby from 8:00 AM to 8:00 PM. Visitors are strictly not permitted inside tenant bedrooms to preserve privacy and security."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Are pets and smoking permitted on the premises?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Lilycrest is 100% smoke-free and vape-free across all rooms, hallways, and common spaces. Pets are strictly prohibited to maintain a clean, quiet, and hypoallergenic environment."
+          }
+        }
+      ]
+    }
+  ]
+};
+
 function LandingPageContent() {
   const { theme } = useTheme();
 
   return (
     <div className="landing-page" data-theme={theme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
-      <SEOHead title="Home" description="Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Book a visit today." />
+      <SEOHead
+        title="Home"
+        description="Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Book a visit today."
+        structuredData={LILYCREST_STRUCTURED_DATA}
+      />
 
       {/* A2: Skip-to-content link — visible only on keyboard focus */}
       <a

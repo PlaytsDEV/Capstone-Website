@@ -41,7 +41,7 @@ export function BenefitsSection() {
         <div className="text-center mb-12">
           <p
             className="text-xs mb-3 tracking-widest uppercase font-medium"
-            style={{ color: 'var(--lp-accent)' }}
+            style={{ color: 'var(--lp-accent-text)' }}
           >
             Why Choose Us
           </p>

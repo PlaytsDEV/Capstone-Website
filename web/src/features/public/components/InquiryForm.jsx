@@ -326,7 +326,7 @@ export function InquiryForm() {
       <div className="max-w-3xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-10">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>
+          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
             Get Started
           </p>
           <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>

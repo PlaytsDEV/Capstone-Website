@@ -7,7 +7,7 @@ export function StorytellingSection() {
         <div className="grid lg:grid-cols-2 gap-16 items-center">
           {/* Left - Story */}
           <div>
-            <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>Our Story</p>
+            <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>Our Story</p>
             <h2 className="text-3xl lg:text-4xl font-medium mb-8 tracking-tight leading-tight" style={{ color: 'var(--lp-text)' }}>
               About Lilycrest
             </h2>

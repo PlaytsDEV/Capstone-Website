@@ -43,7 +43,7 @@ export function LocationSection() {
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-10">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>
+          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
             Where We Are
           </p>
           <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
@@ -119,7 +119,7 @@ export function LocationSection() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium mb-4"
                 style={{
                   backgroundColor: 'var(--lp-icon-bg)',
-                  color: 'var(--lp-accent)',
+                  color: 'var(--lp-accent-text)',
                 }}
               >
                 <Building2 className="w-3.5 h-3.5" />

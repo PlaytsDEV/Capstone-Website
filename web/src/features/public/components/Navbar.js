@@ -381,7 +381,7 @@ export function Navigation({ type } = {}) {
                   }}
                   style={{
                     color: activeSection === link.id
-                      ? "var(--lp-accent)"
+                      ? "var(--lp-accent-text)"
                       : (isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)")),
                     fontWeight: activeSection === link.id ? "500" : "300",
                     padding: "12px 0",

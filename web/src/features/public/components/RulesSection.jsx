@@ -46,7 +46,7 @@ export function RulesSection() {
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>
+          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
             Tenant Rules
           </p>
           <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
@@ -63,11 +63,9 @@ export function RulesSection() {
             const Icon = rule.icon;
             const isExpanded = expandedIndex === index;
             return (
-              <button
+              <div
                 key={index}
-                onClick={() => toggleRule(index)}
-                aria-expanded={isExpanded}
-                className="text-left w-full p-6 rounded-2xl transition-[box-shadow,transform] duration-300 cursor-pointer focus:outline-none"
+                className="rounded-2xl transition-[box-shadow,transform] duration-300 overflow-hidden"
                 style={{
                   backgroundColor: 'var(--lp-bg-card)',
                   border: '1px solid var(--lp-border)',
@@ -82,51 +80,62 @@ export function RulesSection() {
                   e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
-                <div className="flex items-center gap-4">
-                  <div
-                    className="w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: 'var(--lp-icon-bg)' }}
+                <h3 className="m-0 p-0 text-base font-normal">
+                  <button
+                    id={`rule-btn-${index}`}
+                    type="button"
+                    onClick={() => toggleRule(index)}
+                    aria-expanded={isExpanded}
+                    aria-controls={`rule-desc-${index}`}
+                    className="text-left w-full p-6 cursor-pointer focus:outline-none flex items-center gap-4 bg-transparent border-none"
                   >
-                    <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
-                  </div>
-                  <h3 className="text-base font-medium tracking-tight flex-1" style={{ color: 'var(--lp-text)' }}>
-                    {rule.title}
-                  </h3>
-                  <ChevronDown
-                    className="w-4 h-4 flex-shrink-0 transition-transform duration-300"
-                    style={{
-                      color: 'var(--lp-text-muted)',
-                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                    }}
-                  />
-                </div>
+                    <div
+                      className="w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: 'var(--lp-icon-bg)' }}
+                    >
+                      <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
+                    </div>
+                    <span className="text-base font-medium tracking-tight flex-1" style={{ color: 'var(--lp-text)' }}>
+                      {rule.title}
+                    </span>
+                    <ChevronDown
+                      className="w-4 h-4 flex-shrink-0 transition-transform duration-300"
+                      style={{
+                        color: 'var(--lp-text-muted)',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  </button>
+                </h3>
                 <div
-                  className="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out"
+                  id={`rule-desc-${index}`}
+                  role="region"
+                  aria-labelledby={`rule-btn-${index}`}
+                  className="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out px-6"
                   style={{
-                    maxHeight: isExpanded ? '120px' : '0px',
+                    maxHeight: isExpanded ? '140px' : '0px',
                     opacity: isExpanded ? 1 : 0,
-                    marginTop: isExpanded ? '12px' : '0px',
+                    marginBottom: isExpanded ? '20px' : '0px',
                   }}
                 >
                   <p className="text-sm leading-relaxed pl-14" style={{ color: 'var(--lp-text-secondary)' }}>
                     {rule.description}
                   </p>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
 
-        {/* Important Warning — enhanced visibility */}
+        {/* Important Warning — clean neutral border with standalone icon */}
         <div
           className="mt-10 p-6 rounded-2xl max-w-3xl mx-auto flex gap-4 items-start"
           style={{
             backgroundColor: 'var(--lp-bg-card)',
             border: '1px solid var(--lp-border)',
-            borderLeft: '3px solid var(--lp-accent)',
           }}
         >
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--lp-accent)' }} />
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--lp-accent-text)' }} />
           <p className="text-sm leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
             <span className="font-semibold" style={{ color: 'var(--lp-text)' }}>Important: </span>
             Violation of house rules may result in warnings, fines, or termination of contract. We maintain these policies to ensure a safe and comfortable environment for all tenants.

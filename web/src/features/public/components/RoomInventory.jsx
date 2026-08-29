@@ -158,7 +158,7 @@ export function RoomInventory() {
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-16">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>
+          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
             Room Options
           </p>
           <h2
@@ -235,7 +235,7 @@ export function RoomInventory() {
                       className="ml-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
                       style={{
                         backgroundColor: 'var(--lp-icon-bg)',
-                        color: 'var(--lp-accent)',
+                        color: 'var(--lp-accent-text)',
                       }}
                     >
                       {room.discountPercent}% OFF
@@ -306,7 +306,7 @@ export function RoomInventory() {
                         }
                       : {
                           border: '1.5px solid var(--lp-accent)',
-                          color: 'var(--lp-accent)',
+                          color: 'var(--lp-accent-text)',
                           backgroundColor: 'transparent',
                           fontWeight: '500',
                         }
@@ -320,7 +320,7 @@ export function RoomInventory() {
                   onMouseLeave={(e) => {
                     if (!room.popular) {
                       e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--lp-accent)';
+                      e.currentTarget.style.color = 'var(--lp-accent-text)';
                     }
                   }}
                 >
@@ -337,7 +337,7 @@ export function RoomInventory() {
           <Link
             to="/applicant/check-availability"
             className="inline-flex items-center gap-2 text-sm font-medium hover:gap-3 transition-all duration-300"
-            style={{ color: 'var(--lp-accent)' }}
+            style={{ color: 'var(--lp-accent-text)' }}
           >
             View All Available Rooms
             <ArrowRight className="w-4 h-4" />

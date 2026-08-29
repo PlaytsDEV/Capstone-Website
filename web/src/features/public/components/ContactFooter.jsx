@@ -119,7 +119,7 @@ export function ContactFooter() {
                     }}
                     className="text-sm font-light transition-colors cursor-pointer"
                     style={{ color: 'var(--lp-text-secondary)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
                   >
                     {link.label}

@@ -57,7 +57,7 @@ export function JourneyHighlightsSection() {
             <span
               className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em]"
               style={{
-                color: "var(--lp-accent)",
+                color: "var(--lp-accent-text)",
                 backgroundColor: "var(--lp-icon-bg)",
                 border: "1px solid var(--lp-border)",
               }}
@@ -161,7 +161,7 @@ export function JourneyHighlightsSection() {
 
                   <span
                     className="mt-8 inline-flex items-center gap-2 text-sm font-semibold"
-                    style={{ color: "var(--lp-accent)" }}
+                    style={{ color: "var(--lp-accent-text)" }}
                   >
                     {item.cta}
                     <ArrowRight

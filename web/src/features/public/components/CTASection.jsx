@@ -26,7 +26,7 @@ export function CTASection() {
           >
             <span
               className="text-xs font-medium tracking-wider uppercase"
-              style={{ color: 'var(--lp-accent)' }}
+              style={{ color: 'var(--lp-accent-text)' }}
             >
               Start Your Journey
             </span>
@@ -38,7 +38,7 @@ export function CTASection() {
             style={{ color: 'var(--lp-text)' }}
           >
             Ready to Find Your{' '}
-            <span style={{ color: 'var(--lp-accent)' }}>New Home</span>?
+            <span style={{ color: 'var(--lp-accent-text)' }}>New Home</span>?
           </h2>
           <p
             className="text-base font-light leading-relaxed mb-10 max-w-2xl mx-auto"

@@ -178,7 +178,7 @@ export function HeroSection() {
             >
               Affordable, Safe,{" "}
               <span className="block">and Comfortable</span>
-              <span style={{ color: "var(--lp-accent)" }}>Dormitory</span>
+              <span style={{ color: "var(--lp-accent-text)" }}>Dormitory</span>
             </motion.h1>
 
             {/* Subheadline */}
@@ -346,7 +346,7 @@ function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
         animate={done ? { scale: [1, 1.15, 1] } : {}}
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="text-lg font-medium inline-block"
-        style={{ color: done ? 'var(--lp-accent)' : (isDark ? 'white' : 'var(--lp-navy)'), transition: 'color 0.5s ease' }}
+        style={{ color: done ? 'var(--lp-accent-text)' : (isDark ? 'white' : 'var(--lp-navy)'), transition: 'color 0.5s ease' }}
       >
         {count}{suffix}
       </motion.span>

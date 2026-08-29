@@ -20,28 +20,41 @@ const DEFAULT_DESCRIPTION =
 
 /**
  * @param {Object} props
- * @param {string} props.title - Page title (will be appended with" | Lilycrest")
+ * @param {string} props.title - Page title (will be appended with " | Lilycrest")
  * @param {string} [props.description] - Meta description for the page
+ * @param {Object|Array} [props.structuredData] - Schema.org JSON-LD object for AI search & Agentic Browsing
  */
-export default function SEOHead({ title, description }) {
- useEffect(() => {
- // Set document title
- document.title = title ? `${title} | ${DEFAULT_TITLE}` : DEFAULT_TITLE;
+export default function SEOHead({ title, description, structuredData }) {
+  useEffect(() => {
+    // Set document title
+    document.title = title ? `${title} | ${DEFAULT_TITLE}` : DEFAULT_TITLE;
 
- // Set or create meta description
- let metaDesc = document.querySelector('meta[name="description"]');
- if (!metaDesc) {
- metaDesc = document.createElement("meta");
- metaDesc.setAttribute("name", "description");
- document.head.appendChild(metaDesc);
- }
- metaDesc.setAttribute("content", description || DEFAULT_DESCRIPTION);
+    // Set or create meta description
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) {
+      metaDesc = document.createElement("meta");
+      metaDesc.setAttribute("name", "description");
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.setAttribute("content", description || DEFAULT_DESCRIPTION);
 
- // Cleanup: reset title on unmount
- return () => {
- document.title = DEFAULT_TITLE;
- };
- }, [title, description]);
+    // Inject Schema.org JSON-LD structured data for Agentic Browsing & AI Search
+    let scriptEl = null;
+    if (structuredData) {
+      scriptEl = document.createElement("script");
+      scriptEl.setAttribute("type", "application/ld+json");
+      scriptEl.textContent = JSON.stringify(structuredData);
+      document.head.appendChild(scriptEl);
+    }
 
- return null;
+    // Cleanup: reset title and remove structured data script on unmount
+    return () => {
+      document.title = DEFAULT_TITLE;
+      if (scriptEl && scriptEl.parentNode) {
+        scriptEl.parentNode.removeChild(scriptEl);
+      }
+    };
+  }, [title, description, structuredData]);
+
+  return null;
 }
