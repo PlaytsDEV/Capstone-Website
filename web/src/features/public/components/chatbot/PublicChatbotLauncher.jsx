@@ -40,47 +40,33 @@ export function PublicChatbotLauncher() {
     setExternalPrompt("");
   };
 
-  // Dynamic footer collision avoidance: elevates bot above the footer when scrolled into view
+  // Dynamic footer collision avoidance via IntersectionObserver (zero forced reflow during scrolling)
   useEffect(() => {
-    let rafId = null;
+    const footer = document.querySelector("footer");
+    if (!footer || typeof IntersectionObserver === "undefined") {
+      setBottomOffset(24);
+      return;
+    }
 
-    const updateFooterOffset = () => {
-      const footer = document.querySelector("footer");
-      if (!footer) {
-        setBottomOffset(24);
-        return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting) {
+          const visibleHeight = entry.intersectionRect.height;
+          setBottomOffset(Math.max(24, Math.round(visibleHeight + 24)));
+        } else {
+          setBottomOffset(24);
+        }
+      },
+      {
+        threshold: [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0],
       }
+    );
 
-      const rect = footer.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-
-      // If the top of the footer enters into the visible viewport
-      if (rect.top < windowHeight) {
-        const visibleFooterHeight = windowHeight - rect.top;
-        setBottomOffset(Math.max(24, Math.round(visibleFooterHeight + 24)));
-      } else {
-        setBottomOffset(24);
-      }
-    };
-
-    const handleScrollOrResize = () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        updateFooterOffset();
-        rafId = null;
-      });
-    };
-
-    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
-    window.addEventListener("resize", handleScrollOrResize, { passive: true });
-
-    // Initial check and on route/layout changes
-    updateFooterOffset();
+    observer.observe(footer);
 
     return () => {
-      window.removeEventListener("scroll", handleScrollOrResize);
-      window.removeEventListener("resize", handleScrollOrResize);
-      if (rafId) cancelAnimationFrame(rafId);
+      observer.disconnect();
     };
   }, [location.pathname]);
 

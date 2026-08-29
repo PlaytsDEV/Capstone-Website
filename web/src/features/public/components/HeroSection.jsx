@@ -105,8 +105,8 @@ export function HeroSection() {
     : "linear-gradient(to right, rgba(255, 255, 255, 0.9) 0%, rgba(243, 230, 184, 0.82) 45%, rgba(232, 211, 146, 0.52) 75%, rgba(212, 175, 55, 0.28) 100%)";
 
   const heroTextPrimary = isDark ? "white" : "var(--lp-navy)";
-  const heroTextSecondary = isDark ? "rgba(255,255,255,0.8)" : "#111111";
-  const heroTextMuted = isDark ? "rgba(255,255,255,0.6)" : "#1f2937";
+  const heroTextSecondary = isDark ? "#F8FAFC" : "#111111";
+  const heroTextMuted = isDark ? "#E2E8F0" : "#1e293b";
 
   return (
     <>
@@ -353,7 +353,7 @@ function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
       >
         {count}{suffix}
       </motion.span>
-      <span className="text-sm font-light" style={{ color: isDark ? 'rgba(255,255,255,0.6)' : '#1f2937' }}>{label}</span>
+      <span className="text-sm font-light" style={{ color: isDark ? '#E2E8F0' : '#1e293b' }}>{label}</span>
     </motion.div>
   );
 }

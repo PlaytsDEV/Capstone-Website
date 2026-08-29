@@ -10,7 +10,7 @@ export default defineConfig({
   },
   build: {
     outDir: "build",
-    sourcemap: false,
+    sourcemap: "hidden",
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       maxParallelFileOps: 20,
@@ -28,6 +28,8 @@ export default defineConfig({
           "vendor-firebase": ["firebase/app", "firebase/auth"],
           "vendor-icons": ["lucide-react", "@tabler/icons-react"],
           "vendor-charts": ["recharts"],
+          "vendor-pdf": ["jspdf", "jspdf-autotable", "html2canvas"],
+          "vendor-motion": ["framer-motion"],
         },
       },
     },

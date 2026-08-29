@@ -1,0 +1,65 @@
+# Lilycrest Dormitory Management System — Full Information
+
+> Complete documentation, room catalog, branch profiles, lease policies, and operational details for Lilycrest Dormitories in Makati City, Philippines.
+
+## 1. Overview
+Lilycrest is a premier urban co-living and dormitory management facility operating multiple branches in Makati City, Philippines. Designed for students, healthcare professionals, and young working professionals seeking safe, modern, and affordable accommodation.
+
+---
+
+## 2. Branches & Locations
+
+### Gil Puyat Branch
+- **Address**: Sen. Gil J. Puyat Ave, Makati City, Metro Manila 1200, Philippines
+- **Coordinates**: Latitude 14.5552, Longitude 121.0003
+- **Proximity**: Walking distance to LRT-1 Gil Puyat Station, DLSU, Arellano University, and Buendia transit hubs.
+- **Facilities**: 24/7 RFID biometric entrance, air-conditioned study hall, pantry & microwave station, laundry lockers.
+
+### Guadalupe Branch
+- **Address**: 1212, 9431 Magallanes, Brgy. Guadalupe Nuevo, Makati City, Metro Manila 1212, Philippines
+- **Coordinates**: Latitude 14.5618, Longitude 121.0446
+- **Proximity**: Walking distance to MRT-3 Guadalupe Station, EDSA bus carousel, and Bonifacio Global City (BGC) transport terminals.
+- **Facilities**: 24/7 security guard, study areas, rooftop drying area, filtered drinking water stations.
+
+---
+
+## 3. Room Categories & Rates
+
+### Quadruple Sharing Room (4 Beds)
+- **Monthly Rent**: ₱3,500 – ₱4,200 per bed / month
+- **Features**: Sturdy bunk beds with comfortable mattresses, personal storage lockers, shared study desks, air conditioning, and shared en-suite or common bathroom.
+
+### Double Sharing Room (2 Beds)
+- **Monthly Rent**: ₱5,500 – ₱6,500 per bed / month
+- **Features**: Twin beds, dedicated wardrobe cabinets, shared study desk, air conditioning, en-suite bathroom, and window ventilation.
+
+### Private Single Room (1 Bed)
+- **Monthly Rent**: ₱9,000 – ₱11,000 per room / month
+- **Features**: Private solo room, double bed, study workstation, dedicated closet, private en-suite bathroom, refrigerator, and quiet study environment.
+
+---
+
+## 4. Lease Terms & Financial Policies
+- **Initial Payment**: 1 Month Advance Rent + 1 Month Security Deposit.
+- **Deposit Refund**: 100% refundable upon contract completion and standard clearance without outstanding damages or utility balances.
+- **Utility Billing**: Sub-metered electricity and pro-rata water calculated monthly through the digital tenant portal.
+- **Payment Channels**: BDO, BPI, UnionBank bank transfers, GCash, Maya, and over-the-counter payments at branch administration desks.
+
+---
+
+## 5. House Rules & Building Regulations
+- **Curfew**: Main entrance locks at 11:00 PM and opens at 5:00 AM. Night-shift workers and evening students can request 24/7 late-entry passes with verification.
+- **Visitors**: Permitted in the ground-floor lobby and study lounge from 8:00 AM to 8:00 PM. Visitors are not allowed in tenant rooms.
+- **Cleanliness & Health**: 100% smoke-free and vape-free facility. Pets are prohibited to ensure a quiet, hygienic, and allergy-safe environment.
+
+---
+
+## 6. Digital Portal & Important URLs
+- **Main Website**: [https://www.lilycrest.space](https://www.lilycrest.space)
+- **Check Room Availability**: [https://www.lilycrest.space/applicant/check-availability](https://www.lilycrest.space/applicant/check-availability)
+- **Public Stay Verification**: [https://www.lilycrest.space/verify-stay](https://www.lilycrest.space/verify-stay)
+- **Sign In / Tenant Portal**: [https://www.lilycrest.space/signin](https://www.lilycrest.space/signin)
+- **Frequently Asked Questions**: [https://www.lilycrest.space/#faq](https://www.lilycrest.space/#faq)
+- **Terms of Service**: [https://www.lilycrest.space/terms-of-service](https://www.lilycrest.space/terms-of-service)
+- **Privacy Policy**: [https://www.lilycrest.space/privacy-policy](https://www.lilycrest.space/privacy-policy)
+- **Contact & Inquiries**: [https://www.lilycrest.space/#inquiry](https://www.lilycrest.space/#inquiry)

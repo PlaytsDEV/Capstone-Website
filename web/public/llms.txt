@@ -1,0 +1,19 @@
+# Lilycrest Dormitory Management System
+
+> Affordable, safe, and fully-furnished dormitory rooms near major universities and business hubs in Makati, Philippines. Providing quality urban living with 24/7 security, high-speed fiber internet, and professional property management.
+
+## Key Information
+- **Locations**: Gil Puyat Branch (Sen. Gil J. Puyat Ave, Makati City) and Guadalupe Branch (Brgy. Guadalupe Nuevo, Makati City)
+- **Room Tiers**: Quadruple Sharing Rooms (₱3,500–₱4,200/bed/mo), Double Sharing Rooms (₱5,500–₱6,500/bed/mo), and Private Single Rooms (₱9,000–₱11,000/room/mo)
+- **Initial Payment**: 1 Month Advance Rent + 1 Month Security Deposit (100% refundable upon move-out clearance)
+- **Payment Methods**: Online Bank Transfers (BDO, BPI, UnionBank), E-wallets (GCash, Maya), and Cashier at branch administrative offices
+- **Amenities**: Air conditioning, fiber WiFi, study lounges, pantry with microwave, 24/7 biometric RFID access, 24/7 CCTV surveillance, and drinking water stations
+
+## Public Links & Resources
+- [Browse Available Rooms & Online Application](https://www.lilycrest.space/applicant/check-availability): View real-time room availability, floor plans, and submit applications.
+- [Public Stay Verification](https://www.lilycrest.space/verify-stay): Verify active residency and contract validity.
+- [Frequently Asked Questions](https://www.lilycrest.space/#faq): Answers to common questions regarding rates, curfew, and requirements.
+- [House Rules & Curfew Policy](https://www.lilycrest.space/#rules): Complete building policies and guest guidelines.
+- [Terms of Service](https://www.lilycrest.space/terms-of-service): Tenant and platform terms of service.
+- [Privacy Policy](https://www.lilycrest.space/privacy-policy): Data privacy and security policy.
+- [Full Documentation](https://www.lilycrest.space/llms-full.txt): Comprehensive detailed documentation for AI agents and web crawlers.
