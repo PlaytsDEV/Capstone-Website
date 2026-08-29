@@ -88,9 +88,12 @@ async function ensureActiveStay(reservation, actorId = null, session = null, pre
   }
   if (existingStay) return existingStay;
 
-  const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || null;
+  const moveInDate = readMoveInDate(reservation);
+  const leaseDuration = Number(reservation?.leaseDuration ?? reservation?.leaseDurationMonths ?? 0);
+  if (!moveInDate || leaseDuration <= 0) return null;
+
   const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
-  if (!moveInDate || !leaseEndDate) return null;
+  if (!leaseEndDate) return null;
 
   const stayRoomId = reservation.roomId?._id || reservation.roomId;
   let branch = reservation.roomId?.branch || predecessorContract?.branch || "";
@@ -805,7 +808,7 @@ export async function resolveValidatedRoomTransferIntent({
   reservationId,
   payload = {},
   requireConfirm = false,
-  materializeStay = false,
+  materializeStay = true,
   actorId = null,
 }) {
   const reservation = await Reservation.findById(reservationId)
@@ -858,22 +861,38 @@ export async function resolveValidatedRoomTransferIntent({
 
   let activeStay = await resolveCurrentStayForReservation(reservation._id);
   if (!activeStay) {
-    // Committing path or validation: the tenant is a
-    // legitimately moved-in resident but has never had a lifecycle action
-    // run yet, so the lazily-created Stay does not exist. Create it now via
-    // the canonical path (identical to Stage B / renewStayWorkflow).
-    activeStay = await ensureActiveStay(reservation, actorId, null, predecessorContract);
-    if (!activeStay) {
-      // ensureActiveStay returns null only when the move-in anchor is
-      // underivable (no moveInDate, or no positive leaseDuration). Surface
-      // that specific lifecycle gap rather than the generic message so the
-      // admin knows what to fix on the reservation.
-      throw Object.assign(
-        new Error(
-          "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
-        ),
-        { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
-      );
+    if (materializeStay) {
+      activeStay = await ensureActiveStay(reservation, actorId, null, predecessorContract);
+      if (!activeStay) {
+        throw Object.assign(
+          new Error(
+            "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+          ),
+          { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+        );
+      }
+    } else {
+      const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || null;
+      const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
+      if (!moveInDate || !leaseEndDate) {
+        throw Object.assign(
+          new Error(
+            "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+          ),
+          { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+        );
+      }
+      activeStay = {
+        tenantId: reservation.userId?._id || reservation.userId,
+        reservationId: reservation._id,
+        branch: reservation.roomId?.branch || predecessorContract?.branch || "",
+        roomId: reservation.roomId?._id || reservation.roomId,
+        bedId: reservation.selectedBed?.id || "bed-1",
+        leaseStartDate: moveInDate,
+        leaseEndDate,
+        monthlyRent: getMonthlyRent(reservation) || predecessorContract?.monthlyRent || 0,
+        status: "active",
+      };
     }
   }
   if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
@@ -917,7 +936,7 @@ export async function resolveValidatedRoomTransferIntent({
 export async function prepareRoomTransferAddendum({ reservationId, payload = {}, actorId = null }) {
   const {
     reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate,
-  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: false, actorId });
+  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: false, materializeStay: false, actorId });
 
   // Was a compatible Draft already prepared for this exact transfer?
   const existing = await resolveRoomTransferSuccessor({ predecessorContractId: predecessorContract._id }).catch(() => null);
