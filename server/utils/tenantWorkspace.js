@@ -594,18 +594,27 @@ function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contract
   if (bedHistoryRecords.length > 0) {
     return bedHistoryRecords.map((record) => {
       const recordRoomId = String(record.roomId?._id || record.roomId || "");
-      const recordBedId = String(record.bedId || "");
+      const recordBedId = String(record.bedId || "").toLowerCase().trim();
       const matchedContract =
-        contracts.find((c) => (
-          (record.stayId && String(c.stayId) === String(record.stayId)) ||
-          (recordRoomId && String(c.roomId) === recordRoomId && recordBedId && String(c.bedId) === recordBedId)
-        )) ||
-        contracts.find((c) => recordRoomId && String(c.roomId) === recordRoomId) ||
+        contracts.find((c) => {
+          const cRoomId = String(c.roomId?._id || c.roomId || "");
+          const cStayId = String(c.stayId?._id || c.stayId || "");
+          const cBedId = String(c.bedId || "").toLowerCase().trim();
+          if (record.stayId && cStayId && String(record.stayId) === cStayId) return true;
+          if (recordRoomId && cRoomId && recordRoomId === cRoomId && recordBedId && cBedId && recordBedId === cBedId) return true;
+          return false;
+        }) ||
+        contracts.find((c) => {
+          const cRoomId = String(c.roomId?._id || c.roomId || "");
+          return recordRoomId && cRoomId && recordRoomId === cRoomId;
+        }) ||
+        (record.moveOutDate ? contracts.find((c) => !c.isCurrent && !c.isCanonical) : contracts.find((c) => c.isCurrent || c.isCanonical)) ||
         contracts[0] ||
         null;
 
       return {
         id: String(record._id),
+        roomId: recordRoomId || null,
         room: record.roomId?.name || record.roomId?.roomNumber || reservation.roomId?.name || "Unknown room",
         roomName: record.roomId?.name || reservation.roomId?.name || "Unknown room",
         branch: record.roomId?.branch || reservation.roomId?.branch || "",
@@ -616,10 +625,10 @@ function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contract
         moveOutDate: record.moveOutDate || null,
         source: "history",
         contract: matchedContract ? {
-          id: String(matchedContract._id),
+          id: String(matchedContract._id || matchedContract.id),
           contractNumber: matchedContract.contractNumber || "Pending",
           status: matchedContract.status,
-          purpose: matchedContract.contractPurpose || "initial",
+          purpose: matchedContract.contractPurpose || matchedContract.purpose || "initial",
           isCurrent: matchedContract.isCurrent,
           leaseStartDate: matchedContract.leaseStartDate || null,
           leaseEndDate: matchedContract.leaseEndDate || null,
@@ -632,11 +641,13 @@ function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contract
   const moveInDate = readMoveInDate(reservation);
   if (!moveInDate) return [];
 
-  const matchedContract = contracts[0] || null;
+  const matchedContract = contracts.find((c) => c.isCurrent || c.isCanonical) || contracts[0] || null;
+  const reservationRoomId = reservation.roomId?._id ? String(reservation.roomId._id) : (reservation.roomId ? String(reservation.roomId) : null);
 
   return [
     {
       id: `fallback:${reservation?._id || reservation?.id || "stay"}`,
+      roomId: reservationRoomId,
       room: reservation.roomId?.name || reservation.roomId?.roomNumber || "Unknown room",
       roomName: reservation.roomId?.name || "Unknown room",
       branch: reservation.roomId?.branch || "",
@@ -647,10 +658,10 @@ function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contract
       moveOutDate: readMoveOutDate(reservation),
       source: "reservation_fallback",
       contract: matchedContract ? {
-        id: String(matchedContract._id),
+        id: String(matchedContract._id || matchedContract.id),
         contractNumber: matchedContract.contractNumber || "Pending",
         status: matchedContract.status,
-        purpose: matchedContract.contractPurpose || "initial",
+        purpose: matchedContract.contractPurpose || matchedContract.purpose || "initial",
         isCurrent: matchedContract.isCurrent,
         leaseStartDate: matchedContract.leaseStartDate || null,
         leaseEndDate: matchedContract.leaseEndDate || null,
@@ -658,6 +669,68 @@ function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contract
       } : null,
     },
   ];
+}
+
+export function buildLeaseExtensionHistory({ stayHistory = [], reservation = {} }) {
+  if (Array.isArray(stayHistory) && stayHistory.length > 1) {
+    const sortedStays = [...stayHistory].sort((a, b) => {
+      const timeA = new Date(a.leaseStartDate || a.createdAt || 0).getTime();
+      const timeB = new Date(b.leaseStartDate || b.createdAt || 0).getTime();
+      return timeA - timeB;
+    });
+
+    const renewalStays = sortedStays.slice(1).filter((stay) => {
+      if (stay.endReason === "room_transfer" && !stay.renewalOfferId && !stay.renewalNotes) {
+        return false;
+      }
+      return Boolean(
+        stay.previousStayId ||
+        stay.renewalOfferId ||
+        stay.renewalNotes ||
+        stay.status === "renewed" ||
+        stay.endReason === "renewed"
+      );
+    });
+
+    if (renewalStays.length > 0) {
+      return renewalStays.map((stay, idx) => {
+        const start = stay.leaseStartDate ? new Date(stay.leaseStartDate) : null;
+        const end = stay.leaseEndDate ? new Date(stay.leaseEndDate) : null;
+        let addedMonths = null;
+        if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          addedMonths = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)));
+        }
+
+        return {
+          id: String(stay._id || stay.id || `renewal-stay-${idx}`),
+          addedMonths,
+          previousDuration: null,
+          newDuration: null,
+          extendedAt: stay.createdAt || stay.leaseStartDate || null,
+          notes: stay.renewalNotes || "",
+          leaseStartDate: stay.leaseStartDate || null,
+          leaseEndDate: stay.leaseEndDate || null,
+          status: stay.status || "renewed",
+        };
+      });
+    }
+  }
+
+  if (Array.isArray(reservation?.leaseExtensions) && reservation.leaseExtensions.length > 0) {
+    return reservation.leaseExtensions.map((entry, index) => ({
+      id: `${reservation._id || reservation.id}:extension:${index}`,
+      addedMonths: Number(entry.addedMonths || 0),
+      previousDuration: Number(entry.previousDuration || 0),
+      newDuration: Number(entry.newDuration || 0),
+      extendedAt: entry.extendedAt || null,
+      notes: entry.notes || "",
+      leaseStartDate: entry.leaseStartDate || null,
+      leaseEndDate: entry.leaseEndDate || null,
+      status: "extended",
+    }));
+  }
+
+  return [];
 }
 
 export function buildTenantWorkspaceEntry({
@@ -869,27 +942,7 @@ export function buildTenantWorkspaceEntry({
       moveInDate: currentStay?.leaseStartDate || readMoveInDate(reservation),
       leaseEndDate,
       daysUntilLeaseEnd,
-      extensionHistory:
-        stayHistory.length > 0
-          ? stayHistory.map((stay) => ({
-              id: String(stay._id || stay.id),
-              addedMonths: null,
-              previousDuration: null,
-              newDuration: null,
-              extendedAt: stay.createdAt || null,
-              notes: stay.renewalNotes || "",
-              leaseStartDate: stay.leaseStartDate || null,
-              leaseEndDate: stay.leaseEndDate || null,
-              status: stay.status || "",
-            }))
-          : (reservation.leaseExtensions || []).map((entry, index) => ({
-              id: `${reservation._id || reservation.id}:extension:${index}`,
-              addedMonths: Number(entry.addedMonths || 0),
-              previousDuration: Number(entry.previousDuration || 0),
-              newDuration: Number(entry.newDuration || 0),
-              extendedAt: entry.extendedAt || null,
-              notes: entry.notes || "",
-            })),
+      extensionHistory: buildLeaseExtensionHistory({ stayHistory, reservation }),
     },
     paymentInfo: {
       currentBalance: billingSummary.currentBalance,

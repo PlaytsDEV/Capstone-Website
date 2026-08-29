@@ -154,13 +154,26 @@ export const globalErrorHandler = (err, req, res, _next) => {
 
   // Mongoose duplicate key error
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
+    const keyVal = err.keyValue || {};
+    const field = Object.keys(keyVal)[0] || "record";
+    const val = keyVal[field];
+    const fieldLabels = {
+      name: "room name",
+      roomNumber: "room number",
+      email: "email address",
+      username: "username",
+      phone: "phone number",
+    };
+    const label = fieldLabels[field] || field;
+    const msg = val
+      ? `A record with the ${label} "${val}" already exists. Please choose a different ${label}.`
+      : `A record with this ${label} already exists. Please choose a different ${label}.`;
     return sendError(
       res,
-      `Duplicate value for field: ${field}`,
+      msg,
       409,
       "DUPLICATE_KEY",
-      { field, value: err.keyValue[field] },
+      [{ field, message: msg }],
     );
   }
 

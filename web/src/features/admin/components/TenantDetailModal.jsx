@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -160,9 +161,17 @@ export default function TenantDetailModal({
   const {
     data: fetchedDetail,
     isLoading: isDetailLoading,
+    refetch: refetchDetail,
   } = useTenantWorkspaceDetail(reservationId);
   const { data: actionContext } = useTenantActionContext(reservationId);
   const markTenantViewedMutation = useMarkTenantAsViewed();
+
+  // Re-fetch live tenant detail when launching the move-out dialog
+  useEffect(() => {
+    if (dialogState.type === "moveOut" && typeof refetchDetail === "function") {
+      refetchDetail();
+    }
+  }, [dialogState.type, refetchDetail]);
 
   // Mark tenant workspace record as viewed by admin upon modal inspection
   useEffect(() => {
@@ -644,20 +653,40 @@ export default function TenantDetailModal({
       })),
       roomHistory: (detail.roomHistory || []).map((entry) => ({
         id: entry.id,
+        roomId: entry.roomId || null,
         branch: formatBranch(entry.branch || basicInfo.branch || detail.branch || "") || "N/A",
         room: entry.roomName || entry.room || "N/A",
         bed: entry.bedLabel || entry.bed || "No bed",
         moveInDate: formatDate(entry.moveInDate),
         moveOutDate: entry.moveOutDate ? formatDate(entry.moveOutDate) : null,
         status: entry.moveOutDate ? "past" : "current",
+        contract: entry.contract || null,
       })),
-      extensionHistory: (leaseInfo.extensionHistory || detail.extensionHistory || []).map((entry) => ({
-        id: entry.id,
-        duration: entry.addedMonths ? `+${entry.addedMonths} month${entry.addedMonths === 1 ? "" : "s"}` : "+0 months",
-        date: formatDate(entry.extendedAt),
-        previousEnd: `${entry.previousDuration || 0} months`,
-        newEnd: `${entry.newDuration || 0} months`,
-      })),
+      extensionHistory: (leaseInfo.extensionHistory || detail.extensionHistory || []).map((entry) => {
+        const addedMonths = Number(entry.addedMonths || 0);
+        const startDateFormatted = entry.leaseStartDate ? formatDate(entry.leaseStartDate) : null;
+        const endDateFormatted = entry.leaseEndDate ? formatDate(entry.leaseEndDate) : null;
+        const dateRange = startDateFormatted && endDateFormatted ? `${startDateFormatted} – ${endDateFormatted}` : null;
+
+        let duration = "+0 months";
+        if (addedMonths > 0) {
+          duration = `+${addedMonths} month${addedMonths === 1 ? "" : "s"}`;
+        } else if (dateRange) {
+          duration = "Lease Extension";
+        }
+
+        return {
+          id: entry.id,
+          duration,
+          date: formatDate(entry.extendedAt || entry.date || entry.leaseStartDate),
+          previousEnd: entry.previousDuration ? `${entry.previousDuration} months` : null,
+          newEnd: entry.newDuration ? `${entry.newDuration} months` : null,
+          startDate: startDateFormatted,
+          endDate: endDateFormatted,
+          dateRange,
+          notes: entry.notes || "",
+        };
+      }),
       paymentHistory: paymentInfo.recentPayments || detail.paymentHistory || [],
       tenantId: detail.tenantId || "",
       userId: detail.userId || detail.tenantId || "",
@@ -709,7 +738,42 @@ export default function TenantDetailModal({
 
   const roomHistory = useMemo(() => {
     const raw = (tenant?.roomHistory && tenant.roomHistory.length > 0)
-      ? tenant.roomHistory
+      ? tenant.roomHistory.map((entry) => {
+          if (entry.contract) return entry;
+          const isCurrent = entry.status === "current" || !entry.moveOutDate;
+          if (isCurrent && dedicatedContract) {
+            return { ...entry, contract: dedicatedContract };
+          }
+          if (Array.isArray(allTenantContracts) && allTenantContracts.length > 0) {
+            const matched =
+              allTenantContracts.find((c) => {
+                const cRoomId = String(c.roomId?._id || c.roomId || "");
+                const entryRoomId = String(entry.roomId || "");
+                if (entryRoomId && cRoomId && entryRoomId === cRoomId) return true;
+                if (entry.room && c.roomNumber && String(entry.room).toLowerCase().includes(String(c.roomNumber).toLowerCase())) return true;
+                return false;
+              }) ||
+              (!isCurrent
+                ? allTenantContracts.find((c) => !c.isCurrent && !c.isCanonical)
+                : allTenantContracts.find((c) => c.isCurrent || c.isCanonical));
+            if (matched) {
+              return {
+                ...entry,
+                contract: {
+                  id: String(matched._id || matched.id),
+                  contractNumber: matched.contractNumber || "Pending",
+                  status: matched.status,
+                  purpose: matched.contractPurpose || matched.purpose || "initial",
+                  isCurrent: matched.isCurrent,
+                  leaseStartDate: matched.leaseStartDate || null,
+                  leaseEndDate: matched.leaseEndDate || null,
+                  approvedMonthlyRate: matched.approvedMonthlyRate || null,
+                },
+              };
+            }
+          }
+          return entry;
+        })
       : (tenant?.branch || tenant?.room)
         ? [
             {
@@ -720,7 +784,7 @@ export default function TenantDetailModal({
               moveInDate: tenant.moveInDate || tenant.moveIn || null,
               moveOutDate: null,
               status: "current",
-              contract: dedicatedContract || null,
+              contract: dedicatedContract || allTenantContracts?.[0] || null,
             },
           ]
         : [];
@@ -732,7 +796,7 @@ export default function TenantDetailModal({
       if (!aIsCurrent && bIsCurrent) return 1;
       return 0;
     });
-  }, [tenant, dedicatedContract]);
+  }, [tenant, dedicatedContract, allTenantContracts]);
 
   const calculatedDueDate = useMemo(() => {
     const warns = tenant?.warnings || [];
@@ -912,7 +976,9 @@ export default function TenantDetailModal({
   const paymentConfig = getPaymentStatusConfig(paymentStatus);
   const occupancyConfig = getOccupancyStatusConfig(occupancyStatus);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
         <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -1033,10 +1099,7 @@ export default function TenantDetailModal({
                       dedicatedContract={dedicatedContract}
                       dedicatedContractError={dedicatedContractError}
                       allTenantContracts={allTenantContracts}
-                      selectedContract={selectedContractOverride}
-                      onSelectContract={setSelectedContractOverride}
                       stayReference={
-                        selectedContractOverride?.contractNumber ||
                         (dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" ? "Conflicting records" : (dedicatedContract || allTenantContracts[0])?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD")
                       }
                       downloadingProof={downloadingProof}
@@ -1044,7 +1107,7 @@ export default function TenantDetailModal({
                       onDownloadStayProof={handleDownloadStayProof}
                       onContractUpdated={(updated) => {
                         setDedicatedContract(updated);
-                        setSelectedContractOverride(updated);
+                        if (setSelectedContractOverride) setSelectedContractOverride(updated);
                       }}
                     />
                     <TenantOverviewTab
@@ -1285,10 +1348,10 @@ export default function TenantDetailModal({
             closeDialog();
             onClose();
           } catch (err) {
+            closeDialog();
             setDialogState((s) => ({ ...s, loading: false }));
             // If blocked because force is needed, surface the force delete modal instead
             if (err?.code === "HARD_DELETE_BLOCKED" && err?.requiresForceDelete) {
-              closeDialog();
               setSafeguardsData(err?.safeguards ?? null);
               setDialogState({ type: "forceDelete", loading: false, error: null });
               showNotification("This account requires Force Delete (owner only). See Force Delete modal.", "warning");
@@ -1489,6 +1552,7 @@ export default function TenantDetailModal({
           }}
         />
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

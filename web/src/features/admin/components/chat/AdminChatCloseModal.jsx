@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Lock, X, LoaderCircle } from "lucide-react";
 
 export default function AdminChatCloseModal({
@@ -18,7 +19,7 @@ export default function AdminChatCloseModal({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const handleConfirm = () => {
     const note = closeNote.trim();
@@ -33,9 +34,9 @@ export default function AdminChatCloseModal({
     onConfirm(note, setCloseNoteError);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
@@ -108,6 +109,7 @@ export default function AdminChatCloseModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

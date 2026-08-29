@@ -37,6 +37,7 @@ import {
   normalizeReservationPayload,
   normalizeReservationStatus,
   readMoveInDate,
+  resolveMoveInConfirmationDate,
   reservationStatusesForQuery,
   utilityEventTypesForQuery,
 } from "../../utils/lifecycleNaming.js";
@@ -662,13 +663,23 @@ export const updateReservation = async (req, res, next) => {
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
+    if (isMoveInTransition) {
+      const confirmedDate = resolveMoveInConfirmationDate({
+        confirmedMoveInDate: req.body.confirmedMoveInDate,
+        actualMoveInDate: req.body.actualMoveInDate,
+        moveInDate: req.body.moveInDate,
+        reservation,
+        fallbackDate: new Date(),
+      });
+      reservation.confirmedMoveInDate = confirmedDate;
+    }
     if (prospectiveWorkflowAssignment) {
       Object.assign(reservation, prospectiveWorkflowAssignment);
     }
     if (isMoveInTransition && usesStructuredInitialPayment(reservation)) {
       await finalizeStructuredAdvanceCoverage({
         reservation,
-        actualMoveInDate: req.body.confirmedMoveInDate,
+        actualMoveInDate: reservation.confirmedMoveInDate,
       });
     }
     // Existing Reservations may contain legacy values on unrelated fields.
@@ -912,14 +923,10 @@ export const updateReservation = async (req, res, next) => {
         await autoGenerateMoveInContract({
           reservationId: updatedReservation._id,
           actualMoveInDate:
+            updatedReservation.confirmedMoveInDate ||
+            req.body.confirmedMoveInDate ||
             req.body.actualMoveInDate ||
-            readMoveInDate({
-              confirmedMoveInDate:
-                req.body.confirmedMoveInDate ?? updatedReservation.confirmedMoveInDate,
-              moveInDate: req.body.moveInDate ?? updatedReservation.moveInDate,
-              intendedMoveInDate: updatedReservation.intendedMoveInDate,
-              targetMoveInDate: updatedReservation.targetMoveInDate,
-            }),
+            readMoveInDate(updatedReservation),
           actorId:
             actorId ||
             updatedReservation.userId?._id ||
@@ -967,7 +974,7 @@ export const updateReservation = async (req, res, next) => {
         await notify.general(
           recipientId,
           "Application Approved for Payment",
-          `Your application for ${roomName} has been approved. You can now proceed to pay the reservation fee to secure your room.`,
+          `Application approved for ${roomName}. You can now proceed to payment to secure your room.`,
           {
             entityType: "reservation",
             entityId: String(updatedReservation._id),
@@ -2173,7 +2180,7 @@ export const updateReservationByUser = async (req, res, next) => {
             await notify.general(
               updatedReservation.userId._id,
               "Physical Visit Preference Saved",
-              `Your preferred visit schedule for ${visitDateLabel} at ${visitTimeLabel} was recorded. Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.`,
+              `Your visit schedule for ${visitDateLabel} at ${visitTimeLabel} has been recorded. We will review and confirm your slot shortly.`,
               {
                 entityType: "reservation",
                 entityId: String(updatedReservation._id),
@@ -2192,7 +2199,7 @@ export const updateReservationByUser = async (req, res, next) => {
             await notify.general(
               updatedReservation.userId._id,
               "2D Remote Viewing Request Submitted",
-              "Your photo-based viewing preference was saved. Payment will only be available after your application and documents are approved.",
+              "Your 2D remote viewing request has been submitted for review.",
               {
                 entityType: "reservation",
                 entityId: String(updatedReservation._id),
@@ -2203,7 +2210,7 @@ export const updateReservationByUser = async (req, res, next) => {
             await notify.general(
               updatedReservation.userId._id,
               "Urgent Move-in Review Requested",
-              "Your urgent move-in request was recorded for admin review. Payment will only be available after your application and documents are approved.",
+              "Your urgent move-in request has been submitted for admin review.",
               {
                 entityType: "reservation",
                 entityId: String(updatedReservation._id),

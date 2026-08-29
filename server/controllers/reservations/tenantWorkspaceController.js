@@ -223,7 +223,11 @@ export const getTenantWorkspaceById = async (req, res) => {
     const { Bill, BedHistory, Stay, Contract, TenantViolation } = await import("../../models/index.js");
     const [bills, bedHistoryRecords, stayHistory, branchRooms, contracts, violations] = await Promise.all([
       Bill.find({
-        reservationId: reservation._id,
+        $or: [
+          { reservationId: reservation._id },
+          { userId: reservation.userId?._id || reservation.userId },
+          { tenantId: reservation.userId?._id || reservation.userId },
+        ],
         isArchived: { $ne: true },
       }).lean(),
       BedHistory.find({

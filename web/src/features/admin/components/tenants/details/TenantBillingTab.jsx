@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   Receipt,
   RefreshCw,
-  Download,
   ArrowRight,
   ChevronDown,
   DollarSign,
@@ -37,33 +36,13 @@ export default function TenantBillingTab({
           <div className="min-w-0">
             <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
               <Receipt className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
-              <span>Itemized Statement of Account</span>
+              <span>Itemized Billing &amp; Financial Ledger</span>
             </h4>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Detailed breakdown of contracted rent, submetered utilities, and move-in deposits
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => onViewBillReceipt && onViewBillReceipt(null)}
-              disabled={generatingReceiptId === "monthly-rent"}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground font-medium text-xs transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
-              title="Download official Statement of Account (SOA) PDF"
-            >
-              {generatingReceiptId === "monthly-rent" ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                  <span>Generating SOA...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                  <span>Download Statement (SOA)</span>
-                </>
-              )}
-            </button>
-
             <button
               type="button"
               onClick={() => onNavigateToBilling && onNavigateToBilling()}
@@ -375,7 +354,7 @@ export default function TenantBillingTab({
                         ? "Excess held stays refundable at move-out clearance. Not auto-refunded."
                         : heldKnown
                           ? "Held in escrow for checkout clearance."
-                          : "This tenancy predates deposit tracking — held amount is not recorded."}
+                          : "This tenancy predates online deposit tracking — held amount is not recorded, but 1 month required deposit carries over automatically upon room transfer."}
                   </div>
                 </div>
               );

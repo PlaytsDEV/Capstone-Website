@@ -327,12 +327,12 @@ const notify = {
 
   visitApproved: (userId, branchName) =>
     createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
-      `Your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Payment will remain locked until your application and documents are approved.`,
+      `Your physical visit schedule for ${branchName} has been confirmed.`,
       { entityType: "reservation" }),
 
   visitRejected: (userId, reason) =>
-    createNotification(userId, "visit_rejected", "Visit Schedule Rejected",
-      `Your visit schedule has been rejected. ${reason || "Please reschedule."}`,
+    createNotification(userId, "visit_rejected", "Visit Schedule Update",
+      `Your visit request could not be confirmed. ${reason || "Please select another schedule."}`,
       { entityType: "reservation" }),
 
   paymentApproved: (userId, billingMonth, amount, options = {}) => {

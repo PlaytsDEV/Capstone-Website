@@ -1,6 +1,6 @@
-import { describe, expect, test } from "@jest/globals";
 import {
   buildBillingSummary,
+  buildLeaseExtensionHistory,
   buildTenantWorkspaceEntry,
   buildTenantWorkspaceStats,
   computeLeaseEndDate,
@@ -262,6 +262,184 @@ describe("tenantWorkspace utilities", () => {
     expect(entry.updatedAt).toBe("2026-02-01T10:00:00.000Z");
     expect(entry.moveInDate).toEqual(new Date("2026-02-01T00:00:00.000Z"));
   });
+
+  describe("buildLeaseExtensionHistory", () => {
+    test("returns an empty array when only 1 initial baseline stay exists", () => {
+      const history = buildLeaseExtensionHistory({
+        stayHistory: [
+          {
+            _id: "stay-initial-1",
+            leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
+            leaseEndDate: new Date("2026-06-30T00:00:00.000Z"),
+            status: "active",
+            previousStayId: null,
+          },
+        ],
+        reservation: { leaseExtensions: [] },
+      });
+
+      expect(history).toEqual([]);
+    });
+
+    test("accurately calculates added months and records genuine renewal stays", () => {
+      const history = buildLeaseExtensionHistory({
+        stayHistory: [
+          {
+            _id: "stay-initial-1",
+            leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
+            leaseEndDate: new Date("2026-06-30T00:00:00.000Z"),
+            status: "renewed",
+            previousStayId: null,
+            endReason: "renewed",
+          },
+          {
+            _id: "stay-renewed-2",
+            leaseStartDate: new Date("2026-07-01T00:00:00.000Z"),
+            leaseEndDate: new Date("2026-12-31T00:00:00.000Z"),
+            status: "active",
+            previousStayId: "stay-initial-1",
+            renewalNotes: "Extended for second semester",
+          },
+        ],
+        reservation: { leaseExtensions: [] },
+      });
+
+      expect(history.length).toBe(1);
+      expect(history[0].id).toBe("stay-renewed-2");
+      expect(history[0].addedMonths).toBe(6);
+      expect(history[0].notes).toBe("Extended for second semester");
+      expect(history[0].leaseStartDate).toEqual(new Date("2026-07-01T00:00:00.000Z"));
+      expect(history[0].leaseEndDate).toEqual(new Date("2026-12-31T00:00:00.000Z"));
+    });
+
+    test("falls back to reservation.leaseExtensions when explicit extension entries exist", () => {
+      const history = buildLeaseExtensionHistory({
+        stayHistory: [],
+        reservation: {
+          _id: "res-ext-1",
+          leaseExtensions: [
+            {
+              addedMonths: 3,
+              previousDuration: 6,
+              newDuration: 9,
+              extendedAt: new Date("2026-03-01T00:00:00.000Z"),
+              notes: "3-month extension",
+            },
+          ],
+        },
+      });
+
+      expect(history.length).toBe(1);
+      expect(history[0].addedMonths).toBe(3);
+      expect(history[0].previousDuration).toBe(6);
+      expect(history[0].newDuration).toBe(9);
+    });
+
+    test("buildTenantWorkspaceEntry leaseInfo.extensionHistory is empty for single stay", () => {
+      const entry = buildTenantWorkspaceEntry({
+        reservation: {
+          _id: "res-single-stay",
+          status: "moveIn",
+          moveInDate: new Date("2026-01-01T00:00:00.000Z"),
+          leaseDuration: 6,
+          roomId: { _id: "room-1", name: "Room 101", branch: "gil-puyat" },
+          selectedBed: { id: "bed-1", position: "lower" },
+          userId: { _id: "u-1", firstName: "Alex", lastName: "Reyes" },
+        },
+        stayHistory: [
+          {
+            _id: "stay-1",
+            leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
+            leaseEndDate: new Date("2026-06-30T00:00:00.000Z"),
+            status: "active",
+          },
+        ],
+        now: new Date("2026-04-15T00:00:00.000Z"),
+      });
+
+      expect(entry.leaseInfo.extensionHistory).toEqual([]);
+    });
+
+    test("accurately maps historical contracts for both current and past stays in roomHistory", () => {
+      const pastRoomId = "room-past-201";
+      const currentRoomId = "room-curr-222";
+
+      const pastContract = {
+        _id: "contract-past-1",
+        contractNumber: "LIL-GP-2026-00085",
+        contractPurpose: "initial",
+        status: "replaced",
+        isCurrent: false,
+        isCanonical: false,
+        roomId: pastRoomId,
+        bedId: "bed-1",
+        leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        leaseEndDate: new Date("2026-06-30T00:00:00.000Z"),
+        approvedMonthlyRate: 5000,
+      };
+
+      const currentContract = {
+        _id: "contract-curr-2",
+        contractNumber: "LIL-GP-2026-00107",
+        contractPurpose: "amendment",
+        status: "active",
+        isCurrent: true,
+        isCanonical: true,
+        roomId: currentRoomId,
+        bedId: "bed-2",
+        leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
+        leaseEndDate: new Date("2026-12-31T00:00:00.000Z"),
+        approvedMonthlyRate: 5500,
+      };
+
+      const entry = buildTenantWorkspaceEntry({
+        reservation: {
+          _id: "res-transfer-1",
+          status: "moveIn",
+          moveInDate: new Date("2026-01-01T00:00:00.000Z"),
+          roomId: { _id: currentRoomId, name: "Room 222", branch: "gil-puyat" },
+          selectedBed: { id: "bed-2", position: "bed-2" },
+          userId: { _id: "u-1", firstName: "Gil", lastName: "Puyat" },
+        },
+        contracts: [currentContract, pastContract],
+        bedHistoryRecords: [
+          {
+            _id: "bed-hist-curr",
+            roomId: { _id: currentRoomId, name: "Room 222", branch: "gil-puyat" },
+            bedId: "bed-2",
+            moveInDate: new Date("2026-08-28T00:00:00.000Z"),
+            moveOutDate: null,
+            status: "active",
+          },
+          {
+            _id: "bed-hist-past",
+            roomId: { _id: pastRoomId, name: "Room 201", branch: "gil-puyat" },
+            bedId: "bed-1",
+            moveInDate: new Date("2026-08-28T00:00:00.000Z"),
+            moveOutDate: new Date("2026-08-28T00:00:00.000Z"),
+            status: "completed",
+          },
+        ],
+        now: new Date("2026-08-29T00:00:00.000Z"),
+      });
+
+      expect(entry.roomHistory).toHaveLength(2);
+      
+      const currentEntry = entry.roomHistory.find((r) => r.id === "bed-hist-curr");
+      expect(currentEntry).toBeDefined();
+      expect(currentEntry.contract).toBeDefined();
+      expect(currentEntry.contract.contractNumber).toBe("LIL-GP-2026-00107");
+      expect(currentEntry.roomId).toBe(currentRoomId);
+
+      const pastEntry = entry.roomHistory.find((r) => r.id === "bed-hist-past");
+      expect(pastEntry).toBeDefined();
+      expect(pastEntry.contract).toBeDefined();
+      expect(pastEntry.contract.contractNumber).toBe("LIL-GP-2026-00085");
+      expect(pastEntry.contract.isCurrent).toBe(false);
+      expect(pastEntry.roomId).toBe(pastRoomId);
+    });
+  });
 });
+
 
 

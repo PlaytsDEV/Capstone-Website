@@ -246,9 +246,9 @@ export const getMyBills = async (req, res, next) => {
     await ensureTenantCurrentRentBill(dbUser._id);
 
     const bills = await Bill.find({
-      userId: dbUser._id,
+      $or: [{ userId: dbUser._id }, { tenantId: dbUser._id }],
       status: { $ne: "draft" },
-      isArchived: false,
+      isArchived: { $ne: true },
     })
       .populate("roomId", "name branch type price monthlyPrice")
       .populate("reservationId", "pricingSnapshot reservationFeeAmount monthlyRent rentAmount advanceRent securityDeposit financialWorkflowVersion initialPaymentBreakdown")

@@ -1093,12 +1093,14 @@ function VisitAvailabilityTab() {
       {/* REAL-TIME LIVE SLOT MONITOR */}
       <section className="visit-card visit-card--full">
         <div className="visit-card__header">
-          <div className="visit-card__header-icon">
-            <Users size={18} />
-          </div>
-          <div>
-            <h3>Real-Time Live Slot Occupancy Monitor</h3>
-            <p>Inspect visitor bookings and remaining slot capacities for any selected calendar date.</p>
+          <div className="visit-card__header-main">
+            <div className="visit-card__header-icon">
+              <Users size={18} />
+            </div>
+            <div className="visit-card__header-text">
+              <h3>Real-Time Live Slot Occupancy Monitor</h3>
+              <p>Inspect visitor bookings and remaining slot capacities for any selected calendar date.</p>
+            </div>
           </div>
           <div className="visit-live-picker-group">
             <label>
@@ -1220,12 +1222,14 @@ function VisitAvailabilityTab() {
       {/* FULL-WIDTH CARD 4: BLACKOUT DATES & SPECIAL CLOSURES */}
       <section className="visit-card visit-card--full">
         <div className="visit-card__header">
-          <div className="visit-card__header-icon">
-            <CalendarX size={18} />
-          </div>
-          <div>
-            <h3>Blackout Dates & Special Closures</h3>
-            <p>Block specific calendar dates for holidays, maintenance, or staff events.</p>
+          <div className="visit-card__header-main">
+            <div className="visit-card__header-icon">
+              <CalendarX size={18} />
+            </div>
+            <div className="visit-card__header-text">
+              <h3>Blackout Dates & Special Closures</h3>
+              <p>Block specific calendar dates for holidays, maintenance, or staff events.</p>
+            </div>
           </div>
           <div className="visit-blackout-header-actions">
             <button
@@ -1244,56 +1248,58 @@ function VisitAvailabilityTab() {
         {/* TOOLBAR: SEARCH, STATUS TABS, SORT, & EXPIRED CLEANUP */}
         {draft.blackoutDates.length > 0 && (
           <div className="visit-blackout-toolbar">
-            <div className="visit-blackout-search">
-              <Search size={14} className="text-slate-400" />
-              <input
-                type="text"
-                placeholder="Filter by date or reason..."
-                value={blackoutSearch}
-                onChange={(e) => setBlackoutSearch(e.target.value)}
-                aria-label="Filter blackout dates"
-              />
-              {blackoutSearch && (
+            <div className="visit-blackout-toolbar-left">
+              <div className="visit-blackout-search">
+                <Search size={14} className="text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter by date or reason..."
+                  value={blackoutSearch}
+                  onChange={(e) => setBlackoutSearch(e.target.value)}
+                  aria-label="Filter blackout dates"
+                />
+                {blackoutSearch && (
+                  <button
+                    type="button"
+                    className="visit-blackout-search-clear"
+                    onClick={() => setBlackoutSearch("")}
+                    title="Clear search filter"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+
+              <div className="visit-blackout-tabs">
                 <button
                   type="button"
-                  className="visit-blackout-search-clear"
-                  onClick={() => setBlackoutSearch("")}
-                  title="Clear search filter"
+                  className={`visit-blackout-tab ${blackoutStatusFilter === "all" ? "active" : ""}`}
+                  onClick={() => setBlackoutStatusFilter("all")}
                 >
-                  &times;
+                  All ({blackoutStats.total})
                 </button>
-              )}
-            </div>
-
-            <div className="visit-blackout-tabs">
-              <button
-                type="button"
-                className={`visit-blackout-tab ${blackoutStatusFilter === "all" ? "active" : ""}`}
-                onClick={() => setBlackoutStatusFilter("all")}
-              >
-                All ({blackoutStats.total})
-              </button>
-              <button
-                type="button"
-                className={`visit-blackout-tab ${blackoutStatusFilter === "upcoming" ? "active" : ""}`}
-                onClick={() => setBlackoutStatusFilter("upcoming")}
-              >
-                Upcoming ({blackoutStats.upcoming})
-              </button>
-              <button
-                type="button"
-                className={`visit-blackout-tab ${blackoutStatusFilter === "today" ? "active" : ""}`}
-                onClick={() => setBlackoutStatusFilter("today")}
-              >
-                Today ({blackoutStats.today})
-              </button>
-              <button
-                type="button"
-                className={`visit-blackout-tab ${blackoutStatusFilter === "past" ? "active" : ""}`}
-                onClick={() => setBlackoutStatusFilter("past")}
-              >
-                Past ({blackoutStats.past})
-              </button>
+                <button
+                  type="button"
+                  className={`visit-blackout-tab ${blackoutStatusFilter === "upcoming" ? "active" : ""}`}
+                  onClick={() => setBlackoutStatusFilter("upcoming")}
+                >
+                  Upcoming ({blackoutStats.upcoming})
+                </button>
+                <button
+                  type="button"
+                  className={`visit-blackout-tab ${blackoutStatusFilter === "today" ? "active" : ""}`}
+                  onClick={() => setBlackoutStatusFilter("today")}
+                >
+                  Today ({blackoutStats.today})
+                </button>
+                <button
+                  type="button"
+                  className={`visit-blackout-tab ${blackoutStatusFilter === "past" ? "active" : ""}`}
+                  onClick={() => setBlackoutStatusFilter("past")}
+                >
+                  Past ({blackoutStats.past})
+                </button>
+              </div>
             </div>
 
             <div className="visit-blackout-toolbar-right">

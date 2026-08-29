@@ -30,11 +30,14 @@ const ERROR_MAP = [
   [/is\s*not\s*a\s*valid\s*enum\s*value|not\s*a\s*valid\s*enum|validation\s*failed/i, "Some required information is invalid or missing. Please check your details and try again."],
   [/validationerror/i, "Some required information is invalid. Please check your details and try again."],
 
+  // Reserved booking delete guard
+  [/confirmed\s+reserved\s+bookings\s+cannot\s+be\s+deleted|cannot\s+be\s+deleted\s+directly/i, "Active and confirmed reservations cannot be deleted directly. Please cancel the reservation or complete the move-in first."],
+
   // Not found
   [/not\s*found|404/i, "The requested item could not be found. It may have been deleted."],
 
   // Server
-  [/500|internal\s*server/i, "Something went wrong on our end. Please try again later."],
+  [/500|internal\s*server/i, "Unable to complete your request right now. Please try again."],
   [/503|service\s*unavailable/i, "The service is temporarily unavailable. Please try again later."],
 
   // Firebase auth (these come through getFirebaseErrorMessage usually, but just in case)
@@ -54,12 +57,22 @@ const ERROR_MAP = [
  * @param {string} [fallback] - Custom fallback message if no pattern matches
  * @returns {string} User-friendly error message
  */
-export function getFriendlyError(error, fallback = "Something went wrong. Please try again.") {
+export function getFriendlyError(error, fallback = "Unable to complete your request right now. Please try again.") {
   if (!error) return fallback;
 
   // Extract the raw message string
-  const serverMsg = error?.response?.data?.error || error?.response?.data?.message;
-  const rawMsg = typeof error === "string" ? error : (serverMsg || error?.message || "");
+  const validationDetail = Array.isArray(error?.response?.data?.error?.details)
+    ? error.response.data.error.details[0]?.message
+    : null;
+
+  const serverMsg =
+    validationDetail ||
+    error?.response?.data?.error?.message ||
+    (typeof error?.response?.data?.error === "string" ? error?.response?.data?.error : null) ||
+    error?.response?.data?.message ||
+    (typeof error?.message === "string" ? error.message : "");
+
+  const rawMsg = typeof error === "string" ? error : (serverMsg || "");
 
   const isCodeError =
     error instanceof TypeError ||
@@ -72,8 +85,11 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
     /TypeError|ReferenceError|SyntaxError|RangeError|MongoError|CastError|ValidationError|is not a valid enum value|not a valid enum|(?:\r?\n|^)\s*at\s+[\w.<>$]+|Internal\s*Server\s*Error|is not a function|cannot read propert|is not defined|undefined is not|null is not|objects are not valid as a react child|maximum call stack|chunkloaderror/i.test(rawMsg);
 
   // If the server sent a clean domain message (no stack trace or internal code errors), use it directly
-  if (serverMsg && typeof serverMsg === "string" && !isCodeError) {
-    return serverMsg;
+  if (serverMsg && typeof serverMsg === "string" && !isCodeError && serverMsg.trim().length > 0) {
+    // If it's a generic "Validation failed" string and we have no detail, pattern match or fallback
+    if (serverMsg.toLowerCase() !== "validation failed") {
+      return serverMsg;
+    }
   }
 
   // Try pattern matching
@@ -82,7 +98,7 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
   }
 
   // If the raw message is clean (no stack trace / code error content), use it
-  if (rawMsg && typeof rawMsg === "string" && !isCodeError && rawMsg.length < 400) {
+  if (rawMsg && typeof rawMsg === "string" && !isCodeError && rawMsg.length < 400 && rawMsg.trim().length > 0) {
     return rawMsg;
   }
 

@@ -501,6 +501,7 @@ const AuditLogsPage = () => {
         3500,
       );
     } catch (error) {
+      setIsCleanupConfirmOpen(false);
       showNotification(
         error.message || "Failed to clean up old logs.",
         "error",

@@ -47,6 +47,19 @@ describe("contractPricingResolver — Lease Duration Classification & Dual-Tier 
       expect(pricing.monthlyPrice).toBe(13500);
       expect(pricing.longTermDiscountPercent).toBe(10);
     });
+
+    test("resolves custom regularLongRate and regularShortRate override", () => {
+      const pricing = resolveRoomDiscountPricing("private", {
+        isDiscountEnabled: true,
+        privateDiscountPercent: 10,
+      }, { regularLongRate: 2000, regularShortRate: 2000 });
+
+      expect(pricing.regularShortRate).toBe(2000);
+      expect(pricing.shortTermRate).toBe(1800);
+      expect(pricing.regularLongRate).toBe(2000);
+      expect(pricing.monthlyPrice).toBe(1800);
+      expect(pricing.longTermDiscountPercent).toBe(10);
+    });
   });
 
   describe("resolveAuthoritativeLeasePricing — 1-5 months Short-Term vs 6-12 months Long-Term", () => {

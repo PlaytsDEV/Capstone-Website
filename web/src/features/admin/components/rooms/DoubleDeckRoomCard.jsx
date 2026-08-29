@@ -13,6 +13,16 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
   const capacity = Number(room.capacity || 0);
   const isPrivate = String(room.type || "").toLowerCase().includes("private");
 
+  const rawRoomName = typeof room.name === "string" ? room.name.trim() : "";
+  const rawRoomNum = String(room.roomNumber || "").trim();
+  const hasDistinctName =
+    Boolean(rawRoomName) &&
+    rawRoomName.toLowerCase() !== rawRoomNum.toLowerCase() &&
+    rawRoomName.toLowerCase() !== `room ${rawRoomNum}`.toLowerCase();
+
+  const formattedType = room.type ? room.type.replace("-", " ") : "Standard";
+  const subtitleText = hasDistinctName ? `${rawRoomName} • ${formattedType}` : formattedType;
+
   // Filter beds in maintenance
   const bedsInMaintenance = (room.beds || []).filter((b) => b.status === "maintenance").length;
   const roomLevelMaintenance = capacity > 0 && bedsInMaintenance === capacity;
@@ -150,7 +160,7 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
     >
       {/* Card Top Header */}
       <div className="flex items-start justify-between gap-2 pb-2.5 mb-2.5 border-b border-border/60">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-base font-bold text-foreground tracking-tight">
               Room {roomNumber}
@@ -158,14 +168,17 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
             {bedsInMaintenance > 0 && (
               <span
                 title={`${bedsInMaintenance} of ${capacity} bed(s) in maintenance`}
-                className="text-amber-500 inline-flex items-center"
+                className="text-amber-500 inline-flex items-center shrink-0"
               >
                 <Wrench className="w-3.5 h-3.5" />
               </span>
             )}
           </div>
-          <span className="text-xs text-muted-foreground font-medium capitalize block mt-0.5">
-            {room.type ? room.type.replace("-", " ") : "Standard"}
+          <span
+            className="text-xs text-muted-foreground font-medium capitalize block mt-0.5 truncate max-w-[200px]"
+            title={subtitleText}
+          >
+            {subtitleText}
           </span>
         </div>
 

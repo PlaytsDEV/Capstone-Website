@@ -14,14 +14,24 @@ export default function AdminRoomOccupantsCard({ roomDetails, occupants = [], on
       ? "Guadalupe"
       : roomDetails.branch || "General";
 
+  const rawRoomName = typeof roomDetails.name === "string" ? roomDetails.name.trim() : "";
+  const rawRoomNum = String(roomDetails.roomNumber || "").trim();
+  const hasDistinctName =
+    Boolean(rawRoomName) &&
+    rawRoomName.toLowerCase() !== rawRoomNum.toLowerCase() &&
+    rawRoomName.toLowerCase() !== `room ${rawRoomNum}`.toLowerCase();
+
+  const formattedType = roomDetails.type ? roomDetails.type.replace("-", " ") : "Sharing";
+  const subtext = `${branchLabel} · Floor ${roomDetails.floor || 1} · ${hasDistinctName ? `${rawRoomName} · ` : ""}${formattedType}`;
+
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-xs text-xs">
       {/* Room Header */}
       <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-border">
-        <div>
+        <div className="min-w-0 flex-1">
           <h4 className="font-bold text-sm text-foreground">Room {roomDetails.roomNumber}</h4>
-          <p className="text-[11px] text-muted-foreground">
-            {branchLabel} · Floor {roomDetails.floor || 1} · {roomDetails.type || "Sharing"}
+          <p className="text-[11px] text-muted-foreground truncate max-w-[240px]" title={subtext}>
+            {subtext}
           </p>
         </div>
 

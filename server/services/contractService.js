@@ -416,7 +416,7 @@ export const validateContractForGeneration = async (
     result.missingFields.push({ field: "tenantBirthDate", label: "Tenant birth date" });
   }
 
-  if (contract.stayId) {
+  if (contract.stayId && contract.isCurrent === true) {
     const duplicate = await Contract.exists({
       stayId: contract.stayId,
       isCurrent: true,
@@ -629,7 +629,15 @@ export const createReplacementContractForTransfer = async ({
   // current Contract (which itself carried it from the original). The
   // transfer date is recorded separately as amendmentEffectiveDate. It must
   // NEVER become leaseStartDate.
-  const leaseStartDate = oldContract.leaseStartDate || stay?.leaseStartDate || null;
+  const leaseStartDate =
+    oldContract.leaseStartDate ||
+    stay?.leaseStartDate ||
+    reservation?.moveInDate ||
+    reservation?.actualMoveInDate ||
+    reservation?.checkInDate ||
+    reservation?.targetMoveInDate ||
+    oldContract.createdAt ||
+    null;
   const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate || null;
   const leaseDurationMonths = oldContract.leaseDurationMonths || (
     leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1

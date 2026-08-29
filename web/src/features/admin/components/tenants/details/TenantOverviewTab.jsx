@@ -653,7 +653,13 @@ export default function TenantOverviewTab({
                   <span className="text-muted-foreground text-[11px]">{extension.date}</span>
                 </div>
                 <div className="text-muted-foreground text-[11px]">
-                  {extension.previousEnd} → {extension.newEnd}
+                  {extension.dateRange ? (
+                    extension.dateRange
+                  ) : extension.previousEnd && extension.newEnd ? (
+                    `${extension.previousEnd} → ${extension.newEnd}`
+                  ) : (
+                    extension.notes || "Lease term extended"
+                  )}
                 </div>
               </div>
             ))}

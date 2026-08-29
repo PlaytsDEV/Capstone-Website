@@ -18,7 +18,7 @@ import {
 } from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
 import { getDeviceId, getSessionId } from "../api/authSession";
-import { showNotification } from "../utils/notification";
+import { showNotification, cleanNotificationMessage } from "../utils/notification";
 import {
   getNotificationQueryScope,
   isNotificationVisibleForUser,
@@ -115,17 +115,32 @@ export default function useSocketClient() {
               ? "warning"
               : "info";
 
-          let toastMessage = notification.message || notification.title || "New notification";
-          if (notification.title && notification.message) {
-            const firstLine = String(notification.message)
-              .replace(/^Your application requires revision:\s*•?\s*/i, "")
-              .replace(/^•\s*/, "")
-              .split("\n")[0]
-              .trim();
-            if (firstLine && !notification.title.toLowerCase().includes(firstLine.toLowerCase())) {
+          let rawMessage = notification.message || notification.title || "New notification";
+          let toastMessage = cleanNotificationMessage(String(rawMessage));
+
+          if (!toastMessage || toastMessage.length < 5) {
+            toastMessage = notification.title || "Notification received";
+          } else if (notification.title && notification.message) {
+            const firstLine = toastMessage.split("\n")[0].trim();
+            const titleLower = String(notification.title).toLowerCase().trim();
+            const firstLineLower = firstLine.toLowerCase();
+
+            const isRedundant =
+              firstLineLower.includes(titleLower) ||
+              (titleLower.includes("approved") && firstLineLower.includes("approved")) ||
+              (titleLower.includes("confirmed") && firstLineLower.includes("confirmed")) ||
+              (titleLower.includes("cancell") && firstLineLower.includes("cancell")) ||
+              (titleLower.includes("payment") && firstLineLower.includes("payment")) ||
+              (titleLower.includes("revision") && firstLineLower.includes("revision")) ||
+              (titleLower.includes("reject") && firstLineLower.includes("reject")) ||
+              (titleLower.includes("visit") && firstLineLower.includes("visit")) ||
+              (titleLower.includes("application") && firstLineLower.includes("application")) ||
+              (titleLower.includes("maintenance") && firstLineLower.includes("maintenance"));
+
+            if (!isRedundant && titleLower === "announcement") {
               toastMessage = `${notification.title}: ${firstLine}`;
             } else {
-              toastMessage = notification.title;
+              toastMessage = firstLine;
             }
           }
           const notifTypeLower = String(notification?.type || "").toLowerCase();

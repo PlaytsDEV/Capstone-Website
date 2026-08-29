@@ -19,10 +19,22 @@ const api = fs.readFileSync(
 test("Reservation payments tab is mounted in the active Billing workspace", () => {
   assert.match(page, /ReservationPaymentReviewTab/);
   assert.match(page, /reservation-payments/);
-  assert.match(component, /Reservation Payments/);
+  assert.match(component, /Reservation & Move-In Payments/);
   assert.match(component, /Expected/);
   assert.match(component, /Submitted/);
   assert.match(component, /Settlement Variance/);
+});
+
+test("Category segmentation buttons and move-in financial breakdown are supported", () => {
+  assert.match(component, /All Payments/);
+  assert.match(component, /Reservation Fees/);
+  assert.match(component, /1-Month Advance & Deposit/);
+  assert.match(component, /Move-In Financial Settlement Breakdown/);
+  assert.match(component, /1-Mo Advance Rent/);
+  assert.match(component, /Security Deposit/);
+  assert.match(component, /Reservation Credit/);
+  assert.match(component, /Download Move-In Settlement Receipt/);
+  assert.match(component, /Download Reservation Receipt/);
 });
 
 test("PayMongo automated entries are informational and manual proof is removed", () => {
@@ -44,3 +56,4 @@ test("frontend calls payment ledger and does not mutate reservation status direc
   assert.doesNotMatch(component, /paymentStatus\s*:/);
   assert.doesNotMatch(component, /status\s*:\s*"reserved"/);
 });
+

@@ -35,6 +35,11 @@ server/private/**
 !server/private/contract-templates/**
 server/scripts/render_contract_mask_debug.mjs
 
+# Backups and database dumps
+server/backups/*.gz
+server/backups/*.json
+server/backups/*.json.gz
+
 # Editor / tool state
 .claude/
 .vscode/

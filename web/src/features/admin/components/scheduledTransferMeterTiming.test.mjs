@@ -117,5 +117,5 @@ test("scheduled review does NOT present today's reading as the final cutoff", ()
 });
 
 test("effective-date meter fields are labelled 'To be finalized on <effective date>'", () => {
-  assert.match(transfer, /Meter readings<\/span>\s*<span className="twm-review-field__value">\s*To be finalized on \{fmtDate\(effectiveTransferDate\)\}/s);
+  assert.match(transfer, /Meter readings<\/span>\s*<span className="twm-review-(?:field|card)__value">\s*To be finalized on \{fmtDate\(effectiveTransferDate\)\}/is);
 });

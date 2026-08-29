@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Tag, X, Check, LoaderCircle } from "lucide-react";
 import { STATUS_OPTIONS, STATUS_DESCRIPTIONS } from "./chatConstants";
 
@@ -18,15 +19,15 @@ export default function AdminChatStatusModal({
     }
   }, [isOpen, currentStatus]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const handleConfirm = () => {
     onConfirm(pendingStatus);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Tag size={18} className="text-primary shrink-0" />
@@ -121,6 +122,7 @@ export default function AdminChatStatusModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

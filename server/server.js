@@ -247,6 +247,7 @@ const startBackgroundServices = (mongoConnected) => {
       runSchedulerStartup(),
       runBackupSchedulerStartup(),
       runCancellationMoveInSelfHealStartup(),
+      import("./utils/roomIndexMaintenance.js").then((m) => m.ensureRoomIndexes()),
     ]);
   });
 };

@@ -86,6 +86,7 @@ export default function MoveInSettlementCard({
         5000,
       );
       setPayingOnline(false);
+      setIsReviewModalOpen(false);
     }
   };
 
