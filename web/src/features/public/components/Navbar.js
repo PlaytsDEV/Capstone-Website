@@ -209,7 +209,7 @@ export function Navigation({ type } = {}) {
                   href={link.href}
                   onClick={(e) => handleNavClick(e, link.id)}
                   className="no-underline cursor-pointer"
-                  aria-current={isActive ? "true" : undefined}
+                  aria-current={isActive ? "page" : undefined}
                   style={{
                     color: isScrolled
                       ? "var(--lp-text)"

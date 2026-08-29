@@ -475,36 +475,41 @@ export function FAQSection() {
                     : "var(--lp-card-shadow, 0 1px 3px rgba(0,0,0,0.04))",
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleItem(faq.id)}
-                  aria-expanded={isExpanded}
-                  aria-controls={`faq-answer-${faq.id}`}
-                  className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
-                >
-                  <span
-                    className="text-sm sm:text-base font-semibold tracking-tight leading-snug"
-                    style={{ color: "var(--lp-text, #162f53)" }}
+                <h3 className="m-0 p-0 font-normal">
+                  <button
+                    id={`faq-question-${faq.id}`}
+                    type="button"
+                    onClick={() => toggleItem(faq.id)}
+                    aria-expanded={isExpanded}
+                    aria-controls={`faq-answer-${faq.id}`}
+                    className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
                   >
-                    {faq.question}
-                  </span>
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
-                    style={{
-                      backgroundColor: isExpanded
-                        ? "var(--lp-navy, #0A1628)"
-                        : "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
-                      color: isExpanded ? "#ffffff" : "var(--lp-accent, #D4AF37)",
-                      transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                    }}
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
-                </button>
+                    <span
+                      className="text-sm sm:text-base font-semibold tracking-tight leading-snug"
+                      style={{ color: "var(--lp-text, #162f53)" }}
+                    >
+                      {faq.question}
+                    </span>
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
+                      style={{
+                        backgroundColor: isExpanded
+                          ? "var(--lp-navy, #0A1628)"
+                          : "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
+                        color: isExpanded ? "#ffffff" : "var(--lp-accent-text, #8C6200)",
+                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
+                  </button>
+                </h3>
 
                 {/* Collapsible Content */}
                 <div
                   id={`faq-answer-${faq.id}`}
+                  role="region"
+                  aria-labelledby={`faq-question-${faq.id}`}
                   className={`transition-all duration-200 ease-in-out ${
                     isExpanded
                       ? "max-h-[800px] opacity-100 py-4 sm:py-5 px-5 sm:px-6 border-t"

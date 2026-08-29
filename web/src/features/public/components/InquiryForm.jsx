@@ -79,7 +79,7 @@ function FormInput({ label, name, type = 'text', value, onChange, onBlur, error,
       <div className="relative">
         {prefix && (
           <span
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-medium pointer-events-none select-none text-slate-500"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold pointer-events-none select-none text-slate-700 dark:text-slate-300"
           >
             {prefix}
           </span>
@@ -95,7 +95,7 @@ function FormInput({ label, name, type = 'text', value, onChange, onBlur, error,
           inputMode={inputMode}
           autoComplete={autoComplete}
           maxLength={maxLength}
-          aria-invalid={hasError}
+          aria-invalid={hasError ? "true" : "false"}
           aria-describedby={hasError ? `${name}-error` : undefined}
           className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200 ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
           style={{
@@ -125,7 +125,7 @@ function FormSelect({ label, name, value, onChange, options, error }) {
           name={name}
           value={value}
           onChange={onChange}
-          aria-invalid={hasError}
+          aria-invalid={hasError ? "true" : "false"}
           aria-describedby={hasError ? `${name}-error` : undefined}
           className={`inquiry-field w-full py-3.5 px-4 pr-10 rounded-xl text-[15px] appearance-none transition-all duration-200 cursor-pointer ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
           style={{
@@ -161,7 +161,7 @@ function FormTextarea({ label, name, value, onChange, onBlur, rows = 4, maxLengt
         onBlur={onBlur}
         rows={rows}
         maxLength={maxLength}
-        aria-invalid={hasError}
+        aria-invalid={hasError ? "true" : "false"}
         aria-describedby={hasError ? `${name}-error` : undefined}
         className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200 resize-none ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
         style={{
@@ -178,7 +178,7 @@ function FormTextarea({ label, name, value, onChange, onBlur, rows = 4, maxLengt
           <span />
         )}
         {maxLength && (
-          <p className={`text-xs ${value.length > maxLength * 0.9 ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
+          <p className={`text-xs font-medium ${value.length > maxLength * 0.9 ? 'text-rose-600 font-semibold' : 'text-slate-600 dark:text-slate-400'}`}>
             {value.length}/{maxLength}
           </p>
         )}

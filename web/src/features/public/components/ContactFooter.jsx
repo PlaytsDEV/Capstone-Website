@@ -43,6 +43,7 @@ export function ContactFooter() {
       }}
     >
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
+        <h2 className="sr-only">Contact and Site Navigation</h2>
         {/* Main content */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6">
           {/* Brand + Social */}
@@ -53,12 +54,12 @@ export function ContactFooter() {
             >
               Lilycrest
             </h3>
-            <p className="text-xs font-light leading-relaxed mb-3" style={{ color: 'var(--lp-text-muted)' }}>
+            <p className="text-xs font-light leading-relaxed mb-4" style={{ color: 'var(--lp-text-secondary)' }}>
               Premium living spaces designed for comfort, convenience, and
               community.
             </p>
             {/* Social Media Links */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               {socialLinks.map((social) => {
                 const Icon = social.icon;
                 return (
@@ -67,7 +68,7 @@ export function ContactFooter() {
                     href={social.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label={social.label}
+                    aria-label={`Visit Lilycrest on ${social.label}`}
                     className="flex items-center justify-center transition-all duration-200"
                     style={{
                       width: '32px',
@@ -75,20 +76,20 @@ export function ContactFooter() {
                       borderRadius: '8px',
                       backgroundColor: 'var(--lp-icon-bg)',
                       border: '1px solid var(--lp-border)',
-                      color: 'var(--lp-text-muted)',
+                      color: 'var(--lp-text-secondary)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--lp-accent)';
+                      e.currentTarget.style.color = 'var(--lp-accent-text)';
                       e.currentTarget.style.borderColor = 'var(--lp-accent)';
                       e.currentTarget.style.transform = 'translateY(-2px)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--lp-text-muted)';
+                      e.currentTarget.style.color = 'var(--lp-text-secondary)';
                       e.currentTarget.style.borderColor = 'var(--lp-border)';
                       e.currentTarget.style.transform = 'translateY(0)';
                     }}
                   >
-                    <Icon />
+                    <Icon className="w-4 h-4" />
                   </a>
                 );
               })}
@@ -97,12 +98,12 @@ export function ContactFooter() {
 
           {/* Quick Links */}
           <div>
-            <h4
+            <h3
               className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-muted)' }}
+              style={{ color: 'var(--lp-text-secondary)' }}
             >
               Navigation
-            </h4>
+            </h3>
             <ul className="space-y-2">
               {[
                 { label: 'Browse Rooms', href: '#rooms', id: 'rooms' },
@@ -131,18 +132,18 @@ export function ContactFooter() {
 
           {/* Branches */}
           <div>
-            <h4
+            <h3
               className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-muted)' }}
+              style={{ color: 'var(--lp-text-secondary)' }}
             >
               Locations
-            </h4>
+            </h3>
             <ul className="space-y-2.5">
               <li>
                 <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
                   Gil Puyat
                 </p>
-                <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
+                <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
                   Lilycrest Gil Puyat, Sen. Gil J. Puyat Ave, Makati City, Metro Manila
                 </p>
               </li>
@@ -150,7 +151,7 @@ export function ContactFooter() {
                 <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
                   Guadalupe
                 </p>
-                <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
+                <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
                   1212, 9431 Magallanes, Makati, 1212 Kalakhang Maynila
                 </p>
               </li>
@@ -159,39 +160,39 @@ export function ContactFooter() {
 
           {/* Contact */}
           <div>
-            <h4
+            <h3
               className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-muted)' }}
+              style={{ color: 'var(--lp-text-secondary)' }}
             >
               Get in Touch
-            </h4>
+            </h3>
             <ul className="space-y-2">
               <li className="flex items-center gap-2.5">
-                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
+                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <a
                   href="mailto:lilycrestadmin@gmail.com"
                   className="text-sm font-light transition-colors"
                   style={{ color: 'var(--lp-text-secondary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
                 >
                   lilycrestadmin@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-2.5">
-                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
+                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <a
                   href="tel:+639123456789"
                   className="text-sm font-light transition-colors"
                   style={{ color: 'var(--lp-text-secondary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
                 >
                   +63 912 345 6789
                 </a>
               </li>
               <li className="flex items-center gap-2.5">
-                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent)' }} />
+                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <span className="text-sm font-light" style={{ color: 'var(--lp-text-secondary)' }}>
                   Manila, Philippines
                 </span>
@@ -203,25 +204,25 @@ export function ContactFooter() {
         {/* Bottom */}
         <div className="pt-4" style={{ borderTop: '1px solid var(--lp-border)' }}>
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
+            <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
               © {new Date().getFullYear()} Lilycrest. All rights reserved.
             </p>
             <div className="flex gap-6">
               <Link
                 to="/privacy-policy"
                 className="text-xs font-light transition-colors"
-                style={{ color: 'var(--lp-text-muted)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-muted)'; }}
+                style={{ color: 'var(--lp-text-secondary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
               >
                 Privacy Policy
               </Link>
               <Link
                 to="/terms-of-service"
                 className="text-xs font-light transition-colors"
-                style={{ color: 'var(--lp-text-muted)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-muted)'; }}
+                style={{ color: 'var(--lp-text-secondary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
               >
                 Terms of Service
               </Link>

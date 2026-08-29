@@ -36,7 +36,8 @@ export default function ThemeToggleButton({ variant = "hero" }) {
           alignItems: "center",
           gap: "10px",
           width: "100%",
-          padding: "10px 0",
+          minHeight: "44px",
+          padding: "12px 0",
           background: "none",
           border: "none",
           cursor: "pointer",
@@ -45,7 +46,7 @@ export default function ThemeToggleButton({ variant = "hero" }) {
           fontWeight: "300",
         }}
       >
-        <span className="theme-toggle-icon-wrapper" style={{ width: 20, height: 20 }}>
+        <span className="theme-toggle-icon-wrapper" style={{ width: 22, height: 22 }}>
           <Sun
             className={`theme-toggle-icon ${isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
             style={{ width: 18, height: 18 }}
@@ -66,8 +67,10 @@ export default function ThemeToggleButton({ variant = "hero" }) {
 
   const btnStyles = {
     position: "relative",
-    width: "36px",
-    height: "36px",
+    width: "44px",
+    height: "44px",
+    minWidth: "44px",
+    minHeight: "44px",
     borderRadius: "50%",
     backgroundColor: isHero
       ? (isLight ? "rgba(212, 175, 55, 0.12)" : "rgba(255,255,255,0.1)")
