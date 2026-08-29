@@ -77,7 +77,8 @@ export function LocationSection() {
                 className="relative px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 cursor-pointer focus:outline-none"
                 style={{
                   backgroundColor: activeTab === i ? 'var(--lp-accent)' : 'transparent',
-                  color: activeTab === i ? '#ffffff' : 'var(--lp-text-secondary)',
+                  color: activeTab === i ? '#0A1628' : 'var(--lp-text-secondary)',
+                  fontWeight: activeTab === i ? '600' : '500',
                   boxShadow: activeTab === i ? '0 4px 14px rgba(212, 175, 55, 0.3)' : 'none',
                 }}
               >

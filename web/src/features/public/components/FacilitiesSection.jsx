@@ -212,14 +212,18 @@ export function FacilitiesSection() {
           <button
             onClick={prevSlide}
             aria-label="Previous facility"
-            className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 z-20 p-1.5 sm:p-2 rounded-full transition-all duration-300 hover:scale-110"
+            className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
             style={{
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              width: "44px",
+              height: "44px",
+              minWidth: "44px",
+              minHeight: "44px",
+              backgroundColor: "rgba(255, 255, 255, 0.25)",
               backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255, 255, 255, 0.3)",
+              border: "1px solid rgba(255, 255, 255, 0.4)",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.8)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)")}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </button>
@@ -227,14 +231,18 @@ export function FacilitiesSection() {
           <button
             onClick={nextSlide}
             aria-label="Next facility"
-            className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 z-20 p-1.5 sm:p-2 rounded-full transition-all duration-300 hover:scale-110"
+            className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
             style={{
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              width: "44px",
+              height: "44px",
+              minWidth: "44px",
+              minHeight: "44px",
+              backgroundColor: "rgba(255, 255, 255, 0.25)",
               backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255, 255, 255, 0.3)",
+              border: "1px solid rgba(255, 255, 255, 0.4)",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.8)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)")}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </button>

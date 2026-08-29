@@ -125,6 +125,8 @@ export function HeroSection() {
             <img
               src={src}
               alt={`Lilycrest Dormitory ${i + 1}`}
+              width="1920"
+              height="1080"
               className="w-full h-full object-cover"
               loading={i === 0 ? "eager" : "lazy"}
               fetchpriority={i === 0 ? "high" : "low"}

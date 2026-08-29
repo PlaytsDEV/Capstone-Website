@@ -1067,7 +1067,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
             <a
               href={uri}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="photo-action-link"
             >
               Open
@@ -1091,7 +1091,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
         <a
           href={uri}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="btn btn-secondary file-open-btn"
           title="Open attachment in new tab"
         >

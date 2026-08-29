@@ -502,7 +502,7 @@ export default function TenantViolationManager({ branch }) {
                           <a
                             href={primaryPhoto}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
                             title="View photo evidence in new tab"
                           >

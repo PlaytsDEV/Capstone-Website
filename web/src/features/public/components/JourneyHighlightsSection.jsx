@@ -140,7 +140,7 @@ export function JourneyHighlightsSection() {
                     </span>
                     <span
                       className="inline-flex h-11 w-11 items-center justify-center rounded-2xl"
-                      style={{ backgroundColor: "var(--lp-icon-bg)", color: "var(--lp-accent)" }}
+                      style={{ backgroundColor: "var(--lp-icon-bg)", color: "var(--lp-accent-text, #8C6200)" }}
                     >
                       <Icon size={18} />
                     </span>

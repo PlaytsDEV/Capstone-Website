@@ -81,7 +81,7 @@ export function TimelineAttachmentList({
               <a
                 href={attachmentUri}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="flex min-w-0 flex-1 items-center gap-2.5 hover:opacity-90 transition"
               >
                 {content}

@@ -281,7 +281,7 @@ export function MaintenanceConversationSection({
                             key={`${uri || name}-${attIdx}`}
                             href={uri}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="chat-attachment-chip"
                           >
                             <Icon size={13} />

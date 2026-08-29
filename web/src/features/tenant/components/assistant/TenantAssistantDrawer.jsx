@@ -1220,7 +1220,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
                               <a
                                 href={att.url || att.fileUrl}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="tenant-chat-pdf-chip"
                               >
                                 <FileText className="w-3.5 h-3.5 text-rose-500" />
@@ -1261,7 +1261,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
                               <a
                                 href={att.url || att.fileUrl}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="tenant-chat-pdf-chip"
                               >
                                 <FileText className="w-3.5 h-3.5 text-rose-500" />

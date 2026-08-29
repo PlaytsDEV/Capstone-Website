@@ -86,7 +86,7 @@ export function BenefitsSection() {
                   className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110"
                   style={{ backgroundColor: 'var(--lp-icon-bg)' }}
                 >
-                  <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
+                  <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent-text, #8C6200)' }} />
                 </div>
                 <h3
                   className="text-lg font-medium mb-2 tracking-tight"
