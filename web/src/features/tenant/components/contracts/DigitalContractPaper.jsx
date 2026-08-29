@@ -80,6 +80,14 @@ export default function DigitalContractPaper({
   // to the existing DOM print/export below when absent (e.g. an early-stage
   // preview before any PDF has been generated yet).
   fetchDocumentPdf,
+  // Optional: ({ contractId, version, download }) => Promise<Blob> — resolves
+  // the wet-signed / final scan for the CANONICAL identity the backend
+  // returned in `signedScan` (which may be an ANCESTOR lease's contract id
+  // when the current contract is a Room Transfer Addendum). Admin injects
+  // contractApi.getSignedContractFile; Tenant injects
+  // tenantContractApi.getMySignedContractFile. When absent, the tenant route
+  // is used with the resolved contractId (back-compat).
+  fetchSignedDoc,
 }) {
   const pdfLegalPageRef = useRef(null);
   // R5.2/R5.4 — the hidden <iframe> + its blob: URL used for printing the
@@ -179,12 +187,31 @@ export default function DigitalContractPaper({
     ? "The said rental fee is inclusive of the use of the leased premises and the room’s own private toilet and bath and kitchenette, as well as the common lounge area on the same floor, subject to the House Rules and Regulations (ANNEX “A”) provided by the LESSOR. The leased premises are fully furnished with a double-decked bed and mattress, an air conditioning unit, table, chair, cabinet, and shower water heater."
     : "The said rental fee is inclusive of the use of the leased premises and the common facilities provided on the same floor of the unit, such as the toilet and bath and the lounge area with kitchen appliances, subject to the House Rules and Regulations (ANNEX “A”) provided by the LESSOR. The leased premises are fully furnished with a double-decked bed and mattress, an air conditioning unit, table, chair, cabinet, and shower water heater.";
 
+  // ── CANONICAL signed-scan identity ───────────────────────────────────────
+  // The backend (signedContractScanResolver) resolves which contract + version
+  // actually owns the wet-signed / final scan for what is being viewed — and,
+  // for a Room Transfer Addendum with no scan of its own, walks the lineage to
+  // the original lease and flags `inherited`. NEVER infer availability from
+  // `contract.signedDocuments.length` on the current contract alone.
+  const signedScan = stayData?.signedScan || contract?.signedScan || null;
   const activeSignedDocs = (contract?.signedDocuments || []).filter((doc) => !doc.superseded);
-  const hasSignedDoc = activeSignedDocs.length > 0;
+  // Multi-version history is only shown when the scan lives on the SAME
+  // contract being viewed (not inherited) AND that contract carries the
+  // signedDocuments[] entries.
+  const scanContractId =
+    signedScan?.contractId || contract?.id || contract?._id || null;
+  const ownsScanDocs =
+    !!signedScan &&
+    !signedScan.inherited &&
+    activeSignedDocs.length > 0 &&
+    String(scanContractId) === String(contract?.id || contract?._id || "");
+  const hasSignedDoc = Boolean(signedScan) || activeSignedDocs.length > 0;
 
   // View & Interactive State (Default to Initial Lease view)
   const [layoutMode, setLayoutMode] = useState("digital");
-  const [selectedVersion, setSelectedVersion] = useState(activeSignedDocs[0]?.version || 1);
+  const [selectedVersion, setSelectedVersion] = useState(
+    signedScan?.version || activeSignedDocs[0]?.version || 1,
+  );
   const [signedBlobUrl, setSignedBlobUrl] = useState(null);
   const [signedBlobLoading, setSignedBlobLoading] = useState(false);
   const [signedBlobError, setSignedBlobError] = useState(null);
@@ -198,10 +225,12 @@ export default function DigitalContractPaper({
   }, [hasSignedDoc, layoutMode]);
 
   useEffect(() => {
-    if (activeSignedDocs.length > 0 && !activeSignedDocs.some((d) => d.version === selectedVersion)) {
+    if (ownsScanDocs && !activeSignedDocs.some((d) => d.version === selectedVersion)) {
       setSelectedVersion(activeSignedDocs[0].version);
+    } else if (!ownsScanDocs && signedScan?.version && selectedVersion !== signedScan.version) {
+      setSelectedVersion(signedScan.version);
     }
-  }, [activeSignedDocs, selectedVersion]);
+  }, [ownsScanDocs, activeSignedDocs, selectedVersion, signedScan?.version]);
 
   // Zoom & Inspection States
   const [digitalZoom, setDigitalZoom] = useState(100);
@@ -306,12 +335,71 @@ export default function DigitalContractPaper({
     };
   }, [isFullscreenScanOpen, handleModalZoomIn, handleModalZoomOut, resetModalView, handleModalRotate]);
 
-  const selectedDoc = activeSignedDocs.find((d) => Number(d.version) === Number(selectedVersion)) || activeSignedDocs[0];
-  const isPdf = selectedDoc?.mimeType === "application/pdf" || selectedDoc?.fileName?.toLowerCase().endsWith(".pdf");
+  // The selected scan descriptor. When the current contract owns its
+  // signedDocuments[] history, pick the entry for the chosen version;
+  // otherwise fall back to the canonical `signedScan` descriptor (single
+  // version — possibly inherited from an ancestor lease).
+  const selectedDoc =
+    (ownsScanDocs &&
+      (activeSignedDocs.find((d) => Number(d.version) === Number(selectedVersion)) ||
+        activeSignedDocs[0])) ||
+    (signedScan
+      ? {
+          version: signedScan.version,
+          fileName: signedScan.fileName,
+          mimeType: signedScan.mimeType,
+          uploadedAt: signedScan.uploadedAt || null,
+        }
+      : null);
+  const isPdf =
+    selectedDoc?.mimeType === "application/pdf" ||
+    selectedDoc?.fileName?.toLowerCase().endsWith(".pdf");
 
-  // Fetch Signed Document Scan Blob
+  // The canonical fetch identity — ALWAYS the contract that owns the scan
+  // (may be an ancestor lease), NEVER blindly `contract.id`.
+  const signedFetchContractId = scanContractId;
+  const signedFetchVersion = ownsScanDocs ? selectedVersion : signedScan?.version;
+
+  // Download the signed scan from the SAME canonical identity as Preview /
+  // Open-in-tab. Prefer the injected route-aware fetcher; fall back to the
+  // parent's onDownloadSigned (which resolves by the same version).
+  const handleDownloadSignedScan = useCallback(async () => {
+    const fileName =
+      selectedDoc?.fileName ||
+      signedScan?.fileName ||
+      `Signed-Contract-v${signedFetchVersion || 1}.pdf`;
+    if (fetchSignedDoc) {
+      try {
+        const blob = await fetchSignedDoc({
+          contractId: signedFetchContractId,
+          version: signedFetchVersion,
+          download: true,
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
+      } catch {
+        // fall through to the parent handler
+      }
+    }
+    if (onDownloadSigned) onDownloadSigned(signedFetchVersion, fileName);
+  }, [
+    fetchSignedDoc,
+    onDownloadSigned,
+    signedFetchContractId,
+    signedFetchVersion,
+    selectedDoc?.fileName,
+    signedScan?.fileName,
+  ]);
+
+  // Fetch Signed Document Scan Blob — via the injected `fetchSignedDoc`
+  // (admin vs tenant route), falling back to the tenant route for back-compat.
   useEffect(() => {
-    if (!contract?.id || !hasSignedDoc) {
+    if (!hasSignedDoc || !signedFetchContractId) {
       setSignedBlobUrl(null);
       return;
     }
@@ -319,7 +407,19 @@ export default function DigitalContractPaper({
     setSignedBlobLoading(true);
     setSignedBlobError(null);
 
-    tenantContractApi.getMySignedContractFile(contract.id, selectedVersion, false)
+    const fetcher = fetchSignedDoc
+      ? fetchSignedDoc({
+          contractId: signedFetchContractId,
+          version: signedFetchVersion,
+          download: false,
+        })
+      : tenantContractApi.getMySignedContractFile(
+          signedFetchContractId,
+          signedFetchVersion,
+          false,
+        );
+
+    Promise.resolve(fetcher)
       .then((blob) => {
         if (active) {
           const url = URL.createObjectURL(blob);
@@ -338,7 +438,7 @@ export default function DigitalContractPaper({
     return () => {
       active = false;
     };
-  }, [contract?.id, selectedVersion, hasSignedDoc]);
+  }, [signedFetchContractId, signedFetchVersion, hasSignedDoc, fetchSignedDoc]);
 
   // Clean up Object URL
   useEffect(() => {
@@ -1217,7 +1317,7 @@ export default function DigitalContractPaper({
                 <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
                   Signed Scan Copy
                 </h3>
-                {activeSignedDocs.length > 1 && (
+                {ownsScanDocs && activeSignedDocs.length > 1 && (
                   <div className="flex items-center gap-1 ml-1">
                     {activeSignedDocs.map((doc) => (
                       <button
@@ -1281,10 +1381,10 @@ export default function DigitalContractPaper({
                   </>
                 )}
 
-                {onDownloadSigned && (
+                {(onDownloadSigned || fetchSignedDoc) && (
                   <button
                     type="button"
-                    onClick={() => onDownloadSigned(selectedDoc.version, selectedDoc.fileName)}
+                    onClick={handleDownloadSignedScan}
                     className="px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors flex items-center gap-1 shadow-xs cursor-pointer ml-0.5"
                     title="Download Scanned File"
                   >
@@ -1294,6 +1394,22 @@ export default function DigitalContractPaper({
                 )}
               </div>
             </div>
+
+            {/* Inherited-scan notice — the current contract is a Room Transfer
+                Addendum with no scan of its own; this scan belongs to the
+                original lease. Do NOT imply the Addendum itself was signed. */}
+            {signedScan?.inherited && (
+              <div className="flex-shrink-0 px-3.5 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+                <FileCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>
+                  Signed copy from original lease
+                  {signedScan.inheritedFromContractNumber
+                    ? ` — ${signedScan.inheritedFromContractNumber}`
+                    : ""}
+                  . This Room Transfer Addendum is acknowledged, not wet-signed.
+                </span>
+              </div>
+            )}
 
             {/* Scan Preview Canvas (flex-1 fill height) */}
             <div className="flex-1 min-h-0 p-3.5 overflow-auto bg-slate-100/70 dark:bg-slate-950/40 flex items-center justify-center">
@@ -1686,10 +1802,10 @@ export default function DigitalContractPaper({
               </button>
 
               {/* Download Button */}
-              {onDownloadSigned && (
+              {(onDownloadSigned || fetchSignedDoc) && (
                 <button
                   type="button"
-                  onClick={() => onDownloadSigned(selectedDoc.version, selectedDoc.fileName)}
+                  onClick={handleDownloadSignedScan}
                   className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm ml-1"
                   title="Download Scanned Document"
                 >

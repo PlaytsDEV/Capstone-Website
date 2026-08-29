@@ -39,6 +39,7 @@ import {
   buildTenantWorkspaceEntry,
 } from "./_helpers.js";
 import { getOpenScheduledRoomTransferForReservation } from "../../services/scheduledRoomTransferView.js";
+import { getRoomTransferHistoryForReservation } from "../../services/scheduledRoomTransferHistory.js";
 
 // In-memory throttle for tenant scope reconciliation (prevents redundant MongoDB write scans on repeated GET reads)
 const lastScopeReconcileTime = new Map();
@@ -290,6 +291,18 @@ export const getTenantWorkspaceById = async (req, res) => {
       return null;
     });
 
+    // F3 — the complete Room Transfer audit trail for Tenant Details -> History
+    // (all ScheduledRoomTransfer statuses + derived legacy immediate transfers).
+    // Reuses the BedHistory / Contract / Bill rows already loaded above.
+    const roomTransferHistory = await getRoomTransferHistoryForReservation(reservation._id, {
+      bedHistory: bedHistoryRecords,
+      contracts,
+      bills,
+    }).catch((e) => {
+      logger.warn({ err: e, reservationId: String(reservation._id) }, "resolve room transfer history (non-fatal)");
+      return [];
+    });
+
     const tenant = buildTenantWorkspaceEntry({
       reservation: { ...reservation, lastAdminViewedAt: readAt, isViewedByAdmin: true },
       currentStay,
@@ -301,6 +314,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
       scheduledRoomTransfer,
+      roomTransferHistory,
       now: new Date(),
     });
 

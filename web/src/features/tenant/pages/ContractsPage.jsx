@@ -792,6 +792,12 @@ export default function ContractsPage() {
             fetchDocumentPdf={(c) => (c?.tenantDocument?.isFinal
               ? tenantContractApi.getMyFinalContractFile(c.id || c._id, false)
               : tenantContractApi.getMyPreparedContractFile(c.id || c._id, false))}
+            // Signed scan resolves from the CANONICAL identity the backend
+            // returned (signedScan.contractId — may be the ORIGINAL lease when
+            // the current contract is a Room Transfer Addendum), via the
+            // TENANT signed-file route.
+            fetchSignedDoc={({ contractId, version, download }) =>
+              tenantContractApi.getMySignedContractFile(contractId, version, Boolean(download))}
           />
         </>
       )}

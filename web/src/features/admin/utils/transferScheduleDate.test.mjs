@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import {
   toDateInputValue,
   localTodayStr,
+  minScheduleDateStr,
   isScheduledTransferDate,
 } from "./transferScheduleDate.js";
 
@@ -34,6 +35,18 @@ test("toDateInputValue emits canonical YYYY-MM-DD from local calendar fields", (
 
 test("localTodayStr is toDateInputValue(now)", () => {
   assert.equal(localTodayStr(AUG_29_2026), "2026-08-29");
+});
+
+test("minScheduleDateStr is tomorrow (local calendar) — the future-only wizard's date-picker min", () => {
+  assert.equal(minScheduleDateStr(AUG_29_2026), "2026-08-30");
+  // month rollover
+  assert.equal(minScheduleDateStr(new Date(2026, 7, 31, 12, 0, 0)), "2026-09-01");
+  // year rollover
+  assert.equal(minScheduleDateStr(new Date(2026, 11, 31, 12, 0, 0)), "2027-01-01");
+  // never today
+  assert.notEqual(minScheduleDateStr(AUG_29_2026), localTodayStr(AUG_29_2026));
+  // unparseable now -> ""
+  assert.equal(minScheduleDateStr(new Date("nope")), "");
 });
 
 test("PRODUCTION CASE: effective '2026-09-05' vs Manila today 2026-08-29 → scheduled (true)", () => {

@@ -239,6 +239,20 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
   BillingDispute: {},
   MoveOutClearance: {},
   PaymongoWebhookEvent: {},
+  // The detail endpoint resolves the Room Transfer History
+  // (getRoomTransferHistoryForReservation -> ScheduledRoomTransfer.find).
+  // No schedules for this fixture tenant -> empty history.
+  ScheduledRoomTransfer: {
+    find: jest.fn(() => ({
+      sort: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([]),
+    })),
+    findOne: jest.fn(() => ({
+      sort: jest.fn().mockReturnThis(),
+      session: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue(null),
+    })),
+  },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
   INQUIRY_BRANCHES: ["gil-puyat", "guadalupe", "general"],
   ROOM_BRANCH_LABELS: {},

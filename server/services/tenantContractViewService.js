@@ -181,5 +181,15 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     acknowledgement: Object.prototype.hasOwnProperty.call(options, "acknowledgement")
       ? options.acknowledgement
       : null,
+    // Canonical signed-scan identity for THIS contract, resolved by the
+    // controller via signedContractScanResolver.resolveSignedScanForContract
+    // (walks the Contract lineage for a Room Transfer Addendum that has no
+    // scan of its own). { contractId, version, fileName, mimeType, source,
+    // inherited, inheritedFromContractId, inheritedFromContractNumber } or
+    // null. The viewer uses this exact identity — same file for Preview /
+    // Open-in-tab / Download — instead of guessing from signedDocuments[].
+    signedScan: Object.prototype.hasOwnProperty.call(options, "signedScan")
+      ? options.signedScan
+      : null,
   };
 };

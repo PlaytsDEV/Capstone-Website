@@ -71,7 +71,9 @@ describe("secure prepared Contract responses", () => {
     const adminEnd = source.indexOf("const tenantActor", adminStart);
     const adminFlow = source.slice(adminStart, adminEnd);
     expect(adminFlow).toMatch(/getAcknowledgementStatusForContract\(contract, contract\.tenantId\)/);
-    expect(adminFlow).toMatch(/\{ \.\.\.contractPayload, acknowledgement \}/);
+    // Merges the canonical acknowledgement + signed-scan identity (and a
+    // normalized `id`) into the raw contract payload.
+    expect(adminFlow).toMatch(/\{ \.\.\.contractPayload, id: String\(contract\._id\), acknowledgement, signedScan \}/);
 
     // The synthetic (Stay-derived, no Contract row) branch must NOT advertise
     // a canonical PDF or an acknowledgement requirement.

@@ -1099,6 +1099,21 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
   return generated;
 }
 
+/**
+ * CANONICAL INTERNAL ROOM-TRANSFER CUTOVER ENGINE.
+ *
+ * As of the future-only Admin Room Transfer rule, this is NOT called directly
+ * by the Admin/API `transferTenant` controller anymore. Every new Admin
+ * transfer is scheduled (`scheduleRoomTransfer`); this workflow is executed by
+ * `scheduledRoomTransferExecutor` on the effective transfer date (Job 20 /
+ * retry). At that point the scheduled effective date legitimately IS "today",
+ * so there is deliberately NO "future-only" date guard in here — the guard
+ * lives in the controller, before scheduling.
+ *
+ * Also still used to replay/derive historical immediate transfers and by the
+ * transfer* integration suites, which exercise it as the effective-date
+ * executor (not as an "Admin immediate transfer" path).
+ */
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {
   // ── Stage A — pre-transaction preparation ────────────────────────────────
   // Cheap validation (no transaction session) + prepare the Room Transfer
