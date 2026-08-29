@@ -9,6 +9,11 @@ import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../..
 import { reservationApi } from "../../../shared/api/reservationApi";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import {
+  toDateInputValue,
+  localTodayStr,
+  isScheduledTransferDate,
+} from "../utils/transferScheduleDate";
 import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
@@ -28,20 +33,6 @@ const fmtMoney = (value) =>
       })}`
     : "—";
 
-// Local calendar date as YYYY-MM-DD — matches a native <input type="date">.
-// NOT toISOString(), which shifts to UTC and can return the previous day for a
-// Philippines (UTC+8) user shortly after local midnight.
-const toDateInputValue = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-};
-
-const localTodayStr = () => toDateInputValue(new Date());
 
 function TenantModalShell({ open, title, children, footer, onClose }) {
   useBodyScrollLock(open);
@@ -801,9 +792,9 @@ export function TransferTenantModal({
   const priceDiff = newPrice - currentPrice;
 
   // A future Effective Transfer Date => this Confirm SCHEDULES the transfer
-  // (executes automatically on the date) rather than transferring now.
-  const isScheduledTransfer =
-    !!effectiveTransferDate && effectiveTransferDate > localTodayStr();
+  // (executes automatically on the date) rather than transferring now. Canonical
+  // YYYY-MM-DD string comparison — see transferScheduleDate.js.
+  const isScheduledTransfer = isScheduledTransferDate(effectiveTransferDate);
 
   // ── Adaptive wizard shape ────────────────────────────────────────────────
   // Immediate: Target Room → Meter Readings → Review (3 steps).

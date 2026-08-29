@@ -271,6 +271,13 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
     reservationId,
     payload,
     requireConfirm: true,
+    // Committing path: a scheduled transfer places a real destination hold and
+    // persists a ScheduledRoomTransfer, and its executor later runs the same
+    // ensureActiveStay. Materialize the Stay now so a legitimately moved-in
+    // tenant whose first lifecycle action is a scheduled transfer is not
+    // blocked by a missing lazily-created Stay row.
+    materializeStay: true,
+    actorId,
   });
   const {
     reservation,

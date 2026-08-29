@@ -119,3 +119,14 @@ test("scheduled review does NOT present today's reading as the final cutoff", ()
 test("effective-date meter fields are labelled 'To be finalized on <effective date>'", () => {
   assert.match(transfer, /Meter readings<\/span>\s*<span className="twm-review-field__value">\s*To be finalized on \{fmtDate\(effectiveTransferDate\)\}/s);
 });
+
+test("isScheduledTransfer is derived by the shared canonical-date helper, not a re-inlined date compare", () => {
+  // The future/immediate decision must go through transferScheduleDate.js
+  // (unit-tested in transferScheduleDate.test.mjs against the exact
+  // '2026-09-05' vs Manila-today case) — never a local duplicate that could
+  // drift or compare locale-formatted strings.
+  assert.match(modalSource, /from "\.\.\/utils\/transferScheduleDate"/);
+  assert.match(transfer, /const isScheduledTransfer = isScheduledTransferDate\(effectiveTransferDate\)/);
+  // No re-inlined `effectiveTransferDate > localTodayStr()` predicate.
+  assert.doesNotMatch(transfer, /effectiveTransferDate\s*>\s*localTodayStr\(\)/);
+});

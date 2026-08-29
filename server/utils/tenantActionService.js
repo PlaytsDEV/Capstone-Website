@@ -87,14 +87,21 @@ async function ensureActiveStay(reservation, actorId = null, session = null) {
   const leaseEndDate = computeLeaseEndDate(reservation);
   if (!moveInDate || !leaseEndDate) return null;
 
+  // Stay.bedId is a required String. A private-room reservation has no
+  // selectedBed.id, so fall back to the same `room-<roomId>` sentinel the
+  // renewal path (renewStayWorkflow) already uses for private rooms — an
+  // empty string fails the `required` validator.
+  const stayRoomId = reservation.roomId?._id || reservation.roomId;
+  const stayBedId = reservation.selectedBed?.id || `room-${stayRoomId}`;
+
   const stay = await Stay.create(
     [
       {
         tenantId: reservation.userId?._id || reservation.userId,
         reservationId: reservation._id,
         branch: reservation.roomId?.branch || "",
-        roomId: reservation.roomId?._id || reservation.roomId,
-        bedId: reservation.selectedBed?.id || "",
+        roomId: stayRoomId,
+        bedId: stayBedId,
         leaseStartDate: moveInDate,
         leaseEndDate,
         monthlyRent: getMonthlyRent(reservation),
@@ -733,15 +740,39 @@ const isValidTransferPredecessor = (contract) => {
  * `prepareRoomTransferAddendum` / `discardRoomTransferAddendum` endpoints so
  * the "is this transfer legal?" rules live in exactly one place.
  *
- * Mutates nothing. Throws `{statusCode, code}` on any failed guard.
+ * Mutates nothing by default. Throws `{statusCode, code}` on any failed guard.
+ *
+ * `materializeStay` (opt-in — set ONLY by the paths that ultimately commit:
+ * `transferStayWorkflow` Stage A and `scheduleRoomTransfer`): if the tenant
+ * has no current Stay row yet, lazily create it from the reservation's
+ * move-in data via the SAME `ensureActiveStay` path the transfer transaction
+ * (Stage B) and `renewStayWorkflow` already use. Historically the Stay was
+ * only ever materialized inside a write transaction, so a legitimately
+ * moved-in tenant whose first lifecycle action was a room transfer failed
+ * Stage A's read-only stay check with a generic `NO_ACTIVE_STAY` before the
+ * transaction (which would have created it) ever ran. This does NOT bypass
+ * the active-stay requirement — it runs the identical create-if-eligible
+ * logic and STILL enforces `CURRENT_STAY_STATUSES` afterward; when the Stay
+ * genuinely cannot be derived (reservation missing moveInDate / leaseDuration)
+ * it raises an explicit lifecycle error instead of the generic one.
+ * Read-only preview / prepare-addendum callers never pass this and stay
+ * side-effect-free.
  *
  * @param {Object}  p
  * @param {string}  p.reservationId
  * @param {Object}  p.payload            - { targetRoomId, targetBedId?, effectiveTransferDate?, confirm? }
  * @param {boolean} [p.requireConfirm=false] - enforce payload.confirm (the cutover does; preview/discard do not)
+ * @param {boolean} [p.materializeStay=false] - lazily create the Stay if missing (committing paths only)
+ * @param {string}  [p.actorId=null]     - attributed as createdBy/updatedBy on a lazily-created Stay
  * @returns {{ reservation, targetRoom, targetBed, predecessorContract, activeStay, effectiveTransferDate, destinationNeedsBed }}
  */
-export async function resolveValidatedRoomTransferIntent({ reservationId, payload = {}, requireConfirm = false }) {
+export async function resolveValidatedRoomTransferIntent({
+  reservationId,
+  payload = {},
+  requireConfirm = false,
+  materializeStay = false,
+  actorId = null,
+}) {
   const reservation = await Reservation.findById(reservationId)
     .populate("roomId", "name roomNumber branch beds currentOccupancy capacity type")
     .populate("userId", "firstName lastName email tenantStatus");
@@ -785,6 +816,36 @@ export async function resolveValidatedRoomTransferIntent({ reservationId, payloa
     throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
   }
 
+  // Resolve (or, on a committing path, lazily materialize) the tenant's
+  // current Stay BEFORE the predecessor-Contract resolution below —
+  // `resolveAuthoritativeCurrentContract` ranks contract candidates against
+  // the current Stay (a reservationId/stayId match outranks a bare
+  // "isCurrent !== false"), so it must run with the real Stay in place.
+  let activeStay = await resolveCurrentStayForReservation(reservation._id);
+  if (!activeStay && materializeStay) {
+    // Committing path (immediate/scheduled transfer): the tenant is a
+    // legitimately moved-in resident but has never had a lifecycle action
+    // run yet, so the lazily-created Stay does not exist. Create it now via
+    // the canonical path (identical to Stage B / renewStayWorkflow) — exactly
+    // what the transfer transaction would have done a moment later.
+    activeStay = await ensureActiveStay(reservation, actorId);
+    if (!activeStay) {
+      // ensureActiveStay returns null only when the move-in anchor is
+      // underivable (no moveInDate, or no positive leaseDuration). Surface
+      // that specific lifecycle gap rather than the generic message so the
+      // admin knows what to fix on the reservation.
+      throw Object.assign(
+        new Error(
+          "This tenant's stay could not be activated — the reservation is missing a confirmed move-in date or lease duration. Complete the move-in record before transferring.",
+        ),
+        { statusCode: 409, code: "STAY_NOT_ACTIVATABLE" },
+      );
+    }
+  }
+  if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
+    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
+  }
+
   const predecessorContract = await resolveAuthoritativeCurrentContract({
     reservationId: reservation._id,
     tenantId: reservation.userId?._id || reservation.userId,
@@ -794,10 +855,6 @@ export async function resolveValidatedRoomTransferIntent({ reservationId, payloa
       new Error("The tenant's current lease Contract is not active — room transfer cannot proceed."),
       { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
     );
-  }
-  const activeStay = await resolveCurrentStayForReservation(reservation._id);
-  if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
-    throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
   }
   if (
     String(activeStay.roomId) === String(payload.targetRoomId) &&
@@ -1057,7 +1114,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
     predecessorContract: prepPredecessor,
     activeStay: prepActiveStay,
     effectiveTransferDate: prepEffectiveDate,
-  } = await resolveValidatedRoomTransferIntent({ reservationId, payload, requireConfirm: true });
+  } = await resolveValidatedRoomTransferIntent({
+    reservationId,
+    payload,
+    requireConfirm: true,
+    // Committing path: materialize the tenant's Stay now if a legitimately
+    // moved-in resident never had one created (the transaction's
+    // ensureActiveStay would do it a moment later anyway). Keeps Stage A and
+    // Stage B seeing the same Stay.
+    materializeStay: true,
+    actorId,
+  });
 
   const preparedSuccessor = await prepareRoomTransferDraft({
     reservation: prepReservation,
