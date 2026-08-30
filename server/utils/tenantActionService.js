@@ -243,7 +243,20 @@ async function buildActionAvailability({ reservation, stay, billingSummary }) {
  * Returns null when it cannot be computed (no target room, unsupported room
  * type, missing lease term) rather than guessing.
  */
-export async function computeRoomTransferPreview({ reservationId, targetRoomId, effectiveTransferDate, depositHeldOverride = null }) {
+export async function computeRoomTransferPreview({
+  reservationId,
+  targetRoomId,
+  effectiveTransferDate,
+  // When the caller is about to perform (or is simulating) the ACTUAL cutover
+  // — e.g. completeRoomTransfer on the transfer day, possibly delayed past the
+  // scheduled date — pass `asOfCutoverDate`. Rent/deposit proration, the
+  // billing cycle and the settlement total are then computed as of that day,
+  // matching what transferStayWorkflow will do with its transaction-local
+  // cutoverAt. Omitted => the scheduled `effectiveTransferDate` is used (the
+  // scheduling-time preview).
+  asOfCutoverDate = null,
+  depositHeldOverride = null,
+}) {
   if (!targetRoomId) return null;
   const [reservation, targetRoom] = await Promise.all([
     Reservation.findById(reservationId).populate("roomId", "name roomNumber branch type price monthlyPrice").lean(),
@@ -255,7 +268,8 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
   const predecessorContract = await resolveAuthoritativeCurrentContract({
     reservationId, tenantId: reservation.userId,
   });
-  const transferDate = normalizeDate(effectiveTransferDate) || new Date();
+  const transferDate =
+    normalizeDate(asOfCutoverDate) || normalizeDate(effectiveTransferDate) || new Date();
   const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || activeStay?.leaseStartDate || null;
   const leaseEndDate = activeStay?.leaseEndDate || predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
   const leaseDurationMonths =
@@ -1593,7 +1607,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       }
 
       const activeStay = await ensureActiveStay(reservation, actorId, session, prepPredecessor);
-      const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
+      // ── BILLING BOUNDARY = ACTUAL CUTOVER DAY ────────────────────────────
+      // The scheduled `payload.effectiveTransferDate` is the PLANNING date
+      // (admin guidance / readiness target / schedule history). Once a
+      // scheduled transfer is delayed (payment settlement, office hours), the
+      // tenant occupies the OLD room through the ACTUAL physical cutover — so
+      // rent/deposit proration, the billing cycle, the transfer_settlement
+      // Bill's billingMonth, and the BedHistory day-boundary all follow
+      // `cutoverDay` (= normalizeDate(cutoverAt)), NOT the scheduled date.
+      // Electricity uses the exact `cutoverAt` timestamp. The scheduled date is
+      // preserved untouched on ScheduledRoomTransfer + scheduleHistory.
+      const scheduledTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
+      const effectiveTransferDate = cutoverDay || scheduledTransferDate;
       if (!activeStay || !CURRENT_STAY_STATUSES.includes(activeStay.status)) {
         throw Object.assign(new Error("No active stay found for transfer."), { statusCode: 400, code: "NO_ACTIVE_STAY" });
       }

@@ -675,7 +675,7 @@ export async function rescheduleRoomTransfer({ reservationId, payload = {}, acto
  * @returns {Promise<import("mongoose").Document|null>} the Bill, or null when
  *   nothing is owed and no Bill exists.
  */
-async function upsertTransferSettlementBill({ record, reservation, preview, finalizedElectricity, actorId }) {
+async function upsertTransferSettlementBill({ record, reservation, preview, finalizedElectricity, asOfCutoverDay, actorId }) {
   const rentDue = roundMoney(Math.max(0, Number(preview?.rent?.adjustmentDue) || 0));
   const depositDue = roundMoney(Math.max(0, Number(preview?.deposit?.balanceDue) || 0));
   // Finalized source-room electricity (sub-metered branch) — settled on THIS
@@ -683,7 +683,10 @@ async function upsertTransferSettlementBill({ record, reservation, preview, fina
   // this Bill (cannot be finalized before period close).
   const electricityDue = roundMoney(Math.max(0, Number(finalizedElectricity?.amount) || 0));
   const total = roundMoney(rentDue + depositDue + electricityDue);
-  const effectiveDateObj = toManilaStartOfDay(record.effectiveTransferDate).toDate();
+  // The Bill's dates follow the ACTUAL cutover day (today) when supplied — a
+  // delayed completion bills as of when it actually happens, matching the
+  // preview's rent-cycle. Falls back to the scheduled date.
+  const effectiveDateObj = toManilaStartOfDay(asOfCutoverDay || record.effectiveTransferDate).toDate();
   const cycleStart = preview?.billingCycle?.billingCycleStart || effectiveDateObj;
   const cycleEnd = preview?.billingCycle?.billingCycleEnd || effectiveDateObj;
 
@@ -695,7 +698,7 @@ async function upsertTransferSettlementBill({ record, reservation, preview, fina
   const noteFor = () =>
     `Room Transfer settlement: ${preview?.fromRoom?.name || "current room"} → ` +
     `${preview?.toRoom?.name || "new room"} on ` +
-    `${toManilaStartOfDay(record.effectiveTransferDate).format("YYYY-MM-DD")}; ` +
+    `${toManilaStartOfDay(asOfCutoverDay || record.effectiveTransferDate).format("YYYY-MM-DD")}; ` +
     `rent adjustment ₱${rentDue.toFixed(2)}, additional security deposit ₱${depositDue.toFixed(2)}` +
     (electricityDue > 0 ? `, final old-room electricity ₱${electricityDue.toFixed(2)}` : "") +
     `. Old-room water (if separately billed) is settled at its normal period close.`;
@@ -927,13 +930,41 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     );
   }
 
-  // 4. Recompute the canonical settlement at the REAL cutover, and the
-  //    transferee's FINALIZED source-room electricity from the FRESH closing
-  //    reading (same canonical computeBilling engine — no second formula).
+  // 4. Recompute the canonical settlement AS OF THE ACTUAL CUTOVER DAY (today),
+  //    NOT the scheduled date. If this transfer was scheduled for an earlier
+  //    day but is only being completed now (payment/office-hours delay), the
+  //    tenant occupied the old room through today — rent/deposit proration and
+  //    the billing cycle follow today. transferStayWorkflow does the same with
+  //    its transaction-local cutoverAt, so the reused-Bill invariant matches.
+  //    Electricity is finalized separately from the FRESH closing reading.
+  const actualCutoverDay = new Date();
+
+  // If a PRIOR completion attempt already created the transfer_settlement Bill
+  // and its deposit component was (partly) paid, paymentLedger.reconcile-
+  // TransferDepositHeld will have RAISED reservation.securityDepositHeld. On
+  // this re-attempt the additional-deposit-due must be recomputed against the
+  // held amount as it stood BEFORE that funding — otherwise a paid deposit
+  // component reads as "the destination requirement dropped" and the whole
+  // settlement looks lower than the (correct) Bill.
+  let depositHeldOverride = null;
+  if (record.settlementBillId) {
+    const freshReservation = await Reservation.findById(reservationId)
+      .select("securityDepositLedger")
+      .lean();
+    const ledgerEntry = (freshReservation?.securityDepositLedger || []).find(
+      (e) => e.idempotencyKey === `room_transfer_deposit_settlement:${String(record.settlementBillId)}`,
+    );
+    if (ledgerEntry && Number.isFinite(Number(ledgerEntry.previousHeld))) {
+      depositHeldOverride = roundMoney(Number(ledgerEntry.previousHeld));
+    }
+  }
+
   const preview = await computeRoomTransferPreview({
     reservationId,
     targetRoomId: String(record.destinationRoomId),
-    effectiveTransferDate: record.effectiveTransferDate,
+    effectiveTransferDate: record.effectiveTransferDate, // planning date (fallback)
+    asOfCutoverDate: actualCutoverDay,                   // authoritative billing boundary
+    depositHeldOverride: depositHeldOverride ?? undefined,
   });
   if (!preview) {
     throw err("The transfer settlement could not be computed. Review the tenant's billing/lease state.", 409, "OPERATIONAL_VALIDATION_FAILED");
@@ -972,32 +1003,17 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       reservation,
       preview,
       finalizedElectricity,
+      asOfCutoverDay: actualCutoverDay,
       actorId,
     });
     const paid = roundMoney(Number(bill?.paidAmount || 0));
     const billTotal = roundMoney(Number(bill?.totalAmount || 0));
 
-    if (!bill || paid + 0.01 < billTotal) {
-      // Not settled yet — surface the Bill; admin settles via the normal
-      // payment flow, then re-invokes Complete Transfer.
-      await ScheduledRoomTransfer.updateOne(
-        { _id: record._id, status: "scheduled" },
-        { $set: { status: "action_required", lastError: "TRANSFER_BALANCE_UNPAID", lastAttemptAt: new Date() } },
-      );
-      const fresh = await ScheduledRoomTransfer.findById(record._id);
-      return {
-        outcome: "awaiting_settlement",
-        reason: "TRANSFER_BALANCE_UNPAID",
-        scheduledTransfer: fresh,
-        bill,
-        message:
-          `Settle the Room Transfer balance of ₱${roundMoney(billTotal - paid).toFixed(2)} ` +
-          `then complete the transfer.`,
-      };
-    }
-    // Paid — but if the recomputed amount is HIGHER than what was paid, that is
-    // a financial adjustment, not a completable state.
-    if (billTotal + 0.01 < totalImmediateDue) {
+    // The Bill already carries a real payment AND the fresh (actual-cutover-day)
+    // recompute is HIGHER than what the Bill was sized for -> a financial
+    // adjustment. upsertTransferSettlementBill did NOT rewrite the paid Bill's
+    // charges (unpaid-only reshape). The admin must settle the difference.
+    if (paid > 0 && billTotal + 0.01 < totalImmediateDue) {
       await ScheduledRoomTransfer.updateOne(
         { _id: record._id },
         { $set: { status: "action_required", lastError: "ADDITIONAL_BALANCE_DUE", lastAttemptAt: new Date() } },
@@ -1008,7 +1024,50 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
         reason: "ADDITIONAL_BALANCE_DUE",
         scheduledTransfer: fresh,
         bill,
-        message: "The transfer settlement recomputed higher than the amount already paid. Settle the difference, then complete.",
+        message:
+          `The transfer settlement recomputed to ₱${roundMoney(totalImmediateDue).toFixed(2)} ` +
+          `(higher than the ₱${billTotal.toFixed(2)} already billed). Settle the additional ` +
+          `₱${roundMoney(totalImmediateDue - billTotal).toFixed(2)}, then complete.`,
+      };
+    }
+
+    // The Bill carries a payment AND the recompute is LOWER — money already
+    // collected, no automatic refund/reallocation.
+    if (paid > 0 && totalImmediateDue + 0.01 < billTotal) {
+      await ScheduledRoomTransfer.updateOne(
+        { _id: record._id },
+        { $set: { status: "action_required", lastError: "FINANCIAL_ADJUSTMENT_REQUIRED", lastAttemptAt: new Date() } },
+      );
+      const fresh = await ScheduledRoomTransfer.findById(record._id);
+      return {
+        outcome: "action_required",
+        reason: "FINANCIAL_ADJUSTMENT_REQUIRED",
+        scheduledTransfer: fresh,
+        bill,
+        message:
+          "The final transfer amount is lower than what has already been paid. No automatic refund is made — " +
+          "please coordinate the settlement with the Administration Office, then complete.",
+      };
+    }
+
+    // Not fully settled -> surface the Bill; admin pays via the normal flow,
+    // then re-invokes Complete Transfer. (Covers: brand-new Bill unpaid;
+    // partial payment where the recompute did NOT move.)
+    if (!bill || paid + 0.01 < roundMoney(Number(bill?.totalAmount || 0))) {
+      await ScheduledRoomTransfer.updateOne(
+        { _id: record._id, status: "scheduled" },
+        { $set: { status: "action_required", lastError: "TRANSFER_BALANCE_UNPAID", lastAttemptAt: new Date() } },
+      );
+      const fresh = await ScheduledRoomTransfer.findById(record._id);
+      const freshTotal = roundMoney(Number((await Bill.findById(bill?._id).lean())?.totalAmount || billTotal));
+      return {
+        outcome: "awaiting_settlement",
+        reason: "TRANSFER_BALANCE_UNPAID",
+        scheduledTransfer: fresh,
+        bill,
+        message:
+          `Settle the Room Transfer balance of ₱${roundMoney(freshTotal - paid).toFixed(2)} ` +
+          `then complete the transfer.`,
       };
     }
   }
@@ -1018,7 +1077,6 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
   //    only financial gate). The engine re-takes the slot/bed atomically and
   //    reuses the linked Bill.
   const reusableBillId = record.settlementBillId ? String(record.settlementBillId) : undefined;
-  const depositHeldOverride = null; // Bill funds securityDepositHeld on payment; no pre-funding split needed here.
 
   await releaseHoldOwnTxn(record);
   let transferResult;
@@ -1035,6 +1093,8 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
         sourceRoomMeterReading: sourceMeterReading ?? undefined,
         targetRoomMeterReading: targetMeterReading ?? undefined,
         scheduledTransferBillId: reusableBillId,
+        // Same pre-funding-aware override the preview used — so the workflow's
+        // in-txn recompute of the deposit component matches the Bill it reuses.
         depositHeldOverride: depositHeldOverride ?? undefined,
         __scheduledTransferId: String(record._id),
       },
