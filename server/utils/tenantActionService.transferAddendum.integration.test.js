@@ -169,6 +169,16 @@ function payloadFor({ targetRoom, transferDate }) {
 // Mark the tenant's current room-transfer addendum as wet-signed/active
 // (the Phase-8 acknowledgement/signing flow's end state) so we can prove a
 // second transfer works WITHOUT it, then also that it works WITH it.
+
+async function paySettlements(reservationId) {
+  const { Bill } = await import("../models/index.js");
+  for (const b of await Bill.find({ reservationId, billType: "transfer_settlement", status: { $ne: "voided" } })) {
+    if (Number(b.totalAmount) - Number(b.paidAmount || 0) > 0) {
+      await Bill.updateOne({ _id: b._id }, { $set: { paidAmount: b.totalAmount, remainingAmount: 0, status: "paid" } });
+    }
+  }
+}
+
 async function wetSignCurrentAddendum(reservationId) {
   const c = await Contract.findOne({ reservationId, isCurrent: true });
   await Contract.updateOne({ _id: c._id }, {
@@ -188,6 +198,7 @@ describe("Phase 8 — Room Transfer Addendum", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -195,6 +206,7 @@ describe("Phase 8 — Room Transfer Addendum", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
@@ -203,6 +215,8 @@ describe("Phase 8 — Room Transfer Addendum", () => {
   });
 
   // ── 1. Original Contract immutable; addendum carries original lease term ──
+  afterEach(() => { jest.useRealTimers(); });
+
   test("Quad -> Private: original notarized Contract untouched; addendum keeps the original lease dates + records the transfer date separately", async () => {
     const { tenant, reservation, stay, original, actorId } = await seed({ sourceType: "quadruple-sharing" });
     const roomB = await emptyRoom("private", "402");
@@ -310,6 +324,8 @@ describe("Phase 8 — Room Transfer Addendum", () => {
     expect(add1.status).toBe("generated");           // wet-signing still pending
 
     // Transfer #2 must NOT be blocked by add1's unfinished signing.
+    await paySettlements(reservation._id); // round-2: prior settlement must be paid
+    jest.setSystemTime(new Date(`${String(TRANSFER_2).slice(0, 10)}T10:00:00.000+08:00`));
     await transferStayWorkflow({ reservationId: reservation._id, payload: payloadFor({ targetRoom: roomC, transferDate: TRANSFER_2 }), actorId });
 
     const [reloadedAdd1, add2, chain] = await Promise.all([
@@ -358,6 +374,8 @@ describe("Phase 8 — Room Transfer Addendum", () => {
 
     await transferStayWorkflow({ reservationId: reservation._id, payload: payloadFor({ targetRoom: roomB, transferDate: TRANSFER_1 }), actorId });
     await wetSignCurrentAddendum(reservation._id);
+    await paySettlements(reservation._id); // round-2: prior settlement must be paid
+    jest.setSystemTime(new Date(`${String(TRANSFER_2).slice(0, 10)}T10:00:00.000+08:00`));
     await transferStayWorkflow({ reservationId: reservation._id, payload: payloadFor({ targetRoom: roomC, transferDate: TRANSFER_2 }), actorId });
 
     const add2 = await Contract.findOne({ reservationId: reservation._id, isCurrent: true });

@@ -34,6 +34,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
   }, 120_000);
 
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}),
       Room.deleteMany({}),
@@ -137,6 +138,8 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
 
     return { tenant, roomA, roomB, reservation, stay, bedHistory, predecessor, successor, actorId };
   }
+
+  afterEach(() => { jest.useRealTimers(); });
 
   test("first (advance-covered) period: uses pricingSnapshot.advanceRentAmount, not Contract.approvedMonthlyRate", async () => {
     const moveInDate = new Date("2026-08-01T00:00:00.000Z");

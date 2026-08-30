@@ -104,6 +104,7 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -111,12 +112,15 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   async function seedTenantInRoom({ roomType, roomNumber, branch = "gil-puyat", tenantName = "E" }) {
     const tenant = await User.create({
@@ -177,6 +181,7 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
   }
 
   async function runTransfer({ reservation, targetRoom, actorId, transferDate = TRANSFER_DATE, sourceReading, targetReading }) {
+    jest.setSystemTime(new Date(`${String(transferDate).slice(0, 10)}T10:00:00.000+08:00`));
     const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
     return transferStayWorkflow({
       reservationId: reservation._id,
@@ -301,6 +306,12 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
     // wet-sign the T#1 contract so T#2's predecessor check passes
     const c1 = await Contract.findOne({ reservationId: reservation._id, isCurrent: true });
     await Contract.updateOne({ _id: c1._id }, { $set: { status: "active" } });
+    // Pay T#1's settlement Bill (round-2: TRANSFER_SETTLEMENT_UNPAID gates T#2).
+    for (const b of await Bill.find({ reservationId: reservation._id, billType: "transfer_settlement", status: { $ne: "voided" } })) {
+      if (Number(b.totalAmount) - Number(b.paidAmount || 0) > 0) {
+        await Bill.updateOne({ _id: b._id }, { $set: { paidAmount: b.totalAmount, remainingAmount: 0, status: "paid" } });
+      }
+    }
     // B -> C on Aug 20
     await runTransfer({ reservation, targetRoom: roomC, actorId, transferDate: "2026-08-20T00:00:00.000Z", sourceReading: 1200, targetReading: 3000 });
 

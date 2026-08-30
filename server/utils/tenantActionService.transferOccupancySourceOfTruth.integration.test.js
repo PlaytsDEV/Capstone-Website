@@ -108,6 +108,7 @@ describe("Phase 2 — current occupancy is the single source of truth", () => {
   }, 120_000);
 
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -115,12 +116,15 @@ describe("Phase 2 — current occupancy is the single source of truth", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   function bedsFor(type, prefix) {
     if (!NEEDS_BED.has(type)) return [];

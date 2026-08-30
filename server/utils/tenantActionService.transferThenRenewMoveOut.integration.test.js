@@ -153,6 +153,7 @@ async function emptyRoom(type, roomNumber) {
 
 async function doTransfer(reservation, targetRoom, actorId, transferDate) {
   const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
+  jest.setSystemTime(new Date(`${String(transferDate).slice(0, 10)}T10:00:00.000+08:00`));
   return transferStayWorkflow({
     reservationId: reservation._id,
     payload: {
@@ -167,6 +168,15 @@ async function doTransfer(reservation, targetRoom, actorId, transferDate) {
 async function wetSignCurrentContract(reservationId) {
   const c = await Contract.findOne({ reservationId, isCurrent: true });
   await Contract.updateOne({ _id: c._id }, { $set: { status: "active" }, $push: { statusHistory: { status: "active", changedBy: null, reason: "test wet-sign" } } });
+  // A prior transfer's settlement Bill must be PAID before the next transfer
+  // can complete (round-2: TRANSFER_SETTLEMENT_UNPAID gate).
+  const { Bill } = await import("../models/index.js");
+  const bills = await Bill.find({ reservationId, billType: "transfer_settlement", status: { $ne: "voided" } });
+  for (const b of bills) {
+    if (Math.round((Number(b.totalAmount || 0) - Number(b.paidAmount || 0)) * 100) / 100 > 0) {
+      await Bill.updateOne({ _id: b._id }, { $set: { paidAmount: b.totalAmount, remainingAmount: 0, status: "paid" } });
+    }
+  }
 }
 
 const minimalFinalDocument = (actorId) => ({
@@ -186,6 +196,10 @@ describe("Phase 10 — renewal + move-out after room transfer", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-06-15T10:00:00.000+08:00"),
+      doNotFake: ["nextTick", "setImmediate", "setInterval", "setTimeout", "clearInterval", "clearTimeout", "queueMicrotask"],
+    });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -194,6 +208,7 @@ describe("Phase 10 — renewal + move-out after room transfer", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
@@ -202,6 +217,8 @@ describe("Phase 10 — renewal + move-out after room transfer", () => {
   });
 
   // ── RENEWAL ──────────────────────────────────────────────────────────
+  afterEach(() => { jest.useRealTimers(); });
+
   test("Quad -> Private then renew: new Stay is on Private; renewal successor carries Private; lineage Original -> Addendum -> Renewal", async () => {
     const { reservation, original, actorId } = await seed({ sourceType: "quadruple-sharing" });
     const roomB = await emptyRoom("private", "402");
