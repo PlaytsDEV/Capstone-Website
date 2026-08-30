@@ -394,6 +394,73 @@ describe("scheduleRoomTransfer — guards", () => {
     expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
   });
 
+  // ── Audit item 1: EVERY planned date + time must be within office hours ──
+  test("FUTURE date + time OUTSIDE the office-hours window is rejected at scheduling", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    // Window 08:00–20:00, all days.
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
+    );
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: futureDateISO(12),
+        effectiveTransferTimeMinutes: 21 * 60, // 21:00 — after close
+      },
+      actorId,
+    })).rejects.toMatchObject({ code: "OUTSIDE_OFFICE_HOURS" });
+    expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
+  });
+
+  test("FUTURE date that falls on a NON-office day is rejected at scheduling", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    // Find a future date ~2 weeks out and configure office days to EXCLUDE its
+    // weekday, so a within-hours time still fails on the day-of-week rule.
+    const d = new Date(); d.setDate(d.getDate() + 14); d.setHours(0, 0, 0, 0);
+    const isoWeekday = d.getDay() === 0 ? 7 : d.getDay();
+    const officeDays = [1, 2, 3, 4, 5, 6, 7].filter((x) => x !== isoWeekday);
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: officeDays } },
+    );
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: d.toISOString(),
+        effectiveTransferTimeMinutes: 10 * 60, // 10:00 — within hours, wrong day
+      },
+      actorId,
+    })).rejects.toMatchObject({ code: "OUTSIDE_OFFICE_HOURS" });
+    expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
+  });
+
+  test("FUTURE date + time INSIDE a restrictive office-hours window is allowed", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    const d = new Date(); d.setDate(d.getDate() + 13); d.setHours(0, 0, 0, 0);
+    const isoWeekday = d.getDay() === 0 ? 7 : d.getDay();
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 540, officeHoursEndMinutes: 1020, officeDaysOfWeek: [isoWeekday] } }, // 09:00–17:00, only that weekday
+    );
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: d.toISOString(),
+        effectiveTransferTimeMinutes: 14 * 60, // 14:00 — within 09:00–17:00
+      },
+      actorId,
+    });
+    expect(scheduledTransfer.status).toBe("scheduled");
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(14 * 60);
+  });
+
   test("only one open schedule per reservation", async () => {
     const { reservation, actorId } = await seed();
     const dest1 = await emptyRoom("private", "205");

@@ -63,37 +63,58 @@ export const minutesToTimeStr = (minutes) => {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 };
 
+/** `YYYY-MM-DD` -> ISO weekday (Mon=1 … Sun=7), or null. Parsed as a local
+ *  calendar date (noon) so no timezone rollover. */
+export const isoWeekdayOf = (dateStr) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || "").trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.getDay();
+  return day === 0 ? 7 : day;
+};
+
 /**
- * Advisory (backend-authoritative) same-day office-hours check for the wizard.
- * Given a `YYYY-MM-DD` + `HH:mm` and the resolved office hours, returns
- * `{ ok, reason }`. Only same-day is gated — a future date is always ok here.
+ * Advisory (backend-authoritative) office-hours check for the schedule /
+ * reschedule wizard. EVERY planned transfer date + time — today, tomorrow, or
+ * any future date — must land inside canonical office hours on an office day;
+ * an impossible schedule is rejected up front, not deferred to Complete
+ * Transfer. The backend (`isWithinOfficeHours` / OUTSIDE_OFFICE_HOURS) stays
+ * authoritative; this mirrors it for immediate UI feedback.
  *
  * @param {string} dateStr  `YYYY-MM-DD`
  * @param {string} timeStr  `HH:mm`
  * @param {{ startMinutes:number, endMinutes:number, days:number[] }} officeHours
  * @param {Date} [now]
+ * @returns {{ ok: boolean, reason: string }}
  */
-export const checkSameDayOfficeHours = (dateStr, timeStr, officeHours, now = new Date()) => {
+export const checkScheduleWithinOfficeHours = (dateStr, timeStr, officeHours, now = new Date()) => {
   if (!dateStr) return { ok: false, reason: "Select an effective date." };
-  if (dateStr > localTodayStr(now)) return { ok: true, reason: "" };
   if (dateStr < localTodayStr(now)) return { ok: false, reason: "The effective date is in the past." };
-  // Same day — check the time against office hours.
+
   const mins = timeStrToMinutes(timeStr);
   if (mins == null) return { ok: false, reason: "Enter a valid transfer time (HH:mm)." };
+
   const oh = officeHours || { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5, 6] };
-  const target = new Date(now);
-  const isoDay = target.getDay() === 0 ? 7 : target.getDay();
-  if (Array.isArray(oh.days) && oh.days.length && !oh.days.includes(isoDay)) {
-    return { ok: false, reason: "The office is closed today. Choose a future date." };
+  const isoDay = isoWeekdayOf(dateStr);
+  if (isoDay != null && Array.isArray(oh.days) && oh.days.length && !oh.days.includes(isoDay)) {
+    return { ok: false, reason: "The office is closed on that day. Choose an office day." };
   }
   if (mins < oh.startMinutes || mins >= oh.endMinutes) {
     return {
       ok: false,
-      reason: `Same-day transfers must be within office hours (${minutesToTimeStr(oh.startMinutes)}–${minutesToTimeStr(oh.endMinutes)}).`,
+      reason: `Transfers must be scheduled within office hours (${minutesToTimeStr(oh.startMinutes)}–${minutesToTimeStr(oh.endMinutes)}).`,
     };
   }
   return { ok: true, reason: "" };
 };
+
+/**
+ * @deprecated Use {@link checkScheduleWithinOfficeHours}. Kept as a thin alias
+ * so existing call sites keep working; the rule is now "every date + time",
+ * not "same-day only".
+ */
+export const checkSameDayOfficeHours = checkScheduleWithinOfficeHours;
 
 /**
  * True when `effectiveTransferDate` (a `YYYY-MM-DD` string, or anything

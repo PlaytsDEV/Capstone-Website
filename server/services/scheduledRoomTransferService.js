@@ -333,16 +333,20 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
   if (isPastManilaDate(effectiveTransferDate)) {
     throw err("The effective transfer date cannot be in the past.", 400, "PAST_TRANSFER_DATE");
   }
-  if (!isFutureManilaDate(effectiveTransferDate)) {
-    // Same Manila day => must be within office hours (backend-authoritative).
+  // EVERY planned transfer date + time — today, tomorrow, or any future date —
+  // must land inside canonical office hours (BusinessSettings, Asia/Manila,
+  // backend-authoritative). An impossible schedule is rejected here, not
+  // deferred to Complete Transfer. The transaction-local cutoverAt check in
+  // transferStayWorkflow still independently validates the REAL physical time.
+  {
     const cutoverAt = composeManilaDateTime(effectiveTransferDate, effectiveTransferTimeMinutes);
     const officeHours = await resolveOfficeHoursForBranch(targetRoom.branch);
     if (!isWithinOfficeHours(cutoverAt, targetRoom.branch, { officeHours })) {
       const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
       throw err(
-        `Same-day room transfers can only be scheduled during office hours ` +
-          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila). ` +
-          `Choose a time within office hours, or a future date.`,
+        `Room transfers can only be scheduled for a time within office hours ` +
+          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila) ` +
+          `on an office day. Choose a valid date and time.`,
         400,
         "OUTSIDE_OFFICE_HOURS",
       );
@@ -564,15 +568,16 @@ export async function rescheduleRoomTransfer({ reservationId, payload = {}, acto
     payload.effectiveTransferTimeMinutes ?? payload.effectiveTransferTime,
   );
 
-  // Same-day => office hours (backend-authoritative).
-  if (!newDate.isAfter(getManilaToday(), "day")) {
+  // EVERY rescheduled date + time must land inside canonical office hours
+  // (today, tomorrow, or any future date) — same rule as scheduleRoomTransfer.
+  {
     const cutoverAt = composeManilaDateTime(newDate.toDate(), newTimeMinutes);
     const officeHours = await resolveOfficeHoursForBranch(record.branch);
     if (!isWithinOfficeHours(cutoverAt, record.branch, { officeHours })) {
       const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
       throw err(
-        `A same-day room transfer can only be scheduled during office hours ` +
-          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila).`,
+        `Room transfers can only be scheduled for a time within office hours ` +
+          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila) on an office day.`,
         400,
         "OUTSIDE_OFFICE_HOURS",
       );
@@ -633,13 +638,20 @@ export async function rescheduleRoomTransfer({ reservationId, payload = {}, acto
   await record.save();
 
   // Re-point the Addendum's effective date so the document reflects the change.
+  // The Addendum is only current/acknowledged AFTER a transfer completes, so a
+  // pre-completion reschedule normally hits an unacknowledged draft. Defensively:
+  // if any acknowledgement rows exist for it, drop them so the corrected date
+  // requires a fresh acknowledgement (never leave a stale one silently applied).
   if (record.addendumContractId) {
     try {
-      const { Contract } = await import("../models/index.js");
-      await Contract.updateOne(
+      const { Contract, ContractAcknowledgement } = await import("../models/index.js");
+      const upd = await Contract.updateOne(
         { _id: record.addendumContractId, isCurrent: { $ne: true } },
         { $set: { amendmentEffectiveDate: newDate.toDate() } },
       );
+      if (upd.modifiedCount > 0) {
+        await ContractAcknowledgement.deleteMany({ contractId: record.addendumContractId });
+      }
     } catch (e) {
       logger.warn(
         { err: e, scheduledTransferId: String(record._id) },
@@ -905,6 +917,58 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     }
   }
 
+  // 2b. Audit item 2 (requirement D): catch a reservation / pending move-in
+  //     created AFTER scheduling whose occupancy window OVERLAPS the
+  //     transferee's expected destination-occupancy interval
+  //     `[cutoverDay, transfereeEnd)`. A reservation that begins on/after the
+  //     transferee's known lease end does not block (matches the candidate
+  //     selector's interval rule).
+  {
+    const cutoverDay = toManilaStartOfDay(new Date())?.toDate?.() || new Date();
+    const transfereeEndRaw =
+      intent.activeStay?.leaseEndDate || intent.predecessorContract?.leaseEndDate || null;
+    const transfereeEnd = transfereeEndRaw
+      ? toManilaStartOfDay(transfereeEndRaw)?.toDate?.() || new Date(transfereeEndRaw)
+      : null;
+
+    const otherReservations = await Reservation.find({
+      _id: { $ne: reservation._id },
+      "roomId": record.destinationRoomId,
+      status: { $in: ["reserved", "approved_for_payment", "moveIn"] },
+      isArchived: { $ne: true },
+    })
+      .select("selectedBed status moveInDate expectedMoveInDate leaseStartDate")
+      .lean();
+
+    const overlaps = (r) => {
+      if (r.status === "moveIn") return true; // already a live occupant
+      const startRaw = r.leaseStartDate || r.expectedMoveInDate || r.moveInDate || null;
+      const start = startRaw
+        ? toManilaStartOfDay(startRaw)?.toDate?.() || new Date(startRaw)
+        : cutoverDay;
+      if (transfereeEnd && start && start.getTime() >= transfereeEnd.getTime()) return false;
+      return true;
+    };
+
+    const conflicting = otherReservations.filter((r) => {
+      if (!overlaps(r)) return false;
+      if (record.destinationNeedsBed) {
+        return String(r.selectedBed?.id || "") === String(record.destinationBedId);
+      }
+      return true;
+    });
+
+    if (conflicting.length > 0) {
+      throw err(
+        record.destinationNeedsBed
+          ? "Another reservation now covers the destination bed during this tenant's stay. Reschedule the transfer or pick another bed."
+          : "Another reservation now covers the destination room during this tenant's stay. Reschedule the transfer or pick another room.",
+        409,
+        "DESTINATION_UNAVAILABLE",
+      );
+    }
+  }
+
   // 3. Meter readings — captured FRESH on every Complete Transfer call (never
   //    reused from an earlier attempt). Sub-metered source branch => the
   //    closing SOURCE reading AND the opening DESTINATION reading are both
@@ -1110,22 +1174,30 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     // The authoritative office-hours re-check inside the transaction is a
     // legitimate "cannot complete now" outcome, not an execution failure.
     const isOfficeHours = e.code === "OUTSIDE_OFFICE_HOURS";
+    // The Addendum was already acknowledged/signed for the originally scheduled
+    // date and the actual cutover is a different day — the admin must reschedule
+    // (which re-issues the Addendum) rather than silently disagree.
+    const isAddendumLocked = e.code === "ADDENDUM_EFFECTIVE_DATE_LOCKED";
     await ScheduledRoomTransfer.updateOne(
       { _id: record._id },
       {
         $set: {
           status: "action_required",
-          lastError: isOfficeHours ? "OUTSIDE_OFFICE_HOURS" : `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
+          lastError: isOfficeHours
+            ? "OUTSIDE_OFFICE_HOURS"
+            : isAddendumLocked
+              ? "ADDENDUM_EFFECTIVE_DATE_LOCKED"
+              : `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
           lastAttemptAt: new Date(),
           holdApplied: true,
         },
       },
     );
-    if (isOfficeHours) {
+    if (isOfficeHours || isAddendumLocked) {
       const fresh = await ScheduledRoomTransfer.findById(record._id);
       return {
         outcome: "action_required",
-        reason: "OUTSIDE_OFFICE_HOURS",
+        reason: e.code,
         scheduledTransfer: fresh,
         message: e.message,
       };

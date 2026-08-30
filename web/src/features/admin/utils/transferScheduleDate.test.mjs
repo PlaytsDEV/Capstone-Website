@@ -18,6 +18,8 @@ import {
   isScheduledTransferDate,
   timeStrToMinutes,
   minutesToTimeStr,
+  isoWeekdayOf,
+  checkScheduleWithinOfficeHours,
   checkSameDayOfficeHours,
 } from "./transferScheduleDate.js";
 
@@ -104,29 +106,51 @@ test("timeStrToMinutes / minutesToTimeStr round-trip", () => {
   assert.equal(minutesToTimeStr(0), "00:00");
 });
 
-test("checkSameDayOfficeHours: future date always ok, no time needed", () => {
-  const oh = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5, 6] };
-  assert.deepEqual(checkSameDayOfficeHours("2026-09-05", "", oh, AUG_29_2026), {
-    ok: true,
-    reason: "",
-  });
+// ── Audit item 1: EVERY planned date + time is office-hours validated ──────
+const OH = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5, 6] };
+
+test("isoWeekdayOf: YYYY-MM-DD -> ISO weekday (Mon=1..Sun=7)", () => {
+  assert.equal(isoWeekdayOf("2026-08-29"), 6); // Saturday
+  assert.equal(isoWeekdayOf("2026-08-30"), 7); // Sunday
+  assert.equal(isoWeekdayOf("2026-08-31"), 1); // Monday
+  assert.equal(isoWeekdayOf("bad"), null);
 });
 
-test("checkSameDayOfficeHours: past date rejected", () => {
-  const oh = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5, 6] };
-  assert.equal(checkSameDayOfficeHours("2026-08-28", "10:00", oh, AUG_29_2026).ok, false);
+test("checkScheduleWithinOfficeHours: FUTURE date still requires a valid in-hours time", () => {
+  // No time on a future date => not ok (was previously auto-ok).
+  assert.equal(checkScheduleWithinOfficeHours("2026-09-07", "", OH, AUG_29_2026).ok, false);
+  // 2026-09-07 is a Monday — in-hours time ok.
+  assert.equal(checkScheduleWithinOfficeHours("2026-09-07", "10:00", OH, AUG_29_2026).ok, true);
+  // Future date, after close => rejected at scheduling.
+  assert.equal(checkScheduleWithinOfficeHours("2026-09-07", "21:00", OH, AUG_29_2026).ok, false);
+  // Future date, end-exclusive.
+  assert.equal(checkScheduleWithinOfficeHours("2026-09-07", "20:00", OH, AUG_29_2026).ok, false);
 });
 
-test("checkSameDayOfficeHours: same-day inside office hours ok, outside rejected", () => {
-  const oh = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5, 6] };
-  // Aug 29 2026 is a Saturday (ISO weekday 6) — in the default office days.
-  assert.equal(checkSameDayOfficeHours("2026-08-29", "10:00", oh, AUG_29_2026).ok, true);
-  assert.equal(checkSameDayOfficeHours("2026-08-29", "21:00", oh, AUG_29_2026).ok, false);
-  assert.equal(checkSameDayOfficeHours("2026-08-29", "20:00", oh, AUG_29_2026).ok, false); // end exclusive
+test("checkScheduleWithinOfficeHours: FUTURE date on a NON-office day is rejected", () => {
+  // 2026-09-06 is a Sunday; OH.days is Mon–Sat.
+  assert.equal(isoWeekdayOf("2026-09-06"), 7);
+  const r = checkScheduleWithinOfficeHours("2026-09-06", "10:00", OH, AUG_29_2026);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /closed on that day/i);
 });
 
-test("checkSameDayOfficeHours: same-day on a closed weekday rejected", () => {
-  const oh = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5] }; // Mon–Fri
-  // Aug 29 2026 = Saturday, not in Mon–Fri.
-  assert.equal(checkSameDayOfficeHours("2026-08-29", "10:00", oh, AUG_29_2026).ok, false);
+test("checkScheduleWithinOfficeHours: past date rejected", () => {
+  assert.equal(checkScheduleWithinOfficeHours("2026-08-28", "10:00", OH, AUG_29_2026).ok, false);
+});
+
+test("checkScheduleWithinOfficeHours: same-day inside office hours ok, outside rejected", () => {
+  // Aug 29 2026 is a Saturday (ISO weekday 6) — in OH.days.
+  assert.equal(checkScheduleWithinOfficeHours("2026-08-29", "10:00", OH, AUG_29_2026).ok, true);
+  assert.equal(checkScheduleWithinOfficeHours("2026-08-29", "21:00", OH, AUG_29_2026).ok, false);
+  assert.equal(checkScheduleWithinOfficeHours("2026-08-29", "20:00", OH, AUG_29_2026).ok, false);
+});
+
+test("checkScheduleWithinOfficeHours: same-day on a closed weekday rejected", () => {
+  const ohWeekdaysOnly = { startMinutes: 8 * 60, endMinutes: 20 * 60, days: [1, 2, 3, 4, 5] };
+  assert.equal(checkScheduleWithinOfficeHours("2026-08-29", "10:00", ohWeekdaysOnly, AUG_29_2026).ok, false);
+});
+
+test("checkSameDayOfficeHours is an alias of checkScheduleWithinOfficeHours", () => {
+  assert.equal(checkSameDayOfficeHours, checkScheduleWithinOfficeHours);
 });

@@ -97,8 +97,9 @@ test("Date picker minimum is TODAY (minScheduleDateStr) — same-day allowed; a 
   // A time input backs `effectiveTransferTime`.
   assert.match(transferModalSource, /type="time"/);
   assert.match(transferModalSource, /effectiveTransferTime/);
-  // Same-day office-hours advisory is wired.
-  assert.match(transferModalSource, /checkSameDayOfficeHours/);
+  // Office-hours advisory is wired for EVERY planned date (not just same-day).
+  assert.match(transferModalSource, /checkScheduleWithinOfficeHours/);
+  assert.doesNotMatch(transferModalSource, /checkSameDayOfficeHours/);
   assert.match(modalSource, /useBusinessSettings/);
 });
 

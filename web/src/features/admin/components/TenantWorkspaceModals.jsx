@@ -14,8 +14,7 @@ import { useBusinessSettings } from "../../../shared/hooks/queries/useSettings";
 import {
   toDateInputValue,
   minScheduleDateStr,
-  isScheduledTransferDate,
-  checkSameDayOfficeHours,
+  checkScheduleWithinOfficeHours,
   minutesToTimeStr,
 } from "../utils/transferScheduleDate";
 import { destinationRoomNeedsBed } from "../utils/transferDestinationBed";
@@ -699,12 +698,12 @@ export function TransferTenantModal({
   }, [transferCandidates]);
   const selectedCandidate = candidateByRoomId.get(String(roomId)) || null;
 
-  // ── Same-day office-hours advisory (backend stays authoritative) ──────────
+  // ── Office-hours advisory for the PLANNED time (backend stays authoritative).
+  //    Applies to every date — today, tomorrow, or any future date.
   const officeHoursCheck = useMemo(
-    () => checkSameDayOfficeHours(effectiveTransferDate, effectiveTransferTime, officeHours),
+    () => checkScheduleWithinOfficeHours(effectiveTransferDate, effectiveTransferTime, officeHours),
     [effectiveTransferDate, effectiveTransferTime, officeHours],
   );
-  const isScheduledForFuture = isScheduledTransferDate(effectiveTransferDate);
 
   // ── Step gate validation ──────────────────────────────────────────────────
   const step1Valid =
@@ -1091,15 +1090,16 @@ export function TransferTenantModal({
           <span className="twm-meter-hint">
             <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
             <span>
-              <strong>Transfer timing.</strong> Same-day transfers are allowed
-              within office hours ({minutesToTimeStr(officeHours.startMinutes)}–
-              {minutesToTimeStr(officeHours.endMinutes)}); future dates are always
-              allowed. The tenant stays in the current room until you complete the
-              transfer on the scheduled date, when room, rent, and utility
+              <strong>Transfer timing.</strong> The date and time — today or any
+              future date — must be within office hours (
+              {minutesToTimeStr(officeHours.startMinutes)}–
+              {minutesToTimeStr(officeHours.endMinutes)}, Asia/Manila) on an
+              office day. The tenant stays in the current room until you complete
+              the transfer on the scheduled date, when room, rent, and utility
               responsibility switch over.
             </span>
           </span>
-          {effectiveTransferDate && !isScheduledForFuture && !officeHoursCheck.ok && (
+          {effectiveTransferDate && effectiveTransferTime && !officeHoursCheck.ok && (
             <div className="twm-callout twm-callout--danger">
               {officeHoursCheck.reason}
             </div>

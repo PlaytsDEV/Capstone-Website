@@ -68,10 +68,11 @@ test("review shows meter readings are entered at the Complete Transfer step + th
   assert.match(transfer, /Neither is part of this\s*\n?\s*scheduled balance/s);
 });
 
-test("effective date is required (today or later) with a same-day office-hours advisory", () => {
-  assert.match(transfer, /Same-day transfers are allowed\s*\n?\s*within office hours/s);
+test("effective date is required (today or later) with an office-hours advisory for EVERY planned date", () => {
+  assert.match(transfer, /date and time — today or any\s*\n?\s*future date — must be within office hours/s);
   assert.match(transfer, /effectiveTransferDate < minScheduleDateStr\(\)/);
-  assert.match(transfer, /checkSameDayOfficeHours/);
+  assert.match(transfer, /checkScheduleWithinOfficeHours/);
+  assert.doesNotMatch(transfer, /checkSameDayOfficeHours/);
 });
 
 test("preview query enables on a reservation + effective date and includes room candidates", () => {

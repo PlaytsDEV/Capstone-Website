@@ -49,7 +49,7 @@ await jest.unstable_mockModule("./contractService.js", () => ({
   })),
 }));
 
-const { scheduleRoomTransfer, completeRoomTransfer } = await import("./scheduledRoomTransferService.js");
+const { scheduleRoomTransfer, completeRoomTransfer, rescheduleRoomTransfer } = await import("./scheduledRoomTransferService.js");
 const { generateContractNumber } = await import("./contractService.js");
 const { applyBillPayment } = await import("./billing/paymentLedger.js");
 const { serializeScheduledRoomTransfer } = await import("./scheduledRoomTransferView.js");
@@ -145,16 +145,29 @@ async function scheduleThenBackdate({ res, roomB, actorId, daysAgo }) {
     },
     actorId: actorId,
   });
-  const originalDate = new Date(scheduledTransfer.effectiveTransferDate);
   const back = new Date();
   back.setDate(back.getDate() - daysAgo);
   back.setHours(0, 0, 0, 0);
-  // Back-date the effective date + stale the preview snapshot (as if scheduled
-  // `daysAgo` ago and only now being completed).
+  // Back-date the effective date (as if scheduled `daysAgo` ago and only now
+  // being completed). Also back-date the prepared Addendum draft + its
+  // scheduleHistory[0] entry so the "originally scheduled date" the test reads
+  // truly precedes today.
   await ScheduledRoomTransfer.updateOne(
     { _id: scheduledTransfer._id },
-    { $set: { effectiveTransferDate: back } },
+    {
+      $set: {
+        effectiveTransferDate: back,
+        "scheduleHistory.0.newDate": back,
+      },
+    },
   );
+  if (scheduledTransfer.addendumContractId) {
+    await Contract.updateOne(
+      { _id: scheduledTransfer.addendumContractId },
+      { $set: { amendmentEffectiveDate: back } },
+    );
+  }
+  const originalDate = back;
   return { schedId: scheduledTransfer._id, originalDate };
 }
 
@@ -177,6 +190,59 @@ beforeEach(async () => {
     UtilityFinalization.deleteMany({}), ScheduledRoomTransfer.deleteMany({}),
   ]);
   mockGenerate.mockClear();
+});
+
+describe("rescheduleRoomTransfer — office hours on EVERY planned date (audit item 1)", () => {
+  test("reschedule to a FUTURE date + time outside office hours is rejected (OUTSIDE_OFFICE_HOURS)", async () => {
+    const { res, roomB, actorId } = await seed();
+    const today = new Date(); today.setHours(9, 0, 0, 0);
+    await scheduleRoomTransfer({
+      reservationId: res._id,
+      payload: {
+        confirm: true, targetRoomId: String(roomB._id), targetBedId: "qb-b1",
+        effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
+        reason: "reschedule oh test",
+      },
+      actorId,
+    });
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
+    );
+    const future = new Date(); future.setDate(future.getDate() + 10); future.setHours(0, 0, 0, 0);
+    await expect(rescheduleRoomTransfer({
+      reservationId: res._id,
+      payload: { effectiveTransferDate: future.toISOString(), effectiveTransferTimeMinutes: 21 * 60 },
+      actorId,
+    })).rejects.toMatchObject({ code: "OUTSIDE_OFFICE_HOURS" });
+  });
+
+  test("reschedule to a FUTURE date + time inside office hours is accepted and re-points the Addendum date", async () => {
+    const { res, roomB, actorId } = await seed();
+    const today = new Date(); today.setHours(9, 0, 0, 0);
+    await scheduleRoomTransfer({
+      reservationId: res._id,
+      payload: {
+        confirm: true, targetRoomId: String(roomB._id), targetBedId: "qb-b1",
+        effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
+        reason: "reschedule oh ok",
+      },
+      actorId,
+    });
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
+    );
+    const future = new Date(); future.setDate(future.getDate() + 11); future.setHours(0, 0, 0, 0);
+    const { scheduledTransfer } = await rescheduleRoomTransfer({
+      reservationId: res._id,
+      payload: { effectiveTransferDate: future.toISOString(), effectiveTransferTimeMinutes: 15 * 60, reason: "tenant asked" },
+      actorId,
+    });
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(15 * 60);
+    const hist = scheduledTransfer.scheduleHistory.at(-1);
+    expect(hist.kind).toBe("rescheduled");
+  });
 });
 
 describe("completeRoomTransfer — delayed completion settles as of TODAY", () => {
@@ -301,5 +367,85 @@ describe("completeRoomTransfer — delayed completion settles as of TODAY", () =
     expect(Number(billAfter.totalAmount)).toBe(originalTotal);
     expect(billAfter.charges.rent).toBe(originalCharges.rent);
     expect(billAfter.charges.securityDeposit).toBe(originalCharges.securityDeposit);
+  });
+});
+
+describe("Addendum effective date on LATE completion (audit item 3)", () => {
+  test("successful delayed completion aligns the current Contract's amendmentEffectiveDate to the ACTUAL cutover day, not the scheduled date", async () => {
+    const { res, roomB, actorId } = await seed();
+    const { schedId, originalDate } = await scheduleThenBackdate({ res, roomB, actorId, daysAgo: 18 });
+    const { formatManilaDate } = await import("../utils/dateUtils.js");
+    const originalDay = formatManilaDate(originalDate, "YYYY-MM-DD");
+    const todayDay = formatManilaDate(new Date(), "YYYY-MM-DD");
+    expect(originalDay).not.toBe(todayDay);
+
+    // 1st completion -> Bill; settle it; 2nd -> executed.
+    const r1 = await completeRoomTransfer({ reservationId: res._id, payload: {}, actorId });
+    expect(r1.outcome).toBe("awaiting_settlement");
+    const billDoc = await Bill.findById(r1.bill._id);
+    await applyBillPayment({
+      bill: billDoc, amount: Number(billDoc.totalAmount), method: "offline_cash",
+      source: "admin-manual", now: new Date(),
+    });
+    const r2 = await completeRoomTransfer({ reservationId: res._id, payload: {}, actorId });
+    expect(r2.outcome).toBe("executed");
+
+    // The tenant's CURRENT Contract (the activated room-transfer successor) must
+    // carry amendmentEffectiveDate = the ACTUAL cutover day.
+    const current = await Contract.findOne({ reservationId: res._id, isCurrent: true }).lean();
+    expect(current).toBeTruthy();
+    expect(["amendment", "replacement"]).toContain(current.contractPurpose);
+    expect(formatManilaDate(current.amendmentEffectiveDate, "YYYY-MM-DD")).toBe(todayDay);
+    expect(formatManilaDate(current.amendmentEffectiveDate, "YYYY-MM-DD")).not.toBe(originalDay);
+
+    // The schedule history still records the ORIGINAL scheduled date — the
+    // planning record and the contract date do not silently disagree; each is
+    // authoritative for its own purpose.
+    const sched = await ScheduledRoomTransfer.findById(schedId).lean();
+    expect(formatManilaDate(sched.scheduleHistory[0].newDate, "YYYY-MM-DD")).toBe(originalDay);
+  });
+
+  test("if the Addendum draft was already ACKNOWLEDGED for the scheduled date, a later completion is BLOCKED (ADDENDUM_EFFECTIVE_DATE_LOCKED) — never silently re-dated", async () => {
+    const { res, roomB, actorId } = await seed();
+    const { schedId } = await scheduleThenBackdate({ res, roomB, actorId, daysAgo: 12 });
+
+    // Simulate the tenant acknowledging the prepared Addendum draft (bound to
+    // the scheduled date) BEFORE the transfer is completed.
+    const { Contract, ContractAcknowledgement } = await import("../models/index.js");
+    const draft = await Contract.findOne({
+      reservationId: res._id,
+      contractPurpose: { $in: ["amendment", "replacement"] },
+      isCurrent: { $ne: true },
+    }).lean();
+    expect(draft).toBeTruthy();
+    await ContractAcknowledgement.create({
+      contractId: draft._id,
+      tenantId: (await Reservation.findById(res._id).lean()).userId,
+      acknowledgedAt: new Date(),
+      documentVersion: 1,
+      documentFileHash: `ack-${draft._id}`,
+    });
+
+    // 1st completion -> Bill; settle in full.
+    const r1 = await completeRoomTransfer({ reservationId: res._id, payload: {}, actorId });
+    expect(r1.outcome).toBe("awaiting_settlement");
+    const billDoc = await Bill.findById(r1.bill._id);
+    await applyBillPayment({
+      bill: billDoc, amount: Number(billDoc.totalAmount), method: "offline_cash",
+      source: "admin-manual", now: new Date(),
+    });
+
+    // 2nd completion -> blocked: the Addendum is locked to the scheduled date.
+    const r2 = await completeRoomTransfer({ reservationId: res._id, payload: {}, actorId });
+    expect(r2.outcome).toBe("action_required");
+    expect(r2.reason).toBe("ADDENDUM_EFFECTIVE_DATE_LOCKED");
+
+    // No cutover; the acknowledged document was NOT re-dated.
+    const stay = await Stay.findOne({ reservationId: res._id }).lean();
+    expect(String(stay.roomId)).not.toBe(String(roomB._id));
+    const sched = await ScheduledRoomTransfer.findById(schedId).lean();
+    expect(sched.status).toBe("action_required");
+    const draftAfter = await Contract.findById(draft._id).lean();
+    expect(draftAfter.amendmentEffectiveDate.toISOString()).toBe(draft.amendmentEffectiveDate.toISOString());
   });
 });

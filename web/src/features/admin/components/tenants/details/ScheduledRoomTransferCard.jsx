@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, LoaderCircle } from "lucide-react";
@@ -7,10 +7,27 @@ import { reservationApi } from "../../../../../shared/api/reservationApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
 import ConfirmModal from "../../../../../shared/components/ConfirmModal";
+import { useBusinessSettings } from "../../../../../shared/hooks/queries/useSettings";
 import {
   minScheduleDateStr,
   timeStrToMinutes,
+  minutesToTimeStr,
+  checkScheduleWithinOfficeHours,
 } from "../../../utils/transferScheduleDate";
+
+// Resolve office hours from the business settings payload (same shape the
+// schedule modal reads). Falls back to 08:00–20:00 Mon–Sat.
+function resolveOfficeHoursFromSettings(businessSettings) {
+  const s = businessSettings?.data ?? businessSettings ?? {};
+  return {
+    startMinutes: Number(s.officeHoursStartMinutes ?? 8 * 60),
+    endMinutes: Number(s.officeHoursEndMinutes ?? 20 * 60),
+    days:
+      Array.isArray(s.officeDaysOfWeek) && s.officeDaysOfWeek.length
+        ? s.officeDaysOfWeek
+        : [1, 2, 3, 4, 5, 6],
+  };
+}
 
 // Derived UI status → badge tone. These are the values produced by
 // server/services/scheduledRoomTransferView.js `deriveScheduledTransferUserStatus`.
@@ -34,9 +51,11 @@ const REVIEW_GUIDANCE = {
   FINANCIAL_ADJUSTMENT_REQUIRED:
     "The amount paid exceeds the recomputed settlement. Please coordinate with the Administration Office, 2nd Floor.",
   OUTSIDE_OFFICE_HOURS:
-    "Completion is only allowed within office hours. Try again during office hours.",
+    "Completion is only allowed within office hours. Try again during office hours, or reschedule.",
   DESTINATION_UNAVAILABLE:
-    "The destination room/bed is no longer available. Reschedule or pick another room.",
+    "The destination room/bed is no longer available for this tenant's stay. Reschedule or pick another room.",
+  ADDENDUM_EFFECTIVE_DATE_LOCKED:
+    "The Addendum was already acknowledged for the originally scheduled date. Reschedule the transfer to re-issue it for the actual date, then complete.",
   METER_READING_REQUIRED: "Enter the source room's closing electricity reading to continue.",
   DEST_METER_READING_REQUIRED:
     "Enter the destination room's current electricity reading to continue.",
@@ -305,15 +324,26 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Reschedule — date + time only, on the SAME destination. The backend
-   revalidates the destination hold + (same-day) office hours and appends to
-   the schedule history.
+   Reschedule — date + time only, on the SAME destination. Every planned date +
+   time must be within canonical office hours (backend-authoritative). The
+   backend also revalidates the destination hold and appends to the schedule
+   history.
    ───────────────────────────────────────────────────────────────────────────── */
 function RescheduleDialog({ transfer, onClose, onDone }) {
   const [date, setDate] = useState(transfer.effectiveTransferDate?.slice(0, 10) || minScheduleDateStr());
   const [time, setTime] = useState(transfer.effectiveTransferTimeLabel || "09:00");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const { data: businessSettings } = useBusinessSettings(true);
+  const officeHours = useMemo(
+    () => resolveOfficeHoursFromSettings(businessSettings),
+    [businessSettings],
+  );
+  const officeHoursCheck = useMemo(
+    () => checkScheduleWithinOfficeHours(date, time, officeHours),
+    [date, time, officeHours],
+  );
 
   const submit = async () => {
     if (!date || date < minScheduleDateStr()) {
@@ -323,6 +353,10 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
     const mins = timeStrToMinutes(time);
     if (mins == null) {
       showNotification("Enter a valid transfer time (HH:mm).", "warning");
+      return;
+    }
+    if (!officeHoursCheck.ok) {
+      showNotification(officeHoursCheck.reason, "warning");
       return;
     }
     setBusy(true);
@@ -355,8 +389,10 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
       >
         <h3 className="text-sm font-bold text-foreground">Reschedule Room Transfer</h3>
         <p className="text-[11px] text-muted-foreground">
-          Same destination room ({transfer.scheduledRoom?.name || "—"}). Availability and same-day
-          office hours are re-checked on save.
+          Same destination room ({transfer.scheduledRoom?.name || "—"}). The new date and time must
+          be within office hours ({minutesToTimeStr(officeHours.startMinutes)}–
+          {minutesToTimeStr(officeHours.endMinutes)}) on an office day. Availability is re-checked on
+          save.
         </p>
         <label className="block space-y-1">
           <span className="text-[11px] text-muted-foreground">New Effective Date</span>
@@ -372,6 +408,9 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
           <span className="text-[11px] text-muted-foreground">New Transfer Time</span>
           <input type="time" className={fieldCls} value={time} onChange={(e) => setTime(e.target.value)} />
         </label>
+        {date && time && !officeHoursCheck.ok ? (
+          <p className="text-[11px] text-rose-600 dark:text-rose-400">{officeHoursCheck.reason}</p>
+        ) : null}
         <label className="block space-y-1">
           <span className="text-[11px] text-muted-foreground">Reason (optional)</span>
           <input
@@ -395,7 +434,7 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
             type="button"
             className="text-xs px-3 py-1.5 rounded-md bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-1"
             onClick={submit}
-            disabled={busy}
+            disabled={busy || !officeHoursCheck.ok}
           >
             {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
             Save
@@ -408,10 +447,12 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Complete Transfer — enter the boundary meter readings, then submit. The
-   backend computes the settlement, blocks on an unpaid transfer settlement
-   (202 awaiting_settlement / 409), and otherwise runs the atomic cutover.
-   Internal reconciliation machinery is never surfaced here.
+   Complete Transfer — enter the boundary meter readings, then submit. Meter
+   inputs are shown ONLY when the server-authoritative preview says electricity
+   is sub-metered for that room (never a confusing optional empty field on a
+   fixed-rate branch). The backend computes the settlement, blocks on an unpaid
+   transfer settlement (202 awaiting_settlement / 409), and otherwise runs the
+   atomic cutover. Internal reconciliation machinery is never surfaced here.
    ───────────────────────────────────────────────────────────────────────────── */
 function CompleteTransferDialog({ transfer, onClose, onDone }) {
   const [sourceReading, setSourceReading] = useState("");
@@ -419,22 +460,64 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
+
+  // Server-authoritative electricity applicability (audit item 4). Branch rules
+  // are NOT duplicated here — we render from these flags.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setPreviewLoading(true);
+      try {
+        const res = await reservationApi.getRoomTransferPreview(transfer.reservationId, {
+          targetRoomId: transfer.scheduledRoom?.id || undefined,
+          effectiveTransferDate: transfer.effectiveTransferDate || undefined,
+        });
+        const p = res?.data?.transferPreview ?? res?.transferPreview ?? null;
+        if (!cancelled) setPreview(p);
+      } catch {
+        if (!cancelled) setPreview(null);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transfer.reservationId, transfer.scheduledRoom?.id, transfer.effectiveTransferDate]);
+
+  // Default: if the preview can't be resolved, fall back to showing both inputs
+  // (backend still enforces METER_READING_REQUIRED / DEST_METER_READING_REQUIRED).
+  const sourceSubMetered = preview ? !!preview.electricity?.subMetered : true;
+  const destSubMetered = preview ? !!preview.destinationElectricity?.subMetered : true;
+  const anyMeterInput = sourceSubMetered || destSubMetered;
+  const sourcePreviousReading = preview?.electricity?.previousReading ?? null;
+  const destCurrentReading = preview?.destinationElectricity?.currentReading ?? null;
 
   const submit = async () => {
     const body = { notes: notes.trim() || undefined };
-    if (sourceReading !== "") {
+    if (sourceSubMetered && sourceReading !== "") {
       if (Number.isNaN(Number(sourceReading))) {
         showNotification("The source room reading must be a number.", "warning");
         return;
       }
       body.sourceRoomMeterReading = Number(sourceReading);
     }
-    if (targetReading !== "") {
+    if (destSubMetered && targetReading !== "") {
       if (Number.isNaN(Number(targetReading))) {
         showNotification("The destination room reading must be a number.", "warning");
         return;
       }
       body.targetRoomMeterReading = Number(targetReading);
+    }
+    if (sourceSubMetered && sourceReading === "") {
+      showNotification("Enter the source room's closing electricity reading.", "warning");
+      return;
+    }
+    if (destSubMetered && targetReading === "") {
+      showNotification("Enter the destination room's current electricity reading.", "warning");
+      return;
     }
     setBusy(true);
     try {
@@ -494,37 +577,55 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
           />
         </div>
 
-        <p className="text-[11px] text-muted-foreground">
-          Enter the electricity meter readings taken now, at the real cutover. For a fixed-rate
-          branch you can leave these blank — the system will tell you if a reading is required.
-          Water is not finalized here; it follows the normal end-of-cycle billing.
-        </p>
-        <div className="space-y-1">
-          <span className="text-[11px] text-muted-foreground">
-            Source room (OLD) closing electricity reading
-          </span>
-          <input
-            type="number"
-            inputMode="decimal"
-            className={fieldCls}
-            value={sourceReading}
-            onChange={(e) => setSourceReading(e.target.value)}
-            placeholder="Meter reading now, in the OLD room"
-          />
-        </div>
-        <div className="space-y-1">
-          <span className="text-[11px] text-muted-foreground">
-            Destination room (NEW) current electricity reading
-          </span>
-          <input
-            type="number"
-            inputMode="decimal"
-            className={fieldCls}
-            value={targetReading}
-            onChange={(e) => setTargetReading(e.target.value)}
-            placeholder="Meter reading now, in the NEW room"
-          />
-        </div>
+        {previewLoading ? (
+          <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <LoaderCircle size={12} className="animate-spin" /> Checking meter requirements…
+          </p>
+        ) : anyMeterInput ? (
+          <p className="text-[11px] text-muted-foreground">
+            Enter the electricity meter readings taken now, at the real cutover. Water is not
+            finalized here; it follows the normal end-of-cycle billing.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            This branch bills electricity at a fixed rate — no meter reading is needed. The rent and
+            deposit settlement is calculated on submit; water follows the normal end-of-cycle
+            billing.
+          </p>
+        )}
+
+        {sourceSubMetered ? (
+          <div className="space-y-1">
+            <span className="text-[11px] text-muted-foreground">
+              Source room (OLD) closing electricity reading
+              {sourcePreviousReading != null ? ` — previous: ${sourcePreviousReading}` : ""}
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              className={fieldCls}
+              value={sourceReading}
+              onChange={(e) => setSourceReading(e.target.value)}
+              placeholder="Meter reading now, in the OLD room"
+            />
+          </div>
+        ) : null}
+        {destSubMetered ? (
+          <div className="space-y-1">
+            <span className="text-[11px] text-muted-foreground">
+              Destination room (NEW) current electricity reading
+              {destCurrentReading != null ? ` — recorded: ${destCurrentReading}` : ""}
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              className={fieldCls}
+              value={targetReading}
+              onChange={(e) => setTargetReading(e.target.value)}
+              placeholder="Meter reading now, in the NEW room"
+            />
+          </div>
+        ) : null}
 
         <label className="block space-y-1">
           <span className="text-[11px] text-muted-foreground">Notes (optional)</span>
@@ -560,7 +661,7 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
             type="button"
             className="text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1"
             onClick={submit}
-            disabled={busy}
+            disabled={busy || previewLoading}
           >
             {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
             Complete Transfer
