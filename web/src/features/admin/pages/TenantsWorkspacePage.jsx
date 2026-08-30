@@ -347,9 +347,12 @@ export default function TenantsWorkspacePage() {
         const urgencyScore = (tenant) => {
         if (tenant.nextAction === "verify_payment") return 1;
         if (tenant.nextAction === "review_overdue_account") return 2;
-        if (tenant.nextAction === "process_move_out") return 3;
-        if (tenant.nextAction === "renew_lease") return 4;
-        return 5;
+        if (tenant.nextAction === "settle_transfer") return 3;
+        if (tenant.nextAction === "complete_transfer") return 3;
+        if (tenant.nextAction === "process_move_out") return 4;
+        if (tenant.nextAction === "transfer_scheduled") return 5;
+        if (tenant.nextAction === "renew_lease") return 6;
+        return 7;
         };
 
         return [...filteredTenants].sort((left, right) => {
@@ -764,18 +767,25 @@ export default function TenantsWorkspacePage() {
             label: "Action Needed",
             render: (row) => (
               row.nextAction && row.nextAction !== "none" ? (
-                <button
-                  type="button"
-                  className={`tenant-action-btn tenant-action-btn--${row.nextAction}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleNextActionClick(row);
-                  }}
-                  title={`Quick action: ${row.nextActionLabel}`}
-                >
-                  <span>{row.nextActionLabel}</span>
-                  <span className="tenant-action-btn__arrow">→</span>
-                </button>
+                <div className="flex flex-col items-start gap-0.5">
+                  <button
+                    type="button"
+                    className={`tenant-action-btn tenant-action-btn--${row.nextAction}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleNextActionClick(row);
+                    }}
+                    title={`Quick action: ${row.nextActionLabel}`}
+                  >
+                    <span>{row.nextActionLabel}</span>
+                    <span className="tenant-action-btn__arrow">→</span>
+                  </button>
+                  {row.nextActionDetail ? (
+                    <span className="text-[11px] text-muted-foreground">
+                      {row.nextActionDetail}
+                    </span>
+                  ) : null}
+                </div>
               ) : (
                 <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
@@ -1133,18 +1143,25 @@ export default function TenantsWorkspacePage() {
                       {/* 6. Action Needed (Interactive CTA Button) */}
                       <td className="py-3 px-4">
                         {tenant.nextAction && tenant.nextAction !== "none" ? (
-                          <button
-                            type="button"
-                            className={`tenant-action-btn tenant-action-btn--${tenant.nextAction}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleNextActionClick(tenant);
-                            }}
-                            title={`Quick action: ${tenant.nextActionLabel}`}
-                          >
-                            <span>{tenant.nextActionLabel}</span>
-                            <span className="tenant-action-btn__arrow">→</span>
-                          </button>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <button
+                              type="button"
+                              className={`tenant-action-btn tenant-action-btn--${tenant.nextAction}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNextActionClick(tenant);
+                              }}
+                              title={`Quick action: ${tenant.nextActionLabel}`}
+                            >
+                              <span>{tenant.nextActionLabel}</span>
+                              <span className="tenant-action-btn__arrow">→</span>
+                            </button>
+                            {tenant.nextActionDetail ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                {tenant.nextActionDetail}
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />

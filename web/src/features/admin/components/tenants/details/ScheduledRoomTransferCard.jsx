@@ -7,26 +7,40 @@ import { reservationApi } from "../../../../../shared/api/reservationApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
 import ConfirmModal from "../../../../../shared/components/ConfirmModal";
+import {
+  minScheduleDateStr,
+  timeStrToMinutes,
+} from "../../../utils/transferScheduleDate";
 
+// Derived UI status → badge tone. These are the values produced by
+// server/services/scheduledRoomTransferView.js `deriveScheduledTransferUserStatus`.
 const STATUS_TONE = {
-  awaiting_payment: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  ready: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  action_required: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  scheduled: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  ready_for_transfer:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  awaiting_settlement:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  action_required:
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
   completed: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
   cancelled: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
 
-// Reasons for which "Retry Transfer" is offered (payment of the normal Bill
-// resolves the blocker). Everything else needs Administration-Office settlement.
-const RETRYABLE_REASONS = new Set(["TRANSFER_BALANCE_UNPAID", "ADDITIONAL_BALANCE_DUE"]);
-
 const REVIEW_GUIDANCE = {
-  TRANSFER_BALANCE_UNPAID: "Settle the remaining balance before retrying the transfer.",
-  ADDITIONAL_BALANCE_DUE: "An additional balance is required. Settle the updated Bill, then retry.",
-  FINANCIAL_ADJUSTMENT_REQUIRED: "Please coordinate with the Administration Office, 2nd Floor.",
-  PAYMENT_ALREADY_RECEIVED: "Please coordinate with the Administration Office, 2nd Floor.",
-  OPERATIONAL_VALIDATION_FAILED: "Review the destination room/bed and retry after correcting the issue.",
-  EXECUTION_FAILED: "Review the destination room/bed and retry after correcting the issue.",
+  TRANSFER_BALANCE_UNPAID: "Settle the transfer balance, then complete the transfer.",
+  TRANSFER_SETTLEMENT_UNPAID: "Settle the transfer balance, then complete the transfer.",
+  ADDITIONAL_BALANCE_DUE:
+    "An additional balance is required. Settle the updated Bill, then complete the transfer.",
+  FINANCIAL_ADJUSTMENT_REQUIRED:
+    "The amount paid exceeds the recomputed settlement. Please coordinate with the Administration Office, 2nd Floor.",
+  OUTSIDE_OFFICE_HOURS:
+    "Completion is only allowed within office hours. Try again during office hours.",
+  DESTINATION_UNAVAILABLE:
+    "The destination room/bed is no longer available. Reschedule or pick another room.",
+  METER_READING_REQUIRED: "Enter the source room's closing electricity reading to continue.",
+  DEST_METER_READING_REQUIRED:
+    "Enter the destination room's current electricity reading to continue.",
+  TRANSFER_NOT_YET_DUE: "The scheduled transfer date/time has not been reached yet.",
 };
 
 const Row = ({ label, value }) => (
@@ -36,23 +50,36 @@ const Row = ({ label, value }) => (
   </div>
 );
 
+const fieldCls =
+  "w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-foreground";
+
 /**
- * Admin — one concise card for an upcoming (not-yet-effective) room transfer.
- * The tenant's CURRENT room/rent elsewhere in this modal stay the SOURCE
- * values until the effective date; this card only describes what is scheduled.
+ * Admin — one concise card for a scheduled room transfer.
+ *
+ * Scheduling only places a destination hold. The tenant's CURRENT room/rent
+ * elsewhere in this modal stay the SOURCE values until the admin completes the
+ * transfer on the scheduled date. This card:
+ *   - describes what is scheduled and its schedule-change history,
+ *   - offers Reschedule (date + time, same destination) while still open,
+ *   - offers Complete Transfer once the date/time is reached — a compact modal
+ *     that collects the boundary meter readings and calls the completion API
+ *     (200 executed / 202 awaiting settlement / 409 settlement unpaid),
+ *   - offers Cancel in safe states.
  */
 export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContract }) {
   const queryClient = useQueryClient();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (!transfer) return null;
   const {
     reservationId, currentRoom, scheduledRoom, effectiveTransferDate,
-    currentMonthlyRent, newMonthlyRent, statusLabel, status,
-    transferBalance, addendum, actionRequiredReason,
+    effectiveTransferTimeLabel, currentMonthlyRent, newMonthlyRent, statusLabel,
+    status, transferBalance, addendum, actionRequiredReason, actionRequiredMessage,
     destinationBed, scheduledAt, createdAt, initiatedBy, addendumContractId,
+    scheduleHistory = [], completable,
   } = transfer;
 
   const openAddendum = () => {
@@ -69,12 +96,15 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
   const hasBalance = bal.hasBill && Number(bal.amountDue) > 0;
   const hasPayment = Number(bal.amountPaid || 0) > 0;
   const reasonCode = String(actionRequiredReason || "");
-  const canCancel = ["awaiting_payment", "ready"].includes(status) || (status === "action_required" && !hasPayment);
-  const canRetry = status === "action_required" && RETRYABLE_REASONS.has(reasonCode);
+  const isOpenRecord = !["completed", "cancelled"].includes(status);
+  const canCancel = isOpenRecord && !hasPayment;
+  const canReschedule = isOpenRecord;
+  const canComplete = !!completable;
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["tenant-workspace-detail"] });
     queryClient.invalidateQueries({ queryKey: ["billing"] });
+    queryClient.invalidateQueries({ queryKey: ["rooms"] });
   };
 
   const runCancel = async () => {
@@ -83,7 +113,10 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
     try {
       const res = await reservationApi.cancelScheduledRoomTransfer(reservationId);
       if (res?.outcome === "cancelled") {
-        showNotification("Scheduled room transfer cancelled. The tenant remains in the current room.", "success");
+        showNotification(
+          "Scheduled room transfer cancelled. The tenant remains in the current room.",
+          "success",
+        );
       } else {
         showNotification(
           "A payment has already been received. Please coordinate with the Administration Office, 2nd Floor for settlement.",
@@ -93,24 +126,6 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
       refresh();
     } catch (err) {
       showNotification(getFriendlyError(err) || "Failed to cancel the scheduled transfer.", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runRetry = async () => {
-    setBusy(true);
-    try {
-      const res = await reservationApi.retryScheduledRoomTransfer(reservationId);
-      showNotification(
-        res?.outcome === "executed"
-          ? "Scheduled room transfer executed."
-          : "The scheduled transfer still cannot be completed — see the status.",
-        res?.outcome === "executed" ? "success" : "warning",
-      );
-      refresh();
-    } catch (err) {
-      showNotification(getFriendlyError(err) || "Retry failed.", "error");
     } finally {
       setBusy(false);
     }
@@ -135,7 +150,10 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
           {scheduledRoom?.needsBed && (
             <Row label="Destination Bed" value={destinationBed || "—"} />
           )}
-          <Row label="Effective Date" value={formatDate(effectiveTransferDate)} />
+          <Row
+            label="Effective Date & Time"
+            value={`${formatDate(effectiveTransferDate)}${effectiveTransferTimeLabel ? ` · ${effectiveTransferTimeLabel}` : ""}`}
+          />
         </div>
         <div>
           <Row label="Current Monthly Rent" value={formatMoney(currentMonthlyRent ?? 0)} />
@@ -154,22 +172,49 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
             <Row label="Due" value={formatDate(bal.dueDate || effectiveTransferDate)} />
           </>
         ) : (
-          <Row label="Transfer Balance" value="₱0 — no payment required" />
+          <Row label="Transfer Balance" value="Calculated at Complete Transfer" />
         )}
       </div>
 
-      {status === "ready" ? (
+      {status === "ready_for_transfer" ? (
         <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-          Payment requirements are settled. Transfer is scheduled for {formatDate(effectiveTransferDate)}.
+          The scheduled date/time has been reached. Use <strong>Complete Transfer</strong> to enter
+          meter readings, settle, and cut over.
+        </p>
+      ) : status === "awaiting_settlement" ? (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+          The transfer settlement must be paid in full before the transfer can complete.
         </p>
       ) : status === "action_required" ? (
         <p className="text-[11px] text-rose-700 dark:text-rose-400">
-          {REVIEW_GUIDANCE[reasonCode] || actionRequiredReason || "This scheduled transfer needs review."}
+          {REVIEW_GUIDANCE[reasonCode] || actionRequiredMessage || "This scheduled transfer needs review."}
         </p>
       ) : null}
 
+      {scheduleHistory.length > 1 && (
+        <div className="text-[11px] text-muted-foreground border-t border-sky-200/60 dark:border-sky-900/40 pt-2">
+          <p className="font-semibold text-foreground mb-1">Schedule history</p>
+          <ul className="space-y-0.5">
+            {scheduleHistory.map((h, i) => (
+              <li key={i}>
+                {h.kind === "scheduled" ? "Scheduled" : "Rescheduled"} for{" "}
+                {formatDate(h.newDate)}
+                {typeof h.newTimeMinutes === "number"
+                  ? ` · ${String(Math.floor(h.newTimeMinutes / 60)).padStart(2, "0")}:${String(h.newTimeMinutes % 60).padStart(2, "0")}`
+                  : ""}
+                {h.previousDate
+                  ? ` (was ${formatDate(h.previousDate)}${typeof h.previousTimeMinutes === "number" ? ` · ${String(Math.floor(h.previousTimeMinutes / 60)).padStart(2, "0")}:${String(h.previousTimeMinutes % 60).padStart(2, "0")}` : ""})`
+                  : ""}
+                {h.at ? ` — ${formatDate(h.at)}` : ""}
+                {h.reason ? ` — ${h.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="text-[11px] text-muted-foreground space-y-0.5">
-        <p>Utilities: to follow after the transfer cutoff.</p>
+        <p>Utilities: boundary meter readings are entered at Complete Transfer; the final charges follow the normal period close.</p>
         <p className="flex items-center gap-1.5">
           <span>Document: {addendum?.label || "Room Transfer Addendum — Scheduled"}</span>
           {addendumContractId && onOpenDigitalContract && (
@@ -184,26 +229,26 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
         </p>
       </div>
 
-      {/* Actions — minimal: Cancel (safe states) + Review/Retry (action_required). */}
       <div className="flex flex-wrap gap-2 pt-1">
-        {status === "action_required" ? (
-          <button
-            type="button"
-            onClick={() => setReviewOpen(true)}
-            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-          >
-            Review
-          </button>
-        ) : null}
-        {canRetry ? (
+        {canComplete ? (
           <button
             type="button"
             disabled={busy}
-            onClick={runRetry}
-            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-50 inline-flex items-center gap-1"
+            onClick={() => setCompleteOpen(true)}
+            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50 inline-flex items-center gap-1"
           >
             {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
-            Retry Transfer
+            Complete Transfer
+          </button>
+        ) : null}
+        {canReschedule ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setRescheduleOpen(true)}
+            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-50"
+          >
+            Reschedule
           </button>
         ) : null}
         {canCancel ? (
@@ -234,38 +279,295 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
         onClose={() => setConfirmCancelOpen(false)}
       />
 
-      {reviewOpen && typeof document !== "undefined"
-        ? createPortal(
-            <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setReviewOpen(false)} role="dialog" aria-modal="true">
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-sm w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-                <h3 className="text-sm font-bold text-foreground">Scheduled Transfer — Review</h3>
-                <div className="space-y-1">
-                  <Row label="Current Room" value={currentRoom?.name || "—"} />
-                  <Row label="Scheduled Room" value={scheduledRoom?.name || "—"} />
-                  <Row label="Effective Date" value={formatDate(effectiveTransferDate)} />
-                  <Row label="Status" value={statusLabel || status} />
-                  {hasBalance ? (
-                    <>
-                      <Row label="Transfer Balance" value={formatMoney(bal.amountDue)} />
-                      <Row label="Paid" value={formatMoney(bal.amountPaid || 0)} />
-                      <Row label="Remaining" value={formatMoney(bal.remaining ?? bal.amountDue)} />
-                    </>
-                  ) : null}
-                  <Row label="Document" value={addendum?.label || "Room Transfer Addendum — Scheduled"} />
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  {REVIEW_GUIDANCE[reasonCode] || "Review the details above and take the appropriate action."}
-                </p>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button type="button" className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 cursor-pointer" onClick={() => setReviewOpen(false)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
+      {rescheduleOpen ? (
+        <RescheduleDialog
+          transfer={transfer}
+          onClose={() => setRescheduleOpen(false)}
+          onDone={() => {
+            setRescheduleOpen(false);
+            refresh();
+          }}
+        />
+      ) : null}
+
+      {completeOpen ? (
+        <CompleteTransferDialog
+          transfer={transfer}
+          onClose={() => setCompleteOpen(false)}
+          onDone={() => {
+            setCompleteOpen(false);
+            refresh();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Reschedule — date + time only, on the SAME destination. The backend
+   revalidates the destination hold + (same-day) office hours and appends to
+   the schedule history.
+   ───────────────────────────────────────────────────────────────────────────── */
+function RescheduleDialog({ transfer, onClose, onDone }) {
+  const [date, setDate] = useState(transfer.effectiveTransferDate?.slice(0, 10) || minScheduleDateStr());
+  const [time, setTime] = useState(transfer.effectiveTransferTimeLabel || "09:00");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!date || date < minScheduleDateStr()) {
+      showNotification("Pick a new effective date of today or later.", "warning");
+      return;
+    }
+    const mins = timeStrToMinutes(time);
+    if (mins == null) {
+      showNotification("Enter a valid transfer time (HH:mm).", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      await reservationApi.rescheduleRoomTransfer(transfer.reservationId, {
+        effectiveTransferDate: date,
+        effectiveTransferTimeMinutes: mins,
+        reason: reason.trim() || undefined,
+      });
+      showNotification("Scheduled room transfer updated.", "success");
+      onDone();
+    } catch (err) {
+      showNotification(getFriendlyError(err) || "Failed to reschedule the transfer.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-sm w-full p-5 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-bold text-foreground">Reschedule Room Transfer</h3>
+        <p className="text-[11px] text-muted-foreground">
+          Same destination room ({transfer.scheduledRoom?.name || "—"}). Availability and same-day
+          office hours are re-checked on save.
+        </p>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">New Effective Date</span>
+          <input
+            type="date"
+            className={fieldCls}
+            value={date}
+            min={minScheduleDateStr()}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">New Transfer Time</span>
+          <input type="time" className={fieldCls} value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">Reason (optional)</span>
+          <input
+            type="text"
+            className={fieldCls}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. tenant requested a later date"
+          />
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-1"
+            onClick={submit}
+            disabled={busy}
+          >
+            {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
+            Save
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Complete Transfer — enter the boundary meter readings, then submit. The
+   backend computes the settlement, blocks on an unpaid transfer settlement
+   (202 awaiting_settlement / 409), and otherwise runs the atomic cutover.
+   Internal reconciliation machinery is never surfaced here.
+   ───────────────────────────────────────────────────────────────────────────── */
+function CompleteTransferDialog({ transfer, onClose, onDone }) {
+  const [sourceReading, setSourceReading] = useState("");
+  const [targetReading, setTargetReading] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const submit = async () => {
+    const body = { notes: notes.trim() || undefined };
+    if (sourceReading !== "") {
+      if (Number.isNaN(Number(sourceReading))) {
+        showNotification("The source room reading must be a number.", "warning");
+        return;
+      }
+      body.sourceRoomMeterReading = Number(sourceReading);
+    }
+    if (targetReading !== "") {
+      if (Number.isNaN(Number(targetReading))) {
+        showNotification("The destination room reading must be a number.", "warning");
+        return;
+      }
+      body.targetRoomMeterReading = Number(targetReading);
+    }
+    setBusy(true);
+    try {
+      const res = await reservationApi.completeRoomTransfer(transfer.reservationId, body);
+      const outcome = res?.outcome || res?.data?.outcome;
+      if (outcome === "executed") {
+        showNotification("Room transfer completed.", "success");
+        onDone();
+        return;
+      }
+      // 202 awaiting_settlement (or any non-executed outcome) — keep the dialog
+      // open with guidance to settle in Billing.
+      setResult({
+        outcome: outcome || "awaiting_settlement",
+        reason: res?.reason || res?.code || res?.data?.reason,
+        bill: res?.bill || res?.data?.bill || null,
+      });
+      showNotification(
+        "The transfer settlement is not yet paid in full. Settle it in Billing, then complete the transfer.",
+        "warning",
+      );
+    } catch (err) {
+      const code = err?.body?.code || err?.code;
+      if (code === "TRANSFER_SETTLEMENT_UNPAID") {
+        setResult({ outcome: "awaiting_settlement", reason: code, bill: err?.body?.bill || null });
+        showNotification(
+          "The transfer settlement must be paid in full first. Settle it in Billing, then complete the transfer.",
+          "warning",
+        );
+      } else {
+        showNotification(getFriendlyError(err) || "Failed to complete the transfer.", "error");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-md w-full p-5 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-bold text-foreground">Complete Room Transfer</h3>
+        <div className="space-y-1">
+          <Row label="From" value={transfer.currentRoom?.name || "—"} />
+          <Row label="To" value={transfer.scheduledRoom?.name || "—"} />
+          <Row
+            label="Scheduled"
+            value={`${formatDate(transfer.effectiveTransferDate)}${transfer.effectiveTransferTimeLabel ? ` · ${transfer.effectiveTransferTimeLabel}` : ""}`}
+          />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          Enter the electricity meter readings taken now, at the real cutover. For a fixed-rate
+          branch you can leave these blank — the system will tell you if a reading is required.
+          Water is not finalized here; it follows the normal end-of-cycle billing.
+        </p>
+        <div className="space-y-1">
+          <span className="text-[11px] text-muted-foreground">
+            Source room (OLD) closing electricity reading
+          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            className={fieldCls}
+            value={sourceReading}
+            onChange={(e) => setSourceReading(e.target.value)}
+            placeholder="Meter reading now, in the OLD room"
+          />
+        </div>
+        <div className="space-y-1">
+          <span className="text-[11px] text-muted-foreground">
+            Destination room (NEW) current electricity reading
+          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            className={fieldCls}
+            value={targetReading}
+            onChange={(e) => setTargetReading(e.target.value)}
+            placeholder="Meter reading now, in the NEW room"
+          />
+        </div>
+
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">Notes (optional)</span>
+          <input
+            type="text"
+            className={fieldCls}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </label>
+
+        {result?.outcome === "awaiting_settlement" ? (
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-2.5 text-[11px] text-amber-800 dark:text-amber-300">
+            The transfer settlement
+            {result.bill?.totalAmount != null
+              ? ` of ${formatMoney(result.bill.totalAmount)}`
+              : ""}{" "}
+            must be paid in full before the transfer can complete. Settle it from the
+            Billing tab, then re-open this dialog.
+          </div>
+        ) : null}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1"
+            onClick={submit}
+            disabled={busy}
+          >
+            {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
+            Complete Transfer
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

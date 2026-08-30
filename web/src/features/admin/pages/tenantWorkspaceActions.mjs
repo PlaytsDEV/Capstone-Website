@@ -62,6 +62,21 @@ export function resolveTenantNextAction(tenant) {
         actionKey: "moveOut",
         actionType: "moveOut",
       };
+    case "settle_transfer":
+      // The transfer settlement Bill is paid from Billing.
+      return {
+        type: "navigate",
+        path: "/admin/billing?tab=reservation-payments",
+      };
+    case "transfer_scheduled":
+    case "complete_transfer":
+      // The Scheduled Room Transfer card (Reschedule / Complete Transfer
+      // actions) lives on the tenant detail overview tab.
+      return {
+        type: "detail",
+        reservationId: tenant.reservationId || null,
+        initialTab: "overview",
+      };
     default:
       return {
         type: "detail",

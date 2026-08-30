@@ -30,28 +30,40 @@ test("card does no client-side money math — every amount is a server-provided 
   assert.match(card, /formatMoney\(bal\.remaining \?\? bal\.amountDue\)/);
 });
 
-// ── Only the simple, published states ───────────────────────────────────
-test("card renders only the four tenant-facing states, no internal ones", () => {
-  const tones = card.match(/const STATUS_TONE = \{[^}]*\}/s)[0];
-  for (const s of ["awaiting_payment", "ready", "action_required", "completed", "cancelled"]) {
+// ── Derived UI states from the server view ──────────────────────────────
+test("card renders the derived scheduled-transfer UI states, no raw record status", () => {
+  const tones = card.match(/const STATUS_TONE = \{[\s\S]*?\n\};/)[0];
+  for (const s of [
+    "scheduled",
+    "ready_for_transfer",
+    "awaiting_settlement",
+    "action_required",
+    "completed",
+    "cancelled",
+  ]) {
     assert.ok(tones.includes(s), `expected STATUS_TONE to cover ${s}`);
   }
-  // Raw executor internals must not surface as states here.
-  assert.doesNotMatch(tones, /\bscheduled\b|\bexecuted\b/);
+  // The raw orchestration status ("executed") must not surface as a UI state.
+  assert.doesNotMatch(tones, /\bexecuted\b/);
 });
 
-// ── Cancel / Retry gating matches the executor rules ────────────────────
-test("Cancel is offered in safe states and blocked once a payment exists", () => {
-  // awaiting_payment / ready always cancellable; action_required only when no payment.
-  assert.match(
-    card,
-    /canCancel\s*=\s*\["awaiting_payment",\s*"ready"\]\.includes\(status\)\s*\|\|\s*\(status === "action_required" && !hasPayment\)/,
-  );
+// ── Cancel / Reschedule / Complete gating ──────────────────────────────
+test("Cancel is offered while the record is open and no payment exists yet", () => {
+  assert.match(card, /const isOpenRecord = !\["completed", "cancelled"\]\.includes\(status\)/);
+  assert.match(card, /const canCancel = isOpenRecord && !hasPayment/);
 });
 
-test("Retry is only offered for the payment-resolvable action_required reasons", () => {
-  assert.match(card, /RETRYABLE_REASONS = new Set\(\["TRANSFER_BALANCE_UNPAID",\s*"ADDITIONAL_BALANCE_DUE"\]\)/);
-  assert.match(card, /canRetry\s*=\s*status === "action_required" && RETRYABLE_REASONS\.has\(reasonCode\)/);
+test("Reschedule is offered while the record is open; Complete Transfer follows the server `completable` flag", () => {
+  assert.match(card, /const canReschedule = isOpenRecord/);
+  assert.match(card, /const canComplete = !!completable/);
+  // Reschedule sends date + time on the same destination.
+  assert.match(card, /reservationApi\.rescheduleRoomTransfer\(/);
+  assert.match(card, /effectiveTransferTimeMinutes: mins/);
+  // Complete Transfer calls the completion endpoint and handles the
+  // awaiting-settlement / 409 outcomes without exposing internal machinery.
+  assert.match(card, /reservationApi\.completeRoomTransfer\(/);
+  assert.match(card, /TRANSFER_SETTLEMENT_UNPAID/);
+  assert.doesNotMatch(card, /UtilityFinalization|reconciliationVariance/);
 });
 
 test("payment-already-received cancel path directs to Administration Office, no auto-reversal", () => {
@@ -59,15 +71,16 @@ test("payment-already-received cancel path directs to Administration Office, no 
   assert.match(card, /cannot be cancelled automatically/i);
 });
 
-test("utilities are shown as deferred to the cutoff, never billed on this card", () => {
-  assert.match(card, /Utilities: to follow after the transfer cutoff/);
-  assert.doesNotMatch(card, /electricity|water/i);
+test("utilities are shown as deferred to period close, entered at Complete Transfer", () => {
+  assert.match(card, /boundary meter readings are entered at Complete Transfer/);
+  assert.match(card, /follow the normal period close/);
 });
 
 // ── API surface the card depends on ────────────────────────────────────
-test("cancel/retry scheduled-transfer API methods exist", () => {
+test("cancel / reschedule / complete scheduled-transfer API methods exist", () => {
   assert.match(reservationApi, /cancelScheduledRoomTransfer/);
-  assert.match(reservationApi, /retryScheduledRoomTransfer/);
+  assert.match(reservationApi, /rescheduleRoomTransfer/);
+  assert.match(reservationApi, /completeRoomTransfer/);
 });
 
 // ── Tenant web: current room stays source before the effective date ────
