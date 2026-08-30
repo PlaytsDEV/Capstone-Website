@@ -6,6 +6,9 @@ import { useTheme } from "../context/ThemeContext";
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
 import hero3 from "../../../assets/images/hero3.webp";
+import hero1Mobile from "../../../assets/images/hero1-mobile.webp";
+import hero2Mobile from "../../../assets/images/hero2-mobile.webp";
+import hero3Mobile from "../../../assets/images/hero3-mobile.webp";
 import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
 
 
@@ -53,6 +56,12 @@ const heroImages = [
   hero1,
   hero2,
   hero3,
+];
+
+const heroMobileImages = [
+  hero1Mobile,
+  hero2Mobile,
+  hero3Mobile,
 ];
 
 export function HeroSection() {
@@ -125,7 +134,7 @@ export function HeroSection() {
             <picture>
               <source
                 media="(max-width: 768px)"
-                srcSet={src}
+                srcSet={heroMobileImages[i]}
                 type="image/webp"
               />
               <img
