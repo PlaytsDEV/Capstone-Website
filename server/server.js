@@ -21,11 +21,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import "./utils/dateUtils.js";
 process.env.TZ = process.env.APP_TIMEZONE || "Asia/Manila";
-import helmet from "helmet";
 import compression from "compression";
 import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
+
+import securityHeaders from "./middleware/securityHeaders.js";
 
 import connectDB from "./config/database.js";
 import { createCorsOriginPolicy } from "./config/corsPolicy.js";
@@ -284,56 +285,7 @@ app.use(
   }),
 );
 
-app.use((_req, res, next) => {
-  res.setHeader(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
-  );
-  next();
-});
-
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: [
-          "'self'",
-          "https://identitytoolkit.googleapis.com",
-          "https://securetoken.googleapis.com",
-        ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        objectSrc: ["'none'"],
-        frameSrc: ["'none'"],
-        frameAncestors: ["'none'"],
-        formAction: ["'self'"],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
-    frameguard: {
-      action: "deny",
-    },
-    referrerPolicy: {
-      policy: "strict-origin-when-cross-origin",
-    },
-    permittedCrossDomainPolicies: {
-      permittedPolicies: "none",
-    },
-    xContentTypeOptions: true,
-    crossOriginResourcePolicy: {
-      policy: "same-origin",
-    },
-  }),
-);
+app.use(securityHeaders);
 
 app.use("/api/paymongo", webhookRoutes);  // payment.paid, payment.failed, source.chargeable
 app.use("/api/webhooks", webhookRoutes);  // checkout_session.payment.paid

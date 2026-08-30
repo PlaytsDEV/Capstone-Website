@@ -43,12 +43,7 @@ export function ChatTypingIndicator() {
 
       {/* Bot Icon Badge */}
       <div
-        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden"
-        style={{
-          backgroundColor: "#ffffff",
-          border: "1.5px solid var(--lp-accent, #D4AF37)",
-          padding: "3.5px",
-        }}
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden bg-white dark:bg-slate-800 border-[1.5px] border-[#D4AF37] dark:border-[#D4AF37] p-[3.5px]"
         aria-hidden="true"
       >
         <img
@@ -60,35 +55,27 @@ export function ChatTypingIndicator() {
 
       {/* Bubble with 3 pulsing dots */}
       <div
-        className="inline-flex items-center gap-1.5 py-2 px-3 rounded-2xl rounded-tl-xs text-xs shadow-xs"
-        style={{
-          backgroundColor: "var(--lp-bg-card, #ffffff)",
-          border: "1px solid var(--lp-border, #E6D9B2)",
-          color: "var(--lp-text-muted, #475569)",
-        }}
+        className="inline-flex items-center gap-1.5 py-2 px-3 rounded-2xl rounded-tl-xs text-xs shadow-xs bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A] text-slate-500 dark:text-slate-400"
       >
         <span
-          className="w-1.5 h-1.5 rounded-full"
+          className="w-1.5 h-1.5 rounded-full bg-amber-500"
           style={{
-            backgroundColor: "var(--lp-accent, #D4AF37)",
             animation: "waveDotBounce 1.2s ease-in-out 0ms infinite",
           }}
         />
         <span
-          className="w-1.5 h-1.5 rounded-full"
+          className="w-1.5 h-1.5 rounded-full bg-[#0A1628] dark:bg-slate-300"
           style={{
-            backgroundColor: "var(--lp-navy, #0A1628)",
             animation: "waveDotBounce 1.2s ease-in-out 200ms infinite",
           }}
         />
         <span
-          className="w-1.5 h-1.5 rounded-full"
+          className="w-1.5 h-1.5 rounded-full bg-amber-500"
           style={{
-            backgroundColor: "var(--lp-accent, #D4AF37)",
             animation: "waveDotBounce 1.2s ease-in-out 400ms infinite",
           }}
         />
-        <span className="text-[11px] font-medium ml-1 select-none" style={{ color: "var(--lp-text-muted, #64748B)" }}>
+        <span className="text-[11px] font-medium ml-1 select-none text-slate-500 dark:text-slate-400">
           Formulating response...
         </span>
       </div>

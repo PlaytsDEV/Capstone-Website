@@ -51,7 +51,7 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
 
       <div className="flex items-center gap-1.5 mb-2 px-1">
         <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" aria-hidden="true" />
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--lp-text-muted, #64748B)" }}>
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Frequently Asked
         </span>
       </div>
@@ -65,33 +65,14 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
               type="button"
               disabled={disabled}
               onClick={() => onSelectPrompt(item.prompt)}
-              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none active:scale-95 shadow-xs"
+              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none active:scale-95 shadow-xs bg-white dark:bg-[#111C31] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-slate-800/80"
               style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #CBD5E1",
-                color: "#0A1628",
                 animation: `promptCardIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
                 opacity: 0,
               }}
-              onMouseEnter={(e) => {
-                if (!disabled) {
-                  e.currentTarget.style.borderColor = "#D4AF37";
-                  e.currentTarget.style.backgroundColor = "#FDF8E7";
-                  e.currentTarget.style.transform = "translateY(-2px) scale(1.01)";
-                  e.currentTarget.style.boxShadow = "0 4px 10px rgba(10, 22, 40, 0.08)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!disabled) {
-                  e.currentTarget.style.borderColor = "#CBD5E1";
-                  e.currentTarget.style.backgroundColor = "#FFFFFF";
-                  e.currentTarget.style.transform = "translateY(0) scale(1)";
-                  e.currentTarget.style.boxShadow = "";
-                }
-              }}
             >
-              <IconComp className="w-3.5 h-3.5 text-amber-700 flex-shrink-0 mt-0.5 group-hover:text-amber-800 transition-colors" aria-hidden="true" />
-              <span className="leading-snug flex-1 font-bold text-[#0A1628] group-hover:text-amber-900 transition-colors duration-150">
+              <IconComp className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors" aria-hidden="true" />
+              <span className="leading-snug flex-1 font-bold text-slate-800 dark:text-slate-100 group-hover:text-amber-900 dark:group-hover:text-amber-200 transition-colors duration-150">
                 {item.label}
               </span>
             </button>

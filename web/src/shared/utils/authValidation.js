@@ -258,6 +258,8 @@ export const getFirebaseErrorMessage = (error, context = "login") => {
       "Social sign-in is temporarily disabled. Please sign in with your email and password.",
     "auth/account-exists-with-different-credential":
       "An account already exists with this email using a different sign-in method.",
+    "auth/internal-error":
+      "We could not connect to the sign-in service. Please check your connection or try again.",
   };
   if (map[code]) return map[code];
   // Never surface raw Firebase codes or backend text to the user — log for debugging instead.

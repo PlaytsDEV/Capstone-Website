@@ -57,23 +57,18 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
 
   return (
     <div
-      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200"
-      style={{
-        backgroundColor: "var(--lp-bg-card, #ffffff)",
-        border: "1px solid var(--lp-border, #E6D9B2)",
-        boxShadow: "0 2px 8px rgba(10, 22, 40, 0.05)",
-      }}
+      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200 bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A] shadow-xs"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-          <Calculator className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#E6D9B2] dark:border-[#27334A]">
+        <div className="w-7 h-7 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+          <Calculator className="w-4 h-4 text-amber-600 dark:text-amber-400" />
         </div>
         <div>
-          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100">
             Monthly Budget Estimator
           </h4>
-          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
             Slide to estimate rent, utilities, and recommended accommodation.
           </p>
         </div>
@@ -82,10 +77,10 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       {/* Interactive Budget Slider */}
       <div className="mb-3.5">
         <div className="flex items-center justify-between mb-1.5">
-          <label htmlFor="budget-slider" className="text-[11px] font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label htmlFor="budget-slider" className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
             Target Monthly Budget:
           </label>
-          <span className="text-sm font-extrabold" style={{ color: "var(--lp-accent, #B45309)" }}>
+          <span className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
             ₱{budget.toLocaleString()}
           </span>
         </div>
@@ -98,14 +93,10 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           step={250}
           value={budget}
           onChange={(e) => setBudget(Number(e.target.value))}
-          className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-          style={{
-            accentColor: "var(--lp-accent, #D4AF37)",
-            backgroundColor: "var(--surface-input, #e2e8f0)",
-          }}
+          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-500 bg-slate-200 dark:bg-slate-700"
         />
 
-        <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-medium">
+        <div className="flex justify-between text-[9px] text-slate-400 dark:text-slate-500 mt-1 font-medium">
           <span>₱3,000</span>
           <span>₱7,500</span>
           <span>₱12,000</span>
@@ -114,22 +105,18 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
 
       {/* Recommendation Card */}
       <div
-        className="p-2.5 rounded-lg mb-3"
-        style={{
-          backgroundColor: "var(--surface-input, #f8fafc)",
-          border: "1px solid var(--lp-border, #E6D9B2)",
-        }}
+        className="p-2.5 rounded-lg mb-3 bg-slate-50 dark:bg-[#162238] border border-slate-200 dark:border-slate-700"
       >
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
             Best Fit Accommodation
           </span>
-          <span className="text-[10px] text-slate-500 font-medium">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
             {recommendation.branch}
           </span>
         </div>
 
-        <div className="text-xs font-bold mb-1" style={{ color: "var(--lp-text, #162f53)" }}>
+        <div className="text-xs font-bold mb-1 text-slate-900 dark:text-slate-100">
           {recommendation.type}
         </div>
         <p className="text-[10px] text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">
@@ -137,18 +124,18 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
         </p>
 
         {/* Cost Breakdown Table */}
-        <div className="space-y-1 text-[11px] pt-2 border-t border-slate-200 dark:border-slate-800">
+        <div className="space-y-1 text-[11px] pt-2 border-t border-slate-200 dark:border-slate-700/80">
           <div className="flex justify-between">
-            <span className="text-slate-500">
+            <span className="text-slate-500 dark:text-slate-400">
               Base Bed Rate:
             </span>
-            <span className="font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
               ₱{recommendation.baseRent.toLocaleString()}
             </span>
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500 flex items-center gap-1">
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
               <Zap className="w-3 h-3 text-amber-500" />
               Est. Electricity Share:
             </span>
@@ -158,7 +145,7 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500 flex items-center gap-1">
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
               <Wifi className="w-3 h-3 text-emerald-500" />
               Water & High-Speed Wi-Fi:
             </span>
@@ -167,9 +154,9 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
             </span>
           </div>
 
-          <div className="flex justify-between pt-1.5 border-t border-slate-200 dark:border-slate-800 text-xs font-bold">
-            <span style={{ color: "var(--lp-text, #162f53)" }}>Net Monthly Total:</span>
-            <span style={{ color: "var(--lp-accent, #B45309)" }}>
+          <div className="flex justify-between pt-1.5 border-t border-slate-200 dark:border-slate-700/80 text-xs font-bold">
+            <span className="text-slate-900 dark:text-slate-100">Net Monthly Total:</span>
+            <span className="text-amber-700 dark:text-amber-400">
               ₱{netEstimatedTotal.toLocaleString()}
             </span>
           </div>
@@ -178,7 +165,7 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
 
       {/* Budget Balance Feedback */}
       <div className="flex items-center justify-between text-[11px] mb-3 px-1">
-        <span className="text-slate-500">Budget Margin:</span>
+        <span className="text-slate-500 dark:text-slate-400">Budget Margin:</span>
         {budgetSurplus >= 0 ? (
           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
             +₱{budgetSurplus.toLocaleString()} surplus
@@ -194,20 +181,9 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       <button
         type="button"
         onClick={handleViewRooms}
-        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
-        style={{
-          backgroundColor: "#0A1628",
-          border: "1px solid #0A1628",
-          color: "#FFFFFF",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "#1A2C4E";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "#0A1628";
-        }}
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs bg-[#0A1628] dark:bg-[#D4AF37] text-white dark:text-[#0A1628] hover:bg-[#162f53] dark:hover:bg-[#E5C358] border border-[#0A1628] dark:border-[#B9921F]"
       >
-        <span className="text-white font-bold">View Available {recommendation.roomTypeParam} Rooms</span>
+        <span className="font-bold">View Available {recommendation.roomTypeParam} Rooms</span>
         <ArrowRight className="w-3.5 h-3.5" />
       </button>
     </div>

@@ -112,7 +112,7 @@ export function HeroSection() {
     <>
       {/* Full-bleed Hero */}
       <section className="relative h-screen overflow-hidden flex items-center">
-        {/* Background Slideshow */}
+        {/* Background Slideshow with Responsive Picture Tag */}
         {heroImages.map((src, i) => (
           <div
             key={i}
@@ -122,21 +122,29 @@ export function HeroSection() {
               transition: "opacity 1.5s ease-in-out",
             }}
           >
-            <img
-              src={src}
-              alt={`Lilycrest Dormitory ${i + 1}`}
-              width="1920"
-              height="1080"
-              className="w-full h-full object-cover"
-              loading={i === 0 ? "eager" : "lazy"}
-              fetchpriority={i === 0 ? "high" : "low"}
-              decoding="async"
-              style={{
-                objectPosition: "center 68%",
-                transform: readyToZoom[i] ? "scale(1.08)" : "scale(1)",
-                transition: readyToZoom[i] ? "none" : "transform 7s ease-out",
-              }}
-            />
+            <picture>
+              <source
+                media="(max-width: 768px)"
+                srcSet={src}
+                type="image/webp"
+              />
+              <img
+                src={src}
+                alt={`Lilycrest Dormitory ${i + 1}`}
+                width="1920"
+                height="1080"
+                className="w-full h-full object-cover"
+                loading={i === 0 ? "eager" : "lazy"}
+                fetchpriority={i === 0 ? "high" : "low"}
+                fetchPriority={i === 0 ? "high" : "low"}
+                decoding="async"
+                style={{
+                  objectPosition: "center 68%",
+                  transform: readyToZoom[i] ? "scale(1.08)" : "scale(1)",
+                  transition: readyToZoom[i] ? "none" : "transform 7s ease-out",
+                }}
+              />
+            </picture>
           </div>
         ))}
 
@@ -152,9 +160,8 @@ export function HeroSection() {
         <div className="relative z-10 max-w-screen-2xl mx-auto px-8 lg:px-12 w-full">
           <div className="max-w-2xl pt-12 lg:pt-15">
             {/* Badge */}
-            <motion.div
-              {...fadeUp(0.2)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6"
+            <div
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6 transition-transform duration-500 will-change-transform"
               style={{
                 backgroundColor: isDark ? "rgba(10, 22, 40, 0.75)" : "rgba(255, 255, 255, 0.9)",
                 border: isDark ? "1px solid rgba(212, 175, 55, 0.35)" : "1px solid rgba(212, 175, 55, 0.35)",
@@ -170,31 +177,29 @@ export function HeroSection() {
               >
                 Quality Urban Living
               </span>
-            </motion.div>
+            </div>
 
             {/* Headline */}
-            <motion.h1
-              {...fadeUp(0.4)}
-              className="text-5xl lg:text-7xl font-medium leading-[1.08] mb-6 tracking-tight"
+            <h1
+              className="text-5xl lg:text-7xl font-medium leading-[1.08] mb-6 tracking-tight transition-opacity duration-700"
               style={{ color: heroTextPrimary }}
             >
               Affordable, Safe,{" "}
               <span className="block">and Comfortable</span>
               <span style={{ color: "var(--lp-accent-text)" }}>Dormitory</span>
-            </motion.h1>
+            </h1>
 
             {/* Subheadline */}
-            <motion.p
-              {...fadeUp(0.6)}
-              className="text-lg mb-10 leading-relaxed font-light max-w-lg"
+            <p
+              className="text-lg mb-10 leading-relaxed font-light max-w-lg transition-opacity duration-700"
               style={{ color: heroTextSecondary }}
             >
               Browse available rooms, create your account, and find your perfect
               home away from home.
-            </motion.p>
+            </p>
 
             {/* CTA Buttons */}
-            <motion.div {...fadeUp(0.8)} className="flex flex-wrap gap-4 mb-6">
+            <div className="flex flex-wrap gap-4 mb-6">
               <Link
                 to="/applicant/check-availability"
                 className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300 no-underline cursor-pointer"
@@ -241,16 +246,15 @@ export function HeroSection() {
               >
                 Contact Us
               </a>
-            </motion.div>
+            </div>
 
             {/* Reassurance */}
-            <motion.p
-              {...fadeUp(0.95)}
+            <p
               className="text-sm font-normal mb-6"
               style={{ color: heroTextMuted }}
             >
               ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
-            </motion.p>
+            </p>
 
             {/* Stats — enhanced glassmorphism strip */}
             <motion.div

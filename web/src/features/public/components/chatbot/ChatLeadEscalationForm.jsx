@@ -267,19 +267,14 @@ export function ChatLeadEscalationForm({
         <h4 className="text-sm font-bold tracking-tight mb-1 text-emerald-600 dark:text-emerald-400">
           Assistance Request Submitted
         </h4>
-        <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--lp-text-secondary, #475569)" }}>
+        <p className="text-xs leading-relaxed mb-3 text-slate-600 dark:text-slate-300">
           {submittedRequest?.message ||
             "Your message has been routed to our Front Desk Admin Team. We will contact you via email or phone shortly."}
         </p>
 
         {submittedRequest?.inquiryId && (
           <div
-            className="p-2.5 rounded-lg mb-4 text-xs font-mono select-all"
-            style={{
-              backgroundColor: "var(--lp-bg-card, #ffffff)",
-              border: "1px solid var(--lp-border, #E6D9B2)",
-              color: "var(--lp-text, #162f53)",
-            }}
+            className="p-2.5 rounded-lg mb-4 text-xs font-mono select-all bg-slate-50 dark:bg-[#162238] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
           >
             Ref: {submittedRequest.inquiryId}
           </div>
@@ -288,8 +283,7 @@ export function ChatLeadEscalationForm({
         <button
           type="button"
           onClick={onCancel}
-          className="w-full py-2 px-4 rounded-xl text-xs font-semibold text-white transition-all cursor-pointer shadow-sm focus:outline-none"
-          style={{ backgroundColor: "var(--lp-navy, #0A1628)" }}
+          className="w-full py-2 px-4 rounded-xl text-xs font-semibold text-white dark:text-[#0A1628] bg-[#0A1628] dark:bg-[#D4AF37] hover:bg-[#162f53] dark:hover:bg-[#E5C358] transition-all cursor-pointer shadow-sm focus:outline-none border border-[#0A1628] dark:border-[#B9921F]"
         >
           Return to Conversation
         </button>
@@ -299,21 +293,21 @@ export function ChatLeadEscalationForm({
 
   return (
     <div className="p-1 animate-fadeIn text-left">
-      <div className="flex items-center justify-between pb-1.5 mb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+      <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#E6D9B2] dark:border-[#27334A]">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="px-2 py-0.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-colors cursor-pointer"
+            className="px-2 py-0.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
             aria-label="Back to chat"
           >
             Back
           </button>
           <div>
-            <h4 className="text-xs font-bold tracking-tight" style={{ color: "var(--lp-text, #162f53)" }}>
+            <h4 className="text-xs font-bold tracking-tight text-slate-900 dark:text-slate-100">
               Request Front Desk Assistance
             </h4>
-            <p className="text-[10px]" style={{ color: "var(--lp-text-muted, #64748B)" }}>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">
               Our admin team will contact you promptly
             </p>
           </div>
@@ -321,7 +315,7 @@ export function ChatLeadEscalationForm({
       </div>
 
       {isAutoFilled && (
-        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-[11px] border border-slate-200 dark:border-slate-700 mb-2">
+        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-800/60 mb-2">
           <span>Details pre-filled from your chat. Please review and confirm.</span>
         </div>
       )}
@@ -334,7 +328,7 @@ export function ChatLeadEscalationForm({
 
       <form onSubmit={handleSubmit} className="space-y-2">
         <div>
-          <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label className="block text-[11px] font-semibold mb-0.5 text-slate-800 dark:text-slate-200">
             Full Name <span className="text-red-500">*</span>
           </label>
           <div className="relative">
@@ -345,12 +339,11 @@ export function ChatLeadEscalationForm({
               value={formData.name}
               onChange={handleChange}
               onBlur={() => handleBlur("name")}
-              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all ${
+              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 ${
                 touched.name && errors.name
-                  ? "border-red-500 bg-red-50/50"
+                  ? "border-red-500 bg-red-50/50 dark:bg-red-950/20"
                   : "border-slate-300 dark:border-slate-700 focus:border-amber-500"
               }`}
-              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
             />
           </div>
           {touched.name && errors.name && (
@@ -359,7 +352,7 @@ export function ChatLeadEscalationForm({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label className="block text-[11px] font-semibold mb-0.5 text-slate-800 dark:text-slate-200">
             Email Address <span className="text-red-500">*</span>
           </label>
           <div className="relative">
@@ -370,12 +363,11 @@ export function ChatLeadEscalationForm({
               value={formData.email}
               onChange={handleChange}
               onBlur={() => handleBlur("email")}
-              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all ${
+              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 ${
                 touched.email && errors.email
-                  ? "border-red-500 bg-red-50/50"
+                  ? "border-red-500 bg-red-50/50 dark:bg-red-950/20"
                   : "border-slate-300 dark:border-slate-700 focus:border-amber-500"
               }`}
-              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
             />
           </div>
           {touched.email && errors.email && (
@@ -384,17 +376,12 @@ export function ChatLeadEscalationForm({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label className="block text-[11px] font-semibold mb-0.5 text-slate-800 dark:text-slate-200">
             Contact Number <span className="text-red-500">*</span>
           </label>
           <div className="relative flex items-center">
             <span
-              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-l-lg border border-r-0 text-[11px] font-medium select-none flex-shrink-0"
-              style={{
-                backgroundColor: "var(--surface-neutral, #e2e8f0)",
-                borderColor: touched.phone && errors.phone ? "#ef4444" : "var(--lp-border, #E6D9B2)",
-                color: "var(--lp-text, #162f53)",
-              }}
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-l-lg border border-r-0 text-[11px] font-medium select-none flex-shrink-0 bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200"
             >
               <span>+63</span>
             </span>
@@ -406,12 +393,11 @@ export function ChatLeadEscalationForm({
               onChange={handlePhoneChange}
               onBlur={() => handleBlur("phone")}
               maxLength={12}
-              className={`w-full text-xs px-2.5 py-1.5 rounded-r-lg border outline-none transition-all ${
+              className={`w-full text-xs px-2.5 py-1.5 rounded-r-lg border outline-none transition-all bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 ${
                 touched.phone && errors.phone
-                  ? "border-red-500 bg-red-50/50"
+                  ? "border-red-500 bg-red-50/50 dark:bg-red-950/20"
                   : "border-slate-300 dark:border-slate-700 focus:border-amber-500"
               }`}
-              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
             />
           </div>
           {touched.phone && errors.phone && (
@@ -420,7 +406,7 @@ export function ChatLeadEscalationForm({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label className="block text-[11px] font-semibold mb-0.5 text-slate-800 dark:text-slate-200">
             Preferred Branch
           </label>
           <div className="relative">
@@ -428,11 +414,10 @@ export function ChatLeadEscalationForm({
               name="preferredBranch"
               value={formData.preferredBranch}
               onChange={handleChange}
-              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
-              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
+              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
             >
               {BRANCH_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
+                <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
                   {opt.label}
                 </option>
               ))}
@@ -441,7 +426,7 @@ export function ChatLeadEscalationForm({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label className="block text-[11px] font-semibold mb-0.5 text-slate-800 dark:text-slate-200">
             Topic of Concern
           </label>
           <div className="relative">
@@ -449,11 +434,10 @@ export function ChatLeadEscalationForm({
               name="concernCategory"
               value={formData.concernCategory}
               onChange={handleChange}
-              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
-              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
+              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
             >
               {CONCERN_CATEGORIES.map((cat) => (
-                <option key={cat.value} value={cat.value}>
+                <option key={cat.value} value={cat.value} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
                   {cat.label}
                 </option>
               ))}
@@ -463,10 +447,10 @@ export function ChatLeadEscalationForm({
 
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <label className="block text-[11px] font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
+            <label className="block text-[11px] font-semibold text-slate-800 dark:text-slate-200">
               Message / Specific Question
             </label>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
               {formData.message.length}/{MSG_MAX}
             </span>
           </div>
@@ -477,8 +461,7 @@ export function ChatLeadEscalationForm({
             value={formData.message}
             onChange={handleChange}
             maxLength={MSG_MAX}
-            className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 outline-none resize-none focus:border-amber-500"
-            style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
+            className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 outline-none resize-none focus:border-amber-500 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
         </div>
 
@@ -487,8 +470,7 @@ export function ChatLeadEscalationForm({
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            style={{ color: "var(--lp-text-secondary, #475569)" }}
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             Cancel
           </button>
@@ -496,8 +478,7 @@ export function ChatLeadEscalationForm({
             type="submit"
             disabled={isSubmitting}
             title={isSubmitting ? "Submitting request..." : "Click to submit your assistance request"}
-            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
-            style={{ backgroundColor: "var(--lp-navy, #0A1628)" }}
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white dark:text-[#0A1628] bg-[#0A1628] dark:bg-[#D4AF37] hover:bg-[#162f53] dark:hover:bg-[#E5C358] flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none border border-[#0A1628] dark:border-[#B9921F]"
           >
             {isSubmitting ? (
               <>

@@ -45,7 +45,7 @@ import { onIdTokenChanged, signOut as firebaseSignOut } from "firebase/auth";
 const FirebaseAuthContext = createContext({
   user: null,
   idToken: null,
-  loading: true,
+  loading: false,
   getFreshIdToken: async () => null,
   signOut: async () => {},
 });

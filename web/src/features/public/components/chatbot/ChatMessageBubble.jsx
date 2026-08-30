@@ -351,23 +351,23 @@ export function ChatMessageBubble({
             className={`px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm shadow-sm transition-all ${
               isUser
                 ? "rounded-tr-xs self-end lc-user-bubble"
-                : "rounded-tl-xs self-start w-full"
+                : "rounded-tl-xs self-start w-full bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A] text-[#162f53] dark:text-[#F8FAFC]"
             }`}
             style={{
               backgroundColor: isUser
                 ? undefined
                 : isError
-                ? "#fef2f2"
+                ? undefined
                 : "var(--lp-bg-card, #ffffff)",
-              border: isUser
+              borderColor: isUser
                 ? undefined
                 : isError
-                ? "1px solid #fecaca"
-                : "1px solid var(--lp-border, #E6D9B2)",
+                ? undefined
+                : "var(--lp-border, #E6D9B2)",
               color: isUser
                 ? undefined
                 : isError
-                ? "#991b1b"
+                ? undefined
                 : "var(--lp-text, #162f53)",
             }}
           >
@@ -384,10 +384,9 @@ export function ChatMessageBubble({
             {/* Action Chips */}
             {!isUser && Array.isArray(message.suggestedActions) && message.suggestedActions.length > 0 && !isStreaming && (
               <div
-                className={`mt-3 pt-2.5 border-t flex flex-wrap gap-1.5 transition-opacity ${
+                className={`mt-3 pt-2.5 border-t border-[#E6D9B2] dark:border-[#27334A] flex flex-wrap gap-1.5 transition-opacity ${
                   isLatestAssistant ? "opacity-100" : "opacity-45 pointer-events-none select-none"
                 }`}
-                style={{ borderColor: "var(--lp-border, #E6D9B2)" }}
               >
                 {message.suggestedActions.map((action, idx) => {
                   const isEscalationAction =
@@ -411,33 +410,14 @@ export function ChatMessageBubble({
                         isLatestAssistant
                           ? "cursor-pointer active:scale-95"
                           : "cursor-default opacity-70"
+                      } ${
+                        isAccentPill
+                          ? "bg-amber-50/80 dark:bg-[#162238] text-amber-900 dark:text-slate-100 border border-amber-300/90 dark:border-slate-700 hover:bg-amber-100 dark:hover:bg-slate-700/80 hover:border-amber-400 dark:hover:border-amber-400"
+                          : "bg-slate-50 dark:bg-[#162238] text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:border-amber-400 dark:hover:border-amber-400"
                       }`}
                       style={{
-                        backgroundColor: isAccentPill
-                          ? "#FDF8E7"
-                          : "#F8FAFC",
-                        color: isAccentPill ? "#78350F" : "#0A1628",
-                        border: isAccentPill
-                          ? "1.5px solid #D4AF37"
-                          : "1.5px solid #CBD5E1",
                         animation: `chipPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
                         opacity: 0,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (isLatestAssistant) {
-                          e.currentTarget.style.transform = "translateY(-1.5px) scale(1.02)";
-                          e.currentTarget.style.backgroundColor = isAccentPill ? "#F9EFC7" : "#EDF2F7";
-                          e.currentTarget.style.borderColor = isAccentPill ? "#B9921F" : "#94A3B8";
-                          e.currentTarget.style.boxShadow = "0 3px 8px rgba(10, 22, 40, 0.08)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (isLatestAssistant) {
-                          e.currentTarget.style.transform = "translateY(0) scale(1)";
-                          e.currentTarget.style.backgroundColor = isAccentPill ? "#FDF8E7" : "#F8FAFC";
-                          e.currentTarget.style.borderColor = isAccentPill ? "#D4AF37" : "#CBD5E1";
-                          e.currentTarget.style.boxShadow = "";
-                        }
                       }}
                     >
                       <span className="font-bold tracking-tight">{action.label}</span>
@@ -449,12 +429,12 @@ export function ChatMessageBubble({
 
             {/* Retry Button if Error */}
             {isError && onRetry && (
-              <div className="mt-2 pt-2 border-t border-red-200 flex items-center justify-between">
-                <span className="text-xs text-red-600">Connection error</span>
+              <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800 flex items-center justify-between">
+                <span className="text-xs text-red-600 dark:text-red-400">Connection error</span>
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="text-xs font-semibold text-red-700 underline hover:text-red-900 cursor-pointer"
+                  className="text-xs font-semibold text-red-700 dark:text-red-300 underline hover:text-red-900 dark:hover:text-red-200 cursor-pointer"
                 >
                   Retry
                 </button>
@@ -473,10 +453,9 @@ export function ChatMessageBubble({
 
       {/* Timestamp */}
       <span
-        className={`text-[10px] mt-1 px-1 font-medium select-none ${
+        className={`text-[10px] mt-1 px-1 font-medium select-none text-slate-400 dark:text-slate-500 ${
           isUser ? "text-right pr-9" : "text-left pl-9"
         }`}
-        style={{ color: "var(--lp-text-muted, #94A3B8)" }}
       >
         {formatTime(message.timestamp || Date.now())}
       </span>

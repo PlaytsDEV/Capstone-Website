@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure non-blocking font swapping for Plus Jakarta Sans */
+@supports (font-display: swap) {
+  @font-face {
+    font-family: "Plus Jakarta Sans";
+    font-style: normal;
+    font-weight: 300 800;
+    font-display: swap;
+    src: local("Plus Jakarta Sans"), local("PlusJakartaSans-Regular");
+  }
+}
 
 /* =============================================================================
    LILYCREST DESIGN SYSTEM — CSS Custom Properties
@@ -300,7 +310,8 @@ section[id] {
   animation: glowPulse 600ms ease-out;
 }
 
-/* ── Landing Page Theme Variables ─────────────────────────── */
+/* ── Global Theme & Landing Page Variables ─────────────────── */
+:root,
 .landing-page {
   --lp-bg: #ffffff;
   --lp-bg-alt: #ffffff;
@@ -317,6 +328,9 @@ section[id] {
   --lp-card-shadow-hover: 0 10px 25px rgba(10, 22, 40, 0.08);
   --lp-nav-shadow: 0 1px 3px rgba(10, 22, 40, 0.08), 0 4px 12px rgba(10, 22, 40, 0.05);
   --lp-icon-bg: rgba(212, 175, 55, 0.10);
+  --surface-input: #f8fafc;
+  --surface-card: #ffffff;
+  --surface-card-subtle: #f8fafc;
 }
 
 /* Smooth theme transition — scoped to layout containers and interactive elements */
@@ -332,6 +346,8 @@ section[id] {
               border-color 180ms ease-in-out;
 }
 
+:root[data-theme="dark"],
+html.dark,
 .landing-page[data-theme="dark"] {
   --lp-bg: #08111F;
   --lp-bg-alt: #0B1628;
@@ -348,6 +364,9 @@ section[id] {
   --lp-card-shadow-hover: 0 10px 25px rgba(0, 0, 0, 0.42);
   --lp-nav-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 4px 16px rgba(0, 0, 0, 0.42);
   --lp-icon-bg: rgba(212, 175, 55, 0.14);
+  --surface-input: #0B1628;
+  --surface-card: #111C31;
+  --surface-card-subtle: #162238;
 }
 
 /* ── Inquiry Form Focus States (CSS-only, no JS delay) ──── */

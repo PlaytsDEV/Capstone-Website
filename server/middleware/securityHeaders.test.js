@@ -1,6 +1,6 @@
 import http from "http";
 import express from "express";
-import helmet from "helmet";
+import securityHeaders from "./securityHeaders.js";
 
 describe("Backend Security Headers", () => {
   let server;
@@ -9,56 +9,7 @@ describe("Backend Security Headers", () => {
   beforeAll((done) => {
     const app = express();
 
-    app.use((_req, res, next) => {
-      res.setHeader(
-        "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
-      );
-      next();
-    });
-
-    app.use(
-      helmet({
-        contentSecurityPolicy: {
-          directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: [
-              "'self'",
-              "https://identitytoolkit.googleapis.com",
-              "https://securetoken.googleapis.com",
-            ],
-            fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            objectSrc: ["'none'"],
-            frameSrc: ["'none'"],
-            frameAncestors: ["'none'"],
-            formAction: ["'self'"],
-          },
-        },
-        crossOriginEmbedderPolicy: false,
-        crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-        hsts: {
-          maxAge: 31536000,
-          includeSubDomains: true,
-          preload: true,
-        },
-        frameguard: {
-          action: "deny",
-        },
-        referrerPolicy: {
-          policy: "strict-origin-when-cross-origin",
-        },
-        permittedCrossDomainPolicies: {
-          permittedPolicies: "none",
-        },
-        xContentTypeOptions: true,
-        crossOriginResourcePolicy: {
-          policy: "same-origin",
-        },
-      }),
-    );
+    app.use(securityHeaders);
 
     app.get("/api/health-check", (_req, res) => res.json({ status: "ok" }));
 
@@ -78,7 +29,7 @@ describe("Backend Security Headers", () => {
     }
   });
 
-  it("attaches Permissions-Policy, HSTS, and Helmet security headers to responses", async () => {
+  it("attaches Permissions-Policy, HSTS, and Helmet security headers with Google Auth CSP to responses", async () => {
     const res = await fetch(`${baseUrl}/api/health-check`);
     expect(res.status).toBe(200);
 
@@ -87,8 +38,12 @@ describe("Backend Security Headers", () => {
     expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
     expect(res.headers.get("strict-transport-security")).toContain("max-age=31536000");
     expect(res.headers.get("permissions-policy")).toContain("camera=()");
-    expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
-    expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
-    expect(res.headers.get("content-security-policy")).not.toContain("script-src 'self' 'unsafe-inline'");
+
+    const csp = res.headers.get("content-security-policy");
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("script-src 'self' https://apis.google.com https://*.firebaseapp.com");
+    expect(csp).toContain("frame-src 'self' https://accounts.google.com https://*.firebaseapp.com");
+    expect(csp).toContain("connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com");
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
   });
 });

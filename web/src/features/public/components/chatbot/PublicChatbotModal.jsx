@@ -551,31 +551,26 @@ export function PublicChatbotModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="chatbot-header-title"
-        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden"
+        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-[#08111F] border border-[#E6D9B2] dark:border-[#27334A]"
         style={{
           backgroundColor: "var(--lp-bg, #ffffff)",
-          border: "1px solid var(--lp-border, #E6D9B2)",
+          borderColor: "var(--lp-border, #E6D9B2)",
           animation: "modalPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards",
           transformOrigin: "bottom right",
         }}
       >
         {/* Header */}
         <div
-          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 select-none"
+          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 select-none bg-white dark:bg-[#08111F] border-b border-[#E6D9B2] dark:border-[#27334A]"
           style={{
             backgroundColor: "var(--lp-bg, #ffffff)",
-            borderBottom: "1px solid var(--lp-border, #E6D9B2)",
+            borderBottomColor: "var(--lp-border, #E6D9B2)",
           }}
         >
           {/* Left: Avatar + Title */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden"
-              style={{
-                backgroundColor: "#ffffff",
-                border: "1.5px solid var(--lp-accent, #D4AF37)",
-                padding: "3.5px",
-              }}
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden bg-white dark:bg-slate-800 border-[1.5px] border-[#D4AF37] dark:border-[#D4AF37] p-[3.5px]"
             >
               <img
                 src="/lilycrest-logo.png"
@@ -587,13 +582,13 @@ export function PublicChatbotModal({
               <div className="flex items-center gap-1.5">
                 <h3
                   id="chatbot-header-title"
-                  className="text-xs sm:text-sm font-bold tracking-tight truncate"
+                  className="text-xs sm:text-sm font-bold tracking-tight truncate text-[#162f53] dark:text-[#F8FAFC]"
                   style={{ color: "var(--lp-text, #162f53)" }}
                 >
                   Lilycrest AI Chatbot
                 </h3>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] dark:text-[#A8B3C3]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 lc-live-dot flex-shrink-0" />
                 <span className="truncate">Online • 24/7 Digital Assistant</span>
               </div>
@@ -611,7 +606,7 @@ export function PublicChatbotModal({
               }}
               title="Request Front Desk Assistance"
               aria-label="Request Front Desk Assistance"
-              className="p-1.5 rounded-lg text-slate-700 hover:text-amber-800 hover:bg-amber-50 dark:text-slate-200 dark:hover:text-amber-300 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-amber-800 hover:bg-amber-50 dark:text-slate-300 dark:hover:text-amber-300 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <Headphones size={15} />
             </button>
@@ -622,7 +617,7 @@ export function PublicChatbotModal({
               onClick={handleClearHistory}
               title="Reset conversation"
               aria-label="Reset conversation"
-              className="p-1.5 rounded-lg text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <RotateCcw size={15} />
             </button>
@@ -633,7 +628,7 @@ export function PublicChatbotModal({
               onClick={handleModalClose}
               title="Close chatbot"
               aria-label="Close chatbot window"
-              className="p-1.5 rounded-lg text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -643,15 +638,10 @@ export function PublicChatbotModal({
         {/* Expiry Notice Banner */}
         {sessionExpiryNotice && (
           <div
-            className="px-3 py-1.5 flex items-center justify-between text-[11px] font-medium border-b flex-shrink-0"
-            style={{
-              backgroundColor: "rgba(217, 119, 6, 0.08)",
-              borderColor: "var(--lp-border, #E6D9B2)",
-              color: "#B45309",
-            }}
+            className="px-3 py-1.5 flex items-center justify-between text-[11px] font-medium border-b flex-shrink-0 bg-amber-50/90 dark:bg-amber-950/40 border-[#E6D9B2] dark:border-amber-900/60 text-amber-800 dark:text-amber-300"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <AlertTriangle size={13} className="shrink-0 text-amber-600" />
+              <AlertTriangle size={13} className="shrink-0 text-amber-600 dark:text-amber-400" />
               <span className="truncate">{sessionExpiryNotice}</span>
             </div>
             <button
@@ -666,13 +656,13 @@ export function PublicChatbotModal({
         )}
 
         {/* Body / Active View */}
-        <div className="flex-1 overflow-hidden flex flex-col relative" style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}>
+        <div className="flex-1 overflow-hidden flex flex-col relative bg-white dark:bg-[#08111F]" style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}>
           {/* Inactivity Warning Dialog Overlay */}
           {showInactivityWarning && (
             <div
               className="absolute inset-0 z-50 flex items-center justify-center p-4"
               style={{
-                backgroundColor: "rgba(10, 22, 40, 0.55)",
+                backgroundColor: "rgba(10, 22, 40, 0.75)",
                 backdropFilter: "blur(2px)",
               }}
               role="alertdialog"
@@ -680,24 +670,18 @@ export function PublicChatbotModal({
               aria-labelledby="inactivity-warning-title"
             >
               <div
-                className="w-full max-w-[300px] rounded-2xl p-4 shadow-2xl text-center space-y-3"
-                style={{
-                  backgroundColor: "var(--lp-bg-card, #ffffff)",
-                  border: "1px solid var(--lp-border, #E6D9B2)",
-                }}
+                className="w-full max-w-[300px] rounded-2xl p-4 shadow-2xl text-center space-y-3 bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A]"
               >
                 <div className="space-y-1">
                   <AlertTriangle size={24} className="text-amber-600 dark:text-amber-400 mx-auto" />
                   <h4
                     id="inactivity-warning-title"
-                    className="text-sm font-bold tracking-tight"
-                    style={{ color: "var(--lp-text, #162f53)" }}
+                    className="text-sm font-bold tracking-tight text-[#162f53] dark:text-[#F8FAFC]"
                   >
                     Session Expiring Soon
                   </h4>
                   <p
-                    className="text-xs leading-relaxed"
-                    style={{ color: "var(--lp-text-secondary, #64748B)" }}
+                    className="text-xs leading-relaxed text-[#64748B] dark:text-[#D0D7E2]"
                   >
                     Your chat session has been idle and will reset in{" "}
                     <strong className="font-semibold text-amber-700 dark:text-amber-400">
@@ -711,23 +695,14 @@ export function PublicChatbotModal({
                   <button
                     type="button"
                     onClick={handleConfirmClear}
-                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                    style={{
-                      backgroundColor: "var(--surface-input, #f8fafc)",
-                      color: "var(--lp-text-secondary, #64748B)",
-                      border: "1px solid var(--lp-border, #E6D9B2)",
-                    }}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                   >
                     Reset Now
                   </button>
                   <button
                     type="button"
                     onClick={handleExtendSession}
-                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-white transition-all cursor-pointer shadow-xs active:scale-95"
-                    style={{
-                      backgroundColor: "var(--lp-navy, #0A1628)",
-                      border: "1px solid var(--lp-navy, #0A1628)",
-                    }}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-white dark:text-[#0A1628] bg-[#0A1628] dark:bg-[#D4AF37] hover:bg-[#162f53] dark:hover:bg-[#E5C358] transition-all cursor-pointer shadow-xs active:scale-95 border border-[#0A1628] dark:border-[#B9921F]"
                   >
                     Continue
                   </button>
@@ -771,24 +746,15 @@ export function PublicChatbotModal({
 
               {/* Quick Actions Bar */}
               <div
-                className="px-3 py-2 border-t flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-xs flex-shrink-0"
-                style={{
-                  backgroundColor: "#ffffff",
-                  borderColor: "var(--lp-border, #E6D9B2)",
-                }}
+                className="px-3 py-2 border-t flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-xs flex-shrink-0 bg-slate-50/80 dark:bg-[#0B1628] border-[#E6D9B2] dark:border-[#27334A]"
               >
                 <button
                   type="button"
                   onClick={() => handleOpenWidget("kyc_checklist")}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors hover:bg-amber-50 cursor-pointer shadow-xs"
-                  style={{
-                    color: "#0A1628",
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #cbd5e1",
-                  }}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs bg-white dark:bg-[#162238] border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 hover:bg-amber-50/80 dark:hover:bg-slate-700/80 hover:border-amber-400 dark:hover:border-amber-400"
                 >
-                  <FileCheck size={13} className="text-amber-700" />
-                  <span className="font-bold text-[#0A1628]">ID Requirements</span>
+                  <FileCheck size={13} className="text-amber-600 dark:text-amber-400" />
+                  <span className="font-bold">ID Requirements</span>
                 </button>
                 <button
                   type="button"
@@ -796,25 +762,16 @@ export function PublicChatbotModal({
                     touchActivity();
                     setIsEscalating(true);
                   }}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors hover:bg-amber-50 cursor-pointer shadow-xs"
-                  style={{
-                    color: "#0A1628",
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #cbd5e1",
-                  }}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs bg-white dark:bg-[#162238] border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 hover:bg-amber-50/80 dark:hover:bg-slate-700/80 hover:border-amber-400 dark:hover:border-amber-400"
                 >
-                  <Headphones size={13} className="text-amber-700" />
-                  <span className="font-bold text-[#0A1628]">Front Desk Assistance</span>
+                  <Headphones size={13} className="text-amber-600 dark:text-amber-400" />
+                  <span className="font-bold">Front Desk Assistance</span>
                 </button>
               </div>
 
               {/* Input Bar */}
               <div
-                className="p-2.5 border-t flex-shrink-0"
-                style={{
-                  backgroundColor: "var(--lp-bg, #ffffff)",
-                  borderColor: "var(--lp-border, #E6D9B2)",
-                }}
+                className="p-2.5 border-t flex-shrink-0 bg-white dark:bg-[#08111F] border-[#E6D9B2] dark:border-[#27334A]"
               >
                 <form
                   onSubmit={(e) => {
@@ -835,13 +792,7 @@ export function PublicChatbotModal({
                       onKeyDown={handleKeyDown}
                       placeholder="Ask about rates, curfews, or locations..."
                       disabled={isTyping}
-                      className="w-full text-xs py-2 px-3 pr-8 rounded-xl border outline-none resize-none transition-all disabled:opacity-60 lc-public-chat-input"
-                      style={{
-                        backgroundColor: "var(--surface-input, #f8fafc)",
-                        borderColor: "var(--lp-border, #E6D9B2)",
-                        color: "var(--lp-text, #162f53)",
-                        maxHeight: "80px",
-                      }}
+                      className="w-full text-xs py-2 px-3 pr-8 rounded-xl border outline-none resize-none transition-all disabled:opacity-60 bg-slate-50 dark:bg-slate-800/90 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500/20 max-h-[80px]"
                     />
                   </div>
 
@@ -851,7 +802,7 @@ export function PublicChatbotModal({
                     disabled={!input.trim() || isTyping}
                     title="Send message"
                     aria-label="Send message"
-                    className="w-9 h-9 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shadow-xs focus:outline-none active:scale-95 flex-shrink-0 lc-public-send-btn"
+                    className="w-9 h-9 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shadow-xs focus:outline-none active:scale-95 flex-shrink-0 bg-[#0A1628] dark:bg-[#D4AF37] text-white dark:text-[#0A1628] hover:bg-[#162f53] dark:hover:bg-[#E5C358] border border-[#0A1628] dark:border-[#B9921F]"
                   >
                     {isTyping ? (
                       <LoaderCircle size={15} className="animate-spin" />
@@ -861,7 +812,7 @@ export function PublicChatbotModal({
                   </button>
                 </form>
 
-                <div className="flex items-center justify-between mt-1 px-1 text-[10px]" style={{ color: "var(--lp-text-muted, #94A3B8)" }}>
+                <div className="flex items-center justify-between mt-1 px-1 text-[10px] text-slate-400 dark:text-slate-500">
                   <span>Press Enter to send</span>
                 </div>
               </div>

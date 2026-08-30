@@ -84,48 +84,40 @@ export function ChatRoomShowcaseCard({ data = {}, onSelectRoom }) {
 
   return (
     <div
-      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200"
-      style={{
-        backgroundColor: "var(--lp-bg-card, #ffffff)",
-        border: "1px solid var(--lp-border, #E6D9B2)",
-        boxShadow: "0 2px 8px rgba(10, 22, 40, 0.05)",
-      }}
+      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200 bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A] shadow-xs"
     >
       {/* Interactive Room Tabs */}
-      <div className="flex items-center gap-1.5 mb-2.5 pb-2 border-b overflow-x-auto no-scrollbar" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+      <div className="flex items-center gap-1.5 mb-2.5 pb-2 border-b border-[#E6D9B2] dark:border-[#27334A] overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => setSelectedKey("quadruple sharing")}
-          className="py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs"
-          style={{
-            backgroundColor: selectedKey === "quadruple sharing" ? "#0A1628" : "#FFFFFF",
-            borderColor: selectedKey === "quadruple sharing" ? "#0A1628" : "#CBD5E1",
-            color: selectedKey === "quadruple sharing" ? "#FFFFFF" : "#0A1628",
-          }}
+          className={`py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs ${
+            selectedKey === "quadruple sharing"
+              ? "bg-[#0A1628] dark:bg-[#D4AF37] border-[#0A1628] dark:border-[#B9921F] text-white dark:text-[#0A1628]"
+              : "bg-white dark:bg-[#162238] border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+          }`}
         >
           Quadruple Sharing
         </button>
         <button
           type="button"
           onClick={() => setSelectedKey("double sharing")}
-          className="py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs"
-          style={{
-            backgroundColor: selectedKey === "double sharing" ? "#0A1628" : "#FFFFFF",
-            borderColor: selectedKey === "double sharing" ? "#0A1628" : "#CBD5E1",
-            color: selectedKey === "double sharing" ? "#FFFFFF" : "#0A1628",
-          }}
+          className={`py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs ${
+            selectedKey === "double sharing"
+              ? "bg-[#0A1628] dark:bg-[#D4AF37] border-[#0A1628] dark:border-[#B9921F] text-white dark:text-[#0A1628]"
+              : "bg-white dark:bg-[#162238] border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+          }`}
         >
           Double Sharing
         </button>
         <button
           type="button"
           onClick={() => setSelectedKey("private room")}
-          className="py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs"
-          style={{
-            backgroundColor: selectedKey === "private room" ? "#0A1628" : "#FFFFFF",
-            borderColor: selectedKey === "private room" ? "#0A1628" : "#CBD5E1",
-            color: selectedKey === "private room" ? "#FFFFFF" : "#0A1628",
-          }}
+          className={`py-1.5 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shadow-xs ${
+            selectedKey === "private room"
+              ? "bg-[#0A1628] dark:bg-[#D4AF37] border-[#0A1628] dark:border-[#B9921F] text-white dark:text-[#0A1628]"
+              : "bg-white dark:bg-[#162238] border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+          }`}
         >
           Private Solo
         </button>
@@ -136,36 +128,29 @@ export function ChatRoomShowcaseCard({ data = {}, onSelectRoom }) {
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md"
-              style={{
-                backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-                color: "var(--lp-accent, #B45309)",
-                border: "1px solid var(--lp-border, #E6D9B2)",
-              }}
+              className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 border border-[#E6D9B2] dark:border-slate-700 text-amber-700 dark:text-amber-400"
             >
               {preset.badge}
             </span>
             <span
-              className="text-[11px] font-medium"
-              style={{ color: "var(--lp-text-secondary, #64748B)" }}
+              className="text-[11px] font-medium text-slate-500 dark:text-slate-400"
             >
               Gil Puyat & Guadalupe
             </span>
           </div>
           <h4
-            className="text-sm font-bold mt-1 tracking-tight"
-            style={{ color: "var(--lp-text, #162f53)" }}
+            className="text-sm font-bold mt-1 tracking-tight text-slate-900 dark:text-slate-100"
           >
             {displayTitle}
           </h4>
         </div>
 
-        <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-md border border-emerald-200 dark:border-emerald-800">
+        <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-md border border-emerald-200 dark:border-emerald-800/80">
           <span>Live Availability</span>
         </div>
       </div>
 
-      <p className="text-xs mb-3 leading-relaxed" style={{ color: "var(--lp-text-secondary, #475569)" }}>
+      <p className="text-xs mb-3 leading-relaxed text-slate-600 dark:text-slate-400">
         {preset.description}
       </p>
 
@@ -176,14 +161,9 @@ export function ChatRoomShowcaseCard({ data = {}, onSelectRoom }) {
           return (
             <div
               key={idx}
-              className="flex items-center gap-1.5 p-1.5 rounded-lg text-[11px] font-medium"
-              style={{
-                backgroundColor: "var(--surface-input, #f8fafc)",
-                border: "1px solid var(--lp-border, #E6D9B2)",
-                color: "var(--lp-text, #162f53)",
-              }}
+              className="flex items-center gap-1.5 p-1.5 rounded-lg text-[11px] font-medium bg-slate-50 dark:bg-[#162238] border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
             >
-              {FeatIcon && <FeatIcon className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />}
+              {FeatIcon && <FeatIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />}
               <span className="truncate">{feat.text}</span>
             </div>
           );
@@ -192,14 +172,9 @@ export function ChatRoomShowcaseCard({ data = {}, onSelectRoom }) {
 
       {/* Utility Inclusions Note */}
       <div
-        className="flex items-center gap-1.5 py-1 px-2 rounded-md mb-3 text-[10px] font-medium"
-        style={{
-          backgroundColor: "rgba(16, 185, 129, 0.08)",
-          border: "1px solid rgba(16, 185, 129, 0.25)",
-          color: "#065F46",
-        }}
+        className="flex items-center gap-1.5 py-1 px-2 rounded-md mb-3 text-[10px] font-medium bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/25 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300"
       >
-        <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+        <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
         <span>Wi-Fi & Water Included • Metered Room Electricity</span>
       </div>
 
@@ -208,41 +183,19 @@ export function ChatRoomShowcaseCard({ data = {}, onSelectRoom }) {
         <button
           type="button"
           onClick={() => handleCheckAvailability("Gil Puyat")}
-          className="py-2.5 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1 focus:outline-none active:scale-98 shadow-xs"
-          style={{
-            backgroundColor: "#D4AF37",
-            border: "1px solid #B9921F",
-            color: "#0A1628",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "#C49E26";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "#D4AF37";
-          }}
+          className="py-2.5 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1 focus:outline-none active:scale-98 shadow-xs bg-[#D4AF37] hover:bg-[#C49E26] border border-[#B9921F] text-[#0A1628]"
         >
-          <span className="truncate font-bold text-[#0A1628]">Check Gil Puyat</span>
-          <ArrowRight className="w-3 h-3 text-[#0A1628] flex-shrink-0" />
+          <span className="truncate font-bold">Check Gil Puyat</span>
+          <ArrowRight className="w-3 h-3 flex-shrink-0" />
         </button>
 
         <button
           type="button"
           onClick={() => handleCheckAvailability("Guadalupe")}
-          className="py-2.5 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1 focus:outline-none active:scale-98 shadow-xs"
-          style={{
-            backgroundColor: "#0A1628",
-            border: "1px solid #0A1628",
-            color: "#FFFFFF",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "#1A2C4E";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "#0A1628";
-          }}
+          className="py-2.5 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1 focus:outline-none active:scale-98 shadow-xs bg-[#0A1628] dark:bg-[#162238] hover:bg-[#162f53] dark:hover:bg-slate-700 border border-[#0A1628] dark:border-slate-700 text-white"
         >
-          <span className="truncate font-bold text-white">Check Guadalupe</span>
-          <ArrowRight className="w-3 h-3 text-white flex-shrink-0" />
+          <span className="truncate font-bold">Check Guadalupe</span>
+          <ArrowRight className="w-3 h-3 flex-shrink-0" />
         </button>
       </div>
     </div>

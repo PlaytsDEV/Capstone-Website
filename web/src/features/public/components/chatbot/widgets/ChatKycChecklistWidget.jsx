@@ -57,23 +57,18 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
 
   return (
     <div
-      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200"
-      style={{
-        backgroundColor: "var(--lp-bg-card, #ffffff)",
-        border: "1px solid var(--lp-border, #E6D9B2)",
-        boxShadow: "0 2px 8px rgba(10, 22, 40, 0.05)",
-      }}
+      className="my-2.5 p-3.5 rounded-xl text-left select-none transition-all duration-200 bg-white dark:bg-[#111C31] border border-[#E6D9B2] dark:border-[#27334A] shadow-xs"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-          <FileCheck className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#E6D9B2] dark:border-[#27334A]">
+        <div className="w-7 h-7 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+          <FileCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
         </div>
         <div>
-          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100">
             Application Documents Checklist
           </h4>
-          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
             Standard tenant requirements for lease verification and room check-in.
           </p>
         </div>
@@ -85,14 +80,10 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
           return (
             <div
               key={section.id}
-              className="p-2.5 rounded-lg"
-              style={{
-                backgroundColor: "var(--surface-input, #f8fafc)",
-                border: "1px solid var(--lp-border, #E6D9B2)",
-              }}
+              className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#162238] border border-slate-200 dark:border-slate-700"
             >
               <div className="mb-1.5">
-                <span className="text-[11px] font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+                <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100">
                   {section.category}
                 </span>
               </div>
@@ -106,16 +97,17 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
                     <li
                       key={idx}
                       onClick={() => toggleCheck(itemKey)}
-                      className="flex items-start gap-2 text-[11px] cursor-pointer group leading-tight select-none"
-                      style={{
-                        color: isChecked ? "var(--color-success, #059669)" : "var(--lp-text-secondary, #475569)",
-                      }}
+                      className={`flex items-start gap-2 text-[11px] cursor-pointer group leading-tight select-none ${
+                        isChecked
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-slate-700 dark:text-slate-300"
+                      }`}
                     >
                       <input
                         type="checkbox"
                         checked={isChecked}
                         readOnly
-                        className="rounded border-slate-400 text-amber-600 focus:ring-0 cursor-pointer mt-0.5"
+                        className="rounded border-slate-400 text-amber-600 focus:ring-0 cursor-pointer mt-0.5 accent-amber-500"
                       />
                       <span className={isChecked ? "line-through opacity-80" : ""}>{item}</span>
                     </li>
@@ -129,14 +121,9 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
 
       {/* Digital Application Note */}
       <div
-        className="flex items-start gap-2 p-2 rounded-lg mb-3 text-[10px] leading-relaxed"
-        style={{
-          backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.08))",
-          border: "1px solid var(--lp-border, #E6D9B2)",
-          color: "var(--lp-text, #162f53)",
-        }}
+        className="flex items-start gap-2 p-2 rounded-lg mb-3 text-[10px] leading-relaxed bg-amber-500/10 dark:bg-amber-500/15 border border-[#E6D9B2] dark:border-slate-700 text-slate-800 dark:text-slate-200"
       >
-        <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+        <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
         <span>You can upload digital PDF or JPG copies directly during the 5-step online reservation flow.</span>
       </div>
 
@@ -144,20 +131,9 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
       <button
         type="button"
         onClick={handleApply}
-        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
-        style={{
-          backgroundColor: "#0A1628",
-          border: "1px solid #0A1628",
-          color: "#FFFFFF",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "#1A2C4E";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "#0A1628";
-        }}
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs bg-[#0A1628] dark:bg-[#D4AF37] text-white dark:text-[#0A1628] hover:bg-[#162f53] dark:hover:bg-[#E5C358] border border-[#0A1628] dark:border-[#B9921F]"
       >
-        <span className="text-white font-bold">Start Online Reservation</span>
+        <span className="font-bold">Start Online Reservation</span>
         <ArrowRight className="w-3.5 h-3.5" />
       </button>
     </div>
