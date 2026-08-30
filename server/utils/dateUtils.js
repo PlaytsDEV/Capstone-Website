@@ -54,6 +54,32 @@ export function diffManilaDays(dateA, dateB) {
 }
 
 /**
+ * Combine a Manila calendar date with a minutes-from-midnight wall-clock time
+ * into an absolute Date. Used by the scheduled room transfer flow, where the
+ * effective date is stored start-of-day and the intended cutover time is a
+ * separate minutes value.
+ *
+ * @param {*} dateLike       any date; only its Manila calendar day is used
+ * @param {number} minutes   0..1439 minutes from midnight (Asia/Manila)
+ * @returns {Date|null}
+ */
+export function composeManilaDateTime(dateLike, minutes) {
+  const day = toManilaStartOfDay(dateLike);
+  if (!day) return null;
+  const mins = Number.isFinite(Number(minutes)) ? Math.min(Math.max(Math.round(Number(minutes)), 0), 24 * 60 - 1) : 0;
+  return day.add(mins, "minute").toDate();
+}
+
+/**
+ * Is `dateTime` at or before "now" in Asia/Manila (i.e. reached / due)?
+ */
+export function isManilaDateTimeReached(dateTime, now = new Date()) {
+  const target = getManilaDayjs(dateTime);
+  if (!target || !target.isValid()) return false;
+  return !target.isAfter(getManilaDayjs(now));
+}
+
+/**
  * Format a date in Asia/Manila timezone.
  */
 export function formatManilaDate(dateLike, formatStr = "YYYY-MM-DD") {

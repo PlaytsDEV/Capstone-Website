@@ -23,20 +23,35 @@ import logger from "../middleware/logger.js";
 import {
   Room,
   Stay,
-  Contract,
-  Bill,
   ScheduledRoomTransfer,
 } from "../models/index.js";
 import { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } from "../models/ScheduledRoomTransfer.js";
-import { getManilaToday, toManilaStartOfDay } from "../utils/dateUtils.js";
-import { sumBillCharges } from "./billing/billingPolicy.js";
+import { getManilaToday, toManilaStartOfDay, composeManilaDateTime } from "../utils/dateUtils.js";
+import { isWithinOfficeHours, resolveOfficeHoursForBranch } from "../utils/businessSettings.js";
 import {
   resolveValidatedRoomTransferIntent,
   prepareRoomTransferAddendum,
   computeRoomTransferPreview,
 } from "../utils/tenantActionService.js";
 
-const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const DEFAULT_TRANSFER_TIME_MINUTES = 9 * 60; // 09:00 Asia/Manila
+
+/**
+ * Normalize a caller-supplied transfer time. Accepts a minutes-from-midnight
+ * number, or an "HH:mm" string. Falls back to 09:00.
+ */
+export function normalizeTransferTimeMinutes(value) {
+  if (value == null || value === "") return DEFAULT_TRANSFER_TIME_MINUTES;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(Math.max(Math.round(value), 0), 24 * 60 - 1);
+  }
+  const m = String(value).match(/^(\d{1,2}):(\d{2})$/);
+  if (m) {
+    const mins = Number(m[1]) * 60 + Number(m[2]);
+    if (Number.isFinite(mins) && mins >= 0 && mins < 24 * 60) return mins;
+  }
+  return DEFAULT_TRANSFER_TIME_MINUTES;
+}
 
 const err = (message, statusCode, code, extra = {}) =>
   Object.assign(new Error(message), { statusCode, code, ...extra });
@@ -241,41 +256,46 @@ export async function openHoldsByRoom(roomIds = null) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Schedule a room transfer to take effect on a FUTURE Manila business date.
+ * Schedule a room transfer to take effect on a chosen Manila business date +
+ * time. Same-day is allowed provided the chosen date/time is still within
+ * configured office hours; a future date is always allowed; a past date is
+ * rejected.
  *
  * Preconditions (all enforced here, not just the UI):
- *   - the SAME canonical transfer-intent validation the immediate path runs
+ *   - the SAME canonical transfer-intent validation the cutover engine runs
  *     (`resolveValidatedRoomTransferIntent`, requireConfirm)
- *   - effectiveTransferDate strictly AFTER today Manila (today => immediate
- *     path; past => rejected by the controller before we get here, and again
- *     defensively here)
+ *   - effectiveTransferDate is today or later (Manila); if today, the
+ *     effectiveTransferTime must be within office hours
  *   - the reservation has NO open (scheduled | action_required) transfer
  *   - no pending future renewal (same guard the immediate transfer applies)
  *
  * Effects (one transaction):
  *   - prepare / reuse the Room Transfer Addendum Draft (generated,
- *     isCurrent:false, amendmentEffectiveDate = the future date)
+ *     isCurrent:false, amendmentEffectiveDate = the effective date)
  *   - place the REAL destination hold (bed "reserved" + atomic occupancy++,
  *     or atomic occupancy++ for a private destination)
- *   - persist a ScheduledRoomTransfer{ status:"scheduled", holdApplied:true }
+ *   - persist a ScheduledRoomTransfer{ status:"scheduled", holdApplied:true,
+ *     scheduleHistory:[{ kind:"scheduled", ... }] }
  *
  * Does NOT touch: the tenant's Stay, Reservation.roomId / selectedBed /
  * monthlyRent / recurringRentRate, the SOURCE room's occupancy, any Bill,
- * TenantCredit, or UtilityReading.
+ * TenantCredit, or UtilityReading. **The transfer-settlement Bill is NOT
+ * created here** — it is created (if anything is owed) during the admin
+ * Complete Transfer flow on the effective date.
  *
  * @returns {{ scheduledTransfer, addendum, previewSnapshot }}
  */
 export async function scheduleRoomTransfer({ reservationId, payload = {}, actorId = null }) {
-  // 1. Canonical intent validation (identical to the immediate Stage A).
+  // 1. Canonical intent validation (identical to the cutover engine's Stage A).
   const intent = await resolveValidatedRoomTransferIntent({
     reservationId,
     payload,
     requireConfirm: true,
     // Committing path: a scheduled transfer places a real destination hold and
-    // persists a ScheduledRoomTransfer, and its executor later runs the same
-    // ensureActiveStay. Materialize the Stay now so a legitimately moved-in
-    // tenant whose first lifecycle action is a scheduled transfer is not
-    // blocked by a missing lazily-created Stay row.
+    // persists a ScheduledRoomTransfer, and the Complete Transfer flow later
+    // runs the same ensureActiveStay. Materialize the Stay now so a
+    // legitimately moved-in tenant whose first lifecycle action is a scheduled
+    // transfer is not blocked by a missing lazily-created Stay row.
     materializeStay: true,
     actorId,
   });
@@ -289,16 +309,28 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
     destinationNeedsBed,
   } = intent;
 
-  // 2. Must be a FUTURE date (defensive — controller also checks).
+  const effectiveTransferTimeMinutes = normalizeTransferTimeMinutes(
+    payload.effectiveTransferTimeMinutes ?? payload.effectiveTransferTime,
+  );
+
+  // 2. Date/time window rules.
   if (isPastManilaDate(effectiveTransferDate)) {
     throw err("The effective transfer date cannot be in the past.", 400, "PAST_TRANSFER_DATE");
   }
   if (!isFutureManilaDate(effectiveTransferDate)) {
-    throw err(
-      "A same-day transfer takes effect immediately — use the immediate transfer path.",
-      400,
-      "NOT_A_FUTURE_TRANSFER",
-    );
+    // Same Manila day => must be within office hours (backend-authoritative).
+    const cutoverAt = composeManilaDateTime(effectiveTransferDate, effectiveTransferTimeMinutes);
+    const officeHours = await resolveOfficeHoursForBranch(targetRoom.branch);
+    if (!isWithinOfficeHours(cutoverAt, targetRoom.branch, { officeHours })) {
+      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      throw err(
+        `Same-day room transfers can only be scheduled during office hours ` +
+          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila). ` +
+          `Choose a time within office hours, or a future date.`,
+        400,
+        "OUTSIDE_OFFICE_HOURS",
+      );
+    }
   }
 
   // 3. No other open schedule for this reservation (DB partial-unique index is
@@ -349,7 +381,9 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
     actorId,
   });
 
-  // 6. Canonical financial preview using the FUTURE effective date (audit).
+  // 6. Canonical financial preview using the chosen effective date (audit
+  //    snapshot only — the Complete Transfer flow recomputes at cutover and is
+  //    the sole charging authority).
   const previewSnapshot = await computeRoomTransferPreview({
     reservationId: reservation._id,
     targetRoomId: String(targetRoom._id),
@@ -364,18 +398,12 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
       ? String(activeStay.bedId)
       : reservation.selectedBed?.id || null;
 
-  // 6b. Derive the pre-transfer payable — ONLY the deterministically-known
-  //     amounts: positive Rent Adjustment + positive Additional Security
-  //     Deposit. NEVER electricity / water (those follow the effective-date
-  //     cutoff via the normal utility workflow). Zero total => no Bill.
-  const rentDue = roundMoney(Math.max(0, Number(previewSnapshot?.rent?.adjustmentDue) || 0));
-  const depositDue = roundMoney(Math.max(0, Number(previewSnapshot?.deposit?.balanceDue) || 0));
-  const balanceTotal = roundMoney(rentDue + depositDue);
-  const effectiveDateObj = toManilaStartOfDay(effectiveTransferDate).toDate();
-  const cycleStart = previewSnapshot?.billingCycle?.billingCycleStart || effectiveDateObj;
-  const cycleEnd = previewSnapshot?.billingCycle?.billingCycleEnd || effectiveDateObj;
+  const nowTs = new Date();
 
-  // 7. Transaction: hold + record (+ Bill if there is one) together.
+  // 7. Transaction: destination hold + ScheduledRoomTransfer record. NO Bill is
+  //    created here — the transfer-settlement Bill (if anything is owed) is
+  //    created during the admin Complete Transfer flow on the effective date,
+  //    from the settlement recomputed at the real cutover.
   const session = await mongoose.startSession();
   let created;
   try {
@@ -414,97 +442,35 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
             destinationBedId: hold.destinationBedId,
             destinationNeedsBed,
             effectiveTransferDate,
+            effectiveTransferTimeMinutes,
             reason: payload.reason || "Room transfer",
             addendumContractId: addendum?.contractId || null,
             previewSnapshot,
-            // Meter readings are NOT captured at scheduling time. A future
-            // scheduled transfer has not happened yet — the source room's meter
-            // keeps moving until the effective date, so a reading taken now is
-            // not a truthful "final" value, and the destination's reading now is
-            // not necessarily the real "opening" value for the cutover date.
-            // The executor resolves the boundary readings on the effective date
-            // (exact effective-date reading, else the latest canonical DB
-            // reading dated on or before it). These fields stay null unless a
-            // future explicitly-supported effective-date reading workflow sets
-            // them; `transferStayWorkflow` already tolerates missing readings.
+            // Meter readings are captured by the admin during the Complete
+            // Transfer flow at the real cutover — never at scheduling time.
             sourceRoomMeterReading: null,
             targetRoomMeterReading: null,
             status: "scheduled",
             holdApplied: true,
             scheduledBy: actorId,
-            scheduledAt: new Date(),
+            scheduledAt: nowTs,
+            scheduleHistory: [
+              {
+                previousDate: null,
+                previousTimeMinutes: null,
+                newDate: toManilaStartOfDay(effectiveTransferDate).toDate(),
+                newTimeMinutes: effectiveTransferTimeMinutes,
+                actorId: actorId || null,
+                at: nowTs,
+                reason: payload.reason || "Room transfer",
+                kind: "scheduled",
+              },
+            ],
           },
         ],
         { session },
       );
       created = doc;
-
-      // 7b. The Scheduled Room Transfer Balance Bill — one canonical Bill,
-      //     billType "transfer_settlement", rent + securityDeposit ONLY, due
-      //     on the effective transfer date. Skipped entirely when nothing is
-      //     owed (no ₱0 payable Bill).
-      if (balanceTotal > 0) {
-        const charges = {
-          rent: rentDue,
-          electricity: 0,
-          water: 0,
-          applianceFees: 0,
-          corkageFees: 0,
-          penalty: 0,
-          securityDeposit: depositDue,
-          discount: 0,
-        };
-        const total = sumBillCharges(charges);
-        const noteParts = [
-          `Scheduled Room Transfer: ${previewSnapshot?.fromRoom?.name || "current room"} → ` +
-            `${previewSnapshot?.toRoom?.name || "new room"}, effective ` +
-            `${toManilaStartOfDay(effectiveTransferDate).format("YYYY-MM-DD")}`,
-        ];
-        if (rentDue > 0) noteParts.push(`rent adjustment ₱${rentDue.toFixed(2)}`);
-        if (depositDue > 0) noteParts.push(`additional security deposit ₱${depositDue.toFixed(2)}`);
-        noteParts.push("Electricity and water follow the normal utility billing after the transfer cutoff.");
-
-        const [bill] = await Bill.create(
-          [
-            {
-              billType: "transfer_settlement",
-              reservationId: reservation._id,
-              userId: reservation.userId?._id || reservation.userId,
-              branch: activeStay.branch || targetRoom.branch,
-              roomId: activeStay.roomId, // still the SOURCE room until cutover
-              billingMonth: effectiveDateObj,
-              billingCycleStart: cycleStart,
-              billingCycleEnd: cycleEnd,
-              dueDate: effectiveDateObj, // on or before the effective transfer date
-              charges,
-              totalAmount: total,
-              grossAmount: total,
-              remainingAmount: total,
-              paidAmount: 0,
-              status: "pending",
-              publicationState: "published",
-              notes: noteParts.join("; "),
-              transferSnapshot: {
-                fromRoomId: activeStay.roomId,
-                fromRoomName: previewSnapshot?.fromRoom?.name || "",
-                fromRoomType: previewSnapshot?.fromRoom?.type || "",
-                toRoomId: targetRoom._id,
-                toRoomName: previewSnapshot?.toRoom?.name || targetRoom.roomNumber || "",
-                toRoomType: targetRoom.type || "",
-                effectiveTransferDate: effectiveDateObj,
-                // Pre-transfer payable — the executor recomputes the canonical
-                // settlement at execution and reconciles any difference.
-                scheduledRentAdjustment: rentDue,
-                scheduledAdditionalDeposit: depositDue,
-                isScheduledTransferBalance: true,
-              },
-            },
-          ],
-          { session },
-        );
-        created.settlementBillId = bill._id;
-        await created.save({ session });
-      }
     });
   } catch (e) {
     // A duplicate-key error from the partial-unique index => concurrent schedule.
@@ -527,11 +493,155 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
       destinationRoomId: String(targetRoom._id),
       destinationBedId: created.destinationBedId,
       effectiveTransferDate,
-      settlementBillId: created.settlementBillId ? String(created.settlementBillId) : null,
-      balanceTotal,
+      effectiveTransferTimeMinutes,
     },
     "[scheduleRoomTransfer] scheduled",
   );
 
-  return { scheduledTransfer: created, addendum, previewSnapshot, balanceTotal };
+  return { scheduledTransfer: created, addendum, previewSnapshot };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// RESCHEDULE (date/time only — same destination)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Move an OPEN scheduled transfer to a new Manila date + time, keeping the
+ * SAME destination room/bed (and therefore the SAME hold and the SAME
+ * Addendum). Changing the destination is not a reschedule — cancel and create
+ * a new scheduled transfer for that.
+ *
+ * Revalidates:
+ *   - the record is still OPEN and not executed
+ *   - the same canonical transfer intent still holds (branch/type/bed/lease/
+ *     renewal) — the destination bed hold must still be in place
+ *   - the new date is today or later; if today, within office hours
+ *
+ * Effects: appends a `scheduleHistory` entry, updates
+ * `effectiveTransferDate` / `effectiveTransferTimeMinutes`, refreshes
+ * `previewSnapshot` for the new date, and re-points the Addendum's
+ * `amendmentEffectiveDate`. Touches no Stay / occupancy / Bill.
+ *
+ * @returns {{ scheduledTransfer }}
+ */
+export async function rescheduleRoomTransfer({ reservationId, payload = {}, actorId = null }) {
+  const record = await ScheduledRoomTransfer.findOne({
+    reservationId,
+    status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
+    isArchived: { $ne: true },
+  }).sort({ createdAt: -1 });
+  if (!record) {
+    throw err("No open scheduled room transfer to reschedule.", 404, "NO_SCHEDULED_TRANSFER");
+  }
+  if (record.status === "executed") {
+    throw err("This room transfer has already been completed.", 409, "TRANSFER_ALREADY_COMPLETED");
+  }
+
+  const newDate = toManilaStartOfDay(payload.effectiveTransferDate);
+  if (!newDate) {
+    throw err("A new effective transfer date is required.", 400, "MISSING_TRANSFER_FIELDS");
+  }
+  if (newDate.isBefore(getManilaToday(), "day")) {
+    throw err("The new effective transfer date cannot be in the past.", 400, "PAST_TRANSFER_DATE");
+  }
+  const newTimeMinutes = normalizeTransferTimeMinutes(
+    payload.effectiveTransferTimeMinutes ?? payload.effectiveTransferTime,
+  );
+
+  // Same-day => office hours (backend-authoritative).
+  if (!newDate.isAfter(getManilaToday(), "day")) {
+    const cutoverAt = composeManilaDateTime(newDate.toDate(), newTimeMinutes);
+    const officeHours = await resolveOfficeHoursForBranch(record.branch);
+    if (!isWithinOfficeHours(cutoverAt, record.branch, { officeHours })) {
+      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      throw err(
+        `A same-day room transfer can only be scheduled during office hours ` +
+          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila).`,
+        400,
+        "OUTSIDE_OFFICE_HOURS",
+      );
+    }
+  }
+
+  // Revalidate the canonical intent + that the destination hold is still ours.
+  const intent = await resolveValidatedRoomTransferIntent({
+    reservationId,
+    payload: {
+      confirm: true,
+      targetRoomId: String(record.destinationRoomId),
+      targetBedId: record.destinationNeedsBed ? record.destinationBedId : undefined,
+      effectiveTransferDate: newDate.toDate(),
+    },
+    requireConfirm: true,
+    materializeStay: true,
+    actorId,
+  });
+
+  if (record.destinationNeedsBed) {
+    const destRoom = await Room.findById(record.destinationRoomId).lean();
+    const bed = (destRoom?.beds || []).find((b) => String(b.id) === String(record.destinationBedId));
+    if (!bed || bed.status !== "reserved" || String(bed.occupiedBy?.reservationId || "") !== String(reservationId)) {
+      throw err(
+        "The reserved destination bed is no longer held for this transfer. Cancel and re-schedule.",
+        409,
+        "DESTINATION_HOLD_LOST",
+      );
+    }
+  }
+
+  const prevDate = record.effectiveTransferDate;
+  const prevTime = record.effectiveTransferTimeMinutes;
+  const nowTs = new Date();
+
+  // Refresh the audit preview for the new date (non-fatal).
+  const previewSnapshot = await computeRoomTransferPreview({
+    reservationId,
+    targetRoomId: String(record.destinationRoomId),
+    effectiveTransferDate: newDate.toDate(),
+  }).catch(() => record.previewSnapshot || null);
+
+  record.effectiveTransferDate = newDate.toDate();
+  record.effectiveTransferTimeMinutes = newTimeMinutes;
+  record.previewSnapshot = previewSnapshot;
+  record.reason = payload.reason || record.reason;
+  record.scheduleHistory.push({
+    previousDate: prevDate,
+    previousTimeMinutes: prevTime,
+    newDate: newDate.toDate(),
+    newTimeMinutes: newTimeMinutes,
+    actorId: actorId || null,
+    at: nowTs,
+    reason: payload.reason || "",
+    kind: "rescheduled",
+  });
+  await record.save();
+
+  // Re-point the Addendum's effective date so the document reflects the change.
+  if (record.addendumContractId) {
+    try {
+      const { Contract } = await import("../models/index.js");
+      await Contract.updateOne(
+        { _id: record.addendumContractId, isCurrent: { $ne: true } },
+        { $set: { amendmentEffectiveDate: newDate.toDate() } },
+      );
+    } catch (e) {
+      logger.warn(
+        { err: e, scheduledTransferId: String(record._id) },
+        "[rescheduleRoomTransfer] addendum effective-date update failed (non-fatal)",
+      );
+    }
+  }
+
+  void intent;
+  logger.info(
+    {
+      scheduledTransferId: String(record._id),
+      reservationId: String(reservationId),
+      from: { date: prevDate, time: prevTime },
+      to: { date: record.effectiveTransferDate, time: newTimeMinutes },
+    },
+    "[rescheduleRoomTransfer] rescheduled",
+  );
+
+  return { scheduledTransfer: record };
 }

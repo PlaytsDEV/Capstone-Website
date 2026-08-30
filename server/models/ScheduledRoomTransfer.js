@@ -34,14 +34,26 @@
  *   ({scheduled, action_required}) back into a room's derived live occupancy
  *   so the hold is not reconciled away.
  *
- * LIFECYCLE (4 states, no elaborate machine)
- *   scheduled       — hold in place, Addendum prepared, waiting for the date.
- *   executed        — the canonical transferStayWorkflow ran and committed.
+ * LIFECYCLE (4 stored states — the UI-facing "Scheduled → Ready for Transfer →
+ * Awaiting Settlement → Completed" is DERIVED in scheduledRoomTransferView.js
+ * from these + the effective date/time + the settlement Bill; no extra DB
+ * status.)
+ *   scheduled       — hold in place, Addendum prepared, waiting for the
+ *                     effective date/time. Becomes "Ready for Transfer" (a
+ *                     derived state) once the date+time is reached; an admin
+ *                     then runs the Complete Transfer flow.
+ *   executed        — the canonical transferStayWorkflow ran and committed
+ *                     (via the admin Complete Transfer flow — NOT the cron).
  *   cancelled       — admin (or the tenant departing) abandoned it pre-cutover;
  *                     hold released, Addendum discarded.
- *   action_required — effective date reached but execution threw; hold
- *                     retained, Addendum retained, admin notified. Retryable
- *                     or cancellable. NOT auto-retried by the cron.
+ *   action_required — a Complete Transfer attempt could not safely proceed
+ *                     (operational/financial); hold + Addendum retained, admin
+ *                     notified. Resolved by fixing the blocker and re-running
+ *                     Complete Transfer. NOT auto-executed by the cron.
+ *
+ * The effective-date cron job (scheduler Job 20) NO LONGER performs the
+ * cutover. It only nudges state/reminders so a due transfer surfaces as
+ * "Complete transfer →" in the admin Action Needed column.
  *
  * "OPEN" = status ∈ {scheduled, action_required}. Terminal = {executed,
  * cancelled}. A partial-unique index enforces at most one OPEN schedule per
@@ -103,8 +115,38 @@ const scheduledRoomTransferSchema = new mongoose.Schema(
     // server-local (Asia/Manila) start-of-day Date, matching the convention
     // used by billingPolicy / rentGenerator / contractRenewalActivation.
     effectiveTransferDate: { type: Date, required: true, index: true },
+    // The Asia/Manila wall-clock time (minutes from midnight) at which the
+    // admin intends to perform the cutover on `effectiveTransferDate`. Used
+    // for: (a) the same-day office-hours check at scheduling, (b) the
+    // "Complete Transfer becomes available" gate (date AND time reached),
+    // (c) the Action Needed secondary label ("Sep 02 · 2:00 PM"). Default
+    // 09:00 for legacy rows that predate this field.
+    effectiveTransferTimeMinutes: { type: Number, default: 9 * 60, min: 0, max: 24 * 60 - 1 },
 
     reason: { type: String, default: "Room transfer", trim: true },
+
+    // ── Schedule history (audit — Admin Room Transfer §1) ─────────────────
+    // Append-only. Entry [0] is the original schedule; each reschedule appends
+    // one. Never mutated or trimmed. `reason` is present only when the current
+    // system captures one (it does — the transfer reason field).
+    scheduleHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            previousDate: { type: Date, default: null },
+            previousTimeMinutes: { type: Number, default: null },
+            newDate: { type: Date, required: true },
+            newTimeMinutes: { type: Number, required: true },
+            actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+            at: { type: Date, default: Date.now },
+            reason: { type: String, default: "", trim: true },
+            kind: { type: String, enum: ["scheduled", "rescheduled"], default: "rescheduled" },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
 
     // The prepared Room Transfer Addendum Contract Draft (contractPurpose
     // "amendment", status "generated", isCurrent:false until execution).
