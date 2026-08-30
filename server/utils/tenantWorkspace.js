@@ -19,6 +19,12 @@ const NEXT_ACTION_LABELS = Object.freeze({
   review_overdue_account: "Review overdue account",
   process_move_out: "Process move-out",
   renew_lease: "Renew lease",
+  // Room transfer states — only ever set when an open ScheduledRoomTransfer
+  // exists for the tenant (Admin Room Transfer §4). No "initiate a transfer"
+  // prompt: the table stays quiet until a transfer is actually in progress.
+  settle_transfer: "Settle transfer",
+  complete_transfer: "Complete transfer",
+  transfer_scheduled: "Transfer scheduled",
   none: "No action needed",
 });
 
@@ -27,6 +33,16 @@ const WARNING_SEVERITY = Object.freeze({
   warning: "warning",
   error: "error",
 });
+
+// "540" -> "9:00 AM". Used only for the Action Needed secondary line.
+function formatTimeLabel(minutes) {
+  const m = Number.isFinite(Number(minutes)) ? Number(minutes) : 9 * 60;
+  const h24 = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, "0");
+  const ampm = h24 < 12 ? "AM" : "PM";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${mm} ${ampm}`;
+}
 
 export function computeLeaseEndDate(reservation) {
   const moveInDate = readMoveInDate(reservation);
@@ -534,10 +550,26 @@ export function buildNextAction({
   stayStatus,
   leaseStatus,
   billingSummary,
+  scheduledRoomTransfer = null,
 }) {
   if (billingSummary.hasPendingVerification) return "verify_payment";
   if (billingSummary.hasOverdue) return "review_overdue_account";
   if (stayStatus === "moving_out") return "process_move_out";
+
+  // An in-progress room transfer takes the row's Action Needed slot (there is
+  // no separate transfer button in the table). Derived from the serialized
+  // open ScheduledRoomTransfer's UI status:
+  //   awaiting_settlement       -> "Settle transfer"  (Bill unpaid, due reached)
+  //   ready_for_transfer        -> "Complete transfer"
+  //   action_required           -> "Complete transfer" (admin resolves + retries)
+  //   scheduled (not yet due)   -> "Transfer scheduled"
+  const t = scheduledRoomTransfer;
+  if (t && !["completed", "cancelled"].includes(t.status)) {
+    if (t.status === "awaiting_settlement") return "settle_transfer";
+    if (t.status === "ready_for_transfer" || t.status === "action_required") return "complete_transfer";
+    if (t.status === "scheduled") return "transfer_scheduled";
+  }
+
   if (stayStatus === "active" && leaseStatus !== "active") return "renew_lease";
   return "none";
 }
@@ -780,6 +812,7 @@ export function buildTenantWorkspaceEntry({
     stayStatus,
     leaseStatus,
     billingSummary,
+    scheduledRoomTransfer,
   });
   const hasFutureRenewal = stayHistory.some((stay) =>
     currentStay?._id &&
@@ -891,6 +924,15 @@ export function buildTenantWorkspaceEntry({
     paymentStatus: billingSummary.paymentStatus,
     nextAction,
     nextActionLabel: NEXT_ACTION_LABELS[nextAction] || NEXT_ACTION_LABELS.none,
+    // Optional secondary line for the Action Needed cell — currently only the
+    // scheduled-transfer date/time ("Sep 02 · 2:00 PM"). Null otherwise.
+    nextActionDetail:
+      ["transfer_scheduled", "complete_transfer", "settle_transfer"].includes(nextAction) &&
+      scheduledRoomTransfer?.effectiveTransferDate
+        ? `${dayjs(scheduledRoomTransfer.effectiveTransferDate).format("MMM DD")} · ${
+            formatTimeLabel(scheduledRoomTransfer.effectiveTransferTimeMinutes)
+          }`
+        : null,
     allowedActions,
     warningFlags,
     paymentFlags: {

@@ -23,18 +23,21 @@
  */
 
 import { Bill, Contract } from "../models/index.js";
+import { composeManilaDateTime, isManilaDateTimeReached } from "../utils/dateUtils.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
-  "awaiting_payment",
-  "ready",
+  "scheduled",
+  "ready_for_transfer",
+  "awaiting_settlement",
   "completed",
   "action_required",
   "cancelled",
 ]);
 
 export const SCHEDULED_TRANSFER_STATUS_LABELS = Object.freeze({
-  awaiting_payment: "Awaiting Payment",
-  ready: "Ready",
+  scheduled: "Scheduled",
+  ready_for_transfer: "Ready for Transfer",
+  awaiting_settlement: "Awaiting Settlement",
   completed: "Completed",
   action_required: "Action Required",
   cancelled: "Cancelled",
@@ -133,26 +136,37 @@ export async function resolveScheduledTransferBalance(scheduledTransfer, { sessi
 }
 
 /**
- * Derive the user-facing status from the record's internal status + balance.
+ * Derive the UI-facing status from the stored status + the effective
+ * date/time + the settlement Bill. There is no extra DB status —
+ * "Ready for Transfer" / "Awaiting Settlement" are computed:
+ *
+ *   executed              -> completed
+ *   cancelled             -> cancelled
+ *   action_required       -> action_required  (unless a Bill is now unpaid,
+ *                            in which case awaiting_settlement is clearer)
+ *   scheduled + date/time NOT reached          -> scheduled
+ *   scheduled + reached + unpaid balance Bill  -> awaiting_settlement
+ *   scheduled + reached + no/settled balance   -> ready_for_transfer
  */
-export function deriveScheduledTransferUserStatus(scheduledTransfer, balance) {
-  switch (scheduledTransfer.status) {
-    case "executed":
-      return "completed";
-    case "cancelled":
-      return "cancelled";
-    case "action_required":
-      return "action_required";
-    case "scheduled":
-    default: {
-      // Nothing owed (zero-balance transfer, or the balance Bill is fully
-      // settled / absent) => Ready. Otherwise Awaiting Payment.
-      if (!balance || balance.paymentState === "none" || balance.paymentState === "paid") {
-        return "ready";
-      }
-      return "awaiting_payment";
-    }
+export function deriveScheduledTransferUserStatus(scheduledTransfer, balance, now = new Date()) {
+  if (scheduledTransfer.status === "executed") return "completed";
+  if (scheduledTransfer.status === "cancelled") return "cancelled";
+
+  const cutoverAt = composeManilaDateTime(
+    scheduledTransfer.effectiveTransferDate,
+    scheduledTransfer.effectiveTransferTimeMinutes ?? 9 * 60,
+  );
+  const dueReached = isManilaDateTimeReached(cutoverAt, now);
+  const balanceUnpaid =
+    balance && balance.hasBill && balance.paymentState !== "paid" && balance.paymentState !== "none";
+
+  if (scheduledTransfer.status === "action_required") {
+    return balanceUnpaid ? "awaiting_settlement" : "action_required";
   }
+
+  // status === "scheduled"
+  if (!dueReached) return "scheduled";
+  return balanceUnpaid ? "awaiting_settlement" : "ready_for_transfer";
 }
 
 /**
@@ -235,12 +249,37 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
     destinationBed: doc.destinationNeedsBed ? (doc.destinationBedId || null) : null,
 
     effectiveTransferDate: doc.effectiveTransferDate,
+    effectiveTransferTimeMinutes: doc.effectiveTransferTimeMinutes ?? 9 * 60,
+    // "HH:mm" convenience for display.
+    effectiveTransferTimeLabel: (() => {
+      const m = doc.effectiveTransferTimeMinutes ?? 9 * 60;
+      return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    })(),
     reason: doc.reason || null,
     status: userStatus,
     statusLabel: SCHEDULED_TRANSFER_STATUS_LABELS[userStatus] || userStatus,
+    // The stored orchestration status (scheduled | executed | cancelled |
+    // action_required) — distinct from the derived UI `status` above.
+    recordStatus: doc.status,
+    // Whether the admin Complete Transfer flow is available (date/time reached
+    // and not already executed/cancelled).
+    completable: ["ready_for_transfer", "awaiting_settlement", "action_required"].includes(userStatus),
     actionRequiredReason: doc.status === "action_required" ? (doc.lastError || null) : null,
     actionRequiredMessage:
       doc.status === "action_required" ? describeScheduledTransferActionRequired(doc.lastError) : null,
+
+    // Append-only reschedule audit trail (Admin Room Transfer §1).
+    scheduleHistory: Array.isArray(doc.scheduleHistory)
+      ? doc.scheduleHistory.map((h) => ({
+          previousDate: h.previousDate || null,
+          previousTimeMinutes: h.previousTimeMinutes ?? null,
+          newDate: h.newDate || null,
+          newTimeMinutes: h.newTimeMinutes ?? null,
+          at: h.at || null,
+          reason: h.reason || "",
+          kind: h.kind || "rescheduled",
+        }))
+      : [],
 
     // Rent / deposit figures — the executed settlement once it exists,
     // otherwise the scheduling-time preview. (rent.* rates only exist on the
