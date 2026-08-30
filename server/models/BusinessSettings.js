@@ -158,6 +158,31 @@ const businessSettingsSchema = new mongoose.Schema(
       min: 1,
       max: 90,
     },
+    // ── Office hours (Admin Room Transfer §15) ───────────────────────────────
+    // The window (Asia/Manila) during which a SAME-DAY administrative action
+    // that requires staff presence at the cutover — currently only a same-day
+    // room transfer — may be scheduled. A future-dated transfer is not gated
+    // by this. Stored as minutes-from-midnight so there is one numeric source
+    // of truth (no "HH:mm" parsing scattered across frontend/backend). Default
+    // 08:00–20:00. Per-branch override via branchOverrides.
+    officeHoursStartMinutes: {
+      type: Number,
+      default: 8 * 60, // 08:00
+      min: 0,
+      max: 24 * 60 - 1,
+    },
+    officeHoursEndMinutes: {
+      type: Number,
+      default: 20 * 60, // 20:00
+      min: 1,
+      max: 24 * 60,
+    },
+    // ISO weekday numbers the office is open (1 = Monday … 7 = Sunday), matching
+    // dayjs().isoWeekday(). Default: Mon–Sat.
+    officeDaysOfWeek: {
+      type: [Number],
+      default: () => [1, 2, 3, 4, 5, 6],
+    },
     longTermLeaseMinMonths: {
       type: Number,
       default: BUSINESS.LONG_TERM_LEASE_MIN_MONTHS || 6,

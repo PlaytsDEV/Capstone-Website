@@ -1,7 +1,15 @@
 import BusinessSettings from "../models/BusinessSettings.js";
 import { BUSINESS } from "../config/constants.js";
+import { getManilaDayjs } from "./dateUtils.js";
 
 const GLOBAL_KEY = "global";
+
+// ── Office hours (Admin Room Transfer §15) ────────────────────────────────────
+export const DEFAULT_OFFICE_HOURS = Object.freeze({
+  officeHoursStartMinutes: 8 * 60, // 08:00
+  officeHoursEndMinutes: 20 * 60, // 20:00
+  officeDaysOfWeek: [1, 2, 3, 4, 5, 6], // Mon–Sat, ISO weekday numbers
+});
 
 export const DEFAULT_BRANCH_OVERRIDES = Object.freeze({
   "gil-puyat": {
@@ -51,6 +59,8 @@ export const DEFAULT_BUSINESS_SETTINGS = Object.freeze({
   quadrupleDiscountPercent: 10,
   doubleDiscountPercent: 20,
   privateDiscountPercent: 10,
+  officeHoursStartMinutes: DEFAULT_OFFICE_HOURS.officeHoursStartMinutes,
+  officeHoursEndMinutes: DEFAULT_OFFICE_HOURS.officeHoursEndMinutes,
   ...DEFAULT_POLICY_SETTINGS,
 });
 
@@ -100,6 +110,18 @@ const toSourceObject = (value) => {
   }
 
   return value || {};
+};
+
+const normalizeOfficeDaysOrNull = (value) => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const days = [
+    ...new Set(
+      value
+        .map((d) => Math.round(Number(d)))
+        .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7),
+    ),
+  ].sort((a, b) => a - b);
+  return days.length ? days : null;
 };
 
 const normalizeBranchOverride = (value, defaults) => {
@@ -175,6 +197,11 @@ export function serializeBusinessSettings(settingsLike = {}) {
     }
   }
 
+  // officeDaysOfWeek is an array, not a scalar — handled outside the numeric loop.
+  serialized.officeDaysOfWeek =
+    normalizeOfficeDaysOrNull(source.officeDaysOfWeek) ??
+    [...DEFAULT_OFFICE_HOURS.officeDaysOfWeek];
+
   return serialized;
 }
 
@@ -199,6 +226,14 @@ export async function getBusinessSettings() {
       settings[key] = DEFAULT_BUSINESS_SETTINGS[key];
       changed = true;
     }
+  }
+
+  if (
+    !Array.isArray(settings.officeDaysOfWeek) ||
+    settings.officeDaysOfWeek.length === 0
+  ) {
+    settings.officeDaysOfWeek = [...DEFAULT_OFFICE_HOURS.officeDaysOfWeek];
+    changed = true;
   }
 
   if (settings.changedBy === undefined) {
@@ -324,6 +359,97 @@ export function resolveWaterRatePerUnit(requestedRatePerUnit, defaultRatePerUnit
 
   const configured = parseFiniteNumber(defaultRatePerUnit);
   return configured !== null ? configured : 0;
+}
+
+// ── Office hours resolution + enforcement (Admin Room Transfer §15) ───────────
+
+const clampMinuteOfDay = (value, fallback) => {
+  const parsed = parseFiniteNumber(value);
+  if (parsed === null) return fallback;
+  return Math.min(Math.max(Math.round(parsed), 0), 24 * 60);
+};
+
+const normalizeOfficeDays = (value, fallback) => {
+  if (!Array.isArray(value) || value.length === 0) return fallback;
+  const days = [
+    ...new Set(
+      value
+        .map((d) => Math.round(Number(d)))
+        .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7),
+    ),
+  ].sort((a, b) => a - b);
+  return days.length ? days : fallback;
+};
+
+/**
+ * The effective office-hours window (global setting, with the hard defaults as
+ * fallback for any missing field). `branch` is accepted for a future per-branch
+ * override but is currently unused — a single global window satisfies §15.
+ *
+ * @returns {{ startMinutes:number, endMinutes:number, days:number[] }}
+ *   `days` = ISO weekday numbers (1 = Monday … 7 = Sunday).
+ */
+export function resolveOfficeHours(branch, settingsLike = null) {
+  const source = toSourceObject(settingsLike) || {};
+
+  const startMinutes = clampMinuteOfDay(
+    source.officeHoursStartMinutes,
+    DEFAULT_OFFICE_HOURS.officeHoursStartMinutes,
+  );
+  const endMinutes = clampMinuteOfDay(
+    source.officeHoursEndMinutes,
+    DEFAULT_OFFICE_HOURS.officeHoursEndMinutes,
+  );
+  const days = normalizeOfficeDays(
+    source.officeDaysOfWeek,
+    DEFAULT_OFFICE_HOURS.officeDaysOfWeek,
+  );
+
+  // Guard against an inverted window (end <= start) — fall back to the hard
+  // default so a bad config can never make the window empty.
+  const safeStart = endMinutes > startMinutes ? startMinutes : DEFAULT_OFFICE_HOURS.officeHoursStartMinutes;
+  const safeEnd = endMinutes > startMinutes ? endMinutes : DEFAULT_OFFICE_HOURS.officeHoursEndMinutes;
+
+  return { startMinutes: safeStart, endMinutes: safeEnd, days };
+}
+
+export async function resolveOfficeHoursForBranch(branch) {
+  const settings = await getBusinessSettings();
+  return resolveOfficeHours(branch, settings);
+}
+
+/**
+ * Is `dateTime` (a Date / ISO string / dayjs) inside the branch's office hours,
+ * evaluated in Asia/Manila? Both the weekday and the minute-of-day must fall
+ * inside the configured window. The end minute is EXCLUSIVE (an 08:00–20:00
+ * window admits 19:59, not 20:00).
+ *
+ * Pass a pre-resolved `officeHours` (from resolveOfficeHours) to avoid a DB
+ * read; otherwise pass `settingsLike`.
+ */
+export function isWithinOfficeHours(dateTime, branch, { officeHours = null, settingsLike = null } = {}) {
+  const m = getManilaDayjs(dateTime);
+  if (!m || !m.isValid()) return false;
+  const window = officeHours || resolveOfficeHours(branch, settingsLike);
+  const isoDay = m.day() === 0 ? 7 : m.day(); // dayjs day(): 0=Sun..6=Sat → ISO 1=Mon..7=Sun
+  if (!window.days.includes(isoDay)) return false;
+  const minuteOfDay = m.hour() * 60 + m.minute();
+  return minuteOfDay >= window.startMinutes && minuteOfDay < window.endMinutes;
+}
+
+export async function assertWithinOfficeHours(dateTime, branch) {
+  const window = await resolveOfficeHoursForBranch(branch);
+  if (isWithinOfficeHours(dateTime, branch, { officeHours: window })) return window;
+  const fmt = (mins) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  throw Object.assign(
+    new Error(
+      `Same-day room transfers can only be scheduled during office hours ` +
+        `(${fmt(window.startMinutes)}–${fmt(window.endMinutes)}, Asia/Manila). ` +
+        `Choose a time within office hours, or a future date.`,
+    ),
+    { statusCode: 400, code: "OUTSIDE_OFFICE_HOURS" },
+  );
 }
 
 export function serializeLifecyclePolicySettings(settingsLike = {}) {
