@@ -410,36 +410,12 @@ export function Navigation({ type } = {}) {
               ))}
             </div>
 
-            {/* Mobile Theme Toggle & Divider */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 0",
-                animation: `navFadeIn 0.3s ease forwards`,
-                animationDelay: `${navLinks.length * 50}ms`,
-                opacity: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "14px",
-                  color: isScrolled ? "var(--lp-text)" : (isDark ? "rgba(255,255,255,0.8)" : "var(--lp-navy)"),
-                  fontWeight: "400",
-                }}
-              >
-                Appearance
-              </span>
-              <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
-            </div>
-
             {/* Divider */}
             <div
               style={{
                 height: "1px",
                 backgroundColor: isScrolled ? "var(--lp-border)" : "rgba(255,255,255,0.15)",
-                margin: "8px 0 12px 0",
+                margin: "12px 0",
               }}
             />
 
