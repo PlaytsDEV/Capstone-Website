@@ -58,11 +58,10 @@ await jest.unstable_mockModule("./contractService.js", () => ({
   validateContractForGeneration: mockValidate,
 }));
 
-const { scheduleRoomTransfer } = await import("./scheduledRoomTransferService.js");
+const { scheduleRoomTransfer, completeRoomTransfer } = await import("./scheduledRoomTransferService.js");
 const {
   cancelScheduledRoomTransfer,
   resolveScheduledTransferBeforeTenantDeparture,
-  executeScheduledRoomTransfer,
 } = await import("./scheduledRoomTransferExecutor.js");
 const {
   moveOutStayWorkflow,
@@ -86,7 +85,6 @@ const RATE = { private: 13500, "double-sharing": 8100, "quadruple-sharing": 5400
 const CAP = { private: 1, "double-sharing": 2, "quadruple-sharing": 4 };
 const NEEDS_BED = new Set(["double-sharing", "quadruple-sharing"]);
 const futureStr = (d = 12) => getManilaToday().add(d, "day").format("YYYY-MM-DD");
-const DUE_NOW = getManilaToday().add(20, "day").toDate();
 const bedsFor = (type, prefix) =>
   NEEDS_BED.has(type)
     ? Array.from({ length: CAP[type] }, (_, i) => ({ id: `${prefix}-b${i + 1}`, position: i % 2 ? "upper" : "lower", status: "available" }))
@@ -165,6 +163,37 @@ const payFull = async (billId) => {
   return applyBillPayment({ bill, amount: bill.remainingAmount, method: "offline_cash", source: "admin-manual", now: new Date() });
 };
 
+// The transfer_settlement Bill is now created by the admin Complete Transfer
+// flow on the transfer day — NOT at scheduling. This helper back-dates a
+// just-scheduled record so it is "due", then drives completeRoomTransfer far
+// enough to create + link the Bill (returns awaiting_settlement without a
+// cutover), so cancellation tests that need a Bill to void/preserve have one.
+async function makeDueWithSettlementBill(scheduledTransferId, { daysAgo = 3 } = {}) {
+  const back = new Date(); back.setDate(back.getDate() - daysAgo); back.setHours(0, 0, 0, 0);
+  await ScheduledRoomTransfer.updateOne({ _id: scheduledTransferId }, { $set: { effectiveTransferDate: back } });
+  const rec = await ScheduledRoomTransfer.findById(scheduledTransferId).lean();
+  const r = await completeRoomTransfer({
+    reservationId: String(rec.reservationId),
+    // Sub-metered branch (gil-puyat) needs meter readings even to SIZE the Bill.
+    payload: { sourceRoomMeterReading: 0, targetRoomMeterReading: 0 },
+    actorId: rec.scheduledBy || new mongoose.Types.ObjectId(),
+  });
+  const linked = (await ScheduledRoomTransfer.findById(scheduledTransferId).lean())?.settlementBillId || null;
+  return { outcome: r.outcome, billId: r.bill?._id || linked };
+}
+
+// After a safe (no-money) cancellation, the transfer_settlement Bill (if one
+// was ever created via Complete Transfer) is VOIDED, not deleted. If no Bill
+// was ever created (zero-settlement schedule), there is simply nothing.
+async function expectLinkedBillVoidedOrAbsent(scheduledTransferId) {
+  const rec = await ScheduledRoomTransfer.findById(scheduledTransferId).lean();
+  if (!rec?.settlementBillId) return; // never had one — fine
+  const bill = await Bill.findById(rec.settlementBillId).lean();
+  expect(bill).toBeTruthy();
+  expect(bill.status).toBe("voided");
+  expect(bill.remainingAmount).toBe(0);
+}
+
 let mongo;
 beforeAll(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -186,6 +215,7 @@ beforeEach(async () => {
     key: "global",
     privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
     isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+    officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
   });
   mockValidate.mockClear();
   mockGenerate.mockClear();
@@ -219,11 +249,10 @@ describe("safe unpaid cancellation", () => {
     expect(["cancelled", "voided", "rejected", "archived"]).toContain(addendum.status);
     expect((await Contract.findById(original._id)).isCurrent).toBe(true);
 
-    // Bill voided via canonical status, NOT deleted.
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
-    expect(bill).toBeTruthy();
-    expect(bill.status).toBe("voided");
-    expect(bill.remainingAmount).toBe(0);
+    // No transfer_settlement Bill was ever created at scheduling time
+    // (Round-2 decision) — nothing to void.
+    expect(scheduledTransfer.settlementBillId == null).toBe(true);
+    expect(await Bill.countDocuments({ reservationId: reservation._id, billType: "transfer_settlement" })).toBe(0);
 
     // Source tenancy completely unchanged.
     const [r, st] = await Promise.all([Reservation.findById(reservation._id), Stay.findById(stay._id)]);
@@ -259,10 +288,11 @@ describe("safe unpaid cancellation", () => {
     await Contract.updateOne({ reservationId: reservation._id }, { $set: { leaseStartDate: getManilaToday().subtract(3, "day").toDate() } });
 
     const dest = await emptyRoom("quadruple-sharing", "302");
-    const { scheduledTransfer, balanceTotal } = await scheduleRoomTransfer({
+    const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(8) }), actorId,
     });
-    expect(balanceTotal).toBe(0);
+    // No Bill is created at scheduling time regardless of the eventual amount.
+    expect(scheduledTransfer.settlementBillId == null).toBe(true);
 
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("cancelled");
@@ -284,27 +314,28 @@ describe("safe unpaid cancellation", () => {
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0); // not -1
   });
 
-  test("cancelled Bill is no longer outstanding on web + mobile serializers", async () => {
+  test("an UNPAID transfer_settlement Bill created at Complete Transfer is VOIDED on a safe cancellation (not outstanding on web + mobile)", async () => {
     const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
+    // Due + Complete Transfer attempted with an unpaid balance -> Bill created,
+    // record -> action_required (no cutover).
+    const { billId } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    expect(billId).toBeTruthy();
 
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId).lean();
-    // Canonical void: persisted status "voided" -> the mobile bridge maps it
-    // to the non-outstanding "cancelled" status (resolveMobileBillStatus), so
-    // the tenant app never presents it as money due.
+    // Now cancel — no money received -> safe, the unpaid Bill is VOIDED.
+    const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
+    expect(res.outcome).toBe("cancelled");
+
+    const bill = await Bill.findById(billId).lean();
     expect(bill.status).toBe("voided");
     const mobile = toMobileBill(bill);
     expect(mobile.status).toBe("cancelled");
-    // Web "my bills" query filters status:{ $ne: "draft" } but the balance
-    // serializer for the schedule treats a voided bill as no-bill:
     const view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
     expect(view.status).toBe("cancelled");
     expect(view.transferBalance.paymentState).toBe("none");
-    // And the tenant "Upcoming Room Transfer" resolver now returns null.
     expect(await getOpenScheduledRoomTransferForReservation(reservation._id)).toBeNull();
   });
 });
@@ -317,7 +348,8 @@ describe("paid cancellation -> action_required, no financial reversal", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    const { billId: __bid } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    const bill = await Bill.findById(__bid);
     await applyBillPayment({ bill, amount: Math.round(bill.totalAmount * 0.3 * 100) / 100, method: "offline_cash", source: "admin-manual", now: new Date() });
     const heldAfterPartial = (await Reservation.findById(reservation._id)).securityDepositHeld;
 
@@ -348,14 +380,15 @@ describe("paid cancellation -> action_required, no financial reversal", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    await payFull(scheduledTransfer.settlementBillId);
+    const { billId } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    await payFull(billId);
     const heldAfterFull = (await Reservation.findById(reservation._id)).securityDepositHeld;
 
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("action_required");
     expect(res.reason).toBe("PAYMENT_ALREADY_RECEIVED");
 
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    const bill = await Bill.findById(billId);
     expect(bill.status).not.toBe("voided");
     expect(bill.paidAmount).toBeCloseTo(bill.totalAmount, 2);
     expect(Number((await Reservation.findById(reservation._id)).securityDepositHeld)).toBeCloseTo(heldAfterFull, 2);
@@ -370,9 +403,15 @@ describe("post-cutover", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(2) }), actorId,
     });
-    await payFull(scheduledTransfer.settlementBillId);
-    const exec = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW });
-    expect(exec.outcome).toBe("executed");
+    const { billId: __bid } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    await payFull(__bid);
+    // Complete the transfer (admin-driven) — it is now paid, so it executes.
+    const done = await completeRoomTransfer({
+      reservationId: String(reservation._id),
+      payload: { sourceRoomMeterReading: 0, targetRoomMeterReading: 0 },
+      actorId,
+    });
+    expect(done.outcome).toBe("executed");
 
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("skipped");
@@ -388,15 +427,16 @@ describe("action_required cancellation", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(2) }), actorId,
     });
-    // Executor with unpaid Bill -> action_required.
-    const exec = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW });
-    expect(exec.outcome).toBe("action_required");
-    expect(exec.reason).toBe("TRANSFER_BALANCE_UNPAID");
+    // Due + Complete Transfer attempted with an unpaid balance -> action_required.
+    await makeDueWithSettlementBill(scheduledTransfer._id); // creates the Bill, unpaid
+    const sAfter = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
+    expect(sAfter.status).toBe("action_required");
+    expect(sAfter.lastError).toBe("TRANSFER_BALANCE_UNPAID");
 
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("cancelled");
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
-    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
+    await expectLinkedBillVoidedOrAbsent(scheduledTransfer._id);
   });
 
   test("action_required + payment cannot auto-cancel financially", async () => {
@@ -405,7 +445,8 @@ describe("action_required cancellation", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    const { billId: __bid } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    const bill = await Bill.findById(__bid);
     await applyBillPayment({ bill, amount: 500, method: "offline_cash", source: "admin-manual", now: new Date() });
     // Force into action_required.
     await ScheduledRoomTransfer.updateOne({ _id: scheduledTransfer._id }, { $set: { status: "action_required", lastError: "OPERATIONAL_VALIDATION_FAILED" } });
@@ -436,7 +477,7 @@ describe("tenant departure before effective date", () => {
     expect(s.status).toBe("cancelled");
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
     expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
-    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
+    await expectLinkedBillVoidedOrAbsent(scheduledTransfer._id);
     // Tenant left the SOURCE room (moveOut), never the destination.
     expect((await Reservation.findById(reservation._id)).status).toBe("moveOut");
     void roomA;
@@ -472,7 +513,7 @@ describe("tenant departure before effective date", () => {
     expect(s.status).toBe("cancelled");
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
     expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
-    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
+    await expectLinkedBillVoidedOrAbsent(scheduledTransfer._id);
   });
 
   test("executeAbandonmentProtocolWorkflow + unpaid schedule -> workflow completes, schedule auto-cancelled", async () => {
@@ -499,7 +540,7 @@ describe("tenant departure before effective date", () => {
     expect(s.status).toBe("cancelled");
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
     expect((await Contract.findById(scheduledTransfer.addendumContractId)).isCurrent).toBe(false);
-    expect((await Bill.findById(scheduledTransfer.settlementBillId)).status).toBe("voided");
+    await expectLinkedBillVoidedOrAbsent(scheduledTransfer._id);
   });
 
   test("executeAbandonmentProtocolWorkflow + PAID schedule -> hold released, financials PRESERVED, action_required", async () => {
@@ -508,7 +549,8 @@ describe("tenant departure before effective date", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    await payFull(scheduledTransfer.settlementBillId);
+    const { billId: __bid } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    await payFull(__bid);
 
     const result = await executeAbandonmentProtocolWorkflow(String(reservation._id), {}, actorId);
     expect(result.success).toBe(true);
@@ -518,7 +560,8 @@ describe("tenant departure before effective date", () => {
     expect(s.lastError).toBe("PAYMENT_ALREADY_RECEIVED");
     // Physical resource freed, money untouched.
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    const bill = await Bill.findById((await ScheduledRoomTransfer.findById(scheduledTransfer._id)).settlementBillId);
+    expect(bill).toBeTruthy();
     expect(bill.status).not.toBe("voided");
     expect(bill.paidAmount).toBeCloseTo(bill.totalAmount, 2);
     expect(await Payment.countDocuments({ billId: bill._id })).toBe(1);
@@ -532,7 +575,8 @@ describe("tenant departure before effective date", () => {
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }), actorId,
     });
-    await payFull(scheduledTransfer.settlementBillId);
+    const { billId: __bid } = await makeDueWithSettlementBill(scheduledTransfer._id);
+    await payFull(__bid);
     const heldBeforeDeparture = (await Reservation.findById(reservation._id)).securityDepositHeld;
 
     await moveOutStayWorkflow({ reservationId: String(reservation._id), payload: moveOutPayload(), actorId });
@@ -546,7 +590,8 @@ describe("tenant departure before effective date", () => {
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
 
     // Financial history preserved.
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
+    const bill = await Bill.findById((await ScheduledRoomTransfer.findById(scheduledTransfer._id)).settlementBillId);
+    expect(bill).toBeTruthy();
     expect(bill.status).not.toBe("voided");
     expect(bill.paidAmount).toBeCloseTo(bill.totalAmount, 2);
     expect(await Payment.countDocuments({ billId: bill._id })).toBe(1);
