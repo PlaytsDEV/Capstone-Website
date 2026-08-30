@@ -64,10 +64,17 @@ export const reservationApi = {
   // Same endpoint, additionally returning `transferPreview` — the canonical
   // rent-adjustment / additional-deposit / required-vs-held numbers for a
   // candidate destination room. Additive: base callers pass no params.
-  getRoomTransferPreview: (reservationId, { targetRoomId, effectiveTransferDate } = {}) => {
+  // `includeCandidates` also returns `transferCandidates` — the
+  // server-authoritative room selector list (availabilityStatus / selectable /
+  // unavailableReason, per-bed the same).
+  getRoomTransferPreview: (
+    reservationId,
+    { targetRoomId, effectiveTransferDate, includeCandidates } = {},
+  ) => {
     const qs = new URLSearchParams();
     if (targetRoomId) qs.set("targetRoomId", String(targetRoomId));
     if (effectiveTransferDate) qs.set("effectiveTransferDate", String(effectiveTransferDate));
+    if (includeCandidates) qs.set("includeCandidates", "1");
     return authFetch(`/reservations/${reservationId}/tenant-actions/context?${qs.toString()}`);
   },
 
@@ -454,13 +461,43 @@ export const reservationApi = {
     }),
 
   /**
-   * Admin retry for an `action_required` scheduled room transfer. Re-runs
-   * every gate. Returns { outcome, reason, scheduledRoomTransfer }.
+   * Admin retry for an `action_required` scheduled room transfer. Delegates to
+   * the Complete Transfer flow. Meter readings may be re-supplied.
+   * Returns { outcome, reason, scheduledRoomTransfer }.
    * @param {string} reservationId
+   * @param {{ sourceRoomMeterReading?, targetRoomMeterReading?, notes? }} [data]
    */
-  retryScheduledRoomTransfer: (reservationId) =>
+  retryScheduledRoomTransfer: (reservationId, data = {}) =>
     authFetch(`/reservations/${reservationId}/scheduled-transfer/retry`, {
       method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Reschedule an OPEN scheduled room transfer to a new date + time on the SAME
+   * destination. Revalidates availability + (same-day) office hours.
+   * Returns { message, scheduledRoomTransfer }.
+   * @param {string} reservationId
+   * @param {{ effectiveTransferDate, effectiveTransferTime?, effectiveTransferTimeMinutes?, reason? }} data
+   */
+  rescheduleRoomTransfer: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/scheduled-transfer/reschedule`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Admin-driven room transfer completion on/after the effective date + time:
+   * meter reading -> settlement -> settle -> atomic cutover.
+   * 200 { outcome:"executed" } / 202 { outcome:"awaiting_settlement", bill }
+   * / 409 { code:"TRANSFER_SETTLEMENT_UNPAID" }.
+   * @param {string} reservationId
+   * @param {{ sourceRoomMeterReading?, targetRoomMeterReading?, notes? }} data
+   */
+  completeRoomTransfer: (reservationId, data = {}) =>
+    authFetch(`/reservations/${reservationId}/scheduled-transfer/complete`, {
+      method: "POST",
+      body: JSON.stringify(data),
     }),
 
   /**

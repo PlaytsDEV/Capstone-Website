@@ -26,8 +26,8 @@ test("transfer modal uses the server-computed transferPreview (not a hand-rolled
   assert.match(transferModal, /previewResp\?\.data\?\.transferPreview/);
 });
 
-test("additive preview API exists and takes targetRoomId + effectiveTransferDate", () => {
-  assert.match(reservationApi, /getRoomTransferPreview:\s*\(reservationId,\s*\{\s*targetRoomId,\s*effectiveTransferDate\s*\}/);
+test("additive preview API exists and takes targetRoomId + effectiveTransferDate + includeCandidates", () => {
+  assert.match(reservationApi, /getRoomTransferPreview:\s*\(\s*reservationId,\s*\{\s*targetRoomId,\s*effectiveTransferDate,\s*includeCandidates\s*\}/s);
   assert.match(useReservations, /export function useRoomTransferPreview/);
 });
 

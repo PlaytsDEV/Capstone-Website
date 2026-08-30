@@ -1274,11 +1274,11 @@ export default function TenantsWorkspacePage() {
                     effectiveTransferDate:
                       payload.effectiveTransferDate ||
                       toDateInputValue(new Date()),
+                    effectiveTransferTime: payload.effectiveTransferTime || undefined,
                     reason: payload.reason,
                     notes: payload.notes || "",
                     sourceRoomMeterReading: payload.sourceRoomMeterReading,
                     targetRoomMeterReading: payload.targetRoomMeterReading,
-                    forceOverride: payload.forceOverride || false,
                     confirm: true,
                   },
                 );

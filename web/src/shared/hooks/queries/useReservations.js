@@ -104,17 +104,27 @@ export function useTenantActionContext(reservationId, options = {}) {
  * immediate total except rent + deposit). Disabled until a target room is
  * chosen; debounce the date at the call site.
  */
-export function useRoomTransferPreview(reservationId, { targetRoomId, effectiveTransferDate } = {}, options = {}) {
+export function useRoomTransferPreview(
+  reservationId,
+  { targetRoomId, effectiveTransferDate, includeCandidates } = {},
+  options = {},
+) {
   return useQuery({
     queryKey: [
       ...queryKeys.reservations.tenantActionContext(reservationId),
       "transferPreview",
       targetRoomId || null,
       effectiveTransferDate || null,
+      includeCandidates ? "candidates" : null,
     ],
     queryFn: () =>
-      reservationApi.getRoomTransferPreview(reservationId, { targetRoomId, effectiveTransferDate }),
-    enabled: !!reservationId && !!targetRoomId,
+      reservationApi.getRoomTransferPreview(reservationId, {
+        targetRoomId,
+        effectiveTransferDate,
+        includeCandidates,
+      }),
+    // Candidates need no target room; a preview needs one.
+    enabled: !!reservationId && (!!targetRoomId || !!includeCandidates),
     staleTime: 15 * 1000,
     ...options,
   });
