@@ -1579,32 +1579,6 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // distinguishable.
       const cutoverDay = normalizeDate(cutoverAt);
 
-      // ── AUTHORITATIVE office-hours gate ─────────────────────────────────
-      // A same-day transfer may only physically complete DURING office hours.
-      // completeRoomTransfer runs a preliminary check for fast UX, but this
-      // transaction-local check is the one that counts: if office hours
-      // expired between the preliminary check and here, this wins — abort the
-      // transaction, write no room/bed change, no UtilityReading, no
-      // UtilityFinalization; the tenant stays put.
-      {
-        const { resolveOfficeHoursForBranch, isWithinOfficeHours } = await import("./businessSettings.js");
-        const cutoverBranch =
-          reservation.roomId?.branch ||
-          (await Room.findById(payload.targetRoomId).select("branch").session(session).lean())?.branch;
-        const officeHours = await resolveOfficeHoursForBranch(cutoverBranch);
-        if (!isWithinOfficeHours(cutoverAt, cutoverBranch, { officeHours })) {
-          const fmt = (m) =>
-            `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-          throw Object.assign(
-            new Error(
-              `Office hours have ended (${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, ` +
-                `Asia/Manila). The room transfer cannot be completed now — reschedule or complete it during office hours.`,
-            ),
-            { statusCode: 409, code: "OUTSIDE_OFFICE_HOURS" },
-          );
-        }
-      }
-
       // ── Transfer-Settlement Payment Gate ─────────────────────────────────
       // The physical cutover proceeds ONLY when the TRANSFER-SPECIFIC
       // settlement (rent adjustment + additional security deposit) is fully

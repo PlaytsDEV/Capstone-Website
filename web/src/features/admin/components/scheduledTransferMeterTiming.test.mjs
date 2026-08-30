@@ -5,9 +5,10 @@
  * destination hold, so the wizard is permanently 2 steps (Target Room →
  * Review), never asks for meter readings (the admin enters boundary readings
  * in the separate Complete Transfer step), always labels the Confirm button
- * "Confirm Schedule", never submits scheduling-day readings. Same-day
- * transfers are allowed within office hours, so the date picker's `min` is
- * TODAY (minScheduleDateStr) and a transfer TIME is also collected.
+ * "Confirm Schedule", never submits scheduling-day readings. Same-day and any
+ * future date are allowed (only a past date is rejected — there is NO
+ * office-hours restriction), so the date picker's `min` is TODAY
+ * (minScheduleDateStr) and a transfer TIME is also collected.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -68,11 +69,13 @@ test("review shows meter readings are entered at the Complete Transfer step + th
   assert.match(transfer, /Neither is part of this\s*\n?\s*scheduled balance/s);
 });
 
-test("effective date is required (today or later) with an office-hours advisory for EVERY planned date", () => {
-  assert.match(transfer, /date and time — today or any\s*\n?\s*future date — must be within office hours/s);
+test("effective date is required (today or later); NO office-hours plumbing remains", () => {
+  assert.match(transfer, /Same-day or any future date is\s*\n?\s*allowed/s);
   assert.match(transfer, /effectiveTransferDate < minScheduleDateStr\(\)/);
-  assert.match(transfer, /checkScheduleWithinOfficeHours/);
+  assert.doesNotMatch(transfer, /checkScheduleWithinOfficeHours/);
   assert.doesNotMatch(transfer, /checkSameDayOfficeHours/);
+  assert.doesNotMatch(transfer, /officeHoursCheck/);
+  assert.doesNotMatch(transfer, /officeHours/);
 });
 
 test("preview query enables on a reservation + effective date and includes room candidates", () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, LoaderCircle } from "lucide-react";
@@ -7,27 +7,10 @@ import { reservationApi } from "../../../../../shared/api/reservationApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
 import ConfirmModal from "../../../../../shared/components/ConfirmModal";
-import { useBusinessSettings } from "../../../../../shared/hooks/queries/useSettings";
 import {
   minScheduleDateStr,
   timeStrToMinutes,
-  minutesToTimeStr,
-  checkScheduleWithinOfficeHours,
 } from "../../../utils/transferScheduleDate";
-
-// Resolve office hours from the business settings payload (same shape the
-// schedule modal reads). Falls back to 08:00–20:00 Mon–Sat.
-function resolveOfficeHoursFromSettings(businessSettings) {
-  const s = businessSettings?.data ?? businessSettings ?? {};
-  return {
-    startMinutes: Number(s.officeHoursStartMinutes ?? 8 * 60),
-    endMinutes: Number(s.officeHoursEndMinutes ?? 20 * 60),
-    days:
-      Array.isArray(s.officeDaysOfWeek) && s.officeDaysOfWeek.length
-        ? s.officeDaysOfWeek
-        : [1, 2, 3, 4, 5, 6],
-  };
-}
 
 // Derived UI status → badge tone. These are the values produced by
 // server/services/scheduledRoomTransferView.js `deriveScheduledTransferUserStatus`.
@@ -50,8 +33,6 @@ const REVIEW_GUIDANCE = {
     "An additional balance is required. Settle the updated Bill, then complete the transfer.",
   FINANCIAL_ADJUSTMENT_REQUIRED:
     "The amount paid exceeds the recomputed settlement. Please coordinate with the Administration Office, 2nd Floor.",
-  OUTSIDE_OFFICE_HOURS:
-    "Completion is only allowed within office hours. Try again during office hours, or reschedule.",
   DESTINATION_UNAVAILABLE:
     "The destination room/bed is no longer available for this tenant's stay. Reschedule or pick another room.",
   ADDENDUM_EFFECTIVE_DATE_LOCKED:
@@ -324,26 +305,15 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Reschedule — date + time only, on the SAME destination. Every planned date +
-   time must be within canonical office hours (backend-authoritative). The
-   backend also revalidates the destination hold and appends to the schedule
-   history.
+   Reschedule — date + time only, on the SAME destination. Same-day or any
+   future date is allowed (only a past date is rejected). The backend
+   revalidates the destination hold and appends to the schedule history.
    ───────────────────────────────────────────────────────────────────────────── */
 function RescheduleDialog({ transfer, onClose, onDone }) {
   const [date, setDate] = useState(transfer.effectiveTransferDate?.slice(0, 10) || minScheduleDateStr());
   const [time, setTime] = useState(transfer.effectiveTransferTimeLabel || "09:00");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const { data: businessSettings } = useBusinessSettings(true);
-  const officeHours = useMemo(
-    () => resolveOfficeHoursFromSettings(businessSettings),
-    [businessSettings],
-  );
-  const officeHoursCheck = useMemo(
-    () => checkScheduleWithinOfficeHours(date, time, officeHours),
-    [date, time, officeHours],
-  );
 
   const submit = async () => {
     if (!date || date < minScheduleDateStr()) {
@@ -353,10 +323,6 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
     const mins = timeStrToMinutes(time);
     if (mins == null) {
       showNotification("Enter a valid transfer time (HH:mm).", "warning");
-      return;
-    }
-    if (!officeHoursCheck.ok) {
-      showNotification(officeHoursCheck.reason, "warning");
       return;
     }
     setBusy(true);
@@ -389,10 +355,8 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
       >
         <h3 className="text-sm font-bold text-foreground">Reschedule Room Transfer</h3>
         <p className="text-[11px] text-muted-foreground">
-          Same destination room ({transfer.scheduledRoom?.name || "—"}). The new date and time must
-          be within office hours ({minutesToTimeStr(officeHours.startMinutes)}–
-          {minutesToTimeStr(officeHours.endMinutes)}) on an office day. Availability is re-checked on
-          save.
+          Same destination room ({transfer.scheduledRoom?.name || "—"}). Same-day or any future date
+          is allowed. Availability is re-checked on save.
         </p>
         <label className="block space-y-1">
           <span className="text-[11px] text-muted-foreground">New Effective Date</span>
@@ -408,9 +372,6 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
           <span className="text-[11px] text-muted-foreground">New Transfer Time</span>
           <input type="time" className={fieldCls} value={time} onChange={(e) => setTime(e.target.value)} />
         </label>
-        {date && time && !officeHoursCheck.ok ? (
-          <p className="text-[11px] text-rose-600 dark:text-rose-400">{officeHoursCheck.reason}</p>
-        ) : null}
         <label className="block space-y-1">
           <span className="text-[11px] text-muted-foreground">Reason (optional)</span>
           <input
@@ -434,7 +395,7 @@ function RescheduleDialog({ transfer, onClose, onDone }) {
             type="button"
             className="text-xs px-3 py-1.5 rounded-md bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-1"
             onClick={submit}
-            disabled={busy || !officeHoursCheck.ok}
+            disabled={busy}
           >
             {busy ? <LoaderCircle size={12} className="animate-spin" /> : null}
             Save

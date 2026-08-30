@@ -17,11 +17,12 @@ const transferModalSource = modalSource.slice(
 // ── Pure helper logic mirroring the step-1 gate ────────────────────────────
 // The SCHEDULE wizard: Target Room, Date & Time → Review. Step 1 requires a
 // destination room (+ bed for a shared destination), an effective date of
-// today or later, a transfer time that passes the same-day office-hours
-// advisory, a selectable destination candidate, and a reason. There is NO
-// outstanding-balance acknowledgement / force-proceed — the current balance is
-// tracked separately and the transfer's own settlement is paid at the Complete
-// Transfer step. Every figure comes from the server `transferPreview`.
+// today or later (only a past date is rejected — there is NO office-hours
+// restriction), a transfer time, a selectable destination candidate, and a
+// reason. There is NO outstanding-balance acknowledgement / force-proceed —
+// the current balance is tracked separately and the transfer's own settlement
+// is paid at the Complete Transfer step. Every figure comes from the server
+// `transferPreview`.
 
 export function validateTransferStep1({
   roomId,
@@ -30,7 +31,6 @@ export function validateTransferStep1({
   effectiveTransferDate,
   minDateStr,
   effectiveTransferTime,
-  officeHoursOk = true,
   candidateSelectable = true,
   reason,
 }) {
@@ -43,9 +43,6 @@ export function validateTransferStep1({
   }
   if (!effectiveTransferTime) {
     return { valid: false, error: "Please pick a transfer time." };
-  }
-  if (!officeHoursOk) {
-    return { valid: false, error: "Same-day transfers must be within office hours." };
   }
   if (!candidateSelectable) {
     return { valid: false, error: "That room is not available for this date." };
@@ -90,17 +87,19 @@ test("Submit never sends scheduling-day meter readings", () => {
   assert.doesNotMatch(transferModalSource, /Number\(sourceRoomMeterReading\)/);
 });
 
-test("Date picker minimum is TODAY (minScheduleDateStr) — same-day allowed; a transfer TIME is collected", () => {
+test("Date picker minimum is TODAY (minScheduleDateStr) — same-day/any future date allowed; a transfer TIME is collected; NO office-hours restriction", () => {
   assert.match(modalSource, /from "\.\.\/utils\/transferScheduleDate"/);
   assert.match(modalSource, /minScheduleDateStr/);
   assert.match(transferModalSource, /min=\{minScheduleDateStr\(\)\}/);
   // A time input backs `effectiveTransferTime`.
   assert.match(transferModalSource, /type="time"/);
   assert.match(transferModalSource, /effectiveTransferTime/);
-  // Office-hours advisory is wired for EVERY planned date (not just same-day).
-  assert.match(transferModalSource, /checkScheduleWithinOfficeHours/);
+  // Office-hours plumbing is entirely gone from the schedule modal.
+  assert.doesNotMatch(transferModalSource, /checkScheduleWithinOfficeHours/);
   assert.doesNotMatch(transferModalSource, /checkSameDayOfficeHours/);
-  assert.match(modalSource, /useBusinessSettings/);
+  assert.doesNotMatch(transferModalSource, /officeHoursCheck/);
+  assert.doesNotMatch(transferModalSource, /officeHours/);
+  assert.doesNotMatch(modalSource, /useBusinessSettings.*useSettings/);
 });
 
 test("Wizard has NO replacement-contract preparation or wet-signed upload gate", () => {
@@ -110,7 +109,7 @@ test("Wizard has NO replacement-contract preparation or wet-signed upload gate",
   assert.doesNotMatch(transferModalSource, /Prepare Replacement Contract/);
 });
 
-test("Step 1 gate: room + (bed for shared) + date≥today + time + office-hours + selectable candidate + reason", () => {
+test("Step 1 gate: room + (bed for shared) + date≥today + time + selectable candidate + reason (no office-hours check)", () => {
   const MIN = "2026-08-29";
   const OK = {
     roomId: "r2",
@@ -141,8 +140,8 @@ test("Step 1 gate: room + (bed for shared) + date≥today + time + office-hours 
   assert.equal(validateTransferStep1({ ...OK, effectiveTransferDate: "2026-08-29" }).valid, true);
   // Missing time → blocked
   assert.equal(validateTransferStep1({ ...OK, effectiveTransferTime: "" }).valid, false);
-  // Same-day outside office hours → blocked
-  assert.equal(validateTransferStep1({ ...OK, officeHoursOk: false }).valid, false);
+  // A late-night time is fine — no office-hours restriction.
+  assert.equal(validateTransferStep1({ ...OK, effectiveTransferTime: "23:30" }).valid, true);
   // Unavailable destination candidate → blocked
   assert.equal(validateTransferStep1({ ...OK, candidateSelectable: false }).valid, false);
   // Missing reason → blocked

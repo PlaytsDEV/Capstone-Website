@@ -38,7 +38,6 @@ import {
   composeManilaDateTime,
   isManilaDateTimeReached,
 } from "../utils/dateUtils.js";
-import { isWithinOfficeHours, resolveOfficeHoursForBranch } from "../utils/businessSettings.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 import { sumBillCharges, syncBillAmounts } from "./billing/billingPolicy.js";
 import {
@@ -329,28 +328,9 @@ export async function scheduleRoomTransfer({ reservationId, payload = {}, actorI
     payload.effectiveTransferTimeMinutes ?? payload.effectiveTransferTime,
   );
 
-  // 2. Date/time window rules.
+  // 2. Date/time window rules — only a genuinely past date is rejected.
   if (isPastManilaDate(effectiveTransferDate)) {
     throw err("The effective transfer date cannot be in the past.", 400, "PAST_TRANSFER_DATE");
-  }
-  // EVERY planned transfer date + time — today, tomorrow, or any future date —
-  // must land inside canonical office hours (BusinessSettings, Asia/Manila,
-  // backend-authoritative). An impossible schedule is rejected here, not
-  // deferred to Complete Transfer. The transaction-local cutoverAt check in
-  // transferStayWorkflow still independently validates the REAL physical time.
-  {
-    const cutoverAt = composeManilaDateTime(effectiveTransferDate, effectiveTransferTimeMinutes);
-    const officeHours = await resolveOfficeHoursForBranch(targetRoom.branch);
-    if (!isWithinOfficeHours(cutoverAt, targetRoom.branch, { officeHours })) {
-      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-      throw err(
-        `Room transfers can only be scheduled for a time within office hours ` +
-          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila) ` +
-          `on an office day. Choose a valid date and time.`,
-        400,
-        "OUTSIDE_OFFICE_HOURS",
-      );
-    }
   }
 
   // 3. No other open schedule for this reservation (DB partial-unique index is
@@ -567,22 +547,6 @@ export async function rescheduleRoomTransfer({ reservationId, payload = {}, acto
   const newTimeMinutes = normalizeTransferTimeMinutes(
     payload.effectiveTransferTimeMinutes ?? payload.effectiveTransferTime,
   );
-
-  // EVERY rescheduled date + time must land inside canonical office hours
-  // (today, tomorrow, or any future date) — same rule as scheduleRoomTransfer.
-  {
-    const cutoverAt = composeManilaDateTime(newDate.toDate(), newTimeMinutes);
-    const officeHours = await resolveOfficeHoursForBranch(record.branch);
-    if (!isWithinOfficeHours(cutoverAt, record.branch, { officeHours })) {
-      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-      throw err(
-        `Room transfers can only be scheduled for a time within office hours ` +
-          `(${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, Asia/Manila) on an office day.`,
-        400,
-        "OUTSIDE_OFFICE_HOURS",
-      );
-    }
-  }
 
   // Revalidate the canonical intent + that the destination hold is still ours.
   const intent = await resolveValidatedRoomTransferIntent({
@@ -849,26 +813,6 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       400,
       "TRANSFER_NOT_YET_DUE",
     );
-  }
-
-  // 1b. PRELIMINARY office-hours check (fast UX). This is NOT authoritative —
-  //     transferStayWorkflow re-checks with a transaction-local `new Date()`
-  //     cutoverAt, and if office hours expire between here and the transaction
-  //     the transaction check wins (abort, no cutover, no reading).
-  {
-    const nowCheck = new Date();
-    const officeHours = await resolveOfficeHoursForBranch(record.branch);
-    if (!isWithinOfficeHours(nowCheck, record.branch, { officeHours })) {
-      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-      return {
-        outcome: "action_required",
-        reason: "OUTSIDE_OFFICE_HOURS",
-        scheduledTransfer: record,
-        message:
-          `Office hours are ${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)} (Asia/Manila). ` +
-          `Complete the transfer during office hours, or reschedule it.`,
-      };
-    }
   }
 
   // 2. Re-validate the canonical intent + the destination hold against LIVE
@@ -1171,9 +1115,6 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     await restoreHoldOwnTxn(record).catch((re) =>
       logger.error({ err: re, scheduledTransferId: String(record._id) }, "[completeRoomTransfer] hold restore failed"),
     );
-    // The authoritative office-hours re-check inside the transaction is a
-    // legitimate "cannot complete now" outcome, not an execution failure.
-    const isOfficeHours = e.code === "OUTSIDE_OFFICE_HOURS";
     // The Addendum was already acknowledged/signed for the originally scheduled
     // date and the actual cutover is a different day — the admin must reschedule
     // (which re-issues the Addendum) rather than silently disagree.
@@ -1183,17 +1124,15 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       {
         $set: {
           status: "action_required",
-          lastError: isOfficeHours
-            ? "OUTSIDE_OFFICE_HOURS"
-            : isAddendumLocked
-              ? "ADDENDUM_EFFECTIVE_DATE_LOCKED"
-              : `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
+          lastError: isAddendumLocked
+            ? "ADDENDUM_EFFECTIVE_DATE_LOCKED"
+            : `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
           lastAttemptAt: new Date(),
           holdApplied: true,
         },
       },
     );
-    if (isOfficeHours || isAddendumLocked) {
+    if (isAddendumLocked) {
       const fresh = await ScheduledRoomTransfer.findById(record._id);
       return {
         outcome: "action_required",

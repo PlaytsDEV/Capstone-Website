@@ -5,8 +5,8 @@
  *   effectiveTransferDate missing / past  -> 400 TRANSFER_DATE_INVALID
  *   effectiveTransferDate today or future -> 201, scheduleRoomTransfer called,
  *                                            transferStayWorkflow NEVER called
- *   (same-day office-hours enforcement lives inside scheduleRoomTransfer — its
- *    own suite covers OUTSIDE_OFFICE_HOURS.)
+ *   (there is no office-hours restriction — any date/time is allowed; only a
+ *    genuinely past date is rejected, inside scheduleRoomTransfer.)
  *
  * RESCHEDULE (rescheduleRoomTransferAction): PATCH -> rescheduleRoomTransfer.
  * COMPLETE  (completeRoomTransferAction):    POST  -> completeRoomTransfer,
@@ -185,10 +185,10 @@ describe("transferTenant — scheduling branch", () => {
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
   });
 
-  test("scheduling service throws a coded error -> that status/code is surfaced (e.g. OUTSIDE_OFFICE_HOURS)", async () => {
+  test("scheduling service throws a coded error -> that status/code is surfaced (e.g. PAST_TRANSFER_DATE)", async () => {
     const { reservation } = await seedMovedIn();
     scheduleRoomTransferMock.mockRejectedValueOnce(
-      Object.assign(new Error("outside office hours"), { statusCode: 400, code: "OUTSIDE_OFFICE_HOURS" }),
+      Object.assign(new Error("past date"), { statusCode: 400, code: "PAST_TRANSFER_DATE" }),
     );
     const res = response();
     await transferTenant(req({
@@ -196,7 +196,7 @@ describe("transferTenant — scheduling branch", () => {
       body: { targetRoomId: String(new mongoose.Types.ObjectId()), effectiveTransferDate: dateStr(0), effectiveTransferTime: "22:00", confirm: true },
     }), res);
     expect(res.statusCode).toBe(400);
-    expect(res.body.code).toBe("OUTSIDE_OFFICE_HOURS");
+    expect(res.body.code).toBe("PAST_TRANSFER_DATE");
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
   });
 });

@@ -21,8 +21,6 @@ const WHOLE_NUMBER_FIELDS = new Set([
   "checkoutLockDurationMinutes",
   "renewalNoticeRequiredDays",
   "depositRefundProcessingDays",
-  "officeHoursStartMinutes",
-  "officeHoursEndMinutes",
 ]);
 
 const PERCENTAGE_FIELDS = new Set([
@@ -57,8 +55,6 @@ const FIELD_ERROR_LABELS = Object.freeze({
   quadrupleDiscountPercent: "Quadruple sharing discount percentage",
   doubleDiscountPercent: "Double sharing discount percentage",
   privateDiscountPercent: "Private room discount percentage",
-  officeHoursStartMinutes: "Office hours start (minutes from midnight)",
-  officeHoursEndMinutes: "Office hours end (minutes from midnight)",
 });
 
 const SETTINGS_ENTITY_TYPE = "business_settings";
@@ -89,9 +85,6 @@ const buildComparablePayload = (payload) => ({
   quadrupleDiscountPercent: payload.quadrupleDiscountPercent,
   doubleDiscountPercent: payload.doubleDiscountPercent,
   privateDiscountPercent: payload.privateDiscountPercent,
-  officeHoursStartMinutes: payload.officeHoursStartMinutes,
-  officeHoursEndMinutes: payload.officeHoursEndMinutes,
-  officeDaysOfWeek: payload.officeDaysOfWeek,
   branchOverrides: payload.branchOverrides,
 });
 
@@ -140,8 +133,6 @@ const FIELD_LIMITS = Object.freeze({
   visitPendingWarnDays: { min: 1, max: 90 },
   staleVisitApprovedHours: { min: 1, max: 720 },
   applianceFeeAmountPerUnit: { min: 0, max: 50000 },
-  officeHoursStartMinutes: { min: 0, max: 1439 },
-  officeHoursEndMinutes: { min: 1, max: 1440 },
 });
 
 const normalizeNumberField = (value, fieldKey) => {
@@ -227,32 +218,6 @@ export async function updateBusinessRules(req, res, next) {
       }
 
       settings[fieldKey] = result.value;
-    }
-
-    // Office days — an array of ISO weekday numbers (1 = Mon … 7 = Sun).
-    if (req.body.officeDaysOfWeek !== undefined) {
-      const raw = req.body.officeDaysOfWeek;
-      if (!Array.isArray(raw) || raw.length === 0) {
-        return res.status(400).json({ error: "Office days must be a non-empty list of weekday numbers (1–7)." });
-      }
-      const days = [
-        ...new Set(raw.map((d) => Math.round(Number(d)))),
-      ].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7).sort((a, b) => a - b);
-      if (days.length === 0) {
-        return res.status(400).json({ error: "Office days must contain valid weekday numbers (1 = Monday … 7 = Sunday)." });
-      }
-      settings.officeDaysOfWeek = days;
-    }
-
-    // Cross-check: the office-hours window must be non-empty (start < end).
-    if (
-      Number.isFinite(Number(settings.officeHoursStartMinutes)) &&
-      Number.isFinite(Number(settings.officeHoursEndMinutes)) &&
-      Number(settings.officeHoursEndMinutes) <= Number(settings.officeHoursStartMinutes)
-    ) {
-      return res.status(400).json({
-        error: "Office hours end must be later than office hours start.",
-      });
     }
 
     if (req.body.branchOverrides !== undefined) {

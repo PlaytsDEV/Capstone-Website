@@ -10,12 +10,9 @@ import { reservationApi } from "../../../shared/api/reservationApi";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import SearchableRoomSelect from "./SearchableRoomSelect.jsx";
-import { useBusinessSettings } from "../../../shared/hooks/queries/useSettings";
 import {
   toDateInputValue,
   minScheduleDateStr,
-  checkScheduleWithinOfficeHours,
-  minutesToTimeStr,
 } from "../utils/transferScheduleDate";
 import { destinationRoomNeedsBed } from "../utils/transferDestinationBed";
 import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
@@ -555,12 +552,11 @@ function WizardStepper({ steps, currentStep }) {
 /* ─────────────────────────────────────────────────────────────────────────────
    Transfer Tenant Modal — SCHEDULE step (2-step wizard)
      Step 1: Target Room, Date & Time  →  Step 2: Review
-   Scheduling only places a destination hold. Same-day transfers are allowed
-   within the configured office hours (Manila; backend-authoritative via
-   OUTSIDE_OFFICE_HOURS); future dates are always allowed. The tenant stays in
-   the current room — no bill, no meter readings, no occupancy change — until
-   the admin runs the separate Complete Transfer step on the scheduled date,
-   where boundary meter readings are entered and the settlement is paid.
+   Scheduling only places a destination hold. Same-day and any future date are
+   allowed (only a past date is rejected). The tenant stays in the current room
+   — no bill, no meter readings, no occupancy change — until the admin runs the
+   separate Complete Transfer step on the scheduled date, where boundary meter
+   readings are entered and the settlement is paid.
    ───────────────────────────────────────────────────────────────────────────── */
 export function TransferTenantModal({
   open,
@@ -588,29 +584,15 @@ export function TransferTenantModal({
   const [bedId, setBedId] = useState("");
   const [reason, setReason] = useState("Room transfer");
   const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
-  // Same-day transfers are allowed within office hours — the admin also picks a
-  // TIME. Defaults to the current wall-clock time on open.
+  // The admin also picks a TIME. Defaults to the current wall-clock time on open.
   const [effectiveTransferTime, setEffectiveTransferTime] = useState("");
 
   const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
   const hasOutstanding = outstandingBalance > 0;
 
-  // ── Office hours (server-authoritative; advisory here) ────────────────────
-  const { data: businessSettings } = useBusinessSettings(open);
-  const officeHours = useMemo(() => {
-    const s = businessSettings?.data ?? businessSettings ?? {};
-    return {
-      startMinutes: Number(s.officeHoursStartMinutes ?? 8 * 60),
-      endMinutes: Number(s.officeHoursEndMinutes ?? 20 * 60),
-      days: Array.isArray(s.officeDaysOfWeek) && s.officeDaysOfWeek.length
-        ? s.officeDaysOfWeek
-        : [1, 2, 3, 4, 5, 6],
-    };
-  }, [businessSettings]);
-
   // ── Reset on open ─────────────────────────────────────────────────────────
-  // Same-day is allowed (office-hours gated by the backend); default the date
-  // to today and the time to "now".
+  // Same-day and any future date are allowed; default the date to today and
+  // the time to "now".
   useEffect(() => {
     if (!open) return;
     setStep(1);
@@ -698,13 +680,6 @@ export function TransferTenantModal({
   }, [transferCandidates]);
   const selectedCandidate = candidateByRoomId.get(String(roomId)) || null;
 
-  // ── Office-hours advisory for the PLANNED time (backend stays authoritative).
-  //    Applies to every date — today, tomorrow, or any future date.
-  const officeHoursCheck = useMemo(
-    () => checkScheduleWithinOfficeHours(effectiveTransferDate, effectiveTransferTime, officeHours),
-    [effectiveTransferDate, effectiveTransferTime, officeHours],
-  );
-
   // ── Step gate validation ──────────────────────────────────────────────────
   const step1Valid =
     !!roomId &&
@@ -712,7 +687,6 @@ export function TransferTenantModal({
     !!effectiveTransferDate &&
     effectiveTransferDate >= minScheduleDateStr() &&
     !!effectiveTransferTime &&
-    officeHoursCheck.ok &&
     reason.trim().length > 0 &&
     (!selectedCandidate || selectedCandidate.selectable);
 
@@ -736,10 +710,6 @@ export function TransferTenantModal({
     }
     if (!effectiveTransferTime) {
       showNotification("Please pick a transfer time.", "warning");
-      return;
-    }
-    if (!officeHoursCheck.ok) {
-      showNotification(officeHoursCheck.reason, "warning");
       return;
     }
     if (selectedCandidate && !selectedCandidate.selectable) {
@@ -1078,7 +1048,7 @@ export function TransferTenantModal({
                 onClick={triggerPicker}
               />
             </div>
-            <div className={`tenant-modal-field ${attemptedStep1 && (!effectiveTransferTime || !officeHoursCheck.ok) ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep1 && !effectiveTransferTime ? "tenant-modal-field--invalid" : ""}`}>
               <span>Transfer Time</span>
               <input
                 type="time"
@@ -1090,20 +1060,12 @@ export function TransferTenantModal({
           <span className="twm-meter-hint">
             <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
             <span>
-              <strong>Transfer timing.</strong> The date and time — today or any
-              future date — must be within office hours (
-              {minutesToTimeStr(officeHours.startMinutes)}–
-              {minutesToTimeStr(officeHours.endMinutes)}, Asia/Manila) on an
-              office day. The tenant stays in the current room until you complete
+              <strong>Transfer timing.</strong> Same-day or any future date is
+              allowed. The tenant stays in the current room until you complete
               the transfer on the scheduled date, when room, rent, and utility
               responsibility switch over.
             </span>
           </span>
-          {effectiveTransferDate && effectiveTransferTime && !officeHoursCheck.ok && (
-            <div className="twm-callout twm-callout--danger">
-              {officeHoursCheck.reason}
-            </div>
-          )}
 
           <label className={`tenant-modal-field ${attemptedStep1 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>

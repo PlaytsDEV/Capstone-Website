@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * TRANSFER — WATER (not finalized early) + OFFICE-HOURS COMPLETION GATE
+ * TRANSFER — WATER (not finalized early)
  * ============================================================================
  *
  * WATER (Checkpoint-3-corrected):
@@ -19,12 +19,9 @@
  *     A share = 900 × 15/46 = 293.48 ; B share = 900 × 31/46 = 606.52
  *     A + B = ₱900 = canonical room total ✅  (A billed ONCE, at close)
  *
- * OFFICE HOURS:
- *   - completeRoomTransfer refuses when NOW is outside office hours
- *     (preliminary check) -> action_required OUTSIDE_OFFICE_HOURS, no cutover.
- *   - transferStayWorkflow re-checks with a transaction-local cutoverAt; if
- *     office hours are configured closed, the transaction aborts — no room/bed
- *     change, no UtilityReading, no UtilityFinalization.
+ * (There is no office-hours restriction on scheduling or completing a
+ * transfer — any date and time is allowed. This file previously also covered
+ * an office-hours abort path that has since been removed.)
  * ============================================================================
  */
 import mongoose from "mongoose";
@@ -69,14 +66,12 @@ jest.setTimeout(240_000);
 const round = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const MOVE_IN = new Date("2026-08-01T00:00:00.000Z");
 
-async function setOfficeHours({ start, end, days }) {
+async function seedBusinessSettings() {
   await BusinessSettings.deleteMany({});
   await BusinessSettings.create({
     key: "global",
     privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
     isDiscountEnabled: true, longTermLeaseMinMonths: 6,
-    officeHoursStartMinutes: start, officeHoursEndMinutes: end,
-    officeDaysOfWeek: days,
   });
 }
 
@@ -206,46 +201,8 @@ describe("Transfer — water (no early finalization) + office-hours completion g
     return { res, roomA, roomB, actorId, tenant };
   }
 
-  test("transferStayWorkflow aborts when office hours are configured CLOSED — no room/bed change, no UtilityReading, no UtilityFinalization", async () => {
-    // Office closed every day (start == end+something → resolveOfficeHours
-    // guards inverted windows; use a 1-minute window in the far past-of-day so
-    // "now" is essentially never inside it). Simplest: no open days.
-    await setOfficeHours({ start: 0, end: 1, days: [] }); // never open
-
-    const { res, roomA, roomB, actorId, tenant } = await seedSimple();
-    const occBefore = (await Room.findById(roomA._id).lean()).currentOccupancy;
-
-    await expect(
-      transferStayWorkflow({
-        reservationId: res._id,
-        payload: {
-          confirm: true, targetRoomId: roomB._id, targetBedId: "rb-b1",
-          effectiveTransferDate: "2026-08-16T00:00:00.000Z",
-          sourceRoomMeterReading: 160, targetRoomMeterReading: 50, reason: "oh",
-        },
-        actorId,
-      }),
-    ).rejects.toMatchObject({ code: "OUTSIDE_OFFICE_HOURS" });
-
-    // Nothing physical happened.
-    const roomAAfter = await Room.findById(roomA._id).lean();
-    const roomBAfter = await Room.findById(roomB._id).lean();
-    expect(roomAAfter.currentOccupancy).toBe(occBefore);
-    expect(roomBAfter.currentOccupancy).toBe(0);
-    const stay = await Stay.findOne({ reservationId: res._id }).lean();
-    expect(String(stay.roomId)).toBe(String(roomA._id));
-    const readings = await UtilityReading.find({
-      utilityType: "electricity", eventType: { $in: ["moveIn", "moveOut"] }, tenantId: tenant._id,
-    }).lean();
-    expect(readings).toHaveLength(0);
-    const fin = await UtilityFinalization.findOne({ reservationId: res._id }).lean();
-    expect(fin).toBeNull();
-    const settlementBill = await Bill.findOne({ reservationId: res._id, billType: "transfer_settlement" }).lean();
-    expect(settlementBill).toBeNull();
-  });
-
-  test("transferStayWorkflow proceeds when office hours are OPEN (24/7 config)", async () => {
-    await setOfficeHours({ start: 0, end: 1440, days: [1, 2, 3, 4, 5, 6, 7] });
+  test("transferStayWorkflow proceeds regardless of the time of day (no office-hours gate)", async () => {
+    await seedBusinessSettings();
     const { res, roomA, roomB, actorId } = await seedSimple();
 
     const result = await transferStayWorkflow({

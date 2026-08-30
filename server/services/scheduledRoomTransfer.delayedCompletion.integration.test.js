@@ -192,8 +192,8 @@ beforeEach(async () => {
   mockGenerate.mockClear();
 });
 
-describe("rescheduleRoomTransfer — office hours on EVERY planned date (audit item 1)", () => {
-  test("reschedule to a FUTURE date + time outside office hours is rejected (OUTSIDE_OFFICE_HOURS)", async () => {
+describe("rescheduleRoomTransfer — no office-hours restriction", () => {
+  test("reschedule to a FUTURE date + any time (e.g. 21:00 on a weekend) is accepted and appends schedule history", async () => {
     const { res, roomB, actorId } = await seed();
     const today = new Date(); today.setHours(9, 0, 0, 0);
     await scheduleRoomTransfer({
@@ -201,47 +201,39 @@ describe("rescheduleRoomTransfer — office hours on EVERY planned date (audit i
       payload: {
         confirm: true, targetRoomId: String(roomB._id), targetBedId: "qb-b1",
         effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
-        reason: "reschedule oh test",
+        reason: "reschedule test",
       },
       actorId,
     });
-    await BusinessSettings.updateOne(
-      { key: "global" },
-      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
-    );
-    const future = new Date(); future.setDate(future.getDate() + 10); future.setHours(0, 0, 0, 0);
-    await expect(rescheduleRoomTransfer({
-      reservationId: res._id,
-      payload: { effectiveTransferDate: future.toISOString(), effectiveTransferTimeMinutes: 21 * 60 },
-      actorId,
-    })).rejects.toMatchObject({ code: "OUTSIDE_OFFICE_HOURS" });
-  });
-
-  test("reschedule to a FUTURE date + time inside office hours is accepted and re-points the Addendum date", async () => {
-    const { res, roomB, actorId } = await seed();
-    const today = new Date(); today.setHours(9, 0, 0, 0);
-    await scheduleRoomTransfer({
-      reservationId: res._id,
-      payload: {
-        confirm: true, targetRoomId: String(roomB._id), targetBedId: "qb-b1",
-        effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
-        reason: "reschedule oh ok",
-      },
-      actorId,
-    });
-    await BusinessSettings.updateOne(
-      { key: "global" },
-      { $set: { officeHoursStartMinutes: 480, officeHoursEndMinutes: 1200, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
-    );
     const future = new Date(); future.setDate(future.getDate() + 11); future.setHours(0, 0, 0, 0);
     const { scheduledTransfer } = await rescheduleRoomTransfer({
       reservationId: res._id,
-      payload: { effectiveTransferDate: future.toISOString(), effectiveTransferTimeMinutes: 15 * 60, reason: "tenant asked" },
+      payload: { effectiveTransferDate: future.toISOString(), effectiveTransferTimeMinutes: 21 * 60, reason: "tenant asked" },
       actorId,
     });
-    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(15 * 60);
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(21 * 60);
     const hist = scheduledTransfer.scheduleHistory.at(-1);
     expect(hist.kind).toBe("rescheduled");
+  });
+
+  test("reschedule to a PAST date is still rejected (PAST_TRANSFER_DATE)", async () => {
+    const { res, roomB, actorId } = await seed();
+    const today = new Date(); today.setHours(9, 0, 0, 0);
+    await scheduleRoomTransfer({
+      reservationId: res._id,
+      payload: {
+        confirm: true, targetRoomId: String(roomB._id), targetBedId: "qb-b1",
+        effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
+        reason: "reschedule past test",
+      },
+      actorId,
+    });
+    const past = new Date(); past.setDate(past.getDate() - 3); past.setHours(0, 0, 0, 0);
+    await expect(rescheduleRoomTransfer({
+      reservationId: res._id,
+      payload: { effectiveTransferDate: past.toISOString(), effectiveTransferTimeMinutes: 10 * 60 },
+      actorId,
+    })).rejects.toMatchObject({ code: "PAST_TRANSFER_DATE" });
   });
 });
 
