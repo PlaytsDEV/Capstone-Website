@@ -696,7 +696,7 @@ function CheckAvailabilityPage() {
 
   // ── Render ─────────────────────────────────────────────────
   return (
-  <div className="min-h-screen" style={{ backgroundColor: "var(--surface-page)" }}>
+  <div className="ca-page-container min-h-screen" style={{ backgroundColor: "var(--surface-page)" }}>
       <LoginConfirmModal
         isOpen={showLoginConfirmBeforeReserve}
         onClose={handleLoginConfirmClose}

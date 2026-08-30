@@ -29,6 +29,7 @@
 .reservation-flow-container {
   min-height: 100vh;
   padding: 0 0 60px;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   font-family: "Inter", "DM Sans", sans-serif;
 }
 
@@ -148,6 +149,17 @@
 }
 
 @media (max-width: 640px) {
+  .rf-exit-button,
+  .rf-btn,
+  .rf-btn-primary,
+  .rf-btn-secondary,
+  .rf-step-btn {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .rf-top-header {
     flex-direction: row;
     justify-content: space-between;
