@@ -6,6 +6,7 @@ import {
   BedHistory,
   Bill,
   Contract,
+  ContractAcknowledgement,
   Reservation,
   Room,
   Stay,
@@ -478,28 +479,60 @@ export async function computeRoomTransferPreview({
  *   "current_room"          (excluded — shown disabled "current room")
  *   "fully_occupied"        RED    — currentOccupancy >= capacity
  *   "fully_reserved"        RED    — every bed reserved / held
- *   "reservation_conflict"  RED    — a reservation / pending move-in covers the date
+ *   "reservation_conflict"  RED    — a reservation / pending move-in OVERLAPS the
+ *                                    transferee's expected destination-occupancy
+ *                                    interval (not merely "exists")
  *   "no_available_bed"      RED    — shared room, no available bed
  *   "maintenance"           GRAY   — room or all beds under maintenance
  *   "blocked"               GRAY   — room flagged unavailable / archived-adjacent
  *
+ * RESERVATION-CONFLICT WINDOW (audit item 2): a destination is only RED for a
+ * reservation conflict when that other reservation's occupancy window actually
+ * OVERLAPS the transferee's expected destination-occupancy interval
+ * `[transferDate, transfereeEnd)`. `transfereeEnd` is the canonical lease
+ * boundary the transfer carries forward — `activeStay.leaseEndDate` ->
+ * `predecessorContract.leaseEndDate` -> `computeLeaseEndDate(reservation)` — or
+ * open-ended (+infinity) when none is known. A reservation that BEGINS after
+ * `transfereeEnd` does not block. `moveIn` occupants are always current
+ * occupants (already in `currentOccupancy`); only future `reserved` /
+ * `approved_for_payment` move-ins get the interval test.
+ *
  * @param {Object} args
  * @param {Object} args.reservation      lean reservation (roomId populated)
+ * @param {Object} [args.stayLike]       resolved active stay / stay-shaped fallback
  * @param {Date}   [args.effectiveTransferDate]
  */
-async function buildTransferCandidates({ reservation, effectiveTransferDate }) {
+export async function buildTransferCandidates({ reservation, stayLike = null, effectiveTransferDate }) {
   const branch = reservation.roomId?.branch;
   if (!branch) return [];
   const currentRoomId = String(reservation.roomId?._id || reservation.roomId || "");
-  const transferDate = normalizeDate(effectiveTransferDate) || new Date();
+  const transferDate = normalizeDate(effectiveTransferDate) || normalizeDate(new Date());
+
+  // Transferee's expected destination-occupancy interval end. The transfer
+  // carries the existing lease term forward unchanged, so this is the current
+  // stay / predecessor-contract lease end. null => open-ended (+infinity).
+  const transfereeEndRaw =
+    stayLike?.leaseEndDate ||
+    computeLeaseEndDate(reservation) ||
+    null;
+  const transfereeEnd = transfereeEndRaw ? normalizeDate(transfereeEndRaw) : null;
+
+  // Does an "other" reservation whose occupancy starts at `otherStart` overlap
+  // `[transferDate, transfereeEnd)`? Their stay is `[otherStart, +inf)`.
+  const overlapsTransfereeInterval = (otherStart) => {
+    const start = otherStart ? normalizeDate(otherStart) : transferDate;
+    // No overlap if the other stay begins on/after the transferee's known end.
+    if (transfereeEnd && start && start.getTime() >= transfereeEnd.getTime()) return false;
+    return true;
+  };
 
   const [rooms, holdsByRoom, conflictingReservations] = await Promise.all([
     Room.find({ branch, isArchived: { $ne: true } })
       .select("name roomNumber branch type capacity currentOccupancy available status beds maintenanceStatus isBlocked")
       .lean(),
     (await import("../services/scheduledRoomTransferService.js")).openHoldsByRoom(null),
-    // Reservations / pending move-ins in this branch whose occupancy window
-    // covers the chosen transfer date (excluding the transferring tenant).
+    // Reservations / pending move-ins in this branch (excluding the transferring
+    // tenant). Interval overlap is applied below, not a blanket "exists".
     Reservation.find({
       _id: { $ne: reservation._id },
       status: { $in: ["reserved", "approved_for_payment", "moveIn"] },
@@ -513,11 +546,18 @@ async function buildTransferCandidates({ reservation, effectiveTransferDate }) {
   const conflictBedKeys = new Set();
   const conflictRoomCounts = new Map();
   for (const r of conflictingReservations) {
-    if (String(r.roomId?.branch || r.roomId?._id ? r.roomId.branch : "") !== branch && r.roomId?.branch !== branch) {
-      // roomId may be an id or populated; only branch-match matters
-    }
+    if ((r.roomId?.branch || null) && r.roomId.branch !== branch) continue;
     const rid = String(r.roomId?._id || r.roomId || "");
     if (!rid) continue;
+
+    // `moveIn` = already a current occupant (counted in currentOccupancy).
+    // Future reservations only conflict if their window overlaps the
+    // transferee's expected destination-occupancy interval.
+    if (r.status !== "moveIn") {
+      const otherStart = r.leaseStartDate || r.expectedMoveInDate || r.moveInDate || null;
+      if (!overlapsTransfereeInterval(otherStart)) continue;
+    }
+
     conflictRoomCounts.set(rid, (conflictRoomCounts.get(rid) || 0) + 1);
     const bedId = r.selectedBed?.id;
     if (bedId) conflictBedKeys.add(`${rid}::${String(bedId)}`);
@@ -717,6 +757,7 @@ export async function getTenantActionContext(reservationId, previewParams = null
     try {
       transferCandidates = await buildTransferCandidates({
         reservation,
+        stayLike,
         effectiveTransferDate: previewParams.effectiveTransferDate,
       });
     } catch (err) {
@@ -2544,6 +2585,55 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       }
 
       await reservation.save({ session });
+
+      // ── Addendum effective-date alignment (audit item 3) ──────────────────
+      // The successor's `amendmentEffectiveDate` was stamped in Stage A from the
+      // SCHEDULED date. When the transfer completes LATER than scheduled, the
+      // real occupancy/billing boundary is `cutoverDay` — the contract must not
+      // silently disagree.
+      //   A. Still an UNACKNOWLEDGED draft (the normal case — the tenant
+      //      acknowledges the Addendum AFTER the transfer) → re-stamp
+      //      `amendmentEffectiveDate` to `cutoverDay` in this same transaction.
+      //   B. Already acknowledged / wet-signed → NEVER silently modify it.
+      //      Abort with a clear code so the admin reschedules (which re-points
+      //      the date) or re-issues the Addendum for re-acknowledgement.
+      {
+        const stampedDay = successorContract.amendmentEffectiveDate
+          ? normalizeDate(successorContract.amendmentEffectiveDate)
+          : null;
+        const mismatch =
+          !stampedDay || !cutoverDay || stampedDay.getTime() !== cutoverDay.getTime();
+        if (mismatch) {
+          const ackCount = await ContractAcknowledgement.countDocuments({
+            contractId: successorContract._id,
+          }).session(session);
+          const alreadySigned =
+            ackCount > 0 ||
+            successorContract.tenantSignatureStatus === "completed" ||
+            ["signed", "awaiting_notarization", "notarized", "ready_for_publication", "published", "active"].includes(
+              successorContract.status,
+            );
+          if (alreadySigned) {
+            throw Object.assign(
+              new Error(
+                "The Room Transfer Addendum has already been acknowledged/signed for the originally scheduled date. " +
+                  "Reschedule the transfer (which re-issues the Addendum for the new date) before completing it.",
+              ),
+              { statusCode: 409, code: "ADDENDUM_EFFECTIVE_DATE_LOCKED" },
+            );
+          }
+          successorContract.amendmentEffectiveDate = cutoverDay;
+          successorContract.updatedBy = actorId;
+          successorContract.statusHistory.push({
+            status: successorContract.status,
+            changedBy: actorId,
+            reason: `Amendment effective date aligned to the actual transfer cutover (${cutoverDay
+              .toISOString()
+              .slice(0, 10)}); the scheduled date was earlier.`,
+          });
+          await successorContract.save({ session });
+        }
+      }
 
       // ── Contract cutover — last step before commit. Participates in this
       // same transaction (session passed through): a failure here rolls
