@@ -1275,28 +1275,44 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
       }
 
-      // ── Outstanding Balance Guard ─────────────────────────────────────────
-      // Block the transfer if the tenant has unpaid bills unless the admin
-      // explicitly acknowledges and sets forceOverride: true.
+      // ── Transfer-Settlement Payment Gate ─────────────────────────────────
+      // The physical cutover proceeds ONLY when the TRANSFER-SPECIFIC
+      // settlement (rent adjustment + additional security deposit) is fully
+      // paid. Unrelated historical balances (regular rent, utilities) are NOT
+      // merged and do NOT block the transfer — they stay owed and are settled
+      // through their own bills (Admin Room Transfer spec §9). There is no
+      // force-proceed: the old `forceOverride` acknowledgement path is gone.
+      //
+      // `billingSummary` is still computed here — it feeds the BedHistory
+      // transfer snapshot (billingSnapshotAtTransfer / outstandingBalanceAtTransfer)
+      // for the audit trail; it is no longer a gate.
       const bills = await Bill.find({
         reservationId: reservation._id,
         isArchived: { $ne: true },
       }).session(session).lean();
       const billingSummary = buildBillingSummary(bills);
-      if (billingSummary.hasOutstanding && !payload.forceOverride) {
-        const formattedBalance = Number(billingSummary.currentBalance).toLocaleString("en-PH", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
+
+      const transferSettlementBills = bills.filter(
+        (b) => b.billType === "transfer_settlement" && b.status !== "voided",
+      );
+      const unpaidTransferSettlement = transferSettlementBills.find(
+        (b) => roundMoney(Number(b.totalAmount || 0) - Number(b.paidAmount || 0)) > 0.01,
+      );
+      if (unpaidTransferSettlement) {
+        const remaining = roundMoney(
+          Number(unpaidTransferSettlement.totalAmount || 0) - Number(unpaidTransferSettlement.paidAmount || 0),
+        );
         throw Object.assign(
           new Error(
-            `Tenant has ₱${formattedBalance} in outstanding balance. Settle before transfer, or acknowledge and force-proceed.`,
+            `The room transfer settlement of ₱${remaining.toLocaleString("en-PH", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} must be fully paid before the transfer can be completed.`,
           ),
           {
             statusCode: 409,
-            code: "OUTSTANDING_BILLS_BLOCKING_TRANSFER",
-            outstandingBalance: billingSummary.currentBalance,
-            paymentStatus: billingSummary.paymentStatus,
+            code: "TRANSFER_SETTLEMENT_UNPAID",
+            outstandingBalance: remaining,
           },
         );
       }

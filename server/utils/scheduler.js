@@ -1531,30 +1531,30 @@ export function startScheduler(options = {}) {
     }),
   );
 
-  // Job 20: Scheduled Room Transfer execution — daily at 00:10 (Asia/Manila),
-  // right AFTER Job 0 (automated rent generation, 00:00). A rent Bill is only
-  // generated 14 days before its cycle rolls (RENT_GENERATION_LEAD_DAYS), so
-  // Job 0 never emits the transferred tenant's rent Bill on the effective
-  // date itself — no same-day rent-bill reconciliation is needed. This job
-  // processes ONLY status:"scheduled" records whose Manila effective date is
-  // due; `action_required` records are admin-resolve only and are never
-  // auto-retried here. retryJobOperation handles a transient PROCESS failure
-  // (whole-scan re-run) without violating the per-record no-auto-retry rule.
+  // Job 20: Scheduled Room Transfer — due-date REMINDER, daily at 00:10
+  // (Asia/Manila). This job NO LONGER performs the physical cutover. The
+  // cutover is admin-driven (`completeRoomTransfer`: meter reading →
+  // settlement → settle → transferStayWorkflow). All this job does is send a
+  // one-time "ready to complete" reminder to branch admins for each OPEN
+  // scheduled transfer whose Manila effective date/time has been reached; the
+  // "Complete transfer →" Action Needed CTA is derived from the date/time, not
+  // from a status flip. retryJobOperation handles a transient PROCESS failure
+  // (whole-scan re-run) — the notification is deduped so a re-run is safe.
   scheduledJobs.push(
     cron.schedule("10 0 * * *", () =>
       retryJobOperation(
         async () => {
-          const { executeDueScheduledRoomTransfers } = await import(
+          const { nudgeDueScheduledRoomTransfers } = await import(
             "../services/scheduledRoomTransferExecutor.js"
           );
-          return executeDueScheduledRoomTransfers();
+          return nudgeDueScheduledRoomTransfers();
         },
-        { label: "Job 20: Scheduled room transfer execution" },
+        { label: "Job 20: Scheduled room transfer due-date reminder" },
       ),
     {
       scheduled: true,
       timezone: process.env.APP_TIMEZONE || "Asia/Manila",
-      name: "scheduled-room-transfer-execution",
+      name: "scheduled-room-transfer-due-reminder",
     }),
   );
 
