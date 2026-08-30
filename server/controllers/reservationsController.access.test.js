@@ -46,6 +46,12 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   BedHistory: {},
   Stay: { exists: jest.fn().mockResolvedValue(false) },
   Contract: {},
+  ContractAcknowledgement: {
+    countDocuments: jest.fn(() => ({ session: jest.fn().mockResolvedValue(0) })),
+    find: jest.fn(() => ({ lean: jest.fn().mockResolvedValue([]) })),
+    deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+    create: jest.fn(),
+  },
   TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
   BusinessSettings: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
   ScheduledRoomTransfer: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn(), countDocuments: jest.fn() },
