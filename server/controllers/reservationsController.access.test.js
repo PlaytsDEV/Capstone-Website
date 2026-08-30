@@ -57,6 +57,8 @@ await jest.unstable_mockModule("../models/index.js", () => ({
 // scheduling, so the whole subsystem is stubbed.
 await jest.unstable_mockModule("../services/scheduledRoomTransferService.js", () => ({
   scheduleRoomTransfer: jest.fn(),
+  rescheduleRoomTransfer: jest.fn(),
+  completeRoomTransfer: jest.fn(),
   isFutureManilaDate: jest.fn(() => false),
   isPastManilaDate: jest.fn(() => false),
   computeRoomTransferPreview: jest.fn(),
@@ -69,7 +71,7 @@ await jest.unstable_mockModule("../services/scheduledRoomTransferExecutor.js", (
   cancelScheduledRoomTransfer: jest.fn(),
   retryScheduledRoomTransfer: jest.fn(),
   resolveScheduledTransferBeforeTenantDeparture: jest.fn().mockResolvedValue({ handled: false }),
-  executeScheduledRoomTransfer: jest.fn(),
+  nudgeDueScheduledRoomTransfers: jest.fn(),
   executeDueScheduledRoomTransfers: jest.fn(),
 }));
 
