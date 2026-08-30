@@ -351,8 +351,12 @@ export function Navigation({ type } = {}) {
               Book Now
             </Link>
             <button
-              className="md:hidden bg-transparent border-none cursor-pointer"
-              style={{ color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)") }}
+              className="md:hidden bg-transparent border-none cursor-pointer inline-flex items-center justify-center p-2 rounded-lg"
+              style={{
+                color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                minWidth: "48px",
+                minHeight: "48px",
+              }}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-expanded={isMenuOpen}
               aria-label={isMenuOpen ? "Close menu" : "Open menu"}
@@ -373,6 +377,7 @@ export function Navigation({ type } = {}) {
               border: isScrolled
                 ? "1px solid var(--lp-border)"
                 : (isDark ? "none" : "1px solid rgba(10,22,40,0.12)"),
+              paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))",
             }}
           >
             {/* Nav links with stagger animation */}
@@ -387,11 +392,14 @@ export function Navigation({ type } = {}) {
                     handleNavClick(e, link.id);
                   }}
                   style={{
+                    display: "flex",
+                    alignItems: "center",
+                    minHeight: "48px",
+                    padding: "14px 12px",
                     color: activeSection === link.id
                       ? "var(--lp-accent-text)"
                       : (isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)")),
                     fontWeight: activeSection === link.id ? "500" : "300",
-                    padding: "12px 0",
                     animation: `navFadeIn 0.3s ease forwards`,
                     animationDelay: `${index * 60}ms`,
                     opacity: 0,
@@ -402,12 +410,36 @@ export function Navigation({ type } = {}) {
               ))}
             </div>
 
+            {/* Mobile Theme Toggle & Divider */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 0",
+                animation: `navFadeIn 0.3s ease forwards`,
+                animationDelay: `${navLinks.length * 50}ms`,
+                opacity: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "14px",
+                  color: isScrolled ? "var(--lp-text)" : (isDark ? "rgba(255,255,255,0.8)" : "var(--lp-navy)"),
+                  fontWeight: "400",
+                }}
+              >
+                Appearance
+              </span>
+              <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
+            </div>
+
             {/* Divider */}
             <div
               style={{
                 height: "1px",
                 backgroundColor: isScrolled ? "var(--lp-border)" : "rgba(255,255,255,0.15)",
-                margin: "12px 0",
+                margin: "8px 0 12px 0",
               }}
             />
 
@@ -425,12 +457,17 @@ export function Navigation({ type } = {}) {
                 (isAuthenticated ? (
                   <Link
                     to={profileUrl}
-                    className="flex items-center justify-center gap-2 no-underline capitalize"
+                    className="no-underline capitalize"
                     onClick={() => setIsMenuOpen(false)}
                     style={{
                       flex: 1,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      minHeight: "48px",
+                      padding: "12px 16px",
                       color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                      padding: "14px 0",
                       fontWeight: "500",
                       fontSize: "15px",
                       borderRadius: "12px",
@@ -448,13 +485,14 @@ export function Navigation({ type } = {}) {
                     onClick={() => setIsMenuOpen(false)}
                     style={{
                       flex: 1,
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      minHeight: "48px",
+                      padding: "12px 16px",
                       color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
                       fontSize: "15px",
                       fontWeight: "500",
-                      padding: "14px 0",
                       borderRadius: "12px",
                       border: ghostBorderRest,
                       backgroundColor: "transparent",
@@ -466,15 +504,20 @@ export function Navigation({ type } = {}) {
                 ))}
               <Link
                 to="/applicant/check-availability"
-                className="no-underline flex items-center justify-center rounded-full text-center cursor-pointer transition-all"
+                className="no-underline text-center cursor-pointer transition-all"
                 onClick={() => setIsMenuOpen(false)}
                 style={{
                   flex: 1,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: "48px",
+                  padding: "12px 16px",
                   color: "white",
                   backgroundColor: "var(--lp-accent)",
                   fontWeight: "500",
                   fontSize: "15px",
-                  padding: "14px 0",
+                  borderRadius: "9999px",
                 }}
               >
                 Book Now
