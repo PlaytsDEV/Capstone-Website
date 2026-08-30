@@ -758,6 +758,20 @@ export function MaintenanceDetailModal({
   const [isSubmittingStage4, setIsSubmittingStage4] = useState(false);
   const proofFileInputRef = useRef(null);
 
+  // Stage 4 Quick Reminder state
+  const [reminderCooldown, setReminderCooldown] = useState(0);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
+
+  useEffect(() => {
+    let timer;
+    if (reminderCooldown > 0) {
+      timer = setInterval(() => {
+        setReminderCooldown((prev) => (prev > 1 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [reminderCooldown]);
+
   // Reopen modal state
   const reopenAdminMutation = useReopenAdminMaintenanceRequest();
   const [showReopenDialog, setShowReopenDialog] = useState(false);
@@ -805,6 +819,43 @@ export function MaintenanceDetailModal({
         type: "error",
       });
       throw err;
+    }
+  };
+
+  const handleSendTenantReminder = async () => {
+    const targetRequestId =
+      request?.request_id ||
+      request?.id ||
+      request?._id ||
+      incomingRequest?.request_id ||
+      incomingRequest?.id ||
+      incomingRequest?._id;
+    if (!targetRequestId || isSendingReminder || reminderCooldown > 0) return;
+
+    setIsSendingReminder(true);
+    try {
+      await sendReplyMutation.mutateAsync({
+        requestId: targetRequestId,
+        payload: {
+          message:
+            "Hello! Facilities maintenance has marked this repair as resolved. Please inspect the work in your room and submit your feedback and star rating on the app. Thank you!",
+          attachments: [],
+        },
+      });
+      setReminderCooldown(60);
+      showNotification({
+        title: "Reminder Sent",
+        message: "Tenant has been notified on mobile & web to inspect the repair and submit feedback.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Reminder Failed",
+        message: err?.response?.data?.message || err?.message || "Failed to send reminder to tenant.",
+        type: "error",
+      });
+    } finally {
+      setIsSendingReminder(false);
     }
   };
 
@@ -1652,7 +1703,7 @@ export function MaintenanceDetailModal({
   const isResolvedStage = status === "resolved";
   const isCompletedStage = ["completed", "closed"].includes(status);
 
-  const isExecutionView = isExecutionStage || isReopened;
+  const isExecutionView = isExecutionStage;
 
   // Attachment Collections
   const initialAttachments = Array.isArray(request?.attachments)
@@ -2641,7 +2692,7 @@ export function MaintenanceDetailModal({
                   )}
 
                   {/* STAGE 3: EXECUTION & RESOLUTION (Unified Continuous View) */}
-                  {(isExecutionStage || isReopened) && (
+                  {isExecutionStage && (
                     <div id="maintenance-stage3-actions" className="space-y-4">
                         <div className="space-y-4">
                           <div className="grid gap-4 md:grid-cols-2 items-stretch">
@@ -3403,16 +3454,12 @@ export function MaintenanceDetailModal({
                               )}
                             </div>
                           ) : (
-                            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 flex-wrap gap-2">
-                              <span>Awaiting tenant feedback &amp; rating on web/mobile app...</span>
-                              <button
-                                type="button"
-                                onClick={() => handleTabChange("conversation")}
-                                className="text-xs text-sky-600 dark:text-sky-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-                              >
-                                <Send size={11} />
-                                <span>Send Message to Tenant</span>
-                              </button>
+                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                              </span>
+                              <span>Awaiting tenant inspection, feedback &amp; star rating on mobile/web app...</span>
                             </div>
                           )}
                         </div>
@@ -3526,11 +3573,27 @@ export function MaintenanceDetailModal({
                             <div className="flex items-center gap-2 shrink-0 flex-wrap">
                               <button
                                 type="button"
-                                onClick={() => handleTabChange("conversation")}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-[0.98] shadow-2xs"
+                                onClick={handleSendTenantReminder}
+                                disabled={isSendingReminder || reminderCooldown > 0 || isLocked}
+                                title={
+                                  reminderCooldown > 0
+                                    ? `Reminder sent. Cooldown active (${reminderCooldown}s)`
+                                    : "Send automated push & message reminder to tenant to inspect and confirm repair"
+                                }
+                                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-[0.98] shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
                               >
-                                <Send size={13} className="text-sky-600 dark:text-sky-400" />
-                                <span>Send Reminder</span>
+                                {isSendingReminder ? (
+                                  <Loader2 size={13} className="animate-spin text-sky-600 dark:text-sky-400" />
+                                ) : (
+                                  <Send size={13} className="text-sky-600 dark:text-sky-400" />
+                                )}
+                                <span>
+                                  {isSendingReminder
+                                    ? "Sending..."
+                                    : reminderCooldown > 0
+                                      ? `Reminder Sent (${reminderCooldown}s)`
+                                      : "Send Reminder"}
+                                </span>
                               </button>
 
                               <button

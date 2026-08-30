@@ -788,7 +788,7 @@ export async function checkAndRollExpiredContracts() {
       status: "active",
       isCurrent: true,
       leaseEndDate: { $lte: thirtyDaysAhead, $gt: now },
-      advanceRenewalPromptSentAt: { $exists: false },
+      advanceRenewalPromptSentAt: null,
     });
 
     for (const contract of expiringSoonContracts) {

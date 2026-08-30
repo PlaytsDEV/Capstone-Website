@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import dayjs from "dayjs";
 import { moveOutApi } from "../../../shared/api/moveOutApi.js";
 import BaseModal from "../../../shared/components/BaseModal.jsx";
 
@@ -12,17 +13,20 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
   const [utilityDeduction, setUtilityDeduction] = useState(0);
   const [damageDeduction, setDamageDeduction] = useState(0);
   const [rfidReturned, setRfidReturned] = useState(true);
+  const [waiveEarlyForfeiture, setWaiveEarlyForfeiture] = useState(false);
   const [adminRemarks, setAdminRemarks] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const leaseEnd = reservation?.leaseEndDate || reservation?.endDate ? new Date(reservation.leaseEndDate || reservation.endDate) : null;
-  const isEarlyPreTermination = leaseEnd && new Date() < leaseEnd;
+  const rawLeaseEnd = reservation?.leaseEndDate || reservation?.endDate;
+  const leaseEnd = rawLeaseEnd ? dayjs(rawLeaseEnd) : null;
+  const isEarlyPreTermination = leaseEnd ? dayjs().startOf("day").isBefore(leaseEnd.startOf("day")) : false;
+  const effectiveEarlyTermination = isEarlyPreTermination && !waiveEarlyForfeiture;
 
   const rfidFee = rfidReturned ? 0 : 300;
   const totalDeductions = Number(rentDeduction) + Number(utilityDeduction) + Number(damageDeduction) + rfidFee;
-  const netRefund = isEarlyPreTermination ? 0 : Math.max(0, Number(initialDeposit) - totalDeductions);
+  const netRefund = effectiveEarlyTermination ? 0 : Math.max(0, Number(initialDeposit) - totalDeductions);
 
   const handleSubmitSignOff = async (e) => {
     e.preventDefault();
@@ -35,11 +39,13 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
         utilityDeduction: Number(utilityDeduction),
         damageDeduction: Number(damageDeduction),
         rfidReturned,
-        adminRemarks: isEarlyPreTermination
+        adminRemarks: effectiveEarlyTermination
           ? `[Early Pre-Termination - Deposit 100% Forfeited] ${adminRemarks}`.trim()
+          : waiveEarlyForfeiture && isEarlyPreTermination
+          ? `[Early Move-Out - Deposit Forfeiture Waived by Admin] ${adminRemarks}`.trim()
           : adminRemarks,
         netRefundAmount: netRefund,
-        isEarlyPreTermination,
+        isEarlyPreTermination: effectiveEarlyTermination,
       });
       if (onClearanceCompleted) onClearanceCompleted();
       onClose();
@@ -76,18 +82,29 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
           {leaseEnd && (
             <div className="flex justify-between">
               <span className="text-gray-500">Agreed Contract End Date:</span>
-              <span className="font-medium text-gray-900">{leaseEnd.toLocaleDateString()}</span>
+              <span className="font-medium text-gray-900">{leaseEnd.format("MM/DD/YYYY")}</span>
             </div>
           )}
         </div>
 
         {isEarlyPreTermination && (
-          <div className="p-3 bg-card border border-border rounded text-xs space-y-1">
-            <div className="flex items-center gap-1.5 font-bold text-rose-600">
-              <span>Early Pre-Termination Detected</span>
+          <div className="p-3 bg-card border border-border rounded text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-rose-600 dark:text-rose-400">Early Move-Out Detected</span>
+              <label className="flex items-center gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground">
+                <input
+                  type="checkbox"
+                  checked={waiveEarlyForfeiture}
+                  onChange={(e) => setWaiveEarlyForfeiture(e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span className="text-[11px] font-medium">Waive Forfeiture (Mutual Agreement)</span>
+              </label>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Moving out prior to the agreed contract end date forfeits 100% of the security deposit as an early termination penalty. Net refund is set to ₱0.00.
+              {waiveEarlyForfeiture
+                ? "Deposit forfeiture has been waived by administrator. Security deposit balance will be calculated and refunded normally after deductions."
+                : "Departing before the scheduled lease end date forfeits 100% of the security deposit as an early termination penalty. Net refund is set to ₱0.00."}
             </p>
           </div>
         )}

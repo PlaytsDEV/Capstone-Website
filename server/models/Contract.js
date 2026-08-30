@@ -354,6 +354,7 @@ const contractSchema = new mongoose.Schema(
     signedUploadedAt: { type: Date, default: null },
     notarizedUploadedAt: { type: Date, default: null },
     publishedAt: { type: Date, default: null },
+    advanceRenewalPromptSentAt: { type: Date, default: null, index: true },
 
     status: { type: String, enum: CONTRACT_STATUSES, default: "draft", required: true, index: true },
     isCurrent: { type: Boolean, default: true, index: true },

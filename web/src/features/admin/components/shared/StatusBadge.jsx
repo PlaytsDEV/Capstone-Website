@@ -68,6 +68,7 @@ export default function StatusBadge({
       "awaiting_signatures",
       "partially_signed",
       "awaiting_notarization",
+      "overdue_escalation",
     ];
     const errorStatuses = [
       "rejected",
@@ -142,6 +143,7 @@ export default function StatusBadge({
     if (norm === "expired_occupancy_continuing") return "Expired Occupancy";
     if (norm === "rolling") return "Rolling Month-to-Month";
     if (norm === "former_tenant") return "Former Tenant";
+    if (norm === "overdue_escalation") return "Overdue Escalation";
     if (norm === "notice_1") return "Overdue Notice 1";
     if (norm === "notice_2") return "Overdue Notice 2";
     if (norm === "notice_3") return "Final Notice (3)";

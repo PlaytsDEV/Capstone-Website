@@ -294,8 +294,10 @@ export const getViolations = async (req, res, next) => {
 
     const { status, category, violationType, search, tenantId, reservationId } = req.query;
 
-    // Ensure violations are reconciled for up-to-date sequential warning numbers
-    await reconcileTenantViolations(tenantId || null);
+    // Ensure violations are reconciled for up-to-date sequential warning numbers if querying specific tenant
+    if (tenantId) {
+      await reconcileTenantViolations(tenantId);
+    }
 
     const filter = { isArchived: false };
     if (branch) filter.branch = branch;
@@ -441,9 +443,6 @@ export const getActiveTenantsForViolations = async (req, res, next) => {
         : admin.isOwner
         ? null
         : admin.branch);
-
-    // Reconcile non-dismissed violations to ensure warning counts are up to date
-    await reconcileTenantViolations();
 
     const RESIDENT_STATUSES = [
       "moveIn",
@@ -940,6 +939,9 @@ export const updateViolationDecision = async (req, res, next) => {
     }
 
     await violation.save();
+    if (violation.tenantId) {
+      await reconcileTenantViolations(violation.tenantId);
+    }
 
     await logBillingAudit({
       action: "UPDATE_VIOLATION_DECISION",
@@ -1307,6 +1309,9 @@ export const archiveViolation = async (req, res, next) => {
     violation.archivedAt = new Date();
     violation.archivedBy = adminUserId;
     await violation.save();
+    if (violation.tenantId) {
+      await reconcileTenantViolations(violation.tenantId);
+    }
 
     // Reverse any attached penalties from monthly bills and void unpaid standalone penalty bills
     if (violation.penaltyApplied > 0) {
