@@ -76,6 +76,22 @@ test("utilities are shown as deferred to period close, entered at Complete Trans
   assert.match(card, /follow the normal period close/);
 });
 
+// ── Audit item 4: meter inputs are rendered from server applicability flags ──
+test("CompleteTransferDialog renders meter inputs from the server preview's electricity flags, not branch rules", () => {
+  // The dialog fetches the server-authoritative preview.
+  assert.match(card, /reservationApi\.getRoomTransferPreview\(/);
+  // Applicability comes straight from the preview payload.
+  assert.match(card, /preview\.electricity\?\.subMetered/);
+  assert.match(card, /preview\.destinationElectricity\?\.subMetered/);
+  // Each input is conditionally rendered on its own sub-metered flag.
+  assert.match(card, /sourceSubMetered \? \(/);
+  assert.match(card, /destSubMetered \? \(/);
+  // No branch names hard-coded in the dialog (rules stay on the server).
+  assert.doesNotMatch(card, /guadalupe|gil-puyat/i);
+  // A fixed-rate branch (neither sub-metered) shows the "no meter reading" copy.
+  assert.match(card, /no meter reading is needed/i);
+});
+
 // ── API surface the card depends on ────────────────────────────────────
 test("cancel / reschedule / complete scheduled-transfer API methods exist", () => {
   assert.match(reservationApi, /cancelScheduledRoomTransfer/);

@@ -60,6 +60,12 @@ const ACTION_REQUIRED_MESSAGES = Object.freeze({
     "The destination room or bed is no longer valid. Review the destination and retry after correcting it.",
   EXECUTION_FAILED:
     "The transfer could not be completed on the effective date. Review the destination room/bed and retry.",
+  OUTSIDE_OFFICE_HOURS:
+    "The transfer can only be completed during office hours. Try again during office hours, or reschedule it.",
+  DESTINATION_UNAVAILABLE:
+    "The destination room or bed is no longer available for this tenant's stay. Reschedule the transfer or pick another room.",
+  ADDENDUM_EFFECTIVE_DATE_LOCKED:
+    "The Room Transfer Addendum was already acknowledged for the originally scheduled date. Reschedule the transfer to re-issue the Addendum for the actual date, then complete it.",
 });
 
 export function describeScheduledTransferActionRequired(reason) {
