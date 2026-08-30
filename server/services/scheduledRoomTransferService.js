@@ -675,10 +675,14 @@ export async function rescheduleRoomTransfer({ reservationId, payload = {}, acto
  * @returns {Promise<import("mongoose").Document|null>} the Bill, or null when
  *   nothing is owed and no Bill exists.
  */
-async function upsertTransferSettlementBill({ record, reservation, preview, actorId }) {
+async function upsertTransferSettlementBill({ record, reservation, preview, finalizedElectricity, actorId }) {
   const rentDue = roundMoney(Math.max(0, Number(preview?.rent?.adjustmentDue) || 0));
   const depositDue = roundMoney(Math.max(0, Number(preview?.deposit?.balanceDue) || 0));
-  const total = roundMoney(rentDue + depositDue);
+  // Finalized source-room electricity (sub-metered branch) — settled on THIS
+  // Bill, before cutover. 0 for a non-sub-metered branch. Water is NEVER on
+  // this Bill (cannot be finalized before period close).
+  const electricityDue = roundMoney(Math.max(0, Number(finalizedElectricity?.amount) || 0));
+  const total = roundMoney(rentDue + depositDue + electricityDue);
   const effectiveDateObj = toManilaStartOfDay(record.effectiveTransferDate).toDate();
   const cycleStart = preview?.billingCycle?.billingCycleStart || effectiveDateObj;
   const cycleEnd = preview?.billingCycle?.billingCycleEnd || effectiveDateObj;
@@ -688,11 +692,32 @@ async function upsertTransferSettlementBill({ record, reservation, preview, acto
     : null;
   if (bill && (bill.isArchived === true || bill.status === "voided")) bill = null;
 
+  const noteFor = () =>
+    `Room Transfer settlement: ${preview?.fromRoom?.name || "current room"} → ` +
+    `${preview?.toRoom?.name || "new room"} on ` +
+    `${toManilaStartOfDay(record.effectiveTransferDate).format("YYYY-MM-DD")}; ` +
+    `rent adjustment ₱${rentDue.toFixed(2)}, additional security deposit ₱${depositDue.toFixed(2)}` +
+    (electricityDue > 0 ? `, final old-room electricity ₱${electricityDue.toFixed(2)}` : "") +
+    `. Old-room water (if separately billed) is settled at its normal period close.`;
+
+  const electricitySnapshot = finalizedElectricity?.applicable
+    ? {
+        finalizedSourceElectricity: {
+          utilityPeriodId: finalizedElectricity.utilityPeriodId,
+          kwh: finalizedElectricity.kwh,
+          amount: electricityDue,
+          ratePerUnit: finalizedElectricity.ratePerUnit,
+          baselineReading: finalizedElectricity.baselineReading,
+          closingReading: finalizedElectricity.closingReading,
+        },
+      }
+    : {};
+
   if (!bill) {
     if (total <= 0) return null; // nothing owed, no Bill needed
     const charges = {
       rent: rentDue,
-      electricity: 0,
+      electricity: electricityDue,
       water: 0,
       applianceFees: 0,
       corkageFees: 0,
@@ -719,12 +744,7 @@ async function upsertTransferSettlementBill({ record, reservation, preview, acto
         paidAmount: 0,
         status: "pending",
         publicationState: "published",
-        notes:
-          `Room Transfer settlement: ${preview?.fromRoom?.name || "current room"} → ` +
-          `${preview?.toRoom?.name || "new room"} on ` +
-          `${toManilaStartOfDay(record.effectiveTransferDate).format("YYYY-MM-DD")}; ` +
-          `rent adjustment ₱${rentDue.toFixed(2)}, additional security deposit ₱${depositDue.toFixed(2)}. ` +
-          `Electricity and water follow the normal utility billing after the transfer cutoff.`,
+        notes: noteFor(),
         transferSnapshot: {
           fromRoomId: record.sourceRoomId,
           fromRoomName: preview?.fromRoom?.name || "",
@@ -735,6 +755,8 @@ async function upsertTransferSettlementBill({ record, reservation, preview, acto
           effectiveTransferDate: effectiveDateObj,
           scheduledRentAdjustment: rentDue,
           scheduledAdditionalDeposit: depositDue,
+          scheduledFinalElectricity: electricityDue,
+          ...electricitySnapshot,
           isScheduledTransferBalance: true,
           createdAtCompletion: true,
         },
@@ -753,12 +775,15 @@ async function upsertTransferSettlementBill({ record, reservation, preview, acto
   if (paid <= 0) {
     bill.charges.rent = rentDue;
     bill.charges.securityDeposit = depositDue;
-    bill.charges.electricity = 0;
+    bill.charges.electricity = electricityDue;
     bill.charges.water = 0;
+    bill.notes = noteFor();
     bill.transferSnapshot = {
       ...(bill.transferSnapshot || {}),
       scheduledRentAdjustment: rentDue,
       scheduledAdditionalDeposit: depositDue,
+      scheduledFinalElectricity: electricityDue,
+      ...electricitySnapshot,
       recomputedAtCompletion: true,
     };
     syncBillAmounts(bill, { preserveStatus: false });
@@ -799,8 +824,8 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
   }
 
   // 1. The effective date + time must have been reached.
-  const cutoverAt = composeManilaDateTime(record.effectiveTransferDate, record.effectiveTransferTimeMinutes);
-  if (!isManilaDateTimeReached(cutoverAt)) {
+  const scheduledCutover = composeManilaDateTime(record.effectiveTransferDate, record.effectiveTransferTimeMinutes);
+  if (!isManilaDateTimeReached(scheduledCutover)) {
     throw err(
       `This transfer is scheduled for ${toManilaStartOfDay(record.effectiveTransferDate).format("MMM D, YYYY")} ` +
         `at ${String(Math.floor(record.effectiveTransferTimeMinutes / 60)).padStart(2, "0")}:` +
@@ -809,6 +834,26 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       400,
       "TRANSFER_NOT_YET_DUE",
     );
+  }
+
+  // 1b. PRELIMINARY office-hours check (fast UX). This is NOT authoritative —
+  //     transferStayWorkflow re-checks with a transaction-local `new Date()`
+  //     cutoverAt, and if office hours expire between here and the transaction
+  //     the transaction check wins (abort, no cutover, no reading).
+  {
+    const nowCheck = new Date();
+    const officeHours = await resolveOfficeHoursForBranch(record.branch);
+    if (!isWithinOfficeHours(nowCheck, record.branch, { officeHours })) {
+      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      return {
+        outcome: "action_required",
+        reason: "OUTSIDE_OFFICE_HOURS",
+        scheduledTransfer: record,
+        message:
+          `Office hours are ${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)} (Asia/Manila). ` +
+          `Complete the transfer during office hours, or reschedule it.`,
+      };
+    }
   }
 
   // 2. Re-validate the canonical intent + the destination hold against LIVE
@@ -857,24 +902,34 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     }
   }
 
-  // 3. Meter readings. A closing source reading is REQUIRED when the source
-  //    branch bills electricity separately (sub-metered). The destination
-  //    opening reading is optional — the cutover engine falls back to the
-  //    latest canonical reading dated ≤ the effective date.
+  // 3. Meter readings — captured FRESH on every Complete Transfer call (never
+  //    reused from an earlier attempt). Sub-metered source branch => the
+  //    closing SOURCE reading AND the opening DESTINATION reading are both
+  //    REQUIRED (destination is same-branch as source). Non-sub-metered
+  //    (guadalupe) => neither is required, no electricity finalization.
   const sourceMeterReading = payload.sourceRoomMeterReading;
   const targetMeterReading = payload.targetRoomMeterReading;
   const sourceMetered = branchSupportsSeparateUtilityBilling(record.branch, "electricity");
-  if (sourceMetered) {
-    if (sourceMeterReading == null || Number.isNaN(Number(sourceMeterReading))) {
-      throw err(
-        "Enter the current (closing) electricity meter reading of the tenant's current room before completing the transfer.",
-        400,
-        "METER_READING_REQUIRED",
-      );
-    }
+  const destRoomForMeter = await Room.findById(record.destinationRoomId).select("branch").lean();
+  const destMetered = branchSupportsSeparateUtilityBilling(destRoomForMeter?.branch || record.branch, "electricity");
+  if (sourceMetered && (sourceMeterReading == null || Number.isNaN(Number(sourceMeterReading)))) {
+    throw err(
+      "Enter the current (closing) electricity meter reading of the tenant's current room before completing the transfer.",
+      400,
+      "METER_READING_REQUIRED",
+    );
+  }
+  if (destMetered && (targetMeterReading == null || Number.isNaN(Number(targetMeterReading)))) {
+    throw err(
+      "Enter the current electricity meter reading of the destination room — it becomes the tenant's opening baseline there.",
+      400,
+      "DEST_METER_READING_REQUIRED",
+    );
   }
 
-  // 4. Recompute the canonical settlement at the REAL cutover.
+  // 4. Recompute the canonical settlement at the REAL cutover, and the
+  //    transferee's FINALIZED source-room electricity from the FRESH closing
+  //    reading (same canonical computeBilling engine — no second formula).
   const preview = await computeRoomTransferPreview({
     reservationId,
     targetRoomId: String(record.destinationRoomId),
@@ -883,13 +938,42 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
   if (!preview) {
     throw err("The transfer settlement could not be computed. Review the tenant's billing/lease state.", 409, "OPERATIONAL_VALIDATION_FAILED");
   }
-  const totalImmediateDue = roundMoney(Number(preview.totalImmediateDue) || 0);
 
-  // 5. Settlement gate — the transfer-settlement Bill (rent + deposit) must be
-  //    fully paid before the physical cutover. Unrelated historical balances
-  //    are NOT merged here and do NOT block the cutover (spec §9).
+  let finalizedElectricity = null;
+  if (sourceMetered && sourceMeterReading != null) {
+    const { computeTransfereeSourceElectricityLiability } = await import(
+      "./billing/transferUtilityFinalization.js"
+    );
+    finalizedElectricity = await computeTransfereeSourceElectricityLiability({
+      reservation,
+      sourceRoom: intent.activeStay
+        ? await Room.findById(intent.activeStay.roomId).lean()
+        : await Room.findById(record.sourceRoomId).lean(),
+      cutoverDate: new Date(), // preview boundary only; the authoritative
+      // cutoverAt is captured inside transferStayWorkflow. Electricity is
+      // meter-bounded by the READING, not by time, so the amount is identical.
+      freshSourceClosingReading: Number(sourceMeterReading),
+    });
+  }
+  const finalizedElectricityDue = roundMoney(
+    Math.max(0, Number(finalizedElectricity?.applicable ? finalizedElectricity.amount : 0)),
+  );
+
+  const totalImmediateDue = roundMoney(
+    (Number(preview.totalImmediateDue) || 0) + finalizedElectricityDue,
+  );
+
+  // 5. Settlement gate — the transfer-settlement Bill (rent + deposit + final
+  //    old-room electricity) must be fully paid before the physical cutover.
+  //    Unrelated historical balances are NOT merged and do NOT block (spec §9).
   if (totalImmediateDue > 0) {
-    const bill = await upsertTransferSettlementBill({ record, reservation, preview, actorId });
+    const bill = await upsertTransferSettlementBill({
+      record,
+      reservation,
+      preview,
+      finalizedElectricity,
+      actorId,
+    });
     const paid = roundMoney(Number(bill?.paidAmount || 0));
     const billTotal = roundMoney(Number(bill?.totalAmount || 0));
 
@@ -957,36 +1041,57 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       actorId,
     });
   } catch (e) {
-    // The engine's own transaction rolled back every physical mutation.
+    // The engine's own transaction rolled back every physical mutation (no
+    // room/bed change, no UtilityReading, no UtilityFinalization).
     // Restore the destination hold so the admin's fix has a slot to land in.
     await restoreHoldOwnTxn(record).catch((re) =>
       logger.error({ err: re, scheduledTransferId: String(record._id) }, "[completeRoomTransfer] hold restore failed"),
     );
+    // The authoritative office-hours re-check inside the transaction is a
+    // legitimate "cannot complete now" outcome, not an execution failure.
+    const isOfficeHours = e.code === "OUTSIDE_OFFICE_HOURS";
     await ScheduledRoomTransfer.updateOne(
       { _id: record._id },
       {
         $set: {
           status: "action_required",
-          lastError: `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
+          lastError: isOfficeHours ? "OUTSIDE_OFFICE_HOURS" : `EXECUTION_FAILED: ${e.code || e.message || "unknown"}`,
           lastAttemptAt: new Date(),
           holdApplied: true,
         },
       },
     );
+    if (isOfficeHours) {
+      const fresh = await ScheduledRoomTransfer.findById(record._id);
+      return {
+        outcome: "action_required",
+        reason: "OUTSIDE_OFFICE_HOURS",
+        scheduledTransfer: fresh,
+        message: e.message,
+      };
+    }
     throw err(e.message || "The room transfer could not be completed.", e.statusCode || 500, e.code || "TRANSFER_COMPLETION_FAILED");
   }
 
-  // 7. Success — record the executed settlement + flip to executed.
+  // 7. Success — record the executed settlement + flip to executed. The
+  //    AUTHORITATIVE physical cutover timestamp is `transferResult.cutoverAt`
+  //    (a `new Date()` captured INSIDE the workflow transaction) — never the
+  //    scheduled date/time and never a value assembled here.
+  const cutoverAt = transferResult?.cutoverAt || new Date();
   const settlementBillId = transferResult?.billingSnapshot?.transferBillId || record.settlementBillId || null;
   const executedSettlement = {
     rentAdjustmentDue: roundMoney(transferResult?.billingSnapshot?.rentComponentDue ?? preview.rent?.adjustmentDue ?? 0),
     additionalDepositDue: roundMoney(transferResult?.billingSnapshot?.depositComponentDue ?? preview.deposit?.balanceDue ?? 0),
+    finalElectricityDue: roundMoney(
+      transferResult?.billingSnapshot?.electricityComponentDue ?? finalizedElectricityDue,
+    ),
     excessRentCredit: roundMoney(transferResult?.billingSnapshot?.excessRentCredit ?? preview.rent?.excessCredit ?? 0),
     excessDepositHeld: roundMoney(transferResult?.billingSnapshot?.excessDepositHeld ?? preview.deposit?.excessHeld ?? 0),
     totalImmediateDue: roundMoney(transferResult?.billingSnapshot?.totalImmediateDue ?? totalImmediateDue),
     settlementBillId: settlementBillId ? String(settlementBillId) : null,
     sourceRoomMeterReading: sourceMeterReading != null ? Number(sourceMeterReading) : null,
     targetRoomMeterReading: targetMeterReading != null ? Number(targetMeterReading) : null,
+    cutoverAt,
     completedBy: actorId ? String(actorId) : null,
     computedAt: new Date(),
   };
@@ -996,7 +1101,7 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     {
       $set: {
         status: "executed",
-        executedAt: new Date(),
+        executedAt: cutoverAt,
         executedSettlement,
         settlementBillId: settlementBillId || record.settlementBillId || null,
         sourceRoomMeterReading: sourceMeterReading != null ? Number(sourceMeterReading) : null,

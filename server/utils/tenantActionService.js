@@ -12,6 +12,7 @@ import {
   User,
   UtilityPeriod,
   UtilityReading,
+  UtilityFinalization,
 } from "../models/index.js";
 import {
   buildBillingSummary,
@@ -57,6 +58,17 @@ import {
   resolveSourceEffectiveRentForTransfer,
 } from "../services/billing/prepaidRentResolver.js";
 import { createNotification } from "../services/notifications/notificationService.js";
+import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
+
+// Tolerant wrapper — an unknown branch resolves to `false` (no separate
+// billing) rather than throwing, so a preview never fails on a bad branch.
+const branchSupportsSeparateUtilityBillingSafe = (branch, utilityType) => {
+  try {
+    return !!branchSupportsSeparateUtilityBilling(branch, utilityType);
+  } catch {
+    return false;
+  }
+};
 
 const normalizeDate = (value, endOfDay = false) => {
   if (!value) return null;
@@ -321,31 +333,35 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
     destinationRequiredDeposit,
   });
 
-  // Best-effort source electricity ESTIMATE (never part of the immediate
-  // total — Phase 6: source electricity is billed once at UtilityPeriod
-  // close). Shown as an informational figure only.
+  // Source + destination electricity meter state, for the Complete Transfer
+  // modal's "Enter Meter Reading" step. `_baselineReading` = the current open
+  // period's opening reading (the "previous reading" the admin confirms
+  // consumption against); `ratePerUnit` = the configured rate.
   const sourceRoomId = reservation.roomId?._id || reservation.roomId;
-  const [lastReading, openPeriod] = await Promise.all([
-    // Bounded to `date <= transferDate`: the preview's electricity estimate must
-    // reflect the source room's meter as of the effective transfer date, not a
-    // reading recorded after it (e.g. a Sep 5 transfer must not surface a Sep 29
-    // reading as its baseline).
-    UtilityReading.findOne({
-      roomId: sourceRoomId,
-      utilityType: "electricity",
-      isArchived: false,
-      date: { $lte: transferDate },
-    })
-      .sort({ date: -1, createdAt: -1 }).select("reading").lean(),
+  const [srcOpenPeriod, dstOpenPeriod, srcLastReading, dstLastReading] = await Promise.all([
     UtilityPeriod.findOne({ roomId: sourceRoomId, utilityType: "electricity", status: "open" })
-      .sort({ startDate: -1 }).select("ratePerUnit").lean(),
+      .sort({ startDate: -1 }).select("ratePerUnit startReading startDate").lean(),
+    UtilityPeriod.findOne({ roomId: targetRoom._id, utilityType: "electricity", status: "open" })
+      .sort({ startDate: -1 }).select("ratePerUnit startReading startDate").lean(),
+    UtilityReading.findOne({
+      roomId: sourceRoomId, utilityType: "electricity", isArchived: false, date: { $lte: transferDate },
+    }).sort({ date: -1, createdAt: -1 }).select("reading date").lean(),
+    UtilityReading.findOne({
+      roomId: targetRoom._id, utilityType: "electricity", isArchived: false, date: { $lte: transferDate },
+    }).sort({ date: -1, createdAt: -1 }).select("reading date").lean(),
   ]);
+
+  const sourceBranch = reservation.roomId?.branch || "";
+  const sourceSubMetered = branchSupportsSeparateUtilityBillingSafe(sourceBranch, "electricity");
+  const destSubMetered = branchSupportsSeparateUtilityBillingSafe(targetRoom.branch, "electricity");
 
   const rentAdjustmentDue = roundMoney(settlement.additionalAmountDue);
   const excessRentCredit = roundMoney(settlement.excessCredit);
   const additionalDepositDue = roundMoney(depositSettlement.additionalDepositDue);
-  // The ONE immediate figure the admin acts on: rent adjustment + additional
-  // deposit. Electricity and water are NOT here.
+  // The immediate figure the admin acts on at scheduling time: rent adjustment
+  // + additional deposit. The FINALIZED source-room electricity is added to the
+  // required-to-settle amount on the transfer day (Complete Transfer), not
+  // here — the fresh closing reading is not known at preview/scheduling time.
   const totalImmediateDue = roundMoney(rentAdjustmentDue + additionalDepositDue);
 
   return {
@@ -386,22 +402,221 @@ export async function computeRoomTransferPreview({ reservationId, targetRoomId, 
       excessHeld: roundMoney(depositSettlement.excessDepositHeld),  // stays refundable, NOT a credit
     },
     electricity: {
-      // Informational preview only. NOT added to totalImmediateDue.
-      estimatedKwh: null,
-      estimatedCharge: null,
-      ratePerUnit: Number(openPeriod?.ratePerUnit ?? 0) || null,
-      billedAtPeriodClose: true,
-      note: "Estimated source-room electricity — the final charge is generated during the normal utility period close.",
-      _baselineReading: lastReading?.reading ?? null,
+      // SOURCE room — the transferee's accrued liability is FINALIZED on the
+      // transfer_settlement Bill on transfer day (sub-metered branch), from the
+      // fresh closing reading the admin enters during Complete Transfer. It is
+      // NOT in totalImmediateDue here (that reading is not known yet).
+      subMetered: sourceSubMetered,
+      finalizedAtTransfer: sourceSubMetered,
+      ratePerUnit: Number(srcOpenPeriod?.ratePerUnit ?? 0) || null,
+      openPeriodId: srcOpenPeriod?._id ? String(srcOpenPeriod._id) : null,
+      // The "previous reading" the admin confirms consumption against.
+      previousReading:
+        srcOpenPeriod?.startReading != null
+          ? Number(srcOpenPeriod.startReading)
+          : (srcLastReading?.reading ?? null),
+      lastRecordedReading: srcLastReading?.reading ?? null,
+      lastRecordedReadingDate: srcLastReading?.date ?? null,
+      note: sourceSubMetered
+        ? "Enter the CURRENT (closing) source-room electricity reading during Complete Transfer. The tenant's accrued electricity is finalized on the transfer settlement — it is NOT re-billed at the normal period close."
+        : "This branch bills electricity at a fixed rate — no separate source-room electricity settlement applies to this transfer.",
+      _baselineReading: srcOpenPeriod?.startReading ?? srcLastReading?.reading ?? null,
+    },
+    destinationElectricity: {
+      // DESTINATION room — the admin enters/confirms the CURRENT reading during
+      // Complete Transfer; it becomes the transferee's OPENING baseline there.
+      subMetered: destSubMetered,
+      required: destSubMetered,
+      ratePerUnit: Number(dstOpenPeriod?.ratePerUnit ?? 0) || null,
+      openPeriodId: dstOpenPeriod?._id ? String(dstOpenPeriod._id) : null,
+      currentReading:
+        dstLastReading?.reading != null
+          ? Number(dstLastReading.reading)
+          : (dstOpenPeriod?.startReading ?? null),
+      lastRecordedReadingDate: dstLastReading?.date ?? null,
+      note: destSubMetered
+        ? "Enter/confirm the CURRENT destination-room electricity reading during Complete Transfer — it becomes the tenant's opening baseline there."
+        : "This branch bills electricity at a fixed rate — no destination opening reading is required.",
     },
     water: {
-      // Resolved by the destination room/branch policy at period close; no
-      // immediate water charge is created by a transfer (Phase 5).
+      // Water CANNOT be finalized on transfer day — its period total and
+      // covered-day denominator are unknowable until the water period closes.
+      // The transferee is billed for their room-scoped occupancy days at the
+      // normal water period close; nothing is added to the amount due now.
       billedAtPeriodClose: true,
-      note: "Water follows the current room/branch billing policy and is settled at its normal period close (or not billed separately where included in rent).",
+      finalizedAtTransfer: false,
+      separatelyBilled: branchSupportsSeparateUtilityBillingSafe(sourceBranch, "water"),
+      note: "Old-room water (where separately billed) is settled at its normal water period close, based on the tenant's occupancy through the transfer cutoff. It is NOT included in the amount due now and is not double-charged. Where water is included in rent, no water settlement applies.",
     },
     totalImmediateDue,
   };
+}
+
+/**
+ * Server-authoritative transfer-candidate list for the Transfer modal's room
+ * selector. Room Management remains the availability AUTHORITY — this reads the
+ * SAME persisted Room state (capacity / currentOccupancy / per-bed status /
+ * maintenance / blocked) plus open scheduled-transfer holds and reservation
+ * conflicts for the chosen date. React only maps availabilityStatus -> colour.
+ *
+ * availabilityStatus:
+ *   "available"             GREEN  — selectable
+ *   "current_room"          (excluded — shown disabled "current room")
+ *   "fully_occupied"        RED    — currentOccupancy >= capacity
+ *   "fully_reserved"        RED    — every bed reserved / held
+ *   "reservation_conflict"  RED    — a reservation / pending move-in covers the date
+ *   "no_available_bed"      RED    — shared room, no available bed
+ *   "maintenance"           GRAY   — room or all beds under maintenance
+ *   "blocked"               GRAY   — room flagged unavailable / archived-adjacent
+ *
+ * @param {Object} args
+ * @param {Object} args.reservation      lean reservation (roomId populated)
+ * @param {Date}   [args.effectiveTransferDate]
+ */
+async function buildTransferCandidates({ reservation, effectiveTransferDate }) {
+  const branch = reservation.roomId?.branch;
+  if (!branch) return [];
+  const currentRoomId = String(reservation.roomId?._id || reservation.roomId || "");
+  const transferDate = normalizeDate(effectiveTransferDate) || new Date();
+
+  const [rooms, holdsByRoom, conflictingReservations] = await Promise.all([
+    Room.find({ branch, isArchived: { $ne: true } })
+      .select("name roomNumber branch type capacity currentOccupancy available status beds maintenanceStatus isBlocked")
+      .lean(),
+    (await import("../services/scheduledRoomTransferService.js")).openHoldsByRoom(null),
+    // Reservations / pending move-ins in this branch whose occupancy window
+    // covers the chosen transfer date (excluding the transferring tenant).
+    Reservation.find({
+      _id: { $ne: reservation._id },
+      status: { $in: ["reserved", "approved_for_payment", "moveIn"] },
+      isArchived: { $ne: true },
+    })
+      .populate("roomId", "branch")
+      .select("roomId selectedBed status moveInDate expectedMoveInDate leaseStartDate")
+      .lean(),
+  ]);
+
+  const conflictBedKeys = new Set();
+  const conflictRoomCounts = new Map();
+  for (const r of conflictingReservations) {
+    if (String(r.roomId?.branch || r.roomId?._id ? r.roomId.branch : "") !== branch && r.roomId?.branch !== branch) {
+      // roomId may be an id or populated; only branch-match matters
+    }
+    const rid = String(r.roomId?._id || r.roomId || "");
+    if (!rid) continue;
+    conflictRoomCounts.set(rid, (conflictRoomCounts.get(rid) || 0) + 1);
+    const bedId = r.selectedBed?.id;
+    if (bedId) conflictBedKeys.add(`${rid}::${String(bedId)}`);
+  }
+
+  const candidates = [];
+  for (const room of rooms) {
+    const roomId = String(room._id);
+    const requiresBedSelection = roomTypeRequiresBed(room.type);
+    const capacity = Number(room.capacity || 0);
+    const occ = Number(room.currentOccupancy || 0);
+    const openHolds = (holdsByRoom.get(roomId) || []).length;
+    const effectiveOcc = occ; // holds are already in currentOccupancy
+
+    let availabilityStatus = "available";
+    let unavailableReason = null;
+    let selectable = true;
+
+    const roomUnderMaintenance =
+      room.status === "maintenance" ||
+      room.maintenanceStatus === "under_maintenance" ||
+      (room.beds || []).length > 0 && (room.beds || []).every((b) => b.status === "maintenance");
+    const roomBlocked = room.isBlocked === true || room.status === "blocked" || room.available === false && effectiveOcc < capacity && !roomUnderMaintenance;
+
+    if (roomId === currentRoomId) {
+      availabilityStatus = "current_room";
+      unavailableReason = "This is the tenant's current room.";
+      selectable = false;
+    } else if (roomUnderMaintenance) {
+      availabilityStatus = "maintenance";
+      unavailableReason = "Under maintenance / blocked.";
+      selectable = false;
+    } else if (roomBlocked) {
+      availabilityStatus = "blocked";
+      unavailableReason = "Room is blocked / unavailable.";
+      selectable = false;
+    } else if (capacity > 0 && effectiveOcc >= capacity) {
+      availabilityStatus = "fully_occupied";
+      unavailableReason = `Fully occupied (${effectiveOcc}/${capacity}).`;
+      selectable = false;
+    } else if ((conflictRoomCounts.get(roomId) || 0) + effectiveOcc >= capacity && capacity > 0) {
+      availabilityStatus = "reservation_conflict";
+      unavailableReason = "A reservation or pending move-in covers this date.";
+      selectable = false;
+    } else if (requiresBedSelection) {
+      const beds = (room.beds || []).map((b, i) => {
+        const bedId = String(b.id || b._id || `bed-${i + 1}`);
+        const key = `${roomId}::${bedId}`;
+        let bedStatus = b.status || "available";
+        let bedSelectable = bedStatus === "available";
+        let bedReason = null;
+        if (bedStatus === "maintenance") bedReason = "Under maintenance.";
+        else if (bedStatus === "reserved") bedReason = "Reserved / held.";
+        else if (conflictBedKeys.has(key)) {
+          bedStatus = "reserved";
+          bedSelectable = false;
+          bedReason = "A reservation covers this bed for the selected date.";
+        }
+        return {
+          bedId,
+          label: b.position || b.label || bedId,
+          status: bedStatus,
+          selectable: bedSelectable,
+          unavailableReason: bedSelectable ? null : bedReason,
+        };
+      });
+      const anyBed = beds.some((b) => b.selectable);
+      if (!anyBed) {
+        availabilityStatus = beds.every((b) => b.status === "reserved") ? "fully_reserved" : "no_available_bed";
+        unavailableReason = availabilityStatus === "fully_reserved" ? "All beds reserved / held." : "No available bed.";
+        selectable = false;
+      }
+      candidates.push({
+        roomId,
+        roomNumber: room.roomNumber || "",
+        name: room.name || room.roomNumber || "",
+        type: room.type || "",
+        branch: room.branch,
+        capacity,
+        currentOccupancy: effectiveOcc,
+        openHolds,
+        requiresBedSelection: true,
+        availabilityStatus,
+        selectable,
+        unavailableReason,
+        beds,
+      });
+      continue;
+    }
+
+    candidates.push({
+      roomId,
+      roomNumber: room.roomNumber || "",
+      name: room.name || room.roomNumber || "",
+      type: room.type || "",
+      branch: room.branch,
+      capacity,
+      currentOccupancy: effectiveOcc,
+      openHolds,
+      requiresBedSelection: false,
+      availabilityStatus,
+      selectable,
+      unavailableReason,
+      beds: [],
+    });
+  }
+
+  // Stable order: selectable first, then by room number.
+  candidates.sort((a, b) => {
+    if (a.selectable !== b.selectable) return a.selectable ? -1 : 1;
+    return String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
+  });
+  return candidates;
 }
 
 export async function getTenantActionContext(reservationId, previewParams = null) {
@@ -481,9 +696,25 @@ export async function getTenantActionContext(reservationId, previewParams = null
     }
   }
 
+  // Server-authoritative room selector data (GREEN / RED / GRAY) for the
+  // Transfer modal. Opt-in — base callers don't pay for it.
+  let transferCandidates = null;
+  if (previewParams?.includeCandidates) {
+    try {
+      transferCandidates = await buildTransferCandidates({
+        reservation,
+        effectiveTransferDate: previewParams.effectiveTransferDate,
+      });
+    } catch (err) {
+      logger.warn({ err, reservationId }, "[getTenantActionContext] transfer candidates failed (non-fatal)");
+      transferCandidates = null;
+    }
+  }
+
   return {
     reservationId: String(reservation._id),
     transferPreview,
+    transferCandidates,
     tenantId: String(reservation.userId?._id || reservation.userId || ""),
     tenantName:
       `${reservation.userId?.firstName || reservation.firstName || ""} ${reservation.userId?.lastName || reservation.lastName || ""}`.trim(),
@@ -1275,6 +1506,42 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
       }
 
+      // ── AUTHORITATIVE physical cutover timestamp ─────────────────────────
+      // The ACTUAL moment the transfer commits — captured HERE, inside the
+      // transaction, immediately before any physical mutation. This is NOT
+      // the scheduled date/time (a readiness target only) and is NEVER
+      // caller-supplied. Used consistently below for the source moveOut
+      // UtilityReading, the destination moveIn UtilityReading, the
+      // UtilityFinalization throughDate, and returned so the caller can stamp
+      // ScheduledRoomTransfer.executedAt + the completion audit.
+      const cutoverAt = new Date();
+
+      // ── AUTHORITATIVE office-hours gate ─────────────────────────────────
+      // A same-day transfer may only physically complete DURING office hours.
+      // completeRoomTransfer runs a preliminary check for fast UX, but this
+      // transaction-local check is the one that counts: if office hours
+      // expired between the preliminary check and here, this wins — abort the
+      // transaction, write no room/bed change, no UtilityReading, no
+      // UtilityFinalization; the tenant stays put.
+      {
+        const { resolveOfficeHoursForBranch, isWithinOfficeHours } = await import("./businessSettings.js");
+        const cutoverBranch =
+          reservation.roomId?.branch ||
+          (await Room.findById(payload.targetRoomId).select("branch").session(session).lean())?.branch;
+        const officeHours = await resolveOfficeHoursForBranch(cutoverBranch);
+        if (!isWithinOfficeHours(cutoverAt, cutoverBranch, { officeHours })) {
+          const fmt = (m) =>
+            `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+          throw Object.assign(
+            new Error(
+              `Office hours have ended (${fmt(officeHours.startMinutes)}–${fmt(officeHours.endMinutes)}, ` +
+                `Asia/Manila). The room transfer cannot be completed now — reschedule or complete it during office hours.`,
+            ),
+            { statusCode: 409, code: "OUTSIDE_OFFICE_HOURS" },
+          );
+        }
+      }
+
       // ── Transfer-Settlement Payment Gate ─────────────────────────────────
       // The physical cutover proceeds ONLY when the TRANSFER-SPECIFIC
       // settlement (rent adjustment + additional security deposit) is fully
@@ -1490,26 +1757,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 
       // -----------------------------------------------------------------------
       // Billing Continuity Safety Net
-      // Always anchor a UtilityReading snapshot at the transfer date for BOTH
-      // rooms. If the admin supplied an explicit reading, use it. Otherwise fall
-      // back to the latest recorded reading from DB history so the billing
-      // engine never has a gap at the transfer boundary.
-      //
-      // EFFECTIVE-DATE READING RULE (immediate AND scheduled): the fallback
-      // reading for either transfer boundary MUST be dated on or before the
-      // effective transfer date. A scheduled transfer executes days/weeks after
-      // it was scheduled, and a reading may have been recorded (or back-dated)
-      // AFTER the effective date — such a reading is not a truthful "final" /
-      // "opening" value for a cutover on `effectiveTransferDate`. `$lte` keeps
-      // an exact effective-date reading eligible (priority 1) while excluding
-      // anything after it; the desc sort then yields the latest reading on or
-      // before the effective date (priority 2). A room with only later readings
-      // gets NO fallback snapshot — the existing "no prior reading" behavior.
+      // Anchor a UtilityReading at the ACTUAL cutover timestamp (`cutoverAt`,
+      // captured at the top of this transaction — NOT the scheduled date/time)
+      // for BOTH rooms. If the admin supplied an explicit reading during
+      // Complete Transfer, use it. Otherwise fall back to the latest recorded
+      // reading dated on or before `cutoverAt`, so the billing engine never
+      // has a gap at the transfer boundary and can distinguish sequential
+      // same-date boundaries by their real timestamps.
       // -----------------------------------------------------------------------
 
       // -- Source room: departing moveOut snapshot --
       if (sourceMeterReading != null && !Number.isNaN(Number(sourceMeterReading))) {
-        // Admin provided an explicit reading — use it.
         await UtilityReading.create(
           [
             {
@@ -1517,24 +1775,21 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               roomId: currentRoom._id,
               branch: currentRoom.branch || "",
               reading: Number(sourceMeterReading),
-              date: effectiveTransferDate,
+              date: cutoverAt,
               eventType: "moveOut",
               tenantId: reservation.userId?._id || reservation.userId,
               recordedBy: actorId,
+              readingStatus: "recorded",
             },
           ],
           { session },
         );
       } else {
-        // Admin left blank — fallback: carry the last recorded reading forward
-        // so we always have a timestamped anchor on the transfer date. Bounded
-        // to `date <= effectiveTransferDate` so a scheduled transfer can never
-        // adopt a post-cutover reading as its "final" source value.
         const latestSourceReading = await UtilityReading.findOne({
           roomId: currentRoom._id,
           utilityType: "electricity",
           isArchived: false,
-          date: { $lte: effectiveTransferDate },
+          date: { $lte: cutoverAt },
         })
           .sort({ date: -1, createdAt: -1 })
           .session(session)
@@ -1547,7 +1802,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
                 roomId: currentRoom._id,
                 branch: currentRoom.branch || "",
                 reading: latestSourceReading.reading,
-                date: effectiveTransferDate,
+                date: cutoverAt,
                 eventType: "moveOut",
                 tenantId: reservation.userId?._id || reservation.userId,
                 recordedBy: actorId,
@@ -1561,7 +1816,6 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 
       // -- Target room: arriving moveIn snapshot --
       if (targetMeterReading != null && !Number.isNaN(Number(targetMeterReading))) {
-        // Admin provided an explicit reading — use it.
         await UtilityReading.create(
           [
             {
@@ -1569,24 +1823,21 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               roomId: targetRoom._id,
               branch: targetRoom.branch || "",
               reading: Number(targetMeterReading),
-              date: effectiveTransferDate,
+              date: cutoverAt,
               eventType: "moveIn",
               tenantId: reservation.userId?._id || reservation.userId,
               recordedBy: actorId,
+              readingStatus: "recorded",
             },
           ],
           { session },
         );
       } else {
-        // Admin left blank — fallback: carry the last recorded reading of the
-        // target room forward as the opening snapshot. Same date bound as the
-        // source: never an opening value dated after the effective transfer
-        // date.
         const latestTargetReading = await UtilityReading.findOne({
           roomId: targetRoom._id,
           utilityType: "electricity",
           isArchived: false,
-          date: { $lte: effectiveTransferDate },
+          date: { $lte: cutoverAt },
         })
           .sort({ date: -1, createdAt: -1 })
           .session(session)
@@ -1599,7 +1850,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
                 roomId: targetRoom._id,
                 branch: targetRoom.branch || "",
                 reading: latestTargetReading.reading,
-                date: effectiveTransferDate,
+                date: cutoverAt,
                 eventType: "moveIn",
                 tenantId: reservation.userId?._id || reservation.userId,
                 recordedBy: actorId,
@@ -1706,85 +1957,68 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const additionalDepositDue = depositSettlement.additionalDepositDue;
       const excessDepositHeld = depositSettlement.excessDepositHeld;
 
-      // ── Electricity Proration ─────────────────────────────────────────────
-      // Estimate electricity consumed in the source room since the last recorded
-      // reading. Requires: (a) admin-provided or DB-fallback baseline reading,
-      // and (b) an open UtilityPeriod with a known ratePerUnit.
+      // ── SOURCE-ROOM ELECTRICITY FINALIZATION (before cutover) ─────────────
+      // The transferring tenant's accrued source-room electricity liability is
+      // FINALIZED and billed on this Bill — computed by the SAME canonical
+      // `computeBilling` engine the normal period close uses, over
+      //   [openPeriod.startReading -> freshSourceClosingReading]
+      // with the full historical participant set (the transferee bounded by a
+      // synthetic moveOut at `cutoverAt`). Only the transferee's slice is
+      // taken; co-occupants are billed normally at the real period close.
+      //
+      // A `UtilityFinalization` record (written below, in this same txn) then
+      // makes `upsertDraftBillsForUtility` SKIP creating a second electricity
+      // Bill for this tenant at that period's close — WITHOUT removing them
+      // from the canonical allocation (their `moveOut` UtilityReading keeps
+      // them a full participant in the pre-cutover segments; the denominator
+      // is unchanged).
+      //
+      // Sub-metered branches only. Guadalupe (fixed-rate) => no finalization,
+      // `charges.electricity` stays 0. WATER is NEVER finalized here — its
+      // period total and covered-day denominator are unknowable at transfer
+      // time; `charges.water` stays 0 and the source-room water is settled at
+      // the normal water period close.
+      let finalizedSourceElectricity = null;
       let estimatedElectricityKwh = null;
       let estimatedElectricityCharge = 0;
-
-      // Always resolve the baseline reading for proration (may be admin-supplied
-      // or the DB fallback we fetched during the UtilityReading snapshot block).
-      const baselineForProration = sourceMeterReading != null
-        ? null  // admin supplied explicit value; baseline is implicit from previous reading
-        : null; // will be resolved below
-
-      const latestReadingForProration = await UtilityReading.findOne({
-        roomId: currentRoom._id,
-        utilityType: "electricity",
-        isArchived: false,
-        // Exclude the moveOut snapshot we just created in this transaction
-        // by looking for readings strictly before the transfer date.
-        date: { $lt: effectiveTransferDate },
-      })
-        .sort({ date: -1, createdAt: -1 })
-        .session(session)
-        .lean();
-
       if (
         sourceMeterReading != null &&
-        !Number.isNaN(Number(sourceMeterReading)) &&
-        latestReadingForProration?.reading != null
+        !Number.isNaN(Number(sourceMeterReading))
       ) {
-        const kwhDelta = Number(sourceMeterReading) - Number(latestReadingForProration.reading);
-        if (kwhDelta > 0) {
-          // Fetch the latest open UtilityPeriod for this room to get the rate.
-          const activePeriod = await UtilityPeriod.findOne({
-            roomId: currentRoom._id,
-            utilityType: "electricity",
-            status: "open",
-            isArchived: false,
-          })
-            .sort({ startDate: -1 })
-            .session(session)
-            .lean();
-
-          const ratePerUnit = Number(activePeriod?.ratePerUnit ?? 0);
-          if (ratePerUnit > 0) {
-            estimatedElectricityKwh = Math.round(kwhDelta * 100) / 100;
-            estimatedElectricityCharge = Math.round(kwhDelta * ratePerUnit * 100) / 100;
-          }
+        const { computeTransfereeSourceElectricityLiability } = await import(
+          "../services/billing/transferUtilityFinalization.js"
+        );
+        finalizedSourceElectricity = await computeTransfereeSourceElectricityLiability({
+          reservation,
+          sourceRoom: currentRoom,
+          cutoverDate: cutoverAt,
+          freshSourceClosingReading: Number(sourceMeterReading),
+          session,
+        });
+        if (finalizedSourceElectricity?.applicable) {
+          estimatedElectricityKwh = finalizedSourceElectricity.kwh;
+          estimatedElectricityCharge = finalizedSourceElectricity.amount;
         }
       }
+      const finalizedElectricityCharge =
+        finalizedSourceElectricity?.applicable ? roundMoney(finalizedSourceElectricity.amount) : 0;
 
       // ── Transfer Settlement Bill ───────────────────────────────────────────
-      // ONE Bill, but rent and security deposit are separate, categorized
-      // charge lines that are never flattened:
+      // ONE Bill, categorized charge lines that are never flattened:
       //   charges.rent            = additional RENT due (destination prorated
-      //                             remainder − unused prepaid rent, floored
-      //                             at 0). An excess becomes a TenantCredit
-      //                             (below), not a negative line.
+      //                             remainder − unused prepaid rent, floored 0)
       //   charges.securityDeposit = additional DEPOSIT due (destination
-      //                             required − currently held, floored at 0).
-      //                             Only the DIFFERENCE, never a full deposit.
-      // The Bill total is the canonical sumBillCharges(charges) — never a
-      // hand-rolled sum in this service.
-      //
-      // SOURCE-ROOM ELECTRICITY IS NOT CHARGED HERE. The transfer writes a
-      // `moveOut` electricity UtilityReading at the transfer date (above);
-      // when the source room's UtilityPeriod is later closed, the departed
-      // tenant is billed for EXACTLY their pre-transfer segment
-      // ([periodStart, transfer-cutoff]) via the room-scoped occupancy
-      // resolution (see resolveRoomScopedReservationsForPeriod, Phase 4).
-      // That period close is the single canonical financial responsibility
-      // for that consumption. Adding an `estimatedElectricityCharge` line on
-      // this Bill too would double-charge the same kWh. The estimate is kept
-      // in transferSnapshot as an ADMIN PREVIEW figure only (informational).
-      // Source-room WATER is likewise left to its canonical period close
-      // (Phase 5) — never settled immediately here.
+      //                             required − currently held, floored 0)
+      //   charges.electricity     = the transferee's FINALIZED source-room
+      //                             electricity through `cutoverAt` (0 for a
+      //                             non-sub-metered branch)
+      //   charges.water           = 0 ALWAYS — water is settled at the normal
+      //                             water period close (cannot be finalized
+      //                             early; see transferUtilityFinalization.js)
+      // The Bill total is the canonical sumBillCharges(charges).
       const transferCharges = {
         rent: settlement.additionalAmountDue,
-        electricity: 0,
+        electricity: finalizedElectricityCharge,
         water: 0,
         applianceFees: 0,
         corkageFees: 0,
@@ -1833,9 +2067,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
         const billRent = roundMoney(Number(transferBill.charges?.rent || 0));
         const billDeposit = roundMoney(Number(transferBill.charges?.securityDeposit || 0));
+        const billElectricity = roundMoney(Number(transferBill.charges?.electricity || 0));
         if (
           Math.abs(billRent - roundMoney(transferCharges.rent)) > 0.01 ||
-          Math.abs(billDeposit - roundMoney(transferCharges.securityDeposit)) > 0.01
+          Math.abs(billDeposit - roundMoney(transferCharges.securityDeposit)) > 0.01 ||
+          Math.abs(billElectricity - roundMoney(transferCharges.electricity)) > 0.01
         ) {
           throw Object.assign(
             new Error(
@@ -1875,7 +2111,24 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           excessCredit: settlement.excessCredit,
           estimatedElectricityKwh,
           estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
-          sourceElectricitySettledAtPeriodClose: true,
+          // Source-room electricity is FINALIZED on this Bill (sub-metered
+          // branch) — the period close will NOT re-bill this tenant for it
+          // (a UtilityFinalization row is written in this same txn). For a
+          // non-sub-metered branch, finalizedSourceElectricity is inapplicable
+          // and charges.electricity stays 0.
+          finalizedSourceElectricity:
+            finalizedSourceElectricity?.applicable
+              ? {
+                  utilityPeriodId: finalizedSourceElectricity.utilityPeriodId,
+                  kwh: finalizedSourceElectricity.kwh,
+                  amount: finalizedSourceElectricity.amount,
+                  ratePerUnit: finalizedSourceElectricity.ratePerUnit,
+                  baselineReading: finalizedSourceElectricity.baselineReading,
+                  closingReading: finalizedSourceElectricity.closingReading,
+                }
+              : null,
+          sourceElectricitySettledAtPeriodClose: !finalizedSourceElectricity?.applicable,
+          sourceWaterSettledAtPeriodClose: true,
           depositPreviouslyHeld: depositSettlement.depositPreviouslyHeld,
           destinationRequiredDeposit: depositSettlement.destinationRequiredDeposit,
           additionalDepositDue: depositSettlement.additionalDepositDue,
@@ -1967,6 +2220,40 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         ],
         { session },
       );
+      }
+
+      // ── UtilityFinalization — mark the transferee's source-room electricity
+      //    as settled for the CURRENT open period. Read at period close ONLY by
+      //    upsertDraftBillsForUtility, to SKIP a duplicate electricity draft
+      //    Bill for this tenant — it does NOT remove them from the canonical
+      //    allocation (their moveOut UtilityReading keeps them a participant in
+      //    the pre-cutover segments). Idempotent: unique on (reservationId,
+      //    utilityPeriodId, utilityType); a retried cutover upserts.
+      if (finalizedSourceElectricity?.applicable && finalizedElectricityCharge >= 0) {
+        await UtilityFinalization.findOneAndUpdate(
+          {
+            reservationId: reservation._id,
+            utilityPeriodId: finalizedSourceElectricity.utilityPeriodId,
+            utilityType: "electricity",
+          },
+          {
+            $set: {
+              tenantId: reservation.userId?._id || reservation.userId,
+              roomId: currentRoom._id,
+              branch: currentRoom.branch,
+              utilityType: "electricity",
+              utilityPeriodId: finalizedSourceElectricity.utilityPeriodId,
+              throughReading: finalizedSourceElectricity.closingReading,
+              throughDate: cutoverAt,
+              settledAmount: finalizedElectricityCharge,
+              settledKwh: finalizedSourceElectricity.kwh,
+              settlementBillId: transferBill._id,
+              scheduledRoomTransferId: payload.__scheduledTransferId || null,
+              createdBy: actorId,
+            },
+          },
+          { upsert: true, new: true, session },
+        );
       }
 
       // ── Excess prepaid RENT -> reusable TenantCredit (never a deposit,
@@ -2236,6 +2523,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         },
         reservation,
         stay: activeStay.toObject(),
+        // The AUTHORITATIVE physical cutover timestamp — captured inside this
+        // transaction, used for both UtilityReading writes + UtilityFinalization.
+        // The caller (completeRoomTransfer) stamps ScheduledRoomTransfer.executedAt
+        // + the completion audit from this value.
+        cutoverAt,
         fromRoomName: currentRoom.name || currentRoom.roomNumber || "Unknown room",
         toRoomName: targetRoom.name || targetRoom.roomNumber || "Unknown room",
         // Full room snapshots at transfer time
@@ -2272,6 +2564,16 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           // Rent and deposit components kept separate.
           rentComponentDue,
           depositComponentDue,
+          // Finalized source-room electricity settled ON the transfer_settlement
+          // Bill (sub-metered branch); 0 otherwise.
+          electricityComponentDue: roundMoney(transferCharges.electricity),
+          finalizedSourceElectricity: finalizedSourceElectricity?.applicable
+            ? {
+                utilityPeriodId: finalizedSourceElectricity.utilityPeriodId,
+                kwh: finalizedSourceElectricity.kwh,
+                amount: finalizedSourceElectricity.amount,
+              }
+            : null,
           excessRentCredit,
           excessDepositHeld,
           depositPreviouslyHeld: depositSettlement.depositPreviouslyHeld,

@@ -159,7 +159,8 @@ const utilityPeriodSchema = new mongoose.Schema(
       type: String,
       default: null,
       // One of: "missing_move_in_reading", "missing_move_out_reading",
-      // "negative_consumption", "segment_date_overlap", "share_reconciliation_failure"
+      // "negative_consumption", "segment_date_overlap",
+      // "share_reconciliation_failure", "transfer_utility_reconciliation_variance"
     },
     manualReviewResolvedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -188,6 +189,19 @@ const utilityPeriodSchema = new mongoose.Schema(
     revisionNote: {
       type: String,
       default: null,
+    },
+
+    // Set at close when one or more transferring tenants had their source-room
+    // electricity for THIS period finalized on transfer day (UtilityFinalization).
+    // The invariant: draftBillTotal + finalizedTotal ≈ canonicalTotal. `flagged`
+    // true => variance beyond tolerance; manualReviewReason is also set.
+    transferFinalizationReconciliation: {
+      finalizedTotal: { type: Number, default: null },
+      draftBillTotal: { type: Number, default: null },
+      canonicalTotal: { type: Number, default: null },
+      variance: { type: Number, default: null },
+      flagged: { type: Boolean, default: false },
+      reconciledAt: { type: Date, default: null },
     },
     revisedAt: {
       type: Date,

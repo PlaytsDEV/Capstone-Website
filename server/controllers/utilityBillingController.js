@@ -16,6 +16,7 @@ import {
   User,
   UtilityPeriod,
   UtilityReading,
+  UtilityFinalization,
   Bill,
   BedHistory,
 } from "../models/index.js";
@@ -621,6 +622,56 @@ async function closePeriodAndGenerateDrafts({
     tenantSummaries: period.tenantSummaries,
     utilityType,
   });
+
+  // ── Transfer-finalization reconciliation invariant ──────────────────────
+  // A room transfer settles the transferring tenant's source-room electricity
+  // BEFORE cutover, on the transfer_settlement Bill (recorded as a
+  // UtilityFinalization). That tenant still participated fully in the
+  // canonical allocation above — their moveOut UtilityReading bounds their
+  // segments — so:
+  //
+  //   Σ(normal draft-bill charges for this period)
+  //     + Σ(UtilityFinalization.settledAmount for this period)
+  //   ≈ period.computedTotalCost
+  //
+  // A variance beyond tolerance means the transfer-day estimate diverged from
+  // the canonical close (e.g. a co-occupant change mid-period). The period
+  // still closes for everyone else; flag it for admin review.
+  try {
+    const finalized = await UtilityFinalization.find({
+      utilityPeriodId: period._id,
+      utilityType,
+      isArchived: { $ne: true },
+    }).lean();
+    if (finalized.length > 0) {
+      const finalizedTotal = finalized.reduce(
+        (sum, f) => sum + Number(f.settledAmount || 0),
+        0,
+      );
+      const draftTotal = (period.tenantSummaries || [])
+        .filter((s) => !s.settledOnTransfer)
+        .reduce((sum, s) => sum + Number(s.billAmount || 0), 0);
+      const canonicalTotal = Number(computationResult.computedTotalCost || 0);
+      const reconVariance =
+        Math.round((draftTotal + finalizedTotal - canonicalTotal) * 100) / 100;
+      const flagged = Math.abs(reconVariance) > 1; // ₱1 tolerance
+      period.transferFinalizationReconciliation = {
+        finalizedTotal: Math.round(finalizedTotal * 100) / 100,
+        draftBillTotal: Math.round(draftTotal * 100) / 100,
+        canonicalTotal: Math.round(canonicalTotal * 100) / 100,
+        variance: reconVariance,
+        flagged,
+        reconciledAt: new Date(),
+      };
+      if (flagged) {
+        period.manualReviewReason = "transfer_utility_reconciliation_variance";
+      }
+    }
+  } catch (reconErr) {
+    // Non-fatal — the period close itself already succeeded for co-occupants.
+    // eslint-disable-next-line no-console
+    console.warn("[closePeriodAndGenerateDrafts] transfer reconciliation check failed:", reconErr?.message);
+  }
 
   period.status = "closed";
   period.closedAt = new Date();
