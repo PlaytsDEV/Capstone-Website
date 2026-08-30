@@ -61,6 +61,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findByIdAndDelete: billFindByIdAndDelete,
   },
   BedHistory: {},
+  // utilityBillingController now imports UtilityFinalization (round-3 transfer
+  // finalization reconciliation). The aiReview endpoints never touch it — an
+  // empty stub is enough to satisfy the import.
+  UtilityFinalization: { find: jest.fn(() => ({ lean: jest.fn().mockResolvedValue([]) })) },
 }));
 
 await jest.unstable_mockModule("../utils/adminAccess.js", () => ({

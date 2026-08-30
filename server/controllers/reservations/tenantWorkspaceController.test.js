@@ -208,6 +208,14 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
       lean: jest.fn().mockResolvedValue(null),
     })),
   },
+  // tenantActionService (reached via _helpers) now imports UtilityFinalization
+  // (round-3). The workspace endpoints never touch it — an empty stub suffices.
+  UtilityFinalization: {
+    find: jest.fn(() => ({ lean: jest.fn().mockResolvedValue([]) })),
+    findOne: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(null) })),
+    findOneAndUpdate: jest.fn(),
+    updateOne: jest.fn(),
+  },
   Payment: {},
   TenantCredit: { find: jest.fn(() => ({ sort: jest.fn().mockReturnThis(), session: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) })), findOne: jest.fn(() => ({ session: jest.fn().mockResolvedValue(null) })), create: jest.fn() },
   AuditLog: { create: jest.fn() },
