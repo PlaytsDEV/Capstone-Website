@@ -1924,7 +1924,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       });
       setReopenNote("");
       setSelectedRequestId(null);
-      showNotification("Maintenance request reopened and sent to admin queue.", "success");
+      showNotification("Maintenance request reopened and returned to active facilities queue.", "success");
     } catch (error) {
       showNotification(
         error.message || "Failed to reopen maintenance request.",

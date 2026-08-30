@@ -160,8 +160,12 @@ const reopenHistorySchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    previousData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
-  { _id: false },
+  { _id: false, strict: false },
 );
 
 const statusHistorySchema = new mongoose.Schema(

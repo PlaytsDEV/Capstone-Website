@@ -17,11 +17,12 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  if (!reservation) return null;
+  const leaseEnd = reservation?.leaseEndDate || reservation?.endDate ? new Date(reservation.leaseEndDate || reservation.endDate) : null;
+  const isEarlyPreTermination = leaseEnd && new Date() < leaseEnd;
 
   const rfidFee = rfidReturned ? 0 : 300;
   const totalDeductions = Number(rentDeduction) + Number(utilityDeduction) + Number(damageDeduction) + rfidFee;
-  const netRefund = Math.max(0, Number(initialDeposit) - totalDeductions);
+  const netRefund = isEarlyPreTermination ? 0 : Math.max(0, Number(initialDeposit) - totalDeductions);
 
   const handleSubmitSignOff = async (e) => {
     e.preventDefault();
@@ -34,8 +35,11 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
         utilityDeduction: Number(utilityDeduction),
         damageDeduction: Number(damageDeduction),
         rfidReturned,
-        adminRemarks,
+        adminRemarks: isEarlyPreTermination
+          ? `[Early Pre-Termination - Deposit 100% Forfeited] ${adminRemarks}`.trim()
+          : adminRemarks,
         netRefundAmount: netRefund,
+        isEarlyPreTermination,
       });
       if (onClearanceCompleted) onClearanceCompleted();
       onClose();
@@ -50,7 +54,7 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Move-Out Deposit Settlement — ${reservation.tenantName || "Tenant"}`}
+      title={`Move-Out Deposit Settlement — ${reservation?.tenantName || "Tenant"}`}
       maxWidth="max-w-xl"
     >
       <form onSubmit={handleSubmitSignOff} className="space-y-4">
@@ -63,13 +67,30 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
         <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
           <div className="flex justify-between">
             <span className="text-gray-500">Room & Bed:</span>
-            <span className="font-semibold text-gray-900">{reservation.roomId} / Bed {reservation.bedId}</span>
+            <span className="font-semibold text-gray-900">{reservation?.roomId || "Unassigned"} / Bed {reservation?.bedId || "N/A"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Move-In Date:</span>
-            <span className="font-medium text-gray-900">{new Date(reservation.startDate).toLocaleDateString()}</span>
+            <span className="font-medium text-gray-900">{reservation?.startDate ? new Date(reservation.startDate).toLocaleDateString() : "N/A"}</span>
           </div>
+          {leaseEnd && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Agreed Contract End Date:</span>
+              <span className="font-medium text-gray-900">{leaseEnd.toLocaleDateString()}</span>
+            </div>
+          )}
         </div>
+
+        {isEarlyPreTermination && (
+          <div className="p-3 bg-card border border-border rounded text-xs space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-rose-600">
+              <span>Early Pre-Termination Detected</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Moving out prior to the agreed contract end date forfeits 100% of the security deposit as an early termination penalty. Net refund is set to ₱0.00.
+            </p>
+          </div>
+        )}
 
         {/* Itemized Deductions Form */}
         <div className="space-y-3 text-xs">
@@ -120,18 +141,18 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
           </div>
 
           {/* RFID Keycard Check */}
-          <div className="p-3 bg-white border border-gray-200 rounded flex items-center justify-between">
+          <div className="p-3 bg-card border border-border rounded flex items-center justify-between">
             <div>
-              <span className="font-semibold text-gray-800">RFID Keycard Returned?</span>
-              <p className="text-[11px] text-gray-500">Unreturned RFID card adds a ₱300 replacement fee.</p>
+              <span className="font-semibold text-foreground">RFID Keycard Returned?</span>
+              <p className="text-[11px] text-muted-foreground">Unreturned RFID card adds a ₱300 replacement fee.</p>
             </div>
             <button
               type="button"
               onClick={() => setRfidReturned(!rfidReturned)}
-              className={`px-3 py-1.5 text-xs font-bold rounded border transition-colors ${
+              className={`px-3 py-1.5 text-xs font-bold rounded border border-border transition-colors ${
                 rfidReturned
-                  ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                  : "bg-red-50 border-red-300 text-red-800"
+                  ? "bg-card text-emerald-600 dark:text-emerald-400"
+                  : "bg-card text-rose-600 dark:text-rose-400"
               }`}
             >
               {rfidReturned ? "Returned (₱0)" : "Missing (+₱300)"}
@@ -140,26 +161,26 @@ export default function MoveOutClearanceCalculator({ isOpen, onClose, reservatio
 
           {/* Admin Remarks */}
           <div>
-            <label className="block font-semibold text-gray-700 mb-1">Inspection Remarks & Sign-off Notes</label>
+            <label className="block font-semibold text-foreground mb-1">Inspection Remarks & Sign-off Notes</label>
             <textarea
               rows={2}
               value={adminRemarks}
               onChange={(e) => setAdminRemarks(e.target.value)}
               placeholder="Record room condition notes, paint touch-ups, or meter read details..."
-              className="w-full p-2 border border-gray-300 rounded"
+              className="w-full p-2 border border-border rounded bg-background text-foreground"
             />
           </div>
         </div>
 
         {/* Calculation Summary Box */}
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 text-xs">
-          <div className="flex justify-between text-gray-600">
+        <div className="p-4 bg-card border border-border rounded-lg space-y-1 text-xs">
+          <div className="flex justify-between text-muted-foreground">
             <span>Total Deductions:</span>
-            <span className="font-semibold text-red-600">₱{totalDeductions.toLocaleString()}</span>
+            <span className="font-semibold text-rose-600 dark:text-rose-400">₱{totalDeductions.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between font-bold text-sm text-emerald-900 pt-1 border-t border-emerald-200">
+          <div className="flex justify-between font-bold text-sm text-foreground pt-1 border-t border-border">
             <span>Net Deposit Refund:</span>
-            <span className="text-base">₱{netRefund.toLocaleString()}</span>
+            <span className="text-base text-emerald-600 dark:text-emerald-400">₱{netRefund.toLocaleString()}</span>
           </div>
         </div>
 

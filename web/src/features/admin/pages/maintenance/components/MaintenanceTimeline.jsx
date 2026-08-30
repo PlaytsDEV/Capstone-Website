@@ -4,6 +4,7 @@ import {
   buildTimelineActor,
   fmtDateTime,
   formatBranchLabel,
+  formatPeso,
   getMaintenanceAttachmentKind,
   getMaintenanceAttachmentLabel,
   getMaintenanceAttachmentName,
@@ -269,6 +270,30 @@ export function MaintenanceTimeline({
                   <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/70 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
                     {item.type === "attachment_removed" ? `Reason: ${item.message}` : item.message}
                   </p>
+                )}
+
+                {item.previousData && (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 p-2.5 space-y-1 text-xs">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[11px] flex items-center justify-between">
+                      <span>Prior Cycle #{item.previousData.iteration || 1} Resolution Summary</span>
+                      {item.previousData.resolved_at && (
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          {fmtDateTime(item.previousData.resolved_at)}
+                        </span>
+                      )}
+                    </div>
+                    {item.previousData.resolution_note && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        <strong>Resolution Note:</strong> {item.previousData.resolution_note}
+                      </p>
+                    )}
+                    {item.previousData.costBreakdown && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        <strong>Prior Cost:</strong> {formatPeso(Number(item.previousData.costBreakdown.laborCost || 0) + Number(item.previousData.costBreakdown.materialsCost || 0))}
+                        {" • "}{item.previousData.costBreakdown.isTenantChargeable ? "Tenant Billed" : "Operating Expense"}
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {item.attachmentName && (

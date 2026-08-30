@@ -23,7 +23,7 @@ import { getAdminInfo, resolveAdminUserId } from "./_helpers.js";
 import logger from "../../middleware/logger.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { sendOverdueNoticeEmail } from "../../config/email.js";
-import notify from "../../services/notifications/notificationService.js";
+import notify, { createNotification } from "../../services/notifications/notificationService.js";
 import { moveOutStayWorkflow } from "../../utils/tenantActionService.js";
 
 /**
@@ -152,12 +152,14 @@ export const getOverdueNoticesAction = async (req, res, next) => {
       const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
       const roomName = room.name || room.roomNumber || resv.roomNumber || "Room";
       const tenantId = tenant._id || (bill.userId?._id || bill.userId) || (resv.userId?._id || resv.userId) || null;
+      const reservationId = resv._id || (bill.reservationId && typeof bill.reservationId === "object" ? bill.reservationId._id : bill.reservationId) || null;
 
       return {
         _id: latestNotice?._id || `bill-${bill._id}`,
         billId: bill._id,
         billNumber: String(bill._id).slice(-6).toUpperCase(),
         tenantId,
+        reservationId,
         tenantName,
         tenantEmail: tenant.email || "",
         tenantPhone: tenant.phone || "",
@@ -547,6 +549,197 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
     });
   } catch (error) {
     logger.error("[OverdueNotice] sendOverdueNoticeAction error:", error);
+    next(error);
+  }
+};
+
+/**
+ * POST /api/billing/overdue-notices/batch-send
+ * Batch dispatch overdue notices for multiple accounts at once.
+ */
+export const batchSendOverdueNoticesAction = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
+    const { billIds, noticeNumber = 1, noticeMessage = "" } = req.body;
+
+    if (!Array.isArray(billIds) || billIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "billIds must be a non-empty array of Bill IDs.",
+      });
+    }
+
+    const parsedStage = parseNoticeNumber(noticeNumber) || 1;
+    let successCount = 0;
+    let failureCount = 0;
+    const errors = [];
+
+    for (const billId of billIds) {
+      try {
+        const bill = await Bill.findById(billId)
+          .populate("userId", "firstName lastName email")
+          .populate({
+            path: "reservationId",
+            select: "roomId roomNumber branch userId",
+            populate: [
+              { path: "roomId", select: "name roomNumber branch" },
+              { path: "userId", select: "firstName lastName email" },
+            ],
+          })
+          .populate("roomId", "name roomNumber branch");
+
+        if (!bill) {
+          failureCount++;
+          errors.push({ billId, error: "Bill not found." });
+          continue;
+        }
+
+        if (req.branchFilter && bill.branch !== req.branchFilter) {
+          failureCount++;
+          errors.push({ billId, error: "Unauthorized for this branch." });
+          continue;
+        }
+
+        const remainingAmount = Number(bill.remainingAmount || bill.totalAmount || 0);
+        if (remainingAmount <= 0) {
+          failureCount++;
+          errors.push({ billId, error: "Bill is already settled." });
+          continue;
+        }
+
+        const rawTenantId = bill._doc?.userId || (bill.userId?._id ? null : bill.userId) || bill.reservationId?.userId?._id || bill.reservationId?.userId || null;
+        const resolvedTenantId = bill.userId?._id || bill.reservationId?.userId?._id || rawTenantId || adminUserId;
+        const rawResvId = bill._doc?.reservationId || bill.reservationId?._id || bill.reservationId || bill._id;
+        const tenantEmail = bill.userId?.email || bill.reservationId?.userId?.email || "";
+        const tenantName = [bill.userId?.firstName, bill.userId?.lastName].filter(Boolean).join(" ").trim()
+          || [bill.reservationId?.userId?.firstName, bill.reservationId?.userId?.lastName].filter(Boolean).join(" ").trim()
+          || "Tenant";
+        const roomName = bill.roomId?.roomNumber || bill.roomId?.name || bill.reservationId?.roomNumber || "N/A";
+
+        const daysOverdue = bill.dueDate
+          ? Math.max(0, dayjs().diff(dayjs(bill.dueDate), "day"))
+          : 0;
+
+        const penaltyAmount = Number(bill.charges?.penalty || 0);
+        const outstandingAmount = Math.max(0, remainingAmount - penaltyAmount);
+
+        // Record notice snapshot
+        const noticeDoc = new OverdueNotice({
+          billId: bill._id,
+          reservationId: rawResvId,
+          tenantId: resolvedTenantId,
+          branch: bill.branch,
+          noticeNumber: parsedStage,
+          outstandingAmountAtIssuance: outstandingAmount,
+          penaltyAmountAtIssuance: penaltyAmount,
+          totalAmountAtIssuance: remainingAmount,
+          daysOverdueAtIssuance: daysOverdue,
+          issuedBy: adminUserId || resolvedTenantId,
+          issuedAt: new Date(),
+          noticeMessage: (noticeMessage || "").trim(),
+          deliveryStatus: "pending",
+        });
+
+        // Attempt delivery
+        let emailDelivered = false;
+        let notifDelivered = false;
+
+        if (tenantEmail) {
+          try {
+            const branchLabel = bill.branch === "gil-puyat" ? "Lilycrest Gil Puyat" : "Lilycrest Guadalupe";
+            const dueDateFormatted = bill.dueDate
+              ? dayjs(bill.dueDate).format("MMMM D, YYYY")
+              : "due date";
+
+            await sendOverdueNoticeEmail({
+              to: tenantEmail,
+              tenantName,
+              billNumber: bill.billNumber || String(bill._id).slice(-6),
+              roomName,
+              branchName: branchLabel,
+              branch: bill.branch,
+              dueDate: dueDateFormatted,
+              billingMonth: bill.billingMonth ? dayjs(bill.billingMonth).format("MMMM YYYY") : "Current Billing Cycle",
+              totalAmount: remainingAmount,
+              remainingAmount,
+              penaltyAmount,
+              penalty: penaltyAmount,
+              outstandingAmount,
+              daysOverdue,
+              daysLate: daysOverdue,
+              noticeNumber: parsedStage,
+              noticeMessage: noticeMessage || undefined,
+              reason: noticeMessage || `Payment balance is ${daysOverdue} day(s) overdue.`,
+              noticeVariant: parsedStage === 3 ? "penalty" : "overdue",
+            });
+            emailDelivered = true;
+            noticeDoc.delivery.email.status = "sent";
+            noticeDoc.delivery.email.sentAt = new Date();
+          } catch (e) {
+            logger.warn(`[OverdueNotice] Batch email delivery failed for bill ${bill._id}:`, e);
+            noticeDoc.delivery.email.status = "failed";
+            noticeDoc.delivery.email.error = e.message || "Failed to deliver email";
+          }
+        } else {
+          noticeDoc.delivery.email.status = "not_attempted";
+          noticeDoc.delivery.email.error = "No email address on file for tenant";
+        }
+
+        try {
+          await createNotification(
+            resolvedTenantId,
+            "bill_due_reminder",
+            `Overdue Payment Reminder (Notice ${parsedStage})`,
+            `Your rent statement #${bill.billNumber || String(bill._id).slice(-6)} of ₱${remainingAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} is past due. Please settle your account.`,
+            { entityType: "bill", entityId: String(bill._id), actionUrl: "/tenant/billing" },
+          );
+          notifDelivered = true;
+          noticeDoc.delivery.notification.status = "sent";
+          noticeDoc.delivery.notification.sentAt = new Date();
+        } catch (e) {
+          logger.warn(`[OverdueNotice] In-app notification failed for bill ${bill._id}:`, e);
+          noticeDoc.delivery.notification.status = "failed";
+          noticeDoc.delivery.notification.error = e.message || "In-app notification failed";
+        }
+
+        noticeDoc.deliveryStatus = (emailDelivered && notifDelivered) ? "sent" : (emailDelivered || notifDelivered) ? "partial" : "failed";
+        bill.overdueNoticeCount = Math.max(bill.overdueNoticeCount || 0, parsedStage);
+        bill.dueState = "overdue";
+        if (bill.status !== "partially-paid") {
+          bill.status = "overdue";
+        }
+
+        await noticeDoc.save();
+        await bill.save();
+
+        await logBillingAudit({
+          action: "BATCH_DISPATCH_OVERDUE_NOTICE",
+          actorId: adminUserId,
+          targetUserId: resolvedTenantId,
+          branch: bill.branch,
+          details: { billId: bill._id, noticeId: noticeDoc._id, noticeNumber: parsedStage },
+        });
+
+        successCount++;
+      } catch (err) {
+        failureCount++;
+        errors.push({ billId, error: err.message || "Failed to dispatch notice." });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Batch dispatch completed: ${successCount} notice(s) dispatched, ${failureCount} failed.`,
+      data: {
+        total: billIds.length,
+        successCount,
+        failureCount,
+        errors,
+      },
+    });
+  } catch (error) {
+    logger.error("[OverdueNotice] batchSendOverdueNoticesAction error:", error);
     next(error);
   }
 };

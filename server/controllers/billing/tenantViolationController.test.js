@@ -12,6 +12,7 @@ const mockComputeWarningCount = jest.fn().mockResolvedValue(1);
 const mockFindViolations = jest.fn();
 const mockFindOneViolation = jest.fn();
 const mockFindByIdViolation = jest.fn();
+const mockFindByIdReview = jest.fn();
 
 await jest.unstable_mockModule("../../models/index.js", () => {
   class MockTenantViolation {
@@ -39,6 +40,7 @@ await jest.unstable_mockModule("../../models/index.js", () => {
       lean: jest.fn().mockResolvedValue([]),
     });
     static findOne = jest.fn().mockResolvedValue(null);
+    static findById = mockFindByIdReview;
   }
 
   class MockBill {
@@ -172,6 +174,7 @@ const {
   updateViolationDecision,
   updateViolation,
   archiveViolation,
+  deleteTerminationCase,
 } = await import("./tenantViolationController.js");
 
 describe("Tenant Violation Controller Unit Tests", () => {
@@ -328,7 +331,7 @@ describe("Tenant Violation Controller Unit Tests", () => {
     expect(mockBillDoc.additionalCharges[0].name).toContain("Violation Penalty");
   });
 
-  test("updateViolationDecision auto-escalates to TerminationReview when escalated status is chosen", async () => {
+  test("updateViolationDecision confirms violation and issues formal warning without creating termination review", async () => {
     const violationId = new mongoose.Types.ObjectId();
     const mockViolationInstance = {
       _id: violationId,
@@ -346,16 +349,16 @@ describe("Tenant Violation Controller Unit Tests", () => {
     req.params = { id: violationId };
     req.body = {
       decision: "confirmed",
-      decisionReason: "Repeated severe violation with no remorse shown",
-      status: "escalated",
+      decisionReason: "Repeated disciplinary violation confirmed on record",
+      status: "warning_issued",
     };
 
     await updateViolationDecision(req, res, next);
 
-    expect(mockViolationInstance.status).toBe("escalated");
+    expect(mockViolationInstance.status).toBe("warning_issued");
     expect(mockViolationInstance.adminDecision).toBe("confirmed");
     expect(mockViolationSave).toHaveBeenCalled();
-    expect(mockReviewSave).toHaveBeenCalled();
+    expect(mockReviewSave).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,
@@ -417,8 +420,8 @@ describe("Tenant Violation Controller Unit Tests", () => {
     });
   });
 
-  describe("3rd-Strike Auto-Escalation", () => {
-    test("createViolation escalates on 3rd warning", async () => {
+  describe("3rd-Strike Disciplinary Warning", () => {
+    test("createViolation records 3rd warning as warning_issued without triggering termination review", async () => {
       mockComputeWarningCount.mockResolvedValue(2); // next will be 3
       req.body = {
         tenantId: new mongoose.Types.ObjectId(),
@@ -430,9 +433,10 @@ describe("Tenant Violation Controller Unit Tests", () => {
       await createViolation(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(mockReviewSave).toHaveBeenCalled(); // Should have created a review
+      expect(mockReviewSave).not.toHaveBeenCalled(); // Should NOT create a review
       const response = res.json.mock.calls[0][0];
-      expect(response.data.status).toBe("escalated");
+      expect(response.data.status).toBe("warning_issued");
+      expect(response.data.warningNumber).toBe(3);
     });
   });
 
@@ -652,6 +656,44 @@ describe("Tenant Violation Controller Unit Tests", () => {
         expect(mockBillDoc.totalAmount).toBe(5000);
         expect(mockBillSave).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("deleteTerminationCase", () => {
+    test("soft-deletes termination review case and sets isArchived to true", async () => {
+      const reviewId = new mongoose.Types.ObjectId();
+      const mockReviewInstance = {
+        _id: reviewId,
+        branch: "gil-puyat",
+        isArchived: false,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      mockFindByIdReview.mockResolvedValue(mockReviewInstance);
+
+      req.params = { id: reviewId.toString() };
+      await deleteTerminationCase(req, res, next);
+
+      expect(mockReviewInstance.isArchived).toBe(true);
+      expect(mockReviewInstance.save).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: "Termination review case deleted successfully.",
+        }),
+      );
+    });
+
+    test("returns 400 for invalid review ID format", async () => {
+      req.params = { id: "invalid-id" };
+      await deleteTerminationCase(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: "Invalid review case ID format.",
+        }),
+      );
     });
   });
 });

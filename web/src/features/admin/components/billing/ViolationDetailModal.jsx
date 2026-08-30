@@ -80,11 +80,8 @@ const getStatusBadgeConfig = (status) => {
     case "warning_issued":
     case "under_review":
     case "awaiting_response":
-      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
       return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
-    case "escalated":
-      return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "dismissed":
     default:
       return { text: "text-slate-700 dark:text-slate-300", dot: "bg-slate-400" };
@@ -887,7 +884,6 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                         >
                           <option value="warning_issued">Issue Formal Written Warning</option>
                           <option value="penalty_issued">Enforce Penalty Fee on Ledger</option>
-                          <option value="escalated">Escalate to Termination Review Board</option>
                           <option value="resolved">Mark Resolved / Closed</option>
                         </select>
                       </div>
@@ -956,11 +952,6 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                   <p className="text-xs text-muted-foreground whitespace-pre-wrap">
                     <strong className="text-card-foreground">Findings & Basis:</strong> {violation.adminDecisionReason || violation.resolution || "Case closed."}
                   </p>
-                  {violation.status === "escalated" && (
-                    <div className="mt-2 rounded-lg border border-border bg-card p-2.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium">
-                      ⚠️ This case has been formally escalated to the Administrative Termination Review Board.
-                    </div>
-                  )}
                 </div>
               )}
             </>

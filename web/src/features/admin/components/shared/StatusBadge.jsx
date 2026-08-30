@@ -95,6 +95,7 @@ export default function StatusBadge({
       "prepared",
       "ready_for_publication",
       "provider_assigned",
+      "rolling",
     ];
     const neutralStatuses = [
       "cancelled",
@@ -139,6 +140,7 @@ export default function StatusBadge({
     if (norm === "disputed") return "Disputed (Fees Paused)";
     if (norm === "manual_review_required") return "Manual Review Required";
     if (norm === "expired_occupancy_continuing") return "Expired Occupancy";
+    if (norm === "rolling") return "Rolling Month-to-Month";
     if (norm === "former_tenant") return "Former Tenant";
     if (norm === "notice_1") return "Overdue Notice 1";
     if (norm === "notice_2") return "Overdue Notice 2";

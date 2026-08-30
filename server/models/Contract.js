@@ -5,7 +5,7 @@ export const CONTRACT_STATUSES = Object.freeze([
   "draft", "incomplete", "ready_for_generation", "generated",
   "awaiting_signatures", "partially_signed", "signed",
   "awaiting_notarization", "notarized", "ready_for_publication",
-  "published", "active", "expiring_soon", "expired", "renewal_pending",
+  "published", "active", "rolling", "expiring_soon", "expired", "renewal_pending",
   "renewed", "transfer_review_required", "terminated", "cancelled",
   "replaced", "archived", "voided", "rejected",
 ]);

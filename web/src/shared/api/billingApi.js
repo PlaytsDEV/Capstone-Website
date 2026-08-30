@@ -306,6 +306,12 @@ export const billingApi = {
     });
   },
 
+  batchSendOverdueNotices: (payload) =>
+    authFetch("/billing/overdue-notices/batch-send", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   getTerminationCases: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return authFetch(`/billing/termination-reviews${query ? `?${query}` : ""}`, {
@@ -323,6 +329,11 @@ export const billingApi = {
     authFetch(`/billing/termination-reviews/${id}/decision`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+
+  deleteTerminationCase: (id) =>
+    authFetch(`/billing/termination-reviews/${id}`, {
+      method: "DELETE",
     }),
 
   // ── Tenant Violation & Warning Log (P4-01) ──

@@ -32,6 +32,7 @@ const FloatingInput = ({
  onKeyUp,
  disabled = false,
  error = null,
+ hasError = false,
  valid = false,
  autoComplete,
  endAdornment,
@@ -42,15 +43,16 @@ const FloatingInput = ({
 }) => {
  const [focused, setFocused] = useState(false);
  const hasValue = value.length > 0;
- const showValid = valid && hasValue && !focused;
+ const isErrorState = Boolean(error || hasError);
+ const showValid = valid && hasValue && !focused && !isErrorState;
 
  const wrapperClass = useMemo(() => [
  "floating-field__wrapper",
  hasValue || focused ? "active" : "",
  focused ? "focused" : "",
- error ? "has-error" : "",
+ isErrorState ? "has-error" : "",
  showValid ? "is-valid" : "",
- ].filter(Boolean).join(" "), [hasValue, focused, error, showValid]);
+ ].filter(Boolean).join(" "), [hasValue, focused, isErrorState, showValid]);
 
  const handleBlur = useCallback(() => {
  setFocused(false);

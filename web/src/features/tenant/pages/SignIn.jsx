@@ -40,6 +40,7 @@ import { authApi } from "../../../shared/api/apiClient";
 import {
   AUTH_TOAST_DURATION,
   buildAuthSuccessMessage,
+  buildAuthWelcomeMessage,
 } from "../../../shared/utils/authToasts";
 import {
   clearLoginInProgress,
@@ -91,6 +92,7 @@ function SignIn() {
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
+  const [credentialError, setCredentialError] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(initialLockout.attempts);
   const [lockoutUntil, setLockoutUntil] = useState(initialLockout.lockoutUntil);
@@ -253,6 +255,9 @@ function SignIn() {
         ? value.replace(/\s/g, "").slice(0, NEW_PASSWORD_MAX_LENGTH)
         : value;
     setFormData((prev) => ({ ...prev, [name]: sanitizedValue }));
+    if (credentialError) {
+      setCredentialError(false);
+    }
     
     if (debounceTimersRef.current[name]) {
       clearTimeout(debounceTimersRef.current[name]);
@@ -468,15 +473,56 @@ function SignIn() {
  );
  }
  } catch (error) {
- recordFailedAttempt();
- showNotification(getFirebaseErrorMessage(error, "login"), "error");
-  } finally {
-  clearLoginInProgress();
-    setGlobalLoading(false);
-  }
-};
+      recordFailedAttempt();
+      showNotification(getFirebaseErrorMessage(error, "login"), "error");
+      setFormData((prev) => ({ ...prev, password: "" }));
+      setCredentialError(true);
+      setTimeout(() => {
+        document.getElementById("password")?.focus();
+      }, 100);
+    } finally {
+      clearLoginInProgress();
+      setGlobalLoading(false);
+      setSubmitting(false);
+    }
+  };
+
+  const registerUserInBackend = async (
+    firebaseUser,
+    phone,
+    firstName,
+    lastName,
+  ) => {
+    let lastCollision = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await authApi.register({
+          email: firebaseUser.email,
+          username: generateUsername(firebaseUser.email, attempt),
+          firstName: sanitizeName(firstName).trim(),
+          lastName: sanitizeName(lastName).trim(),
+          phone,
+        });
+      } catch (error) {
+        const code = error?.code || error?.response?.data?.code;
+        if (code !== "USERNAME_TAKEN") throw error;
+        lastCollision = error;
+      }
+    }
+    throw lastCollision || new Error("Unable to allocate a registration username.");
+  };
 
   const processSocialUser = async (firebaseUser) => {
+    if (!firebaseUser.email) {
+      await recoverFromAuthFailure(auth);
+      showNotification(
+        "We could not get your email address from Google. Please try again or use a different sign-in method.",
+        "error",
+      );
+      setGlobalLoading(false);
+      return;
+    }
+
     // Branch admins and owners bypass email verification checks.
     const tokenResult = await firebaseUser.getIdTokenResult();
     const isAdmin = hasAdminClaims(tokenResult);
@@ -497,24 +543,73 @@ function SignIn() {
     } catch (loginError) {
       const status = loginError.response?.status;
       const errMsg = loginError.message || "";
+      const errCode = loginError.response?.data?.code || loginError.code || "";
 
       if (
         status === 404 ||
         /not found|not registered|register first/i.test(errMsg)
       ) {
+        // Auto-onboard first-time Google sign-in users seamlessly
+        try {
+          const rawName = (firebaseUser.displayName || "")
+            .replace(/[^a-zA-Z\s'-]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          const parts = rawName.split(" ");
+          const firstName = formatProperCase(parts[0] || "User");
+          const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
+          const registration = await registerUserInBackend(
+            firebaseUser,
+            "",
+            firstName,
+            lastName,
+          );
+          const username = registration?.user?.username;
+          const newLoginResponse = await login();
+          resetLockoutState();
+          showNotification(
+            buildAuthWelcomeMessage(
+              {
+                displayName: firebaseUser.displayName,
+                username,
+                email: firebaseUser.email,
+              },
+              firstName,
+            ),
+            "success",
+            AUTH_TOAST_DURATION,
+          );
+          handlePostAuthFlow(newLoginResponse, firstName, { suppressSuccessToast: true });
+          return;
+        } catch (regError) {
+          const regCode = regError.response?.data?.code || regError.code || "";
+          if (regCode === "IDENTITY_CONFLICT" || regError.response?.status === 409) {
+            await recoverFromAuthFailure(auth, regError);
+            showNotification(
+              "This email is already registered using a password. Please sign in with your email and password instead.",
+              "warning",
+              7000,
+            );
+            return;
+          }
+          await recoverFromAuthFailure(auth, regError);
+          showNotification(
+            "Could not complete registration with Google. Please try signing up directly.",
+            "error",
+            6000,
+          );
+          return;
+        }
+      }
+
+      // Handle identity conflict (email already registered with password)
+      if (status === 409 || errCode === "IDENTITY_CONFLICT") {
         await recoverFromAuthFailure(auth, loginError);
         showNotification(
-          "This Google account is not registered yet. Please sign up first.",
+          "This email is already registered using a password. Please sign in with your email and password instead.",
           "warning",
-          6000,
+          7000,
         );
-        navigate("/signup", {
-          state: {
-            email: firebaseUser.email,
-            name: firebaseUser.displayName,
-          },
-          replace: true,
-        });
         return;
       }
 
@@ -534,12 +629,6 @@ function SignIn() {
             "error",
           );
         }
-      } else if (status === 409 && loginError.response?.data?.code === "IDENTITY_CONFLICT") {
-        showNotification(
-          "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
-          "warning",
-          7000,
-        );
       } else {
         showNotification(
           "Login failed. Please try again or contact support.",
@@ -570,7 +659,7 @@ function SignIn() {
             showNotification(
               "This email is already registered with a password. Please sign in with your email and password instead.",
               "warning",
-              6000,
+              7000,
             );
           } else {
             await recoverFromAuthFailure(auth, error);
@@ -601,7 +690,7 @@ function SignIn() {
         await processSocialUser(result.user);
       }
     } catch (error) {
-      if (error.code === "auth/popup-blocked" || error.code === "auth/cancelled-popup-request") {
+      if (error.code === "auth/popup-blocked") {
         try {
           await signInWithRedirect(auth, provider);
           return;
@@ -610,9 +699,12 @@ function SignIn() {
           showNotification(getFirebaseErrorMessage(redirectError, "login"), "error");
         }
       }
-      if (error.code === "auth/popup-closed-by-user") {
+      if (
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/cancelled-popup-request"
+      ) {
         setGlobalLoading(false);
-        showNotification("Sign-in cancelled", "info");
+        showNotification("Sign-in was cancelled.", "info");
         return;
       }
       if (
@@ -623,7 +715,7 @@ function SignIn() {
         showNotification(
           "This email is already registered with a password. Please sign in with your email and password instead.",
           "warning",
-          6000,
+          7000,
         );
         return;
       }
@@ -782,18 +874,19 @@ function SignIn() {
  )}
 
  <form onSubmit={handleEmailPasswordLogin} className="auth-form">
- <FloatingInput
- label="Email address"
- name="email"
- type="email"
- value={formData.email}
- onChange={handleChange}
- onBlur={() => handleBlur("email")}
- disabled={submitting || isLockedOut}
- autoComplete="email"
- error={touched.email ? validationErrors.email : null}
- valid={touched.email && fieldValid.email}
- />
+      <FloatingInput
+        label="Email address"
+        name="email"
+        type="email"
+        value={formData.email}
+        onChange={handleChange}
+        onBlur={() => handleBlur("email")}
+        disabled={submitting || isLockedOut}
+        autoComplete="email"
+        hasError={credentialError}
+        error={touched.email ? validationErrors.email : null}
+        valid={touched.email && fieldValid.email && !credentialError}
+      />
 
       <FloatingInput
         label="Password"
@@ -818,15 +911,16 @@ function SignIn() {
         disabled={submitting || isLockedOut}
         autoComplete="current-password"
         maxLength={NEW_PASSWORD_MAX_LENGTH}
+        hasError={credentialError}
         error={touched.password ? validationErrors.password : null}
-        valid={touched.password && fieldValid.password}
+        valid={touched.password && fieldValid.password && !credentialError}
         endAdornment={
- <PasswordVisibilityButton
- visible={showPassword}
- onToggle={() => setShowPassword((current) => !current)}
- />
- }
- />
+          <PasswordVisibilityButton
+            visible={showPassword}
+            onToggle={() => setShowPassword((current) => !current)}
+          />
+        }
+      />
 
  {capsLockActive && (
  <div

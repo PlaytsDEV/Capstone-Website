@@ -2178,6 +2178,23 @@ export const reopenAdminMaintenanceRequest = async (req, res, next) => {
     const reopenedAt = new Date();
     const adminActor = buildActorSnapshot(adminUser);
 
+    const previousCycleSnapshot = {
+      iteration: request.reopenCount || 1,
+      previous_status: previousStatus,
+      resolved_at: request.resolved_at || null,
+      closed_at: request.closed_at || null,
+      resolution_note: request.resolution_note || request.resolutionProof?.notes || null,
+      resolutionProof: request.resolutionProof ? JSON.parse(JSON.stringify(request.resolutionProof)) : null,
+      costBreakdown: request.costBreakdown ? JSON.parse(JSON.stringify(request.costBreakdown)) : null,
+      providerRating: request.providerRating ? JSON.parse(JSON.stringify(request.providerRating)) : null,
+      resolutionConfirmation: request.resolutionConfirmation ? JSON.parse(JSON.stringify(request.resolutionConfirmation)) : null,
+      assignedProvider: request.assignedProvider ? JSON.parse(JSON.stringify(request.assignedProvider)) : null,
+      assignedProviderName: request.assignedProviderName || request.assigned_to || null,
+      scheduledDate: request.scheduledDate || null,
+      scheduledTime: request.scheduledTime || null,
+      work_started_at: request.work_started_at || null,
+    };
+
     request.isReopened = true;
     request.reopen_note = note;
     request.reopened_at = reopenedAt;
@@ -2191,6 +2208,7 @@ export const reopenAdminMaintenanceRequest = async (req, res, next) => {
         actor_id: adminActor.actor_id,
         actor_name: adminActor.actor_name,
         actor_role: adminActor.actor_role,
+        previousData: previousCycleSnapshot,
       },
     ];
 

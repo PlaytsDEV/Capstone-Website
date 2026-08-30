@@ -49,6 +49,7 @@ import {
   getTenantConcernIndicator,
   getRequestLastActivityTime,
   isDeletedAccountRequest,
+  ITEMS_PER_PAGE,
   MANAGEMENT_SUMMARY_CARDS,
   mapMaintenanceApiErrors,
   matchesSlaFilter,
@@ -557,6 +558,30 @@ export function useMaintenanceData() {
       ),
     [dateFrom, dateTo, searchedRequests, slaFilter, stageFilter, statusFilter],
   );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    stageFilter,
+    statusFilter,
+    archiveView,
+    requestTypeFilter,
+    urgencyFilter,
+    slaFilter,
+    dateType,
+    dateFrom,
+    dateTo,
+    branchFilter,
+    sortMode,
+    searchQuery,
+  ]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredRequests.length / ITEMS_PER_PAGE));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredRequests.length, currentPage]);
 
   const handleResetFilters = () => {
     setStageFilter("all");

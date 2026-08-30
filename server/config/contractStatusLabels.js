@@ -82,6 +82,11 @@ export const CONTRACT_STATUS_LABELS = Object.freeze({
     adminLabel: "Active",
     tone: "success",
   },
+  rolling: {
+    tenantLabel: "Month-to-Month (Rolling)",
+    adminLabel: "Rolling Month-to-Month",
+    tone: "info",
+  },
   expiring_soon: {
     tenantLabel: "Contract Ending Soon",
     adminLabel: "Expiring Soon",

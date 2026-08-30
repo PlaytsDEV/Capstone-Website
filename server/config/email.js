@@ -328,30 +328,61 @@ export const sendOverdueNoticeEmail = async ({
   tenantName,
   billingMonth,
   totalAmount,
+  remainingAmount,
   daysLate,
+  daysOverdue,
   penalty,
+  penaltyAmount,
   dueDate = "the due date",
   billType = "Bill",
   reason = "",
+  noticeMessage = "",
   noticeVariant = "overdue",
   branchName = null,
-}) =>
-  sendLilycrestEmail({
+  branch = null,
+  noticeNumber = 1,
+}) => {
+  const resolvedDaysLate = daysLate ?? daysOverdue ?? 0;
+  const resolvedPenalty = penalty ?? penaltyAmount ?? 0;
+  const resolvedTotal = totalAmount ?? remainingAmount ?? 0;
+  const resolvedBranchName =
+    branchName ||
+    (branch === "guadalupe" ? "Guadalupe" : branch === "gil-puyat" ? "Gil Puyat" : branch || null);
+  const resolvedReason = reason || noticeMessage || "";
+
+  let resolvedDueDate = dueDate;
+  if (dueDate && dueDate !== "the due date") {
+    const d = new Date(dueDate);
+    if (!isNaN(d.getTime())) {
+      resolvedDueDate = d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    }
+  }
+
+  let resolvedBillingMonth = billingMonth;
+  if (!resolvedBillingMonth && dueDate && dueDate !== "the due date") {
+    const d = new Date(dueDate);
+    if (!isNaN(d.getTime())) {
+      resolvedBillingMonth = d.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+    }
+  }
+
+  return sendLilycrestEmail({
     to,
     templateKey: "OVERDUE_NOTICE",
     variables: {
-      TENANT_NAME: tenantName,
+      TENANT_NAME: tenantName || "Tenant",
       BILL_TYPE_LABEL: String(billType || "Bill"),
-      BILLING_MONTH: billingMonth,
-      DAYS_LATE: daysLate,
-      TOTAL_AMOUNT: fmtPeso(totalAmount),
-      PENALTY: fmtPeso(penalty),
-      DUE_DATE: dueDate,
-      REASON: reason,
+      BILLING_MONTH: resolvedBillingMonth || "Current Billing",
+      DAYS_LATE: resolvedDaysLate,
+      TOTAL_AMOUNT: fmtPeso(resolvedTotal),
+      PENALTY: fmtPeso(resolvedPenalty),
+      DUE_DATE: resolvedDueDate,
+      REASON: resolvedReason,
       NOTICE_VARIANT: noticeVariant === "penalty" ? "penalty" : "overdue",
-      BRANCH_NAME: branchName,
+      BRANCH_NAME: resolvedBranchName,
     },
   });
+};
 
 // =============================================================================
 // PAYMENT APPROVED EMAIL

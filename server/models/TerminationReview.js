@@ -55,9 +55,10 @@ const terminationReviewSchema = new mongoose.Schema(
     triggerType: {
       type: String,
       enum: [
-        "notice_exhaustion",    // All 3 overdue notices sent with no resolution
-        "violation_escalation", // Confirmed TenantViolation escalated
-        "manual",               // Admin opened directly — rare; requires triggerReason
+        "overdue_escalation",   // Escalated overdue account / delinquent balance
+        "notice_exhaustion",    // Overdue notices sent with no resolution
+        "violation_escalation", // Legacy / historical trigger
+        "manual",               // Admin opened directly — requires triggerReason
       ],
       required: true,
     },

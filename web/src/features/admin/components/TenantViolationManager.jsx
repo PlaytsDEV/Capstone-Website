@@ -23,16 +23,10 @@ import ViolationDetailModal from "./billing/ViolationDetailModal.jsx";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar.jsx";
 import ConfirmModal from "../../../shared/components/ConfirmModal.jsx";
 
-const STATUS_FILTERS = [
-  { id: "all", label: "All Infractions" },
-  { id: "reported", label: "Reported" },
-  { id: "under_review", label: "Under Review" },
-  { id: "confirmed", label: "Confirmed" },
-  { id: "warning_issued", label: "Warnings Issued" },
-  { id: "penalty_issued", label: "Penalties Imposed" },
-  { id: "escalated", label: "Escalated to Board" },
-  { id: "dismissed", label: "Dismissed" },
-  { id: "resolved", label: "Resolved" },
+const STATUS_OPTIONS = [
+  { value: "all", label: "All Infractions", countKey: "all" },
+  { value: "active", label: "Active Warnings", countKey: "active" },
+  { value: "resolved_dismissed", label: "Dismissed / Resolved", countKey: "resolved_dismissed" },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -88,11 +82,8 @@ const getStatusBadgeConfig = (status) => {
     case "warning_issued":
     case "under_review":
     case "awaiting_response":
-      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
       return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
-    case "escalated":
-      return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "dismissed":
     default:
       return { text: "text-slate-700 dark:text-slate-300", dot: "bg-slate-400" };
@@ -105,7 +96,11 @@ export default function TenantViolationManager({ branch }) {
     total: 0,
     activeWarnings: 0,
     totalPenalties: 0,
-    escalatedCases: 0,
+    tabCounts: {
+      all: 0,
+      active: 0,
+      resolved_dismissed: 0,
+    },
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -152,13 +147,32 @@ export default function TenantViolationManager({ branch }) {
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setViolations(list);
       if (res?.stats) {
-        setStats(res.stats);
+        setStats({
+          ...res.stats,
+          tabCounts: res.stats.tabCounts || {
+            all: res.stats.total || list.length,
+            active: res.stats.activeWarnings || 0,
+            resolved_dismissed: Math.max(
+              0,
+              (res.stats.total || list.length) - (res.stats.activeWarnings || 0),
+            ),
+          },
+        });
       } else if (Array.isArray(list)) {
+        const activeGroup = list.filter((v) =>
+          ["confirmed", "warning_issued", "penalty_issued", "reported", "under_review", "awaiting_response"].includes(v.status),
+        );
+        const closedGroup = list.filter((v) => ["dismissed", "resolved"].includes(v.status));
+
         setStats({
           total: list.length,
-          activeWarnings: list.filter((v) => ["confirmed", "warning_issued"].includes(v.status)).length,
+          activeWarnings: activeGroup.length,
           totalPenalties: list.reduce((sum, v) => sum + (Number(v.penaltyApplied) || 0), 0),
-          escalatedCases: list.filter((v) => v.status === "escalated").length,
+          tabCounts: {
+            all: list.length,
+            active: activeGroup.length,
+            resolved_dismissed: closedGroup.length,
+          },
         });
       }
     } catch (err) {
@@ -230,8 +244,8 @@ export default function TenantViolationManager({ branch }) {
         </div>
       </div>
 
-      {/* Top KPI Metrics Banner */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
+      {/* Top KPI Metrics Banner (Clean 3-Card Grid) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-4">
         <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
@@ -276,47 +290,44 @@ export default function TenantViolationManager({ branch }) {
             Monetary fines & restoration fees
           </p>
         </div>
-
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Escalated Cases
-            </span>
-            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
-            {stats.escalatedCases}
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
-            Sent to Termination Review Board
-          </p>
-        </div>
       </div>
 
       {/* Violations Data Card (Single Container, No Nested Boxes) */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
         {/* Filter Controls Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5">
-          {/* Status Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
-            {STATUS_FILTERS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatusFilter(tab.id)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-                  statusFilter === tab.id
-                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-950 font-bold"
-                    : "text-muted-foreground hover:bg-card hover:text-card-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Left: Table Title & Counter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-card-foreground">
+              Infraction Records
+            </span>
+            <span className="inline-flex items-center justify-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+              {filteredViolations.length}
+            </span>
           </div>
 
-          {/* Right Controls: Category & Search */}
+          {/* Right Controls: Status, Category & Search */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Status Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium hidden sm:inline">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+              >
+                {STATUS_OPTIONS.map((opt) => {
+                  const count = stats.tabCounts?.[opt.countKey] ?? 0;
+                  return (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} ({count})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Category Dropdown */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground font-medium hidden sm:inline">Category:</span>
               <select

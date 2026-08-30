@@ -215,12 +215,16 @@ function ReopenRequestModal({
       return;
     }
     setError("");
-    await onSubmit({ note: cleanNote, nextStatus });
+    try {
+      await onSubmit({ note: cleanNote, nextStatus });
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to reopen maintenance request.");
+    }
   };
 
   return createPortal(
     <div
-      className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -377,7 +381,7 @@ function ForceFinalizeModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -586,6 +590,8 @@ export function MaintenanceDetailModal({
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
   const [showProviderAssigner, setShowProviderAssigner] = useState(false);
+  const [isPreviousArchiveOpen, setIsPreviousArchiveOpen] = useState(false);
+  const [selectedArchiveIndex, setSelectedArchiveIndex] = useState(0);
 
   const [seenConvMap, setSeenConvMap] = useState(() => {
     try {
@@ -789,7 +795,7 @@ export function MaintenanceDetailModal({
       setShowReopenDialog(false);
       showNotification({
         title: "Request Reopened",
-        message: `Request #${request?.ticketNumber || (targetRequestId ? String(targetRequestId).slice(-8).toUpperCase() : "—")} reopened and returned to ${nextStatus === "pending" ? "Pending Triage" : "In Progress"}.`,
+        message: `Request #${request?.ticketNumber || (targetRequestId ? String(targetRequestId).slice(-8).toUpperCase() : "—")} reopened and returned to ${nextStatus === "pending" ? "Pending Triage" : "In Progress"}. Tenant notified.`,
         type: "success",
       });
     } catch (err) {
@@ -2096,22 +2102,296 @@ export function MaintenanceDetailModal({
                       </div>
                     </div>
 
-                    {/* Reopened High-Priority Alert Banner */}
-                    {isReopened && (
-                      <div className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 text-xs">
-                        <RefreshCw size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5 animate-spin-slow" />
-                        <div className="min-w-0">
-                          <div className="font-bold text-slate-900 dark:text-slate-100">
-                            Reopened by Tenant — Iteration #{request?.reopenCount || 1}
+                    {/* Reopened High-Priority Alert Banner with Expandable Previous History Archive */}
+                    {isReopened && (() => {
+                      const reopenHistoryList = Array.isArray(request?.reopen_history) ? request.reopen_history : [];
+                      const latestReopenEntry = reopenHistoryList.length > 0 ? reopenHistoryList[reopenHistoryList.length - 1] : null;
+                      const isReopenedByAdmin = latestReopenEntry?.actor_role === "admin" || latestReopenEntry?.actor_role === "staff" || latestReopenEntry?.actor_role === "owner";
+                      const reopenActorLabel = isReopenedByAdmin
+                        ? `Staff (${latestReopenEntry?.actor_name || "Admin"})`
+                        : `Tenant (${tenantName || "Tenant"})`;
+
+                      const currentReopenCount = request?.reopenCount || (reopenHistoryList.length > 0 ? reopenHistoryList.length + 1 : 1);
+
+                      // Build list of historical service records
+                      const historicalCycles = reopenHistoryList.map((entry, idx) => {
+                        const prevData = entry?.previousData;
+                        const serviceLabel = idx === 0 ? "Initial Service" : `Follow-Up Service #${idx + 1}`;
+                        return {
+                          cycleIndex: idx,
+                          cycleLabel: serviceLabel,
+                          reopenedAt: entry?.reopened_at,
+                          reopenNote: entry?.note,
+                          actorName: entry?.actor_name,
+                          actorRole: entry?.actor_role,
+                          data: prevData || {
+                            iteration: idx + 1,
+                            resolved_at: request?.resolved_at,
+                            closed_at: request?.closed_at,
+                            resolution_note: request?.resolution_note || request?.resolutionProof?.notes,
+                            resolutionProof: request?.resolutionProof,
+                            costBreakdown: request?.costBreakdown,
+                            providerRating: request?.providerRating,
+                            resolutionConfirmation: request?.resolutionConfirmation,
+                            assignedProvider: request?.assignedProvider,
+                            assignedProviderName: request?.assignedProviderName || request?.assigned_to,
+                          },
+                        };
+                      });
+
+                      if (historicalCycles.length === 0) {
+                        historicalCycles.push({
+                          cycleIndex: 0,
+                          cycleLabel: "Initial Service",
+                          reopenedAt: request?.reopened_at,
+                          reopenNote: request?.reopen_note,
+                          actorName: isReopenedByAdmin ? "Admin" : tenantName,
+                          actorRole: isReopenedByAdmin ? "admin" : "tenant",
+                          data: {
+                            iteration: 1,
+                            resolved_at: request?.resolved_at,
+                            closed_at: request?.closed_at,
+                            resolution_note: request?.resolution_note || request?.resolutionProof?.notes,
+                            resolutionProof: request?.resolutionProof,
+                            costBreakdown: request?.costBreakdown,
+                            providerRating: request?.providerRating,
+                            resolutionConfirmation: request?.resolutionConfirmation,
+                            assignedProvider: request?.assignedProvider,
+                            assignedProviderName: request?.assignedProviderName || request?.assigned_to,
+                          },
+                        });
+                      }
+
+                      const activeArchiveEntry = historicalCycles[selectedArchiveIndex] || historicalCycles[historicalCycles.length - 1];
+                      const activeCycleData = activeArchiveEntry?.data;
+
+                      const laborCostNum = Number(activeCycleData?.costBreakdown?.laborCost || 0);
+                      const materialsCostNum = Number(activeCycleData?.costBreakdown?.materialsCost || 0);
+                      const totalCostNum = laborCostNum + materialsCostNum;
+                      const isTenantChargeable = Boolean(activeCycleData?.costBreakdown?.isTenantChargeable);
+
+                      const ratingNum = Number(activeCycleData?.providerRating?.rating || 0);
+                      const ratingTags = Array.isArray(activeCycleData?.providerRating?.tags) ? activeCycleData.providerRating.tags : [];
+                      const ratingNotes = activeCycleData?.providerRating?.feedback || activeCycleData?.providerRating?.notes;
+
+                      const proofPhotos = Array.isArray(activeCycleData?.resolutionProof?.photos)
+                        ? activeCycleData.resolutionProof.photos
+                        : Array.isArray(activeCycleData?.resolutionProof?.attachments)
+                          ? activeCycleData.resolutionProof.attachments
+                          : [];
+
+                      return (
+                        <div className="flex flex-col gap-2 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 p-3 text-xs shadow-2xs">
+                          {/* Banner Main Row */}
+                          <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 shrink-0 shadow-2xs">
+                                <RefreshCw size={12} className="animate-spin-slow" />
+                              </div>
+                              <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                                  Reopened by {reopenActorLabel} • Follow-Up Service #{currentReopenCount}
+                                </span>
+                                {latestReopenEntry?.reopened_at && (
+                                  <span className="text-[11px] text-slate-400 font-normal">
+                                    • {fmtDateTime(latestReopenEntry.reopened_at)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Sleek Pill Toggle Button */}
+                            <button
+                              type="button"
+                              onClick={() => setIsPreviousArchiveOpen((prev) => !prev)}
+                              aria-expanded={isPreviousArchiveOpen}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-[0.98] shrink-0 shadow-2xs"
+                            >
+                              <History size={12} className="text-amber-600 dark:text-amber-400" />
+                              <span>{isPreviousArchiveOpen ? "Hide Prior Service Record" : "Prior Service Record"}</span>
+                              <ChevronDown
+                                size={13}
+                                className={`transition-transform duration-200 ${isPreviousArchiveOpen ? "rotate-180" : "rotate-0"}`}
+                              />
+                            </button>
                           </div>
-                          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                            {request?.reopen_history?.[request.reopen_history.length - 1]?.note ||
-                              request?.reopen_note ||
-                              "Tenant reported the issue persists. Please reassess, reassign or reschedule the repair."}
-                          </p>
+
+                          {/* Reopen Reason Quote (Clean & Friendly) */}
+                          <div className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5 pl-8.5">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">Reopen Reason:</span>
+                            <span className="text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                              "{latestReopenEntry?.note ||
+                                request?.reopen_note ||
+                                "Tenant reported the issue persists. Please reassess, reassign or reschedule the repair."}"
+                            </span>
+                          </div>
+
+                          {/* Expandable Previous Cycle Details Accordion */}
+                          {isPreviousArchiveOpen && (
+                            <div className="mt-1 pt-3 border-t border-slate-200/90 dark:border-slate-800 space-y-3 animate-in fade-in zoom-in-98 duration-150">
+                              {/* Multi-cycle tabs if more than 1 past service record */}
+                              {historicalCycles.length > 1 && (
+                                <div className="flex items-center gap-1.5 pb-1 border-b border-slate-100 dark:border-slate-800/80 overflow-x-auto">
+                                  <span className="text-[11px] font-semibold text-slate-500 mr-1 shrink-0">Prior Records:</span>
+                                  {historicalCycles.map((cycle, cIdx) => (
+                                    <button
+                                      key={cycle.cycleIndex}
+                                      type="button"
+                                      onClick={() => setSelectedArchiveIndex(cIdx)}
+                                      className={`px-2.5 py-1 text-xs rounded-md font-semibold transition cursor-pointer shrink-0 border ${
+                                        selectedArchiveIndex === cIdx
+                                          ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600 shadow-2xs"
+                                          : "bg-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                                      }`}
+                                    >
+                                      {cycle.cycleLabel}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                                {/* Left Column: Resolution Narrative & Proof */}
+                                <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-950 p-3.5 space-y-2.5 flex flex-col justify-between shadow-2xs">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
+                                        <FileCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
+                                        <span>{activeArchiveEntry.cycleLabel} Notes</span>
+                                      </div>
+                                      {(activeCycleData?.resolved_at || activeCycleData?.closed_at) && (
+                                        <span className="text-[10px] text-slate-400 font-normal">
+                                          {fmtDateTime(activeCycleData?.resolved_at || activeCycleData?.closed_at)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/70 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                                      {activeCycleData?.resolution_note ||
+                                        activeCycleData?.resolutionProof?.notes ||
+                                        "No resolution explanation recorded in this cycle."}
+                                    </p>
+                                  </div>
+
+                                  {/* Proof Attachments */}
+                                  {proofPhotos.length > 0 && (
+                                    <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
+                                      <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                                        <ImageIcon size={12} />
+                                        <span>Completion Proof Attachments ({proofPhotos.length}):</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {proofPhotos.map((photo, pIdx) => (
+                                          <AttachmentThumbnail
+                                            key={pIdx}
+                                            attachment={photo}
+                                            index={pIdx}
+                                            onPreviewImage={setLightboxImage}
+                                            tag={`${activeArchiveEntry.cycleLabel} Proof`}
+                                            size="normal"
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right Column: Financials & Rating Overview */}
+                                <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-950 p-3.5 space-y-2.5 flex flex-col justify-between shadow-2xs">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
+                                        <Coins size={14} className="text-amber-600 dark:text-amber-400" />
+                                        <span>{activeArchiveEntry.cycleLabel} Repair Financials</span>
+                                      </div>
+                                      <span className="text-[10px] font-semibold text-slate-500">
+                                        {isTenantChargeable ? "Tenant Billed" : "Dormitory Absorbed"}
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                      <div className="rounded-lg bg-slate-50/80 dark:bg-slate-900/80 p-2 border border-slate-100 dark:border-slate-800/80">
+                                        <span className="block text-[10px] font-semibold text-slate-400">LABOR</span>
+                                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                          {formatPeso(laborCostNum)}
+                                        </span>
+                                      </div>
+                                      <div className="rounded-lg bg-slate-50/80 dark:bg-slate-900/80 p-2 border border-slate-100 dark:border-slate-800/80">
+                                        <span className="block text-[10px] font-semibold text-slate-400">MATERIALS</span>
+                                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                          {formatPeso(materialsCostNum)}
+                                        </span>
+                                      </div>
+                                      <div className="rounded-lg bg-slate-50/80 dark:bg-slate-900/80 p-2 border border-slate-100 dark:border-slate-800/80">
+                                        <span className="block text-[10px] font-semibold text-slate-400">TOTAL</span>
+                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                          {formatPeso(totalCostNum)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                                      <span>Attribution:</span>
+                                      <strong className="text-slate-800 dark:text-slate-200">
+                                        {isTenantChargeable
+                                          ? "Tenant Account Deduction"
+                                          : "Owner Company Operating Expense"}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  {/* Contractor Rating (if recorded) */}
+                                  {ratingNum > 0 && (
+                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100 text-xs">
+                                          <Award size={13} className="text-amber-500" />
+                                          <span>Contractor Rating</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          {[1, 2, 3, 4, 5].map((star) => (
+                                            <Star
+                                              key={star}
+                                              size={12}
+                                              className={
+                                                star <= ratingNum
+                                                  ? "fill-amber-400 text-amber-400"
+                                                  : "text-slate-300 dark:text-slate-600"
+                                              }
+                                            />
+                                          ))}
+                                          <span className="ml-1 text-xs font-bold text-slate-900 dark:text-slate-100">
+                                            {ratingNum} / 5
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {ratingTags.length > 0 && (
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          {ratingTags.map((tag, tIdx) => (
+                                            <span
+                                              key={tIdx}
+                                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                                            >
+                                              {tag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {ratingNotes && (
+                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 italic">
+                                          "{ratingNotes}"
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Stage 4 Resolved Alert Banner (Awaiting Tenant Feedback & 7-Day Auto-Completion Notice) */}
                     {isResolvedStage && (

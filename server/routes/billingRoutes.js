@@ -552,6 +552,18 @@ router.get(
 );
 
 /**
+ * POST /api/billing/overdue-notices/batch-send
+ * Batch dispatch overdue notices for multiple accounts.
+ */
+router.post(
+  "/overdue-notices/batch-send",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.batchSendOverdueNoticesAction,
+);
+
+/**
  * POST /api/billing/:billId/send-overdue-notice
  * Issue formal Overdue Notice (Stage 1, 2, or 3 Final), snapshot debt, dispatch multi-channel receipts.
  */
@@ -614,6 +626,18 @@ router.patch(
   requirePermission("manageBilling"),
   filterByBranch,
   billingController.executeApprovedTermination,
+);
+
+/**
+ * DELETE /api/billing/termination-reviews/:id
+ * Delete or archive an administrative termination review case.
+ */
+router.delete(
+  "/termination-reviews/:id",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.deleteTerminationCase,
 );
 
 // ============================================================================

@@ -73,7 +73,7 @@ export default function DataTable({
 
   // Pagination
   const pageSize = pagination?.pageSize || safeData.length || 1;
-  const currentPage = pagination?.page || 1;
+  const currentPage = pagination?.page ?? pagination?.currentPage ?? 1;
   const total = pagination?.total ?? safeData.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 

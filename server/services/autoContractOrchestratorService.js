@@ -742,3 +742,80 @@ async function notifyBranchAdminsSafe(branch, type, title, message, options = {}
     // Non-fatal notification failure
   }
 }
+
+/**
+ * Periodically checks for:
+ * 1. Contracts nearing expiry (within 30 days) to send advance tenant renewal reminders.
+ * 2. Active contracts that have passed their leaseEndDate without notice to transition to 'rolling' month-to-month.
+ */
+export async function checkAndRollExpiredContracts() {
+  const now = new Date();
+  const rolled = [];
+  const reminded = [];
+
+  try {
+    // 1. Roll expired active contracts to rolling month-to-month
+    const expiredActiveContracts = await Contract.find({
+      status: { $in: ["active", "expiring_soon"] },
+      isCurrent: true,
+      leaseEndDate: { $lt: now },
+    });
+
+    for (const contract of expiredActiveContracts) {
+      try {
+        await transitionContract(
+          contract,
+          "rolling",
+          null,
+          "automatic_month_to_month_rollover",
+        );
+        rolled.push(contract._id);
+        logger.info(
+          { contractId: contract._id, contractNumber: contract.contractNumber },
+          "[AutoContract] Transitioned expired active contract to rolling month-to-month",
+        );
+      } catch (err) {
+        logger.warn(
+          { err, contractId: contract._id },
+          "[AutoContract] Failed to transition contract to rolling month-to-month",
+        );
+      }
+    }
+
+    // 2. 30-day advance expiry reminders
+    const thirtyDaysAhead = dayjs().add(30, "day").toDate();
+    const expiringSoonContracts = await Contract.find({
+      status: "active",
+      isCurrent: true,
+      leaseEndDate: { $lte: thirtyDaysAhead, $gt: now },
+      advanceRenewalPromptSentAt: { $exists: false },
+    });
+
+    for (const contract of expiringSoonContracts) {
+      try {
+        contract.advanceRenewalPromptSentAt = new Date();
+        await contract.save();
+
+        if (contract.tenantId) {
+          notify(
+            contract.tenantId,
+            "contract_expiring_soon",
+            "Upcoming Lease Expiration",
+            `Your lease contract is scheduled to end on ${dayjs(contract.leaseEndDate).format("MMMM D, YYYY")}. Please inform the front desk if you plan to renew or extend your stay.`,
+            { entityType: "contract", entityId: String(contract._id), actionUrl: "/tenant/contracts" },
+          ).catch(() => {});
+        }
+        reminded.push(contract._id);
+      } catch (remindErr) {
+        logger.warn(
+          { err: remindErr, contractId: contract._id },
+          "[AutoContract] Failed to dispatch 30-day renewal prompt",
+        );
+      }
+    }
+  } catch (error) {
+    logger.error({ err: error }, "[AutoContract] checkAndRollExpiredContracts error");
+  }
+
+  return { rolledCount: rolled.length, remindedCount: reminded.length, rolled, reminded };
+}

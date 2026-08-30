@@ -468,13 +468,30 @@ export const reopenMyRequest = async (req, res, next) => {
 
     const note = toOptionalText(req.body.note || req.body.reopen_note);
     const reopenedAt = new Date();
+    const tenantActor = buildActorSnapshot(dbUser);
+
+    const previousCycleSnapshot = {
+      iteration: request.reopenCount || 1,
+      previous_status: request.status,
+      resolved_at: request.resolved_at || null,
+      closed_at: request.closed_at || null,
+      resolution_note: request.resolution_note || request.resolutionProof?.notes || null,
+      resolutionProof: request.resolutionProof ? JSON.parse(JSON.stringify(request.resolutionProof)) : null,
+      costBreakdown: request.costBreakdown ? JSON.parse(JSON.stringify(request.costBreakdown)) : null,
+      providerRating: request.providerRating ? JSON.parse(JSON.stringify(request.providerRating)) : null,
+      resolutionConfirmation: request.resolutionConfirmation ? JSON.parse(JSON.stringify(request.resolutionConfirmation)) : null,
+      assignedProvider: request.assignedProvider ? JSON.parse(JSON.stringify(request.assignedProvider)) : null,
+      assignedProviderName: request.assignedProviderName || request.assigned_to || null,
+      scheduledDate: request.scheduledDate || null,
+      scheduledTime: request.scheduledTime || null,
+      work_started_at: request.work_started_at || null,
+    };
 
     request.isReopened = true;
     request.reopen_note = note;
     request.reopened_at = reopenedAt;
     request.updated_at = reopenedAt;
     request.reopenCount = (request.reopenCount || 0) + 1;
-    const tenantActor = buildActorSnapshot(dbUser);
     request.reopen_history = [
       ...(Array.isArray(request.reopen_history) ? request.reopen_history : []),
       {
@@ -484,6 +501,7 @@ export const reopenMyRequest = async (req, res, next) => {
         actor_id: tenantActor.actor_id,
         actor_name: tenantActor.actor_name,
         actor_role: tenantActor.actor_role,
+        previousData: previousCycleSnapshot,
       },
     ];
     request.status = "pending";

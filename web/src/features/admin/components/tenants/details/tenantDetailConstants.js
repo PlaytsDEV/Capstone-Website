@@ -181,8 +181,6 @@ export const getViolationStatusBadge = (status) => {
       return { label: "Warning Issued", color: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
       return { label: "Penalty Issued", color: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
-    case "escalated":
-      return { label: "Escalated to Board", color: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "resolved":
       return { label: "Resolved", color: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
     case "dismissed":

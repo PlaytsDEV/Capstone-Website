@@ -543,6 +543,11 @@ export default function AdminAnnouncementsPage() {
   const announcements = data?.announcements || [];
   const defaultBranch = user?.branch || "both";
 
+  const targetDeletingNotice = useMemo(
+    () => announcements.find((a) => a.id === announcementToDelete),
+    [announcements, announcementToDelete],
+  );
+
   const errors = useMemo(() => validateAnnouncementForm(form), [form]);
   const isFormValid = Object.keys(errors).length === 0;
 
@@ -757,27 +762,34 @@ export default function AdminAnnouncementsPage() {
     if (isOwner) payload.targetBranch = form.targetBranch;
 
     try {
-      const result = await createAnnouncement.mutateAsync(payload);
-      showNotification(
-        `${form.contentType === "policy" ? "Policy" : "Announcement"} saved for ${result.recipientCount} tenant${result.recipientCount === 1 ? "" : "s"}.`,
-        "success",
-        3500,
-      );
+      await createAnnouncement.mutateAsync(payload);
+      const label = form.contentType === "policy" ? "Policy" : "Announcement";
+      let successMessage = `${label} published successfully.`;
+      if (form.publicationStatus === "scheduled") {
+        successMessage = `${label} scheduled successfully.`;
+      } else if (form.publicationStatus === "draft") {
+        successMessage = `${label} draft saved successfully.`;
+      }
+      showNotification(successMessage, "success", 3500);
       setForm({ ...INITIAL_FORM, targetBranch: isOwner ? "both" : defaultBranch });
       setTouched({});
     } catch (error) {
-      showNotification(error.message || "Failed to publish announcement.", "error", 4000);
+      const label = form.contentType === "policy" ? "policy" : "announcement";
+      showNotification(error.message || `Failed to publish ${label}.`, "error", 4000);
     }
   };
 
   const handleEditSubmit = async (payload) => {
+    const isPolicy =
+      editingAnnouncement?.contentType === "policy" || payload.contentType === "policy";
+    const label = isPolicy ? "Policy" : "Announcement";
     try {
       await updateAnnouncement.mutateAsync({ id: editingAnnouncement.id, data: payload });
-      showNotification("Announcement updated successfully.", "success", 3500);
+      showNotification(`${label} updated successfully.`, "success", 3500);
       setIsEditingModalOpen(false);
       setEditingAnnouncement(null);
     } catch (error) {
-      showNotification(error.message || "Failed to update announcement.", "error", 4000);
+      showNotification(error.message || `Failed to update ${label.toLowerCase()}.`, "error", 4000);
     }
   };
 
@@ -787,13 +799,15 @@ export default function AdminAnnouncementsPage() {
   const cancelDelete = () => { if (!deleteAnnouncement.isPending) setAnnouncementToDelete(null); };
   const confirmDelete = async () => {
     if (!announcementToDelete) return;
+    const target = announcements.find((a) => a.id === announcementToDelete);
+    const label = target?.contentType === "policy" ? "Policy" : "Announcement";
     try {
       await deleteAnnouncement.mutateAsync(announcementToDelete);
-      showNotification("Announcement deleted successfully.", "success", 3500);
+      showNotification(`${label} deleted successfully.`, "success", 3500);
       setAnnouncementToDelete(null);
     } catch (error) {
       setAnnouncementToDelete(null);
-      showNotification(error.message || "Failed to delete announcement.", "error", 4000);
+      showNotification(error.message || `Failed to delete ${label.toLowerCase()}.`, "error", 4000);
     }
   };
 
@@ -1473,9 +1487,9 @@ export default function AdminAnnouncementsPage() {
         isOpen={!!announcementToDelete}
         onClose={cancelDelete}
         onConfirm={confirmDelete}
-        title="Delete Announcement"
-        message="Are you sure you want to delete this announcement? This action cannot be undone."
-        confirmText="Delete Announcement"
+        title={`Delete ${targetDeletingNotice?.contentType === "policy" ? "Policy" : "Announcement"}`}
+        message={`Are you sure you want to delete this ${targetDeletingNotice?.contentType === "policy" ? "policy" : "announcement"}? This action cannot be undone.`}
+        confirmText={`Delete ${targetDeletingNotice?.contentType === "policy" ? "Policy" : "Announcement"}`}
         variant="danger"
         loading={deleteAnnouncement.isPending}
       />

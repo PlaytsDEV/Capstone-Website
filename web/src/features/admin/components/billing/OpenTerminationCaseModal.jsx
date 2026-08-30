@@ -7,7 +7,8 @@ import {
   CheckCircle2,
   LoaderCircle,
   User,
-  Search,
+  FileText,
+  DollarSign,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
 import { showNotification } from "../../../../shared/utils/notification.js";
@@ -22,6 +23,7 @@ const getInitials = (name) => {
 export default function OpenTerminationCaseModal({
   isOpen,
   branch,
+  prefilledCaseData = null,
   initialTenantId = "",
   initialReason = "",
   initialTenantName = "",
@@ -29,23 +31,42 @@ export default function OpenTerminationCaseModal({
   onCreated,
 }) {
   const [tenants, setTenants] = useState([]);
-  const [loadingTenants, setLoadingTenants] = useState(true);
+  const [loadingTenants, setLoadingTenants] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState("");
   const [triggerReason, setTriggerReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+
+  const isPrefilledMode = Boolean(
+    prefilledCaseData?.tenantId ||
+    prefilledCaseData?.tenantName ||
+    initialTenantId ||
+    initialTenantName
+  );
+
+  const prefilledTenantName = prefilledCaseData?.tenantName || initialTenantName || "Tenant";
+  const prefilledRoomName = prefilledCaseData?.roomName || "Room";
+  const prefilledBranch = (prefilledCaseData?.branch || branch) === "guadalupe" ? "Guadalupe" : "Gil Puyat";
+  const prefilledBillNumber = prefilledCaseData?.billNumber || "";
+  const prefilledRemainingAmount = prefilledCaseData?.remainingAmount != null ? Number(prefilledCaseData.remainingAmount) : null;
 
   useEffect(() => {
     if (isOpen) {
       setError("");
       setSuccessMsg("");
-      setTriggerReason(initialReason || "");
-      setSelectedTenantId(initialTenantId || "");
-      fetchActiveTenants();
+      const initialRsn = prefilledCaseData?.triggerReason || initialReason || "";
+      const initialTId = prefilledCaseData?.tenantId || initialTenantId || "";
+      setTriggerReason(initialRsn);
+      setSelectedTenantId(initialTId);
+
+      if (!isPrefilledMode) {
+        fetchActiveTenants();
+      } else {
+        setLoadingTenants(false);
+      }
     }
-  }, [isOpen, branch, initialTenantId, initialReason]);
+  }, [isOpen, branch, prefilledCaseData, initialTenantId, initialReason, isPrefilledMode]);
 
   const fetchActiveTenants = async () => {
     try {
@@ -61,16 +82,6 @@ export default function OpenTerminationCaseModal({
 
   if (!isOpen) return null;
 
-  const filteredTenants = tenants.filter((t) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (t.fullName && t.fullName.toLowerCase().includes(q)) ||
-      (t.roomName && t.roomName.toLowerCase().includes(q)) ||
-      (t.email && t.email.toLowerCase().includes(q))
-    );
-  });
-
   const selectedTenant = tenants.find((t) => String(t.tenantId) === String(selectedTenantId));
 
   const handleSubmit = async (e) => {
@@ -78,7 +89,19 @@ export default function OpenTerminationCaseModal({
     setError("");
     setSuccessMsg("");
 
-    if (!selectedTenantId) {
+    const targetTenantId = isPrefilledMode
+      ? (prefilledCaseData?.tenantId || initialTenantId)
+      : (selectedTenant ? selectedTenant.tenantId : selectedTenantId);
+
+    const targetReservationId = isPrefilledMode
+      ? (prefilledCaseData?.reservationId || selectedTenant?.reservationId)
+      : (selectedTenant ? selectedTenant.reservationId : undefined);
+
+    const targetBranch = isPrefilledMode
+      ? (prefilledCaseData?.branch || branch || "gil-puyat")
+      : (selectedTenant?.branch || branch || "gil-puyat");
+
+    if (!targetTenantId) {
       const errText = "Please select an active tenant.";
       setError(errText);
       showNotification(errText, "warning");
@@ -95,9 +118,13 @@ export default function OpenTerminationCaseModal({
     try {
       setSubmitting(true);
       await billingApi.createTerminationCase({
-        tenantId: selectedTenant ? selectedTenant.tenantId : selectedTenantId,
-        reservationId: selectedTenant ? selectedTenant.reservationId : undefined,
-        branch: selectedTenant?.branch || branch || "gil-puyat",
+        tenantId: targetTenantId,
+        reservationId: targetReservationId,
+        branch: targetBranch,
+        billId: prefilledCaseData?.billId || undefined,
+        totalOutstandingAtOpen: prefilledCaseData?.remainingAmount,
+        penaltyAmountAtOpen: prefilledCaseData?.penaltyAmount,
+        daysOverdueAtOpen: prefilledCaseData?.daysOverdue,
         triggerReason: triggerReason.trim(),
       });
 
@@ -107,7 +134,7 @@ export default function OpenTerminationCaseModal({
       onCreated?.();
       setTimeout(() => {
         onClose();
-      }, 1200);
+      }, 1000);
     } catch (err) {
       console.error("[OpenTerminationCaseModal] Create review case error:", err);
       const friendlyErr = err.message || "Unable to open termination review case. Please try again.";
@@ -141,7 +168,7 @@ export default function OpenTerminationCaseModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-card-foreground"
+            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-card-foreground cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -163,43 +190,86 @@ export default function OpenTerminationCaseModal({
             </div>
           )}
 
-          {/* Select Tenant */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-card-foreground">
-              Select Tenant <span className="text-rose-500">*</span>
-            </label>
-            {loadingTenants ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">
-                <LoaderCircle size={16} className="animate-spin inline mb-1" /> Loading active tenants...
+          {/* Tenant Identification Section */}
+          {isPrefilledMode ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-card-foreground">
+                  Target Tenant
+                </label>
+                <span className="text-[10px] font-bold text-muted-foreground">
+                  Auto-populated from notice
+                </span>
               </div>
-            ) : (
-              <select
-                value={selectedTenantId}
-                onChange={(e) => setSelectedTenantId(e.target.value)}
-                required
-                className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
-              >
-                <option value="">-- Choose Tenant --</option>
-                {tenants.map((t) => (
-                  <option key={String(t.tenantId)} value={String(t.tenantId)}>
-                    {t.fullName} ({t.roomName || "Room"} · {t.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"})
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+              <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-border text-xs font-bold shadow-xs">
+                    {getInitials(prefilledTenantName)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-card-foreground truncate">{prefilledTenantName}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {prefilledRoomName} · {prefilledBranch}
+                    </p>
+                  </div>
+                </div>
 
-          {selectedTenant && (
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-3 text-xs">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-xs font-bold shadow-xs">
-                {getInitials(selectedTenant.fullName)}
+                {(prefilledBillNumber || prefilledRemainingAmount != null) && (
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[11px]">
+                    {prefilledBillNumber && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <FileText size={13} className="shrink-0 text-muted-foreground" />
+                        <span>Statement #{prefilledBillNumber}</span>
+                      </div>
+                    )}
+                    {prefilledRemainingAmount != null && (
+                      <div className="flex items-center gap-1.5 font-bold text-rose-600 dark:text-rose-400">
+                        <DollarSign size={13} className="shrink-0" />
+                        <span>₱{prefilledRemainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div>
-                <p className="font-bold text-card-foreground">{selectedTenant.fullName}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Room: <strong>{selectedTenant.roomName}</strong> · Warnings Logged: <strong>{selectedTenant.warningCount || 0}</strong>
-                </p>
-              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-card-foreground">
+                Select Tenant <span className="text-rose-500">*</span>
+              </label>
+              {loadingTenants ? (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  <LoaderCircle size={16} className="animate-spin inline mb-1" /> Loading active tenants...
+                </div>
+              ) : (
+                <select
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                  required
+                  className="w-full h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none cursor-pointer"
+                >
+                  <option value="">-- Choose Tenant --</option>
+                  {tenants.map((t) => (
+                    <option key={String(t.tenantId)} value={String(t.tenantId)}>
+                      {t.fullName} ({t.roomName || "Room"} · {t.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"})
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {selectedTenant && (
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-3 text-xs mt-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-border text-xs font-bold shadow-xs">
+                    {getInitials(selectedTenant.fullName)}
+                  </div>
+                  <div>
+                    <p className="font-bold text-card-foreground">{selectedTenant.fullName}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Room: <strong>{selectedTenant.roomName}</strong> · Warnings Logged: <strong>{selectedTenant.warningCount || 0}</strong>
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -221,7 +291,7 @@ export default function OpenTerminationCaseModal({
               value={triggerReason}
               onChange={(e) => setTriggerReason(e.target.value)}
               placeholder="Describe why this tenant is being referred to the review board (minimum 10 characters)..."
-              className="w-full rounded-xl border border-border bg-card p-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
+              className="w-full rounded-xl border border-border bg-card p-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none leading-relaxed"
             />
           </div>
 
@@ -230,15 +300,15 @@ export default function OpenTerminationCaseModal({
             <button
               type="button"
               onClick={onClose}
-              className="h-8 rounded-xl border border-border bg-card px-4 text-xs font-bold text-card-foreground hover:bg-muted"
+              className="h-8 rounded-xl border border-border bg-card px-4 text-xs font-bold text-card-foreground hover:bg-muted cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={submitting || !selectedTenantId}
-              title={!selectedTenantId ? "Please select a tenant first" : "Open Review Case"}
-              className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              disabled={submitting || (!isPrefilledMode && !selectedTenantId)}
+              title={!isPrefilledMode && !selectedTenantId ? "Please select a tenant first" : "Open Review Case"}
+              className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white cursor-pointer"
             >
               {submitting ? (
                 <>

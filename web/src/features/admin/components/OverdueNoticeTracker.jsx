@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   BellRing,
   RefreshCw,
@@ -11,11 +13,17 @@ import {
   DollarSign,
   Send,
   ShieldAlert,
-  ArrowRight,
+  MoreVertical,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  Sparkles,
 } from "lucide-react";
 import { billingApi } from "../../../shared/api/billingApi.js";
+import { showNotification } from "../../../shared/utils/notification.js";
 import StatusBadge from "./shared/StatusBadge.jsx";
 import DispatchNoticeModal from "./billing/DispatchNoticeModal.jsx";
+import BatchDispatchNoticeModal from "./billing/BatchDispatchNoticeModal.jsx";
 
 const getInitials = (name) => {
   if (!name) return "TN";
@@ -30,6 +38,22 @@ export default function OverdueNoticeTracker({
   onNoticesUpdated,
   hideTopKpiCards = false,
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stageParam = searchParams.get("stage") || "all";
+  const stageFilter = ["all", "eligible", "notice_1", "notice_2", "notice_3"].includes(stageParam)
+    ? stageParam
+    : "all";
+
+  const handleStageFilterChange = (newStage) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (newStage === "all") {
+      nextParams.delete("stage");
+    } else {
+      nextParams.set("stage", newStage);
+    }
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+  };
+
   const [notices, setNotices] = useState([]);
   const [stats, setStats] = useState({
     totalExposure: 0,
@@ -41,12 +65,169 @@ export default function OverdueNoticeTracker({
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState("all"); // all, eligible, notice_1, notice_2, notice_3
+
+  const filteredNotices = useMemo(() => {
+    if (!searchQuery.trim()) return notices;
+    const q = searchQuery.toLowerCase();
+    return notices.filter((n) => {
+      const name = String(n.tenantName || "").toLowerCase();
+      const room = String(n.roomName || n.roomId || "").toLowerCase();
+      const bill = String(n.billNumber || n.billId || "").toLowerCase();
+      return name.includes(q) || room.includes(q) || bill.includes(q);
+    });
+  }, [notices, searchQuery]);
+
+  // Batch Selection State
+  const [selectedBillIds, setSelectedBillIds] = useState(new Set());
+  const [isBatchSending, setIsBatchSending] = useState(false);
+  const [quickSendingBillId, setQuickSendingBillId] = useState(null);
 
   // Modal State
   const [selectedItemForNotice, setSelectedItemForNotice] = useState(null);
   const [selectedTargetStage, setSelectedTargetStage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+
+  // Stage Buckets for Notice Escalation Progression
+  const eligibleForStage1 = useMemo(
+    () => notices.filter((n) => Number(n.noticeCount || 0) === 0 || n.noticeStage === "eligible"),
+    [notices]
+  );
+  const eligibleForStage2 = useMemo(
+    () => notices.filter((n) => Number(n.noticeCount || 0) === 1 || n.noticeStage === "notice_1"),
+    [notices]
+  );
+  const eligibleForStage3 = useMemo(
+    () => notices.filter((n) => Number(n.noticeCount || 0) === 2 || n.noticeStage === "notice_2"),
+    [notices]
+  );
+
+  // Dynamic Batch Target Stage & Label calculation
+  const batchActionConfig = useMemo(() => {
+    if (selectedBillIds.size > 0) {
+      const selectedItems = notices.filter((n) => selectedBillIds.has(n.billId || n._id));
+      const minCount = Math.min(...selectedItems.map((n) => Number(n.noticeCount || 0)), 0);
+      const targetStage = Math.min(3, Math.max(1, minCount + 1));
+      const stageLabel = targetStage === 3 ? "Final Demand" : targetStage === 2 ? "Notice 2" : "Notice 1";
+      return {
+        targetStage,
+        label: `Send ${stageLabel} (${selectedBillIds.size})`,
+        items: selectedItems,
+        disabled: false,
+      };
+    }
+
+    if (stageFilter === "eligible") {
+      return {
+        targetStage: 1,
+        label: `Send All 1st Reminders (${eligibleForStage1.length})`,
+        items: eligibleForStage1,
+        disabled: eligibleForStage1.length === 0,
+      };
+    }
+    if (stageFilter === "notice_1") {
+      return {
+        targetStage: 2,
+        label: `Send All 2nd Notices (${eligibleForStage2.length})`,
+        items: eligibleForStage2,
+        disabled: eligibleForStage2.length === 0,
+      };
+    }
+    if (stageFilter === "notice_2") {
+      return {
+        targetStage: 3,
+        label: `Send All Final Notices (${eligibleForStage3.length})`,
+        items: eligibleForStage3,
+        disabled: eligibleForStage3.length === 0,
+      };
+    }
+
+    // Default when viewing "all" overdue accounts
+    if (eligibleForStage1.length > 0) {
+      return {
+        targetStage: 1,
+        label: `Send All 1st Reminders (${eligibleForStage1.length})`,
+        items: eligibleForStage1,
+        disabled: false,
+      };
+    }
+    if (eligibleForStage2.length > 0) {
+      return {
+        targetStage: 2,
+        label: `Send All 2nd Notices (${eligibleForStage2.length})`,
+        items: eligibleForStage2,
+        disabled: false,
+      };
+    }
+    if (eligibleForStage3.length > 0) {
+      return {
+        targetStage: 3,
+        label: `Send All Final Notices (${eligibleForStage3.length})`,
+        items: eligibleForStage3,
+        disabled: false,
+      };
+    }
+
+    return {
+      targetStage: 1,
+      label: "All Notices Dispatched",
+      items: [],
+      disabled: true,
+    };
+  }, [selectedBillIds, notices, stageFilter, eligibleForStage1, eligibleForStage2, eligibleForStage3]);
+
+  // Portal-Backed Floating Action Menu State (Immune to table/card scroll clipping)
+  const [activeMenu, setActiveMenu] = useState(null); // { item, coords: { top, bottom, right } }
+  const menuRef = useRef(null);
+
+  const handleToggleMenu = (e, item) => {
+    e.stopPropagation();
+    if (activeMenu?.item?._id === item._id) {
+      setActiveMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const isAbove = spaceBelow < 250;
+
+    setActiveMenu({
+      item,
+      coords: {
+        top: isAbove ? "auto" : `${rect.bottom + 6}px`,
+        bottom: isAbove ? `${window.innerHeight - rect.top + 6}px` : "auto",
+        right: `${Math.max(16, window.innerWidth - rect.right)}px`,
+      },
+    });
+  };
+
+  // Close floating menu on click outside, window scroll, or escape key
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setActiveMenu(null);
+      }
+    };
+    const handleScroll = () => {
+      setActiveMenu(null);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setActiveMenu(null);
+      }
+    };
+
+    if (activeMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener("scroll", handleScroll, true);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        window.removeEventListener("scroll", handleScroll, true);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [activeMenu]);
 
   const fetchNotices = async () => {
     try {
@@ -73,6 +254,7 @@ export default function OverdueNoticeTracker({
   }, [branch, stageFilter]);
 
   const handleOpenNoticeModal = (item, stage) => {
+    setActiveMenu(null);
     setSelectedItemForNotice(item);
     setSelectedTargetStage(stage);
     setIsModalOpen(true);
@@ -83,137 +265,58 @@ export default function OverdueNoticeTracker({
     onNoticesUpdated?.();
   };
 
-  const filteredNotices = useMemo(() => {
-    if (!searchQuery.trim()) return notices;
-    const q = searchQuery.toLowerCase();
-    return notices.filter((n) => {
-      const name = String(n.tenantName || "").toLowerCase();
-      const room = String(n.roomName || n.roomId || "").toLowerCase();
-      const bill = String(n.billNumber || n.billId || "").toLowerCase();
-      return name.includes(q) || room.includes(q) || bill.includes(q);
+  const handleSelectAll = () => {
+    if (selectedBillIds.size === filteredNotices.length) {
+      setSelectedBillIds(new Set());
+    } else {
+      setSelectedBillIds(new Set(filteredNotices.map((n) => n.billId || n._id)));
+    }
+  };
+
+  const handleToggleSelectBill = (billId) => {
+    setSelectedBillIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(billId)) next.delete(billId);
+      else next.add(billId);
+      return next;
     });
-  }, [notices, searchQuery]);
+  };
+
+  const handleBatchSendNotices = () => {
+    if (batchActionConfig.disabled || batchActionConfig.items.length === 0) {
+      showNotification("No overdue accounts are currently eligible for this notice stage.", "warning");
+      return;
+    }
+    setIsBatchModalOpen(true);
+  };
+
+  const handleQuickSend = async (item, stage) => {
+    const billId = item.billId || item._id;
+    try {
+      setQuickSendingBillId(billId);
+      await billingApi.sendOverdueNotice(billId, {
+        noticeNumber: stage,
+        noticeType: `notice_${stage}`,
+      });
+      showNotification(`Notice ${stage} sent to ${item.tenantName || "tenant"}.`, "success");
+      fetchNotices();
+      onNoticesUpdated?.();
+    } catch (err) {
+      console.error("Quick send error:", err);
+      showNotification(err.message || "Unable to send notice.", "error");
+    } finally {
+      setQuickSendingBillId(null);
+    }
+  };
 
   return (
-    <div className="space-y-4 text-card-foreground">
-      {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <BellRing size={18} className="text-amber-600 dark:text-amber-400" />
-            Notice Escalation Pipeline
-          </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Formal overdue escalation sequence: Eligible → 1st Reminder → 2nd Urgent Notice → Final Demand.
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-            title="Refresh notice delivery records"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Summary Cards (only when standalone) */}
-      {!hideTopKpiCards && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
-          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-                Total Overdue Debt
-              </span>
-              <DollarSign size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
-              ₱{Number(stats.totalExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-          </div>
-
-          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-                Overdue Accounts
-              </span>
-              <AlertCircle size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-card-foreground mt-2">
-              {stats.overdueAccounts || 0}
-            </div>
-          </div>
-
-          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-                Pending Notice 1
-              </span>
-              <Clock size={18} className="text-sky-600 dark:text-sky-400 shrink-0" />
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400 mt-2">
-              {stats.pendingNotice1Count || 0}
-            </div>
-          </div>
-
-          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-                Notice 2 Urgent
-              </span>
-              <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
-              {stats.notice1ActiveCount || stats.notice2ActiveCount || 0}
-            </div>
-          </div>
-
-          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-                Notice 3 / Critical
-              </span>
-              <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
-              {stats.notice3FinalCount || 0}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notices Data Card (Single Container, No Nested Boxes) */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-        {/* Stage Filter & Search Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5">
-          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
-            <span className="text-[11px] font-bold text-muted-foreground mr-1 hidden sm:inline">Stage Filter:</span>
-            {[
-              { key: "all", label: "All Overdue" },
-              { key: "eligible", label: "Needs 1st Reminder" },
-              { key: "notice_1", label: "1st Reminder Sent" },
-              { key: "notice_2", label: "2nd Notice Sent" },
-              { key: "notice_3", label: "Final Notice / Escalated" },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setStageFilter(tab.key)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-                  stageFilter === tab.key
-                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-900 font-bold"
-                    : "text-muted-foreground hover:bg-card hover:text-card-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative flex items-center w-full sm:w-56">
+    <div className="space-y-3 text-card-foreground">
+      {/* Notices Data Card Container */}
+      <div className="rounded-xl border border-border bg-card shadow-xs">
+        {/* Streamlined Integrated Toolbar: Search on Left, Batch Actions & Filters on Right */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5 rounded-t-xl">
+          {/* Left: Search Input */}
+          <div className="relative flex items-center w-full sm:w-64">
             <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
@@ -233,13 +336,70 @@ export default function OverdueNoticeTracker({
               </button>
             )}
           </div>
+
+          {/* Right: Batch Button + Stage Filter Dropdown + Refresh Button */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+            {/* Dynamic Batch Send Button */}
+            <button
+              type="button"
+              onClick={handleBatchSendNotices}
+              disabled={loading || batchActionConfig.disabled}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] dark:bg-slate-100 text-white dark:text-slate-900 px-3 text-xs font-bold shadow-xs hover:bg-[#13243D] dark:hover:bg-white active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              title={batchActionConfig.label}
+            >
+              <Send size={12} className="text-amber-400 dark:text-amber-600" />
+              <span>{batchActionConfig.label}</span>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground">Stage Filter:</span>
+              <select
+                value={stageFilter}
+                onChange={(e) => handleStageFilterChange(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 cursor-pointer"
+                aria-label="Filter overdue accounts by escalation stage"
+                title="Filter overdue accounts by escalation stage"
+              >
+                <option value="all">All Overdue</option>
+                <option value="eligible">Needs 1st Reminder</option>
+                <option value="notice_1">1st Reminder Sent</option>
+                <option value="notice_2">2nd Notice Sent</option>
+                <option value="notice_3">Final Notice / Escalated</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={loading}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer shrink-0"
+              title="Refresh notice records"
+            >
+              <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Notices Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[320px]">
           <table className="w-full text-left text-xs">
             <thead className="bg-background">
               <tr>
+                <th className="w-10 px-3 py-3 text-center">
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    className="text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                    title={selectedBillIds.size === filteredNotices.length ? "Deselect all" : "Select all"}
+                  >
+                    {filteredNotices.length > 0 && selectedBillIds.size === filteredNotices.length ? (
+                      <CheckSquare size={16} className="text-[#0A1628] dark:text-[#D4AF37]" />
+                    ) : (
+                      <Square size={16} className="text-muted-foreground" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Bill #</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Current Stage</th>
@@ -251,13 +411,13 @@ export default function OverdueNoticeTracker({
             <tbody className="divide-y divide-border/50 bg-card">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
+                  <td colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
                     <LoaderCircle size={20} className="animate-spin text-muted-foreground inline mb-1" /> Loading overdue escalation records...
                   </td>
                 </tr>
               ) : filteredNotices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center">
+                  <td colSpan={7} className="py-10 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
                       <CheckCircle2 size={26} className="text-emerald-600 mb-2" />
                       <p className="font-bold text-card-foreground">No overdue accounts found</p>
@@ -272,21 +432,50 @@ export default function OverdueNoticeTracker({
                   </td>
                 </tr>
               ) : (
-                filteredNotices.map((n) => {
-                  const isNotice3OrHigher = Boolean(
-                    n.noticeStage === "notice_3" || Number(n.noticeCount || 0) >= 3,
-                  );
+                filteredNotices.map((n, idx) => {
+                  const billId = n.billId || n._id;
+                  const noticeCount = Number(n.noticeCount || 0);
+                  const daysOverdue = Number(n.daysOverdue || 0);
+                  const isSelected = selectedBillIds.has(billId);
+
                   return (
-                    <tr key={n._id} className="group transition-colors hover:bg-muted/30">
+                    <tr key={n._id} className={`group transition-colors ${isSelected ? "bg-muted/40" : "hover:bg-muted/30"}`}>
+                      <td className="w-10 px-3 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelectBill(billId)}
+                          className="text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                          aria-label={`Select ${n.tenantName}`}
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={16} className="text-[#0A1628] dark:text-[#D4AF37]" />
+                          ) : (
+                            <Square size={16} className="text-muted-foreground" />
+                          )}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">
                             {getInitials(n.tenantName)}
                           </div>
                           <div>
-                            <p className="font-bold text-card-foreground">{n.tenantName || "Tenant"}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-card-foreground">{n.tenantName || "Tenant"}</p>
+                              {daysOverdue >= 60 ? (
+                                <span className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-transparent">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                  60d+ Severe Overdue
+                                </span>
+                              ) : daysOverdue >= 30 ? (
+                                <span className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-transparent">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                  30d+ Late
+                                </span>
+                              ) : null}
+                            </div>
                             <p className="text-[11px] text-muted-foreground">
-                              Room: <strong className="text-card-foreground font-semibold">{n.roomName || n.roomId || "N/A"}</strong> · {n.daysOverdue || 0}d late
+                              Room: <strong className="text-card-foreground font-semibold">{n.roomName || n.roomId || "N/A"}</strong> · {daysOverdue}d late
                             </p>
                           </div>
                         </div>
@@ -305,51 +494,29 @@ export default function OverdueNoticeTracker({
                           <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
                             Delivered: {new Date(n.deliveredAt).toLocaleDateString("en-PH")}
                           </span>
-                        ) : n.noticeCount === 0 ? (
+                        ) : noticeCount === 0 ? (
                           <span className="text-sky-700 dark:text-sky-400 font-medium">Eligible for 1st Reminder</span>
                         ) : (
                           <span className="text-amber-700 dark:text-amber-400 font-medium">Pending Delivery</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="relative inline-flex items-center justify-end">
+                          {/* Single Clean Actions Trigger Button */}
                           <button
                             type="button"
-                            onClick={() => handleOpenNoticeModal(n, 1)}
-                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98]"
-                            title="Send 1st Payment Reminder"
+                            onClick={(e) => handleToggleMenu(e, n)}
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border transition active:scale-[0.98] cursor-pointer ${
+                              activeMenu?.item?._id === n._id
+                                ? "bg-muted text-card-foreground shadow-inner"
+                                : "bg-card text-muted-foreground hover:bg-muted hover:text-card-foreground shadow-xs"
+                            }`}
+                            title="Open notice and review actions"
+                            aria-haspopup="true"
+                            aria-expanded={activeMenu?.item?._id === n._id}
                           >
-                            Send N1
+                            <MoreVertical size={14} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenNoticeModal(n, 2)}
-                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:bg-muted active:scale-[0.98]"
-                            title="Send 2nd Urgent Payment Demand"
-                          >
-                            Send N2
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenNoticeModal(n, 3)}
-                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-muted active:scale-[0.98]"
-                            title="Send Final Pre-Termination Notice"
-                          >
-                            Send Final
-                          </button>
-
-                          {/* Escalate to Board CTA for Notice 3 accounts */}
-                          {Boolean(isNotice3OrHigher && onEscalateToTermination) && (
-                            <button
-                              type="button"
-                              onClick={() => onEscalateToTermination(n)}
-                              className="inline-flex h-7 px-2.5 items-center gap-1 justify-center rounded-md bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 text-[11px] font-bold shadow-xs hover:bg-[#13243D] active:scale-[0.98]"
-                              title="Escalate to Administrative Termination Review Board"
-                            >
-                              <ShieldAlert size={12} className="text-rose-400 dark:text-rose-600" />
-                              <span>Escalate</span>
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -361,7 +528,132 @@ export default function OverdueNoticeTracker({
         </div>
       </div>
 
-      {/* Dispatch Notice Modal */}
+      {/* Portal-Backed Floating Dropdown Menu (100% immune to table/card scroll clipping) */}
+      {activeMenu && createPortal(
+        (() => {
+          const item = activeMenu.item;
+          const noticeCount = Number(item.noticeCount || 0);
+          const daysOverdue = Number(item.daysOverdue || 0);
+
+          return (
+            <div
+              ref={menuRef}
+              style={{
+                position: "fixed",
+                top: activeMenu.coords.top,
+                bottom: activeMenu.coords.bottom,
+                right: activeMenu.coords.right,
+                zIndex: 9999,
+              }}
+              className="w-64 rounded-xl border border-border bg-card p-1.5 shadow-2xl animate-in fade-in-0 zoom-in-95"
+            >
+              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border/50 mb-1 gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0">
+                  Notice Actions
+                </span>
+                <span className="text-[10px] font-medium text-muted-foreground truncate">
+                  {noticeCount === 0 ? "No notices sent" : `Notice ${noticeCount} active`}
+                </span>
+              </div>
+
+              {/* Option 1: Send Notice 1 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveMenu(null);
+                  handleOpenNoticeModal(item, 1);
+                }}
+                className="w-full flex items-center justify-between gap-2.5 rounded-lg p-2 text-left transition hover:bg-muted cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 text-sky-600 dark:text-sky-400">
+                    <Clock size={13} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-card-foreground truncate">Send Notice 1</p>
+                    <p className="text-[10px] text-muted-foreground truncate">Friendly payment reminder</p>
+                  </div>
+                </div>
+                {noticeCount >= 1 ? (
+                  <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Sent</span>
+                ) : noticeCount === 0 && daysOverdue < 30 ? (
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold bg-card text-sky-600 dark:text-sky-400 border border-border">
+                    Recommended
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">Ready</span>
+                )}
+              </button>
+
+              {/* Option 2: Send Notice 2 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveMenu(null);
+                  handleOpenNoticeModal(item, 2);
+                }}
+                className="w-full flex items-center justify-between gap-2.5 rounded-lg p-2 text-left transition hover:bg-muted cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 text-amber-600 dark:text-amber-400">
+                    <AlertCircle size={13} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-card-foreground truncate">Send Notice 2</p>
+                    <p className="text-[10px] text-muted-foreground truncate">Urgent demand & penalty</p>
+                  </div>
+                </div>
+                {noticeCount >= 2 ? (
+                  <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Sent</span>
+                ) : noticeCount === 1 ? (
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold bg-card text-amber-600 dark:text-amber-400 border border-border">
+                    Recommended
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">Ready</span>
+                )}
+              </button>
+
+              {onEscalateToTermination && (
+                <>
+                  <div className="my-1 border-t border-border/50" />
+                  {/* Option 3: Escalate to Termination Board */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveMenu(null);
+                      onEscalateToTermination(item);
+                    }}
+                    className="w-full flex items-center justify-between gap-2.5 rounded-lg p-2 text-left transition hover:bg-muted cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 text-rose-600 dark:text-rose-400">
+                        <ShieldAlert size={13} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-rose-600 dark:text-rose-400 truncate">
+                          Escalate to Review Board
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          Refer for lease termination
+                        </p>
+                      </div>
+                    </div>
+                    {(noticeCount >= 2 || daysOverdue >= 60) && (
+                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold bg-card text-rose-600 dark:text-rose-400 border border-border">
+                        Recommended
+                      </span>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {/* Individual Dispatch Notice Modal */}
       {isModalOpen && selectedItemForNotice && (
         <DispatchNoticeModal
           isOpen={isModalOpen}
@@ -374,6 +666,24 @@ export default function OverdueNoticeTracker({
           onDispatched={handleRefresh}
         />
       )}
+
+      {/* Batch Dispatch Notice Modal */}
+      {isBatchModalOpen && (
+        <BatchDispatchNoticeModal
+          isOpen={isBatchModalOpen}
+          eligibleNotices={batchActionConfig.items.length > 0 ? batchActionConfig.items : filteredNotices}
+          preselectedBillIds={selectedBillIds}
+          targetStage={batchActionConfig.targetStage}
+          onClose={() => {
+            setIsBatchModalOpen(false);
+          }}
+          onDispatched={() => {
+            setSelectedBillIds(new Set());
+            handleRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
+

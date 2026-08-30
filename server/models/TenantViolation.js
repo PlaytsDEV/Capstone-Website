@@ -107,7 +107,6 @@ const tenantViolationSchema = new mongoose.Schema(
         "warning_issued",     // Formal warning was given
         "penalty_issued",     // A penalty was applied under policy
         "resolved",           // Case is closed
-        "escalated",          // Referred for pre-termination review
       ],
       default: "reported",
       index: true,
@@ -305,18 +304,7 @@ tenantViolationSchema.pre("save", function guardViolationRules(next) {
     }
   }
 
-  // 3. Escalation requires adminDecision = "confirmed" first
-  if (this.status === "escalated" && this.adminDecision !== "confirmed") {
-    return next(
-      new Error(
-        `[TenantViolation pre-save] Cannot escalate a violation ` +
-          `(status = "escalated") before adminDecision is set to "confirmed". ` +
-          `Unsubstantiated or undecided violations cannot be escalated.`,
-      ),
-    );
-  }
-
-  // 4. penaltyApplied > 0 requires penaltyReason
+  // 3. penaltyApplied > 0 requires penaltyReason
   if (this.penaltyApplied !== null && this.penaltyApplied > 0) {
     const hasPenaltyReason =
       typeof this.penaltyReason === "string" &&
@@ -349,7 +337,7 @@ tenantViolationSchema.pre("save", function guardViolationRules(next) {
 tenantViolationSchema.statics.computeWarningCount = async function (tenantId) {
   return this.countDocuments({
     tenantId,
-    adminDecision: "confirmed",
+    status: { $ne: "dismissed" },
     isArchived: false,
   });
 };

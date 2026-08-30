@@ -222,6 +222,60 @@ export const syncViolationPenaltyToBill = async ({
 };
 
 /**
+ * Automatically syncs and re-sequences violations for tenants to ensure sequential warning counts
+ * and confirmed statuses for admin-logged infractions.
+ */
+export const reconcileTenantViolations = async (tenantId = null) => {
+  try {
+    const filter = { isArchived: { $ne: true } };
+    if (tenantId) filter.tenantId = tenantId;
+
+    const tenantIds = tenantId
+      ? [tenantId]
+      : await TenantViolation.distinct("tenantId", filter);
+
+    for (const tId of tenantIds) {
+      if (!tId) continue;
+      const tenantLogs = await TenantViolation.find({
+        tenantId: tId,
+        isArchived: { $ne: true },
+        status: { $ne: "dismissed" },
+      }).sort({ dateOfIncident: 1, createdAt: 1 });
+
+      let currentSeq = 1;
+      for (const log of tenantLogs) {
+        let changed = false;
+
+        if (log.status === "reported" || log.status === "escalated" || !log.adminDecision) {
+          log.adminDecision = "confirmed";
+          log.adminDecisionReason =
+            log.adminDecisionReason ||
+            log.evidenceNotes ||
+            "Rule infraction confirmed by dormitory administration.";
+          log.status = (log.penaltyApplied && Number(log.penaltyApplied) > 0)
+            ? "penalty_issued"
+            : "warning_issued";
+          changed = true;
+        }
+
+        if (log.warningNumber !== currentSeq) {
+          log.warningNumber = currentSeq;
+          changed = true;
+        }
+
+        if (changed) {
+          await log.save();
+        }
+
+        currentSeq++;
+      }
+    }
+  } catch (err) {
+    logger.warn("[TenantViolation] reconcileTenantViolations warning:", err);
+  }
+};
+
+/**
  * GET /api/billing/violations
  * List tenant violation records with filtering, search, and summary metrics.
  */
@@ -240,11 +294,22 @@ export const getViolations = async (req, res, next) => {
 
     const { status, category, violationType, search, tenantId, reservationId } = req.query;
 
+    // Ensure violations are reconciled for up-to-date sequential warning numbers
+    await reconcileTenantViolations(tenantId || null);
+
     const filter = { isArchived: false };
     if (branch) filter.branch = branch;
     if (tenantId) filter.tenantId = tenantId;
     if (reservationId) filter.reservationId = reservationId;
-    if (status && status !== "all") filter.status = status;
+    if (status && status !== "all") {
+      if (status === "active" || status === "active_confirmed" || status === "warnings") {
+        filter.status = { $in: ["confirmed", "warning_issued", "penalty_issued", "reported", "under_review", "awaiting_response"] };
+      } else if (status === "resolved_dismissed" || status === "dismissed_resolved" || status === "closed") {
+        filter.status = { $in: ["dismissed", "resolved"] };
+      } else {
+        filter.status = status;
+      }
+    }
     const cat = category || violationType;
     if (cat && cat !== "all") filter.violationType = cat;
 
@@ -260,12 +325,15 @@ export const getViolations = async (req, res, next) => {
       }).select("_id");
       tenantIdsFromSearch = matchingUsers.map((u) => u._id);
 
-      filter.$or = [
-        { tenantId: { $in: tenantIdsFromSearch } },
+      const searchConditions = [
         { locationOfIncident: { $regex: q, $options: "i" } },
         { evidenceNotes: { $regex: q, $options: "i" } },
         { customViolationDescription: { $regex: q, $options: "i" } },
       ];
+      if (tenantIdsFromSearch && tenantIdsFromSearch.length > 0) {
+        searchConditions.unshift({ tenantId: { $in: tenantIdsFromSearch } });
+      }
+      filter.$or = searchConditions;
     }
 
     const hasPagination = req.query.page !== undefined || req.query.limit !== undefined;
@@ -284,7 +352,6 @@ export const getViolations = async (req, res, next) => {
       .populate("reportedBy", "firstName lastName email role")
       .populate("decidedBy", "firstName lastName email")
       .populate("resolvedBy", "firstName lastName email")
-      .populate("escalatedToReviewId", "caseNumber status triggerType")
       .sort({ createdAt: -1 });
 
     if (hasPagination) {
@@ -297,16 +364,23 @@ export const getViolations = async (req, res, next) => {
     const baseFilter = { isArchived: false, ...(branch ? { branch } : {}) };
     const allBranchViolations = await TenantViolation.find(baseFilter).select("status penaltyApplied").lean();
 
+    const activeGroupStatuses = ["confirmed", "warning_issued", "penalty_issued", "reported", "under_review", "awaiting_response"];
+    const closedGroupStatuses = ["dismissed", "resolved"];
+
     const stats = {
       total: allBranchViolations.length,
       activeWarnings: allBranchViolations.filter((v) =>
-        ["confirmed", "warning_issued"].includes(v.status),
+        activeGroupStatuses.includes(v.status),
       ).length,
       totalPenalties: allBranchViolations.reduce(
         (sum, v) => sum + (Number(v.penaltyApplied) || 0),
         0,
       ),
-      escalatedCases: allBranchViolations.filter((v) => v.status === "escalated").length,
+      tabCounts: {
+        all: allBranchViolations.length,
+        active: allBranchViolations.filter((v) => activeGroupStatuses.includes(v.status)).length,
+        resolved_dismissed: allBranchViolations.filter((v) => closedGroupStatuses.includes(v.status)).length,
+      },
     };
 
     // Format for frontend response
@@ -367,6 +441,9 @@ export const getActiveTenantsForViolations = async (req, res, next) => {
         : admin.isOwner
         ? null
         : admin.branch);
+
+    // Reconcile non-dismissed violations to ensure warning counts are up to date
+    await reconcileTenantViolations();
 
     const RESIDENT_STATUSES = [
       "moveIn",
@@ -648,6 +725,9 @@ export const createViolation = async (req, res, next) => {
     }
 
     const notes = (evidenceNotes || description || "").trim();
+    const isPenalty = penaltyNum > 0;
+    const initialStatus = isPenalty ? "penalty_issued" : "warning_issued";
+    const decisionReasonText = notes || `Rule infraction confirmed and recorded by dormitory administration (${formatCategoryLabel(violationType)}).`;
 
     // Create the violation record
     const violation = new TenantViolation({
@@ -659,54 +739,21 @@ export const createViolation = async (req, res, next) => {
       dateOfIncident: incidentDate,
       timeOfIncident: timeOfIncident ? String(timeOfIncident).trim() : null,
       locationOfIncident: locationOfIncident ? String(locationOfIncident).trim() : "",
-      status: "reported",
+      status: initialStatus,
+      adminDecision: "confirmed",
+      adminDecisionReason: decisionReasonText,
+      decidedBy: adminUserId,
+      decidedAt: new Date(),
       evidenceUrls: normalizedUrls,
       evidenceNotes: notes,
       warningNumber: nextWarningNumber,
-      penaltyApplied: penaltyNum > 0 ? penaltyNum : null,
-      penaltyReason: penaltyNum > 0 ? penaltyReason.trim() : null,
+      penaltyApplied: isPenalty ? penaltyNum : null,
+      penaltyReason: isPenalty ? penaltyReason.trim() : null,
+      penaltyApprovedBy: isPenalty ? adminUserId : null,
       reportedBy: adminUserId,
     });
 
     await violation.save();
-
-    // 3rd-Strike Auto-Escalation
-    if (nextWarningNumber >= 3) {
-      const existingReview = await TerminationReview.findOne({
-        tenantId,
-        status: { $in: ["open", "in_progress", "under_review"] },
-      });
-      if (!existingReview) {
-        const review = new TerminationReview({
-          reservationId: reservation?._id || null,
-          tenantId,
-          branch,
-          triggerType: "violation_escalation",
-          triggeredByViolationId: violation._id,
-          triggerReason: `Auto-Escalation: 3rd Strike Reached (${formatCategoryLabel(violationType)})`,
-          openedBy: adminUserId,
-          openedAt: new Date(),
-          status: "open",
-        });
-        await review.save();
-        violation.status = "escalated";
-        violation.escalatedToReviewId = review._id;
-        violation.escalatedAt = new Date();
-        await violation.save();
-
-        try {
-          await createNotification(
-            null, // notify owners/admins
-            "termination_review_opened",
-            "Termination Review Board Escalation",
-            `Tenant ${tenantUser?.firstName || ""} has reached their 3rd strike and was escalated to the review board.`,
-            { entityType: "termination_review", entityId: review._id, branch }
-          );
-        } catch (e) {
-          logger.warn("Failed to notify owner of escalation:", e);
-        }
-      }
-    }
 
     // If penalty is applied, automatically append to tenant's active/open rent bill or create standalone bill
     let attachedBillId = null;
@@ -835,7 +882,7 @@ export const updateViolationDecision = async (req, res, next) => {
       }
     } else {
       // Confirmed
-      if (targetStatus && ["warning_issued", "penalty_issued", "resolved", "escalated"].includes(targetStatus)) {
+      if (targetStatus && ["warning_issued", "penalty_issued", "resolved"].includes(targetStatus)) {
         violation.status = targetStatus;
       } else {
         violation.status = "confirmed";
@@ -851,29 +898,6 @@ export const updateViolationDecision = async (req, res, next) => {
         violation.resolution = resolution.trim();
         violation.resolvedBy = adminUserId;
         violation.resolvedAt = new Date();
-      }
-
-      // If escalating to Termination Review Board
-      if (violation.status === "escalated" && !violation.escalatedToReviewId) {
-        const review = new TerminationReview({
-          reservationId: violation.reservationId,
-          tenantId: violation.tenantId,
-          branch: violation.branch,
-          triggerType: "violation_escalation",
-          triggeredByViolationId: violation._id,
-          triggerReason: `Violation Escalation: ${violation.violationType} — ${decisionReason.trim()}`,
-          openedBy: adminUserId,
-          openedAt: new Date(),
-          status: "open",
-        });
-
-        await review.save();
-        violation.escalatedToReviewId = review._id;
-        violation.escalatedAt = new Date();
-
-        logger.info(
-          `[TenantViolation] Escalated violation ${violation._id} to TerminationReview ${review._id}`,
-        );
       }
 
       // Handle optional bill line-item attachment (with duplicate guard)
@@ -991,7 +1015,7 @@ export const getTerminationCases = async (req, res, next) => {
         tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant",
         tenantEmail: tenant.email || "",
         caseNumber: c._id.toString().slice(-6).toUpperCase(),
-        reason: c.triggerReason || (c.triggerType === "violation_escalation" ? "Rule Infraction Escalation" : "Notice 3 Exhaustion"),
+        reason: c.triggerReason || (c.triggerType === "overdue_escalation" ? "Overdue Account Escalation" : c.triggerType === "violation_escalation" ? "Rule Infraction Escalation" : "Overdue Notice Escalation"),
         balanceSnapshot: c.totalOutstandingAtOpen || 0,
         outcome: c.decision?.outcome || c.status,
       };
@@ -1012,9 +1036,34 @@ export const createTerminationCase = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const adminUserId = await resolveAdminUserId(req, admin);
-    const { tenantId, reservationId, branch, triggerReason } = req.body;
+    const {
+      tenantId,
+      reservationId: reqReservationId,
+      branch: reqBranch,
+      triggerReason,
+      billId,
+      totalOutstandingAtOpen,
+      penaltyAmountAtOpen,
+      daysOverdueAtOpen,
+    } = req.body;
 
-    if (!tenantId || !reservationId || !branch) {
+    let targetReservationId = reqReservationId;
+    let targetBranch = reqBranch;
+    let linkedBill = null;
+
+    if (billId && mongoose.Types.ObjectId.isValid(billId)) {
+      linkedBill = await Bill.findById(billId);
+      if (linkedBill) {
+        if (!targetReservationId && linkedBill.reservationId) {
+          targetReservationId = linkedBill.reservationId._id || linkedBill.reservationId;
+        }
+        if (!targetBranch && linkedBill.branch) {
+          targetBranch = linkedBill.branch;
+        }
+      }
+    }
+
+    if (!tenantId || !targetReservationId || !targetBranch) {
       return res.status(400).json({
         success: false,
         error: "tenantId, reservationId, and branch are required.",
@@ -1028,18 +1077,48 @@ export const createTerminationCase = async (req, res, next) => {
       });
     }
 
+    const outstandingBalance =
+      totalOutstandingAtOpen != null && !isNaN(Number(totalOutstandingAtOpen))
+        ? Number(totalOutstandingAtOpen)
+        : linkedBill
+        ? Number(linkedBill.remainingAmount || linkedBill.totalAmount || 0)
+        : undefined;
+
+    const penaltyAmount =
+      penaltyAmountAtOpen != null && !isNaN(Number(penaltyAmountAtOpen))
+        ? Number(penaltyAmountAtOpen)
+        : linkedBill
+        ? Number(linkedBill.charges?.penalty || 0)
+        : undefined;
+
+    const daysOverdue =
+      daysOverdueAtOpen != null && !isNaN(Number(daysOverdueAtOpen))
+        ? Number(daysOverdueAtOpen)
+        : linkedBill && linkedBill.dueDate
+        ? Math.max(0, dayjs().diff(dayjs(linkedBill.dueDate), "day"))
+        : undefined;
+
     const review = new TerminationReview({
       tenantId,
-      reservationId,
-      branch,
-      triggerType: "manual",
+      reservationId: targetReservationId,
+      branch: targetBranch,
+      triggerType: linkedBill ? "overdue_escalation" : "manual",
       triggerReason: triggerReason.trim(),
+      triggeredByBillId: linkedBill ? linkedBill._id : undefined,
+      totalOutstandingAtOpen: outstandingBalance,
+      penaltyAmountAtOpen: penaltyAmount,
+      daysOverdueAtOpen: daysOverdue,
       openedBy: adminUserId,
       openedAt: new Date(),
       status: "open",
     });
 
     await review.save();
+
+    if (linkedBill) {
+      linkedBill.overdueEscalatedToReviewId = review._id;
+      await linkedBill.save();
+    }
 
     res.status(201).json({
       success: true,
@@ -1048,6 +1127,45 @@ export const createTerminationCase = async (req, res, next) => {
     });
   } catch (error) {
     logger.error("[TenantViolation] createTerminationCase error:", error);
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/billing/termination-reviews/:id
+ * Soft-delete / archive an administrative termination review case.
+ */
+export const deleteTerminationCase = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid review case ID format." });
+    }
+
+    const review = await TerminationReview.findById(id);
+    if (!review || review.isArchived) {
+      return res.status(404).json({ success: false, error: "Termination review case not found." });
+    }
+
+    if (!admin.isOwner && admin.branch && review.branch !== admin.branch) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Review case belongs to a different branch.",
+      });
+    }
+
+    review.isArchived = true;
+    review.archivedAt = new Date();
+    await review.save();
+
+    res.json({
+      success: true,
+      message: "Termination review case deleted successfully.",
+    });
+  } catch (error) {
+    logger.error("[TenantViolation] deleteTerminationCase error:", error);
     next(error);
   }
 };

@@ -248,8 +248,14 @@ export const getFirebaseErrorMessage = (error, context = "login") => {
       "This account has been disabled. Please contact support.",
     "auth/popup-closed-by-user":
       context === "signup" ? "Sign-up was cancelled." : "Sign-in was cancelled.",
+    "auth/cancelled-popup-request":
+      "The sign-in popup was closed before completing. Please try again.",
     "auth/popup-blocked":
       "Your browser blocked the sign-in popup. Please allow popups for this site and try again.",
+    "auth/unauthorized-domain":
+      "This domain is not authorized for sign-in. Please contact support or try another method.",
+    "auth/operation-not-allowed":
+      "Social sign-in is temporarily disabled. Please sign in with your email and password.",
     "auth/account-exists-with-different-credential":
       "An account already exists with this email using a different sign-in method.",
   };

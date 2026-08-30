@@ -8,8 +8,12 @@ import {
   X,
   Plus,
   ArrowUpRight,
+  Trash2,
+  Eye,
 } from "lucide-react";
 import { billingApi } from "../../../shared/api/billingApi.js";
+import { showNotification } from "../../../shared/utils/notification.js";
+import ConfirmModal from "../../../shared/components/ConfirmModal.jsx";
 import StatusBadge from "./shared/StatusBadge.jsx";
 import TerminationReviewModal from "./billing/TerminationReviewModal.jsx";
 import OpenTerminationCaseModal from "./billing/OpenTerminationCaseModal.jsx";
@@ -35,6 +39,8 @@ export default function TerminationReviewBoard({
   const [selectedCase, setSelectedCase] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isOpenCaseModalOpen, setIsOpenCaseModalOpen] = useState(false);
+  const [caseToDelete, setCaseToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // If prefilled data arrives from Notice 3 escalation, auto-open the modal
   useEffect(() => {
@@ -68,6 +74,23 @@ export default function TerminationReviewBoard({
     setIsReviewModalOpen(true);
   };
 
+  const handleDeleteCase = async () => {
+    if (!caseToDelete?._id) return;
+    try {
+      setDeleting(true);
+      await billingApi.deleteTerminationCase(caseToDelete._id);
+      showNotification("Termination review case deleted successfully.", "success");
+      setCaseToDelete(null);
+      fetchCases();
+      onCasesUpdated?.();
+    } catch (err) {
+      console.error("[TerminationReviewBoard] Delete case error:", err);
+      showNotification(err.message || "Unable to delete review case.", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleRefresh = () => {
     fetchCases();
     onCasesUpdated?.();
@@ -97,46 +120,13 @@ export default function TerminationReviewBoard({
   }, [cases, searchQuery]);
 
   return (
-    <div className="space-y-4 text-card-foreground">
-      {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400" />
-            Administrative Termination Review Board
-          </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Case management and adjudication board for Notice 3 exhaustion and severe lease infractions.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-            title="Refresh termination review cases"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsOpenCaseModalOpen(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white cursor-pointer"
-          >
-            <Plus size={14} /> Open Case
-          </button>
-        </div>
-      </div>
-
-      {/* Cases Data Card (Single Container, No Nested Boxes) */}
+    <div className="space-y-3 text-card-foreground">
+      {/* Cases Data Card Container */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-        {/* Toolbar with Search */}
+        {/* Integrated Toolbar: Search on Left, Refresh & Actions on Right */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-3.5 py-2.5">
-          <div className="text-xs font-semibold text-muted-foreground">
-            Active Review Cases ({filteredCases.length})
-          </div>
-          <div className="relative flex items-center w-full sm:w-60">
+          {/* Left: Search Input */}
+          <div className="relative flex items-center w-full sm:w-64">
             <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
@@ -155,6 +145,32 @@ export default function TerminationReviewBoard({
                 <X size={12} />
               </button>
             )}
+          </div>
+
+          {/* Right: Cases Count, Refresh & + Open Case Buttons */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+            <span className="text-xs font-semibold text-muted-foreground hidden sm:inline mr-1">
+              {filteredCases.length} {filteredCases.length === 1 ? "case" : "cases"}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={loading}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer shrink-0"
+              title="Refresh termination review cases"
+            >
+              <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsOpenCaseModalOpen(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white cursor-pointer shrink-0"
+            >
+              <Plus size={14} /> <span>Open Case</span>
+            </button>
           </div>
         </div>
 
@@ -219,13 +235,27 @@ export default function TerminationReviewBoard({
                       <StatusBadge status={c.outcome || c.status || "open"} />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenReview(c)}
-                        className="inline-flex h-7 px-3 items-center justify-center gap-1 rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98]"
-                      >
-                        Review Case <ArrowUpRight size={11} />
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReview(c)}
+                          aria-label={`Review case #${c.caseNumber || String(c._id).slice(-6).toUpperCase()}`}
+                          className="inline-flex h-7 px-2.5 items-center justify-center gap-1 rounded-lg border border-border bg-card text-[11px] font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98] transition cursor-pointer"
+                        >
+                          <Eye size={12} />
+                          <span>Review</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCaseToDelete(c)}
+                          aria-label={`Delete case #${c.caseNumber || String(c._id).slice(-6).toUpperCase()}`}
+                          className="inline-flex h-7 px-2 items-center justify-center gap-1 rounded-lg border border-border bg-card text-[11px] font-semibold text-rose-600 dark:text-rose-400 shadow-xs hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.98] transition cursor-pointer"
+                          title="Delete review case"
+                        >
+                          <Trash2 size={12} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -256,6 +286,7 @@ export default function TerminationReviewBoard({
         <OpenTerminationCaseModal
           isOpen={isOpenCaseModalOpen}
           branch={branch}
+          prefilledCaseData={prefilledCaseData}
           initialTenantId={prefilledCaseData?.tenantId || ""}
           initialReason={prefilledCaseData?.triggerReason || ""}
           initialTenantName={prefilledCaseData?.tenantName || ""}
@@ -263,6 +294,22 @@ export default function TerminationReviewBoard({
           onCreated={handleCaseCreated}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(caseToDelete)}
+        onClose={() => setCaseToDelete(null)}
+        onConfirm={handleDeleteCase}
+        title="Delete Review Case"
+        message={
+          caseToDelete
+            ? `Are you sure you want to delete Termination Review Case #${caseToDelete.caseNumber || String(caseToDelete._id).slice(-6).toUpperCase()} for ${caseToDelete.tenantName}? This action will remove the case from the review board.`
+            : ""
+        }
+        confirmText={deleting ? "Deleting..." : "Delete Case"}
+        variant="danger"
+      />
     </div>
   );
 }
+

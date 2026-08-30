@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -9,23 +9,17 @@ const webRoot = path.resolve(here, "../../../..");
 const read = (relative) => fs.readFileSync(path.join(webRoot, relative), "utf8");
 const signIn = read("src/features/tenant/pages/SignIn.jsx");
 
-test("SignIn handleSocialLogin notifies user and redirects to SignUp when Google account is not registered (404)", () => {
+test("SignIn handleSocialLogin auto-onboards unregistered Google accounts seamlessly", () => {
   // 1. Must check for 404 / unregistered backend status
   assert.match(signIn, /status === 404/);
 
-  // 2. Must display clear notification toast informing the user to sign up first
-  assert.match(
-    signIn,
-    /This Google account is not registered yet\. Please sign up first\./,
-  );
+  // 2. Must automatically register user in backend
+  assert.match(signIn, /registerUserInBackend/);
 
-  // 3. Must safely sign out / recover auth failure to avoid orphan sessions
-  assert.match(signIn, /await auth\.signOut\(\)|await recoverFromAuthFailure\(auth/);
+  // 3. Must safely recover on conflict/failure
+  assert.match(signIn, /await recoverFromAuthFailure\(auth/);
 
-  // 4. Must redirect to /signup
-  assert.match(signIn, /navigate\(["']\/signup["']/);
-
-  // 5. Must support redirect auth fallback
+  // 4. Must support redirect auth fallback
   assert.match(signIn, /signInWithRedirect/);
   assert.match(signIn, /getRedirectResult/);
 });

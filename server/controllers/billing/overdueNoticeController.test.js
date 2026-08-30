@@ -145,6 +145,7 @@ await jest.unstable_mockModule("../../utils/tenantActionService.js", () => ({
 const {
   getOverdueNoticesAction,
   sendOverdueNoticeAction,
+  batchSendOverdueNoticesAction,
   updateTerminationDecisionAction,
   executeApprovedTermination,
 } = await import("./overdueNoticeController.js");
@@ -672,6 +673,52 @@ describe("OverdueNoticeController Tests", () => {
       const response = res.json.mock.calls[0][0];
       expect(response.success).toBe(true);
       expect(reviewDoc.decision.outcome).toBe("termination_approved");
+    });
+  });
+
+  describe("batchSendOverdueNoticesAction", () => {
+    test("successfully processes batch when tenant has no email address without schema failure", async () => {
+      const billId = new mongoose.Types.ObjectId();
+      const tenantId = new mongoose.Types.ObjectId();
+      req.body = { billIds: [billId], noticeNumber: 1, noticeMessage: "Please pay." };
+
+      const billDoc = {
+        _id: billId,
+        branch: "gil-puyat",
+        status: "overdue",
+        remainingAmount: 4500,
+        totalAmount: 4500,
+        charges: { rent: 4500, penalty: 0 },
+        disputeState: "none",
+        overdueNoticeCount: 0,
+        dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        userId: { _id: tenantId, firstName: "Jose", lastName: "Rizal", email: "" },
+        save: mockBillSave.mockResolvedValue(true),
+      };
+
+      mockFindByIdBill.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue(billDoc),
+          }),
+        }),
+      });
+
+      await batchSendOverdueNoticesAction(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            total: 1,
+            successCount: 1,
+            failureCount: 0,
+          }),
+        })
+      );
+      expect(mockNoticeSave).toHaveBeenCalled();
+      expect(mockBillSave).toHaveBeenCalled();
+      expect(billDoc.overdueNoticeCount).toBe(1);
     });
   });
 });

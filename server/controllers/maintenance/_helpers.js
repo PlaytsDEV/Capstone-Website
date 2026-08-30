@@ -1459,14 +1459,16 @@ export const buildMaintenanceReportTimeline = (request, { reportType = "admin" }
   });
 
   (request.reopen_history || []).forEach((entry) => {
+    const cycleNum = entry.previousData?.iteration || 1;
     items.push(buildReportTimelineItem({
-      title: "Request reopened",
+      title: `Request reopened (Follow-Up Service #${cycleNum})`,
       timestamp: entry.reopened_at || entry.timestamp,
       actorName: entry.actor_name || request.tenant?.full_name || request.user_id,
       actorRole: entry.actor_role || "tenant",
       visibility: "tenant",
       note: entry.note,
       status: request.status,
+      previousData: entry.previousData || null,
     }));
   });
 

@@ -470,7 +470,9 @@ export function MaintenanceTable({
           }}
           pagination={{
             pageSize: ITEMS_PER_PAGE,
+            page: currentPage,
             currentPage,
+            total: requests.length,
             onPageChange,
           }}
         />
