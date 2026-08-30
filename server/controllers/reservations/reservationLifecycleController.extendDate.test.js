@@ -49,6 +49,12 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
   BedHistory: {},
   Stay: {},
   Contract: {},
+  ContractAcknowledgement: {
+    countDocuments: jest.fn(() => ({ session: jest.fn().mockResolvedValue(0) })),
+    find: jest.fn(() => ({ lean: jest.fn().mockResolvedValue([]) })),
+    deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+    create: jest.fn(),
+  },
   ContractCounter: {},
   BedCheckoutLock: {},
   Inquiry: {},
