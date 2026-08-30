@@ -59,7 +59,7 @@ await jest.unstable_mockModule("./contractService.js", () => ({
 }));
 
 const { scheduleRoomTransfer } = await import("./scheduledRoomTransferService.js");
-const { executeScheduledRoomTransfer } = await import("./scheduledRoomTransferExecutor.js");
+const { transferStayWorkflow } = await import("../utils/tenantActionService.js");
 const { applyBillPayment } = await import("./billing/paymentLedger.js");
 const { generateContractNumber } = await import("./contractService.js");
 const { getManilaToday } = await import("../utils/dateUtils.js");
@@ -189,104 +189,124 @@ beforeEach(async () => {
     key: "global",
     privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
     isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+    officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
   });
   mockValidate.mockClear();
   mockGenerate.mockClear();
 });
 
+// The boundary UtilityReading is written at the ACTUAL cutover timestamp
+// (`cutoverAt` = new Date() inside transferStayWorkflow's transaction). The
+// fallback (when the admin does not supply a reading) MUST NOT adopt a reading
+// dated AFTER `cutoverAt`. These tests drive transferStayWorkflow directly with
+// a scheduled effectiveTransferDate in the PAST — the cutover runs "now", so
+// "now" is the effective billing boundary (round-4). Readings are dated
+// relative to "now".
+const now = () => getManilaToday();
+const relNow = (days) => now().add(days, "day").startOf("day").toDate();
+
+async function runCutover({ reservation, dest, actorId, source, target }) {
+  const destBedId = NEEDS_BED.has(dest.type) ? `r${dest.roomNumber}-b1` : undefined;
+  // Scheduled a few days ago; completed now.
+  const scheduledPast = now().subtract(5, "day").format("YYYY-MM-DD");
+  return transferStayWorkflow({
+    reservationId: reservation._id,
+    payload: {
+      confirm: true, targetRoomId: String(dest._id),
+      ...(destBedId ? { targetBedId: destBedId } : {}),
+      effectiveTransferDate: scheduledPast,
+      ...(source != null ? { sourceRoomMeterReading: source } : {}),
+      ...(target != null ? { targetRoomMeterReading: target } : {}),
+      reason: "meter timing test",
+    },
+    actorId,
+  });
+}
+
 const sourceMoveOut = (roomId) =>
-  UtilityReading.findOne({ roomId, utilityType: "electricity", eventType: "moveOut" }).lean();
+  UtilityReading.findOne({ roomId, utilityType: "electricity", eventType: "moveOut" }).sort({ createdAt: -1 }).lean();
 const destMoveIn = (roomId) =>
-  UtilityReading.findOne({ roomId, utilityType: "electricity", eventType: "moveIn" }).lean();
+  UtilityReading.findOne({ roomId, utilityType: "electricity", eventType: "moveIn" }).sort({ createdAt: -1 }).lean();
 
-describe("date-bound source-room fallback reading", () => {
-  test("exact effective-date reading is used as the moveOut fallback", async () => {
+describe("admin-supplied readings are used verbatim, dated at the actual cutover", () => {
+  test("source closing + destination opening readings entered at completion are persisted at cutoverAt", async () => {
     const { roomA, reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
-    await seedReading(roomA._id, 90, rel(-6));
-    await seedReading(roomA._id, 97, rel(0)); // exactly the effective date
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: EFFECTIVE_STR() }), actorId,
-    });
-    await payFull(scheduledTransfer.settlementBillId);
-    const res = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW() });
-    expect(res.outcome).toBe("executed");
+    await seedReading(roomA._id, 90, relNow(-6));
+    await seedReading(dest._id, 40, relNow(-6));
+
+    const result = await runCutover({ reservation, dest, actorId, source: 130, target: 55 });
 
     const mo = await sourceMoveOut(roomA._id);
-    expect(mo).toBeTruthy();
-    expect(mo.reading).toBe(97);
-    // Dated on the effective transfer date.
-    expect(getManilaToday(scheduledTransfer.effectiveTransferDate).isSame(getManilaToday(mo.date), "day")).toBe(true);
-  });
-
-  test("no effective-date reading: the latest reading ON OR BEFORE the effective date is used; a later reading is NEVER selected", async () => {
-    const { roomA, reservation, actorId } = await seed();
-    const dest = await emptyRoom("private", "205");
-    await seedReading(roomA._id, 90, rel(-6));   // Aug 31 analogue
-    await seedReading(roomA._id, 100, rel(20));  // Sep 29 analogue — must be ignored
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: EFFECTIVE_STR() }), actorId,
-    });
-    await payFull(scheduledTransfer.settlementBillId);
-    const res = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW() });
-    expect(res.outcome).toBe("executed");
-
-    const mo = await sourceMoveOut(roomA._id);
-    expect(mo).toBeTruthy();
-    expect(mo.reading).toBe(90);       // Aug 31, not Sep 29
-    expect(mo.reading).not.toBe(100);
-  });
-
-  test("only a post-effective-date reading exists: no fallback snapshot is fabricated", async () => {
-    const { roomA, reservation, actorId } = await seed();
-    const dest = await emptyRoom("private", "205");
-    await seedReading(roomA._id, 100, rel(20)); // the ONLY reading, dated after E
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: EFFECTIVE_STR() }), actorId,
-    });
-    await payFull(scheduledTransfer.settlementBillId);
-    const res = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW() });
-    expect(res.outcome).toBe("executed");
-
-    // No moveOut snapshot created — nothing safe to anchor, nothing fabricated.
-    const mo = await sourceMoveOut(roomA._id);
-    expect(mo).toBeNull();
-    // And the post-cutoff reading is untouched.
-    expect(await UtilityReading.countDocuments({ roomId: roomA._id, reading: 100 })).toBe(1);
+    expect(mo.reading).toBe(130);
+    expect(new Date(mo.date).getTime()).toBe(result.cutoverAt.getTime());
+    const mi = await destMoveIn(dest._id);
+    expect(mi.reading).toBe(55);
+    expect(new Date(mi.date).getTime()).toBe(result.cutoverAt.getTime());
   });
 });
 
-describe("date-bound destination-room fallback reading", () => {
-  test("a destination reading dated after the effective date is NEVER used as the moveIn fallback", async () => {
+describe("date-bound fallback when the admin leaves a reading blank", () => {
+  test("no reading supplied: the latest reading ON OR BEFORE the cutover is carried forward; a LATER reading is NEVER selected", async () => {
+    const { roomA, reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await seedReading(roomA._id, 90, relNow(-6));   // before cutover — eligible
+    await seedReading(roomA._id, 100, relNow(20));  // after cutover — must be ignored
+
+    const result = await runCutover({ reservation, dest, actorId }); // no readings
+
+    const mo = await sourceMoveOut(roomA._id);
+    expect(mo).toBeTruthy();
+    expect(mo.reading).toBe(90);
+    expect(mo.reading).not.toBe(100);
+    expect(new Date(mo.date).getTime()).toBe(result.cutoverAt.getTime());
+  });
+
+  test("only a post-cutover reading exists: no fallback snapshot is fabricated", async () => {
+    const { roomA, reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await seedReading(roomA._id, 100, relNow(20)); // the ONLY reading, after cutover
+
+    await runCutover({ reservation, dest, actorId });
+
+    const mo = await sourceMoveOut(roomA._id);
+    expect(mo).toBeNull();
+    // The post-cutover reading is untouched.
+    expect(await UtilityReading.countDocuments({ roomId: roomA._id, reading: 100 })).toBe(1);
+  });
+
+  test("destination fallback: a destination reading dated after the cutover is NEVER used as the moveIn baseline", async () => {
     const { reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
-    await seedReading(dest._id, 40, rel(-6));   // valid pre-effective-date opening
-    await seedReading(dest._id, 55, rel(20));   // post-cutoff — must be ignored
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: EFFECTIVE_STR() }), actorId,
-    });
-    await payFull(scheduledTransfer.settlementBillId);
-    const res = await executeScheduledRoomTransfer(scheduledTransfer._id, { now: DUE_NOW() });
-    expect(res.outcome).toBe("executed");
+    await seedReading(dest._id, 40, relNow(-6));   // valid pre-cutover opening
+    await seedReading(dest._id, 55, relNow(20));   // post-cutover — must be ignored
+
+    const result = await runCutover({ reservation, dest, actorId });
 
     const mi = await destMoveIn(dest._id);
     expect(mi).toBeTruthy();
     expect(mi.reading).toBe(40);
     expect(mi.reading).not.toBe(55);
-    expect(getManilaToday(scheduledTransfer.effectiveTransferDate).isSame(getManilaToday(mi.date), "day")).toBe(true);
+    expect(new Date(mi.date).getTime()).toBe(result.cutoverAt.getTime());
   });
 });
 
 describe("scheduling does not capture scheduling-day readings", () => {
   test("meter readings sent at scheduling time are NOT persisted on the ScheduledRoomTransfer", async () => {
+    await BusinessSettings.updateOne(
+      { key: "global" },
+      { $set: { officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7] } },
+    );
     const { reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
     const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id,
-      payload: payloadFor({
-        targetRoom: dest, transferDate: EFFECTIVE_STR(),
-        extra: { sourceRoomMeterReading: 1234, targetRoomMeterReading: 567 },
-      }),
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: now().add(3, "day").format("YYYY-MM-DD"),
+        // Even if a caller passes readings at scheduling, they are dropped.
+        sourceRoomMeterReading: 1234, targetRoomMeterReading: 567,
+      },
       actorId,
     });
     const fresh = await ScheduledRoomTransfer.findById(scheduledTransfer._id).lean();

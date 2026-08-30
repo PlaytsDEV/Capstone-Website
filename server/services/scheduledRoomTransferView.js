@@ -161,7 +161,14 @@ export function deriveScheduledTransferUserStatus(scheduledTransfer, balance, no
     balance && balance.hasBill && balance.paymentState !== "paid" && balance.paymentState !== "none";
 
   if (scheduledTransfer.status === "action_required") {
-    return balanceUnpaid ? "awaiting_settlement" : "action_required";
+    // A payment blocker that has since been settled -> the transfer is ready to
+    // complete again (the admin re-runs Complete Transfer).
+    const paymentBlocker =
+      scheduledTransfer.lastError === "TRANSFER_BALANCE_UNPAID" ||
+      scheduledTransfer.lastError === "ADDITIONAL_BALANCE_DUE";
+    if (balanceUnpaid) return "awaiting_settlement";
+    if (paymentBlocker) return "ready_for_transfer";
+    return "action_required";
   }
 
   // status === "scheduled"
