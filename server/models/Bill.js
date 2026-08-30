@@ -630,7 +630,40 @@ const billSchema = new mongoose.Schema(
           // segment (room-scoped occupancy — see Phase 4).
           estimatedElectricityKwh: { type: Number, default: null },
           estimatedElectricityCharge: { type: Number, default: null },
+          // Round-3: on a sub-metered branch the transferring tenant's
+          // source-room electricity is FINALIZED on this Bill (charges.electricity)
+          // BEFORE the physical cutover — a UtilityFinalization row then stops
+          // the normal period close from re-billing it. This holds the
+          // finalized figures for audit. Null on a fixed-rate branch, where
+          // sourceElectricitySettledAtPeriodClose stays true.
+          finalizedSourceElectricity: {
+            type: new mongoose.Schema(
+              {
+                utilityPeriodId: { type: mongoose.Schema.Types.ObjectId, ref: "UtilityPeriod", default: null },
+                kwh: { type: Number, default: null },
+                amount: { type: Number, default: null },
+                ratePerUnit: { type: Number, default: null },
+                baselineReading: { type: Number, default: null },
+                closingReading: { type: Number, default: null },
+              },
+              { _id: false },
+            ),
+            default: null,
+          },
           sourceElectricitySettledAtPeriodClose: { type: Boolean, default: true },
+          // Water is ALWAYS settled at its normal period close — it cannot be
+          // finalized on transfer day (its period total + covered-day
+          // denominator are unknowable until close).
+          sourceWaterSettledAtPeriodClose: { type: Boolean, default: true },
+          // Scheduling-time / execution-time pre-transfer payable snapshots
+          // (Scheduled Room Transfer Balance Bill).
+          scheduledRentAdjustment: { type: Number, default: null },
+          scheduledAdditionalDeposit: { type: Number, default: null },
+          scheduledFinalElectricity: { type: Number, default: null },
+          isScheduledTransferBalance: { type: Boolean, default: false },
+          createdAtCompletion: { type: Boolean, default: false },
+          recomputedAtCompletion: { type: Boolean, default: false },
+          reconciledAtExecution: { type: Boolean, default: false },
           // ── Security-deposit settlement (independent of the rent numbers
           //    above; see roomTransferDepositSettlement.js). All in PHP. ──
           depositPreviouslyHeld: { type: Number, default: null }, // reservation.securityDepositHeld at transfer time

@@ -46,7 +46,7 @@ await jest.unstable_mockModule("../services/contractRoomTransferActivationServic
 
 const { transferStayWorkflow } = await import("./tenantActionService.js");
 const { generateContractNumber } = await import("../services/contractService.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill } = await import("../models/index.js");
+const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings } = await import("../models/index.js");
 
 jest.setTimeout(120_000);
 
@@ -68,7 +68,12 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}), Bill.deleteMany({}),
+      BusinessSettings.deleteMany({}),
     ]);
+    await BusinessSettings.create({
+      key: "global", isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+    });
   });
 
   // Seed a moved-in tenant + a pre-prepared "generated" replacement Draft

@@ -2230,12 +2230,26 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               unusedPrepaidCredit: settlement.unusedPrepaidCredit,
               additionalAmountDue: settlement.additionalAmountDue,
               excessCredit: settlement.excessCredit,
-              // Informational admin-preview figures only — NOT a charge on
-              // this Bill. The departed tenant's source-room electricity is
-              // billed once, at the source room's UtilityPeriod close.
               estimatedElectricityKwh,
               estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
-              sourceElectricitySettledAtPeriodClose: true,
+              // Round-3: source-room electricity is FINALIZED on THIS Bill
+              // (sub-metered branch) — the period close will NOT re-bill this
+              // tenant (a UtilityFinalization row is written in this same txn).
+              // For a non-sub-metered branch, finalizedSourceElectricity is
+              // inapplicable and charges.electricity stays 0.
+              finalizedSourceElectricity:
+                finalizedSourceElectricity?.applicable
+                  ? {
+                      utilityPeriodId: finalizedSourceElectricity.utilityPeriodId,
+                      kwh: finalizedSourceElectricity.kwh,
+                      amount: finalizedSourceElectricity.amount,
+                      ratePerUnit: finalizedSourceElectricity.ratePerUnit,
+                      baselineReading: finalizedSourceElectricity.baselineReading,
+                      closingReading: finalizedSourceElectricity.closingReading,
+                    }
+                  : null,
+              sourceElectricitySettledAtPeriodClose: !finalizedSourceElectricity?.applicable,
+              sourceWaterSettledAtPeriodClose: true,
               // ── DEPOSIT breakdown (independent of rent) ──────────────────
               depositPreviouslyHeld: depositSettlement.depositPreviouslyHeld,
               destinationRequiredDeposit: depositSettlement.destinationRequiredDeposit,

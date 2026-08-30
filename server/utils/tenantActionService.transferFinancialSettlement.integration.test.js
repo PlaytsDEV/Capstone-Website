@@ -95,6 +95,10 @@ describe("room-transfer financial settlement", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-15T10:00:00.000+08:00"),
+      doNotFake: ["nextTick", "setImmediate", "setInterval", "setTimeout", "clearInterval", "clearTimeout", "queueMicrotask"],
+    });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -102,11 +106,16 @@ describe("room-transfer financial settlement", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   function beds(type, prefix) {
@@ -197,6 +206,11 @@ describe("room-transfer financial settlement", () => {
 
   async function runTransfer({ reservation, roomB, actorId, destType, transferDate = "2026-08-15T00:00:00.000Z" }) {
     const destBedId = NEEDS_BED.has(destType) ? "dst-b1" : undefined;
+    // Since round-4, transferStayWorkflow prorates rent/deposit by the ACTUAL
+    // cutover day (`new Date()` inside its transaction). Pin the fake clock to
+    // this test's transferDate (mid-morning, inside the wide-open office
+    // hours) so the existing day-count fixtures stay deterministic.
+    jest.setSystemTime(new Date(`${String(transferDate).slice(0, 10)}T10:00:00.000+08:00`));
     return transferStayWorkflow({
       reservationId: reservation._id,
       payload: {
