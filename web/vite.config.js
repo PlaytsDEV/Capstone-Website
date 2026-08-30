@@ -30,6 +30,8 @@ export default defineConfig({
           "vendor-charts": ["recharts"],
           "vendor-pdf": ["jspdf", "jspdf-autotable", "html2canvas"],
           "vendor-motion": ["framer-motion"],
+          "vendor-phone": ["libphonenumber-js"],
+          "vendor-socket": ["socket.io-client"],
         },
       },
     },
