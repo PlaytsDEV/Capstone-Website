@@ -59,6 +59,8 @@ export {
   discardRoomTransferAddendumAction,
   cancelScheduledRoomTransferAction,
   retryScheduledRoomTransferAction,
+  rescheduleRoomTransferAction,
+  completeRoomTransferAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,
