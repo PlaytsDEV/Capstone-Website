@@ -1515,6 +1515,14 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // UtilityFinalization throughDate, and returned so the caller can stamp
       // ScheduledRoomTransfer.executedAt + the completion audit.
       const cutoverAt = new Date();
+      // The calendar day of the actual cutover — used for the DAY-granular
+      // BedHistory transfer boundaries (day-based water proration +
+      // filterBillableReservationsForPeriod operate by covered day, and
+      // findMissingElectricityLifecycleReadings matches the moveOut READING's
+      // day to the BedHistory boundary day). `UtilityReading.date` keeps the
+      // full `cutoverAt` timestamp so sequential same-day boundaries stay
+      // distinguishable.
+      const cutoverDay = normalizeDate(cutoverAt);
 
       // ── AUTHORITATIVE office-hours gate ─────────────────────────────────
       // A same-day transfer may only physically complete DURING office hours.
@@ -2319,8 +2327,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         .sort({ moveInDate: -1 })
         .session(session);
       if (activeHistory) {
-        activeHistory.moveOutDate = effectiveTransferDate;
-        activeHistory.effectiveEndDate = effectiveTransferDate;
+        activeHistory.moveOutDate = cutoverDay;
+        activeHistory.effectiveEndDate = cutoverDay;
         activeHistory.status = "transferred";
         activeHistory.closedByAction = "transfer";
         activeHistory.reason = payload.reason || "Room transfer";
@@ -2370,8 +2378,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               stayId: activeStay._id,
               moveInDate: readMoveInDate(reservation) || activeStay.leaseStartDate,
               effectiveStartDate: readMoveInDate(reservation) || activeStay.leaseStartDate,
-              moveOutDate: effectiveTransferDate,
-              effectiveEndDate: effectiveTransferDate,
+              moveOutDate: cutoverDay,
+              effectiveEndDate: cutoverDay,
               status: "transferred",
               closedByAction: "transfer",
               reason: payload.reason || "Room transfer",
@@ -2422,8 +2430,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             tenantId: reservation.userId?._id || reservation.userId,
             reservationId: reservation._id,
             stayId: activeStay._id,
-            moveInDate: effectiveTransferDate,
-            effectiveStartDate: effectiveTransferDate,
+            moveInDate: cutoverDay,
+            effectiveStartDate: cutoverDay,
             status: "active",
             reason: payload.reason || "Room transfer",
             notes: payload.notes || "",

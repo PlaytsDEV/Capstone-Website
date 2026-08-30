@@ -75,6 +75,13 @@ const tenantSummarySchema = new mongoose.Schema(
       ref: "Bill",
       default: null,
     },
+    // True when this tenant's charge for the period was already settled on a
+    // Room Transfer's transfer_settlement Bill (UtilityFinalization). No
+    // separate draft Bill was created here; `billId` points at that Bill.
+    settledOnTransfer: { type: Boolean, default: false },
+    finalizedAmount: { type: Number, default: null },
+    reconciliationVariance: { type: Number, default: null },
+    reconciliationFlagged: { type: Boolean, default: false },
   },
   { _id: false },
 );
