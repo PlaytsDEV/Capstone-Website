@@ -3,6 +3,7 @@
  * Extracted from routes for cleaner separation.
  */
 
+import crypto from "crypto";
 import mongoose from "mongoose";
 import dayjs from "dayjs";
 import { User, Reservation, Room, Bill, UtilityReading, MaintenanceRequest, Contract } from "../models/index.js";
@@ -34,7 +35,7 @@ import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
 import { archiveContractForCancelledReservation, archiveContractsForReservationHardDelete } from "../services/contractArchiveService.js";
 import { EARLY_STAGE_STATUSES } from "../services/tenantContractSelectionService.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
-import { sendPasswordResetLinkEmail } from "../config/email.js";
+import { sendWelcomeAccountActivationEmail } from "../config/email.js";
 import { buildCustomPasswordResetLink } from "../services/passwordResetService.js";
 import { getPublicUrlConfig } from "../config/publicUrls.js";
 
@@ -84,6 +85,12 @@ const escapeRegex = (value = "") =>
 
 const VALID_ROLES = ["applicant", "tenant", "branch_admin", "owner"];
 const LIFECYCLE_MANAGED_ROLES = ["applicant", "tenant"];
+const ROLE_LABELS = {
+  applicant: "Applicant",
+  tenant: "Tenant",
+  branch_admin: "Branch Admin",
+  owner: "Dorm Owner",
+};
 
 const buildFirebaseClaimsForRole = (role) => {
   if (role === "owner") {
@@ -252,16 +259,19 @@ export const createUser = async (req, res, next) => {
       req.body;
 
     // --- Validate required fields ---
-    if (!email || !username || !firstName || !lastName || !password) {
+    if (!email || !username || !firstName || !lastName) {
       return res.status(400).json({
         error:
-          "Missing required fields: email, username, firstName, lastName, and password are required",
+          "Missing required fields: email, username, firstName, and lastName are required",
         code: "MISSING_REQUIRED_FIELDS",
       });
     }
 
-    // --- Validate password strength ---
-    if (password.length < 6) {
+    // --- Validate or generate password ---
+    let effectivePassword = password;
+    if (!effectivePassword) {
+      effectivePassword = crypto.randomBytes(12).toString("hex");
+    } else if (effectivePassword.length < 6) {
       return res.status(400).json({
         error: "Password must be at least 6 characters",
         code: "WEAK_PASSWORD",
@@ -334,8 +344,8 @@ export const createUser = async (req, res, next) => {
 
     const firebaseUser = await auth.createUser({
       email: email.toLowerCase(),
-      password,
-      displayName: `${firstName} ${lastName}`,
+      password: effectivePassword,
+      displayName: `${firstName} ${lastName}`.trim(),
       emailVerified: false,
     });
     firebaseUid = firebaseUser.uid;
@@ -363,8 +373,8 @@ export const createUser = async (req, res, next) => {
 
     await user.save();
 
-    // Deliver a password-set link so the new user can access their account
-    // without the admin communicating credentials out-of-band.
+    // Deliver a welcome & account activation link so the new user can set their password
+    // and access their account without the admin communicating credentials out-of-band.
     // Uses the identical Firebase link-generation + custom URL rewrite path
     // as the Forgot Password controller — no new email infrastructure needed.
     // Non-fatal: account is fully created regardless of email delivery outcome.
@@ -373,13 +383,16 @@ export const createUser = async (req, res, next) => {
         email.toLowerCase(),
         { url: `${getPublicUrlConfig().publicFrontendUrl}/signin`, handleCodeInApp: false },
       );
-      const resetLink = buildCustomPasswordResetLink(rawFirebaseLink);
-      await sendPasswordResetLinkEmail({
+      const setupLink = buildCustomPasswordResetLink(rawFirebaseLink, process.env, { type: "welcome" });
+      const roleLabel = ROLE_LABELS[allowedRole] || "Applicant";
+      await sendWelcomeAccountActivationEmail({
         to: email.toLowerCase(),
         name: `${firstName} ${lastName}`.trim(),
-        resetLink,
+        roleLabel,
+        username,
+        setupLink,
       });
-      logger.info(`[createUser] Welcome/password-set email delivered to ${email}`);
+      logger.info(`[createUser] Welcome & account activation email delivered to ${email}`);
     } catch (emailError) {
       // Non-fatal: the Firebase + MongoDB account is fully created and functional.
       // If delivery fails the user can recover via Forgot Password on sign-in.

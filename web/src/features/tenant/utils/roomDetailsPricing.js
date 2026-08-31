@@ -162,9 +162,13 @@ export function resolveApplianceBreakdown(
           : 1;
 
       const unitPrice =
-        Number.isFinite(Number(item?.price)) && Number(item.price) > 0
+        Number.isFinite(Number(item?.price)) && Number(item.price) >= 0
           ? Number(item.price)
-          : Number.isFinite(Number(item?.fee)) && Number(item.fee) > 0
+          : Number.isFinite(Number(item?.monthlyFee)) && Number(item.monthlyFee) >= 0
+          ? Number(item.monthlyFee)
+          : Number.isFinite(Number(item?.unitPrice)) && Number(item.unitPrice) >= 0
+          ? Number(item.unitPrice)
+          : Number.isFinite(Number(item?.fee)) && Number(item.fee) >= 0
           ? Number(item.fee)
           : defaultUnitFee;
 

@@ -18,6 +18,7 @@ import {
   Stay,
   Contract,
   TenantViolation,
+  Appliance,
   ROOM_BRANCHES,
 } from "../../models/index.js";
 import { BUSINESS } from "../../config/constants.js";
@@ -1394,7 +1395,7 @@ export const normalizeSelectedApplianceEntries = (selectedAppliances) => {
   );
 };
 
-export const validateSelectedAppliancesForReservation = ({
+export const validateSelectedAppliancesForReservation = async ({
   selectedAppliances,
   branchId,
   branchSettings,
@@ -1408,12 +1409,39 @@ export const validateSelectedAppliancesForReservation = ({
   }
 
   const entries = normalizeSelectedApplianceEntries(selectedAppliances);
+  if (entries.length === 0) {
+    return [];
+  }
+
+  // Load active appliances from DB catalog and overlay onto TRUSTED_RESERVATION_APPLIANCE_MAP
+  const catalogMap = new Map(TRUSTED_RESERVATION_APPLIANCE_MAP);
+  try {
+    if (Appliance && typeof Appliance.find === "function") {
+      const dbAppliances = await Appliance.find({ isActive: true }).lean();
+      if (Array.isArray(dbAppliances) && dbAppliances.length > 0) {
+        for (const app of dbAppliances) {
+          const code = String(app.code || "").trim().toLowerCase();
+          if (code) {
+            catalogMap.set(code, {
+              id: code,
+              name: app.name,
+              monthlyFee: app.monthlyFee ?? 200,
+              maxQuantity: app.maxQuantity ?? 5,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(`Could not load Appliance catalog from DB in reservation validation: ${err.message}`);
+  }
+
   const validatedAppliances = [];
   const quantitiesById = new Map();
 
   for (const entry of entries) {
     const applianceId = String(entry?.id || "").trim().toLowerCase();
-    const trustedAppliance = TRUSTED_RESERVATION_APPLIANCE_MAP.get(applianceId);
+    const trustedAppliance = catalogMap.get(applianceId) || TRUSTED_RESERVATION_APPLIANCE_MAP.get(applianceId);
 
     if (!trustedAppliance) {
       throw new AppError(
@@ -1431,20 +1459,32 @@ export const validateSelectedAppliancesForReservation = ({
       );
     }
 
+    const maxLimit = trustedAppliance.maxQuantity || 5;
+    if (entry.quantity > maxLimit) {
+      throw new AppError(
+        `Maximum quantity for ${trustedAppliance.name} is ${maxLimit}.`,
+        400,
+        "INVALID_APPLIANCE_QUANTITY",
+      );
+    }
+
     quantitiesById.set(
       applianceId,
       (quantitiesById.get(applianceId) || 0) + entry.quantity,
     );
   }
 
-  for (const appliance of TRUSTED_RESERVATION_APPLIANCES) {
-    const quantity = quantitiesById.get(appliance.id) || 0;
+  for (const [id, quantity] of quantitiesById.entries()) {
     if (quantity > 0) {
-      validatedAppliances.push({
-        id: appliance.id,
-        name: appliance.name,
-        quantity,
-      });
+      const trusted = catalogMap.get(id) || TRUSTED_RESERVATION_APPLIANCE_MAP.get(id);
+      if (trusted) {
+        validatedAppliances.push({
+          id: trusted.id,
+          name: trusted.name,
+          quantity,
+          price: trusted.monthlyFee ?? 200,
+        });
+      }
     }
   }
 
@@ -1483,21 +1523,25 @@ export const buildReservationPricing = async ({
     isDiscountEnabled: settings?.isDiscountEnabled,
     settings,
   });
-  const validatedSelectedAppliances = validateSelectedAppliancesForReservation({
+  const validatedSelectedAppliances = await validateSelectedAppliancesForReservation({
     selectedAppliances,
     branchId,
     branchSettings,
   });
-  const totalApplianceQuantity = validatedSelectedAppliances.reduce(
-    (total, appliance) => total + appliance.quantity,
-    0,
-  );
   const applianceFeeAmountPerUnit = roundMoney(
-    Number(branchSettings?.applianceFeeAmountPerUnit ?? 0),
+    Number(branchSettings?.applianceFeeAmountPerUnit ?? 200),
   );
   const applianceFees =
     branchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled
-      ? roundMoney(applianceFeeAmountPerUnit * totalApplianceQuantity)
+      ? roundMoney(
+          validatedSelectedAppliances.reduce(
+            (total, appliance) =>
+              total +
+              (Number(appliance.price ?? applianceFeeAmountPerUnit) *
+                appliance.quantity),
+            0,
+          ),
+        )
       : 0;
   const reservationFeeAmount = roundMoney(
     Number(settings?.reservationFeeAmount ?? BUSINESS.DEPOSIT_AMOUNT),

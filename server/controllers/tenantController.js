@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * TENANT MANAGEMENT CONTROLLER
  * ============================================================================
@@ -7,7 +7,7 @@
  * Specifically manages tenant declared appliance add-ons, fees, and audit trails.
  */
 
-import { Reservation, User, AuditLog } from "../models/index.js";
+import { Reservation, User, AuditLog, Appliance } from "../models/index.js";
 import logger from "../middleware/logger.js";
 import { isValidObjectId } from "../utils/reservationHelpers.js";
 import { TRUSTED_RESERVATION_APPLIANCE_MAP } from "./reservations/_helpers.js";
@@ -85,6 +85,20 @@ export const updateTenantAppliances = async (req, res) => {
       });
     }
 
+    let catalogMap = new Map();
+    try {
+      if (Appliance && typeof Appliance.find === "function") {
+        const dbAppliances = await Appliance.find({}).lean();
+        if (Array.isArray(dbAppliances)) {
+          for (const app of dbAppliances) {
+            catalogMap.set(String(app.code || "").toLowerCase(), app);
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn(`Could not load Appliance catalog in tenant appliance update: ${err.message}`);
+    }
+
     let calculatedFees = 0;
     const sanitizedAppliances = [];
 
@@ -120,14 +134,18 @@ export const updateTenantAppliances = async (req, res) => {
         });
       }
 
+      const catalogItem = catalogMap.get(rawId);
+      const fallbackFee = TRUSTED_RESERVATION_APPLIANCE_MAP?.get?.(rawId)?.monthlyFee;
       const quantity = Number(rawQty);
-      const unitPrice = Number(item.price ?? item.unitPrice ?? 200);
+      const unitPrice = Number(
+        catalogItem?.monthlyFee ?? fallbackFee ?? item.price ?? item.unitPrice ?? 200,
+      );
       calculatedFees += quantity * unitPrice;
 
       const applianceName =
         item.name && String(item.name).trim()
           ? String(item.name).trim()
-          : (TRUSTED_RESERVATION_APPLIANCE_MAP?.get?.(rawId)?.name || rawId);
+          : (catalogItem?.name || TRUSTED_RESERVATION_APPLIANCE_MAP?.get?.(rawId)?.name || rawId);
 
       sanitizedAppliances.push({
         id: rawId,

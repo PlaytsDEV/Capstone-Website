@@ -38,7 +38,6 @@ export const DEFAULT_BUSINESS_SETTINGS = Object.freeze({
   reservationFeeAmount: BUSINESS.DEPOSIT_AMOUNT,
   penaltyRatePerDay: BUSINESS.PENALTY_RATE_PER_DAY,
   latePaymentGraceDays: BUSINESS.DEFAULT_LATE_PAYMENT_GRACE_DAYS || 1,
-  maxPenaltyCapPercent: BUSINESS.MAX_PENALTY_CAP_PERCENT,
   defaultElectricityRatePerKwh: BUSINESS.DEFAULT_ELECTRICITY_RATE_PER_KWH,
   defaultWaterRatePerUnit: 0,
   checkoutLockDurationMinutes: 30,
@@ -251,11 +250,6 @@ export function resolveLatePaymentGraceDays(storedGraceDays, configuredGraceDays
   if (configured !== null && configured >= 0) return configured;
 
   return BUSINESS.DEFAULT_LATE_PAYMENT_GRACE_DAYS || 1;
-}
-
-export async function getMaxPenaltyCapPercent() {
-  const settings = await getBusinessSettings();
-  return settings.maxPenaltyCapPercent ?? BUSINESS.MAX_PENALTY_CAP_PERCENT;
 }
 
 export function resolvePenaltyRatePerDay(storedRatePerDay, configuredRatePerDay) {

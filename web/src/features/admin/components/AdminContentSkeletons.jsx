@@ -1203,7 +1203,7 @@ export function AdminPoliciesSettingsSkeleton() {
       className="sa2"
       aria-live="polite"
       aria-busy="true"
-      aria-label="Loading policies and maintenance settings"
+      aria-label="Loading settings and policies"
     >
       {/* Page Header */}
       <div className="sa2-header">

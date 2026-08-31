@@ -239,6 +239,32 @@ export function getDynamicOperationsPrompts(data) {
   return prompts.slice(0, 4);
 }
 
+export function getDynamicAcquisitionPrompts(reportData = []) {
+  const channels = Array.isArray(reportData) ? reportData : [];
+  const topChannel = channels[0];
+  const bestConverting = [...channels]
+    .filter((c) => Number(c.totalLeads || 0) >= 3)
+    .sort((a, b) => Number(b.conversionRate || 0) - Number(a.conversionRate || 0))[0];
+  const prompts = [];
+
+  if (bestConverting?.channel && bestConverting.conversionRate != null) {
+    prompts.push(`Why does ${bestConverting.channel} have our highest conversion rate (${bestConverting.conversionRate}%)?`);
+  } else {
+    prompts.push("Which marketing channels have the highest conversion rate?");
+  }
+
+  if (topChannel?.channel) {
+    prompts.push(`How can we convert more leads from ${topChannel.channel} into move-ins?`);
+  } else {
+    prompts.push("How can we convert more leads into move-ins?");
+  }
+
+  prompts.push("Which channels bring in the most viewings?");
+  prompts.push("Where should we focus our marketing efforts?");
+
+  return prompts.slice(0, 4);
+}
+
 export function getDynamicDemographicsPrompts(data) {
   const kpis = data?.kpis || {};
   const prompts = [];

@@ -54,6 +54,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   },
   TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
   BusinessSettings: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+  Appliance: { find: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) },
   ScheduledRoomTransfer: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn(), countDocuments: jest.fn() },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
 }));

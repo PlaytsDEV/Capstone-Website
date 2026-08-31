@@ -53,7 +53,7 @@ const NAV_ITEMS = [
   { to: "/admin/users", icon: UserCog, text: "Accounts & Access", group: "system", priority: 1 },
   { to: "/admin/audit-logs", icon: FileText, text: "Audit & Security", group: "system", priority: 2 },
   { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 3, saOnly: true },
-  { to: "/admin/settings", icon: Settings, text: "Policies & Maintenance", group: "system", priority: 4, saOnly: true },
+  { to: "/admin/settings", icon: Settings, text: "Settings & Policies", group: "system", priority: 4, saOnly: true },
 ];
 
 export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }) {

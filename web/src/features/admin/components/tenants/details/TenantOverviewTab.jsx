@@ -23,6 +23,7 @@ import ScheduledRoomTransferCard from "./ScheduledRoomTransferCard.jsx";
 import { adminApi } from "../../../services/adminApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
+import { useAppliances } from "../../../../../shared/hooks/queries/useAppliances";
 import { STANDARD_APPLIANCES_CATALOG as STANDARD_APPLIANCES } from "../../../../tenant/utils/roomDetailsPricing.js";
 
 export default function TenantOverviewTab({
@@ -37,6 +38,20 @@ export default function TenantOverviewTab({
   onOpenDigitalContract,
 }) {
   const queryClient = useQueryClient();
+  const { data: dbAppliances = [] } = useAppliances({ includeInactive: true });
+
+  const availableAppliancesList = useMemo(() => {
+    if (Array.isArray(dbAppliances) && dbAppliances.length > 0) {
+      return dbAppliances.map((a) => ({
+        id: a.code || a._id,
+        name: a.name,
+        unitPrice: Number(a.monthlyFee ?? 200),
+        maxQuantity: a.maxQuantity || 5,
+        isActive: a.isActive !== false,
+      }));
+    }
+    return STANDARD_APPLIANCES.map((a) => ({ ...a, maxQuantity: 5, isActive: true }));
+  }, [dbAppliances]);
 
   const isGuadalupe = useMemo(() => {
     const branchName = String(
@@ -55,7 +70,11 @@ export default function TenantOverviewTab({
       tenant?.selectedAppliances ??
       [];
 
-    const map = { fan: 0, ricecooker: 0, laptop: 0 };
+    const map = {};
+    availableAppliancesList.forEach((a) => {
+      map[a.id] = 0;
+    });
+
     if (Array.isArray(raw)) {
       raw.forEach((item) => {
         if (!item) return;
@@ -72,7 +91,7 @@ export default function TenantOverviewTab({
       });
     }
     return map;
-  }, [fetchedDetail?.selectedAppliances, tenant?.selectedAppliances]);
+  }, [fetchedDetail?.selectedAppliances, tenant?.selectedAppliances, availableAppliancesList]);
 
   const [isEditingAppliances, setIsEditingAppliances] = useState(false);
   const [editedAppliances, setEditedAppliances] = useState(initialAppliancesMap);
@@ -83,27 +102,27 @@ export default function TenantOverviewTab({
   }, [initialAppliancesMap]);
 
   const liveMonthlyTotal = useMemo(() => {
-    return STANDARD_APPLIANCES.reduce((sum, app) => {
+    return availableAppliancesList.reduce((sum, app) => {
       const qty = Number(editedAppliances[app.id]) || 0;
       return sum + qty * app.unitPrice;
     }, 0);
-  }, [editedAppliances]);
+  }, [editedAppliances, availableAppliancesList]);
 
   const currentSavedMonthlyTotal = useMemo(() => {
-    return STANDARD_APPLIANCES.reduce((sum, app) => {
+    return availableAppliancesList.reduce((sum, app) => {
       const qty = Number(initialAppliancesMap[app.id]) || 0;
       return sum + qty * app.unitPrice;
     }, 0);
-  }, [initialAppliancesMap]);
+  }, [initialAppliancesMap, availableAppliancesList]);
 
   const hasAnyDeclaredAppliances = useMemo(() => {
     return Object.values(initialAppliancesMap).some((qty) => Number(qty) > 0);
   }, [initialAppliancesMap]);
 
-  const handleStepperChange = (appId, delta) => {
+  const handleStepperChange = (appId, delta, maxLimit = 5) => {
     setEditedAppliances((prev) => {
       const current = Number(prev[appId]) || 0;
-      const next = Math.max(0, current + delta);
+      const next = Math.min(maxLimit, Math.max(0, current + delta));
       return { ...prev, [appId]: next };
     });
   };
@@ -124,7 +143,7 @@ export default function TenantOverviewTab({
       return;
     }
 
-    const selectedAppliancesPayload = STANDARD_APPLIANCES.map((app) => ({
+    const selectedAppliancesPayload = availableAppliancesList.map((app) => ({
       id: app.id,
       name: app.name,
       quantity: Number(editedAppliances[app.id]) || 0,
@@ -467,64 +486,68 @@ export default function TenantOverviewTab({
 
           {/* Appliance Item Rows */}
           <div className="divide-y divide-border/40 text-xs">
-            {STANDARD_APPLIANCES.map((app) => {
-              const currentQty = isEditingAppliances
-                ? Number(editedAppliances[app.id]) || 0
-                : Number(initialAppliancesMap[app.id]) || 0;
-              const subtotal = currentQty * app.unitPrice;
+            {availableAppliancesList
+              .filter((app) => isEditingAppliances || (Number(initialAppliancesMap[app.id]) || 0) > 0 || app.isActive)
+              .map((app) => {
+                const currentQty = isEditingAppliances
+                  ? Number(editedAppliances[app.id]) || 0
+                  : Number(initialAppliancesMap[app.id]) || 0;
+                const subtotal = currentQty * app.unitPrice;
+                const maxLimit = app.maxQuantity || 5;
 
-              return (
-                <div
-                  key={app.id}
-                  className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <span className="font-semibold text-foreground text-xs block truncate">
-                      {app.name}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground block">
-                      ₱{app.unitPrice}/month each
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    {isEditingAppliances ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          aria-label={`Decrease ${app.name} quantity`}
-                          onClick={() => handleStepperChange(app.id, -1)}
-                          disabled={currentQty === 0 || isSavingAppliances}
-                          className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="w-6 text-center text-xs font-bold text-foreground tabular-nums">
-                          {currentQty}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label={`Increase ${app.name} quantity`}
-                          onClick={() => handleStepperChange(app.id, 1)}
-                          disabled={isSavingAppliances}
-                          className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border/60 bg-muted/30 text-xs font-medium text-foreground">
-                        Qty: <strong>{currentQty}</strong>
+                return (
+                  <div
+                    key={app.id}
+                    className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-foreground text-xs block truncate">
+                        {app.name}
                       </span>
-                    )}
+                      <span className="text-[11px] text-muted-foreground block">
+                        ₱{app.unitPrice}/month each
+                      </span>
+                    </div>
 
-                    <span className="w-20 text-right font-semibold text-foreground text-xs tabular-nums">
-                      {currentQty > 0 ? `₱${subtotal.toLocaleString()}/mo` : "₱0/mo"}
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {isEditingAppliances ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            aria-label={`Decrease ${app.name} quantity`}
+                            onClick={() => handleStepperChange(app.id, -1, maxLimit)}
+                            disabled={currentQty === 0 || isSavingAppliances}
+                            className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="w-6 text-center text-xs font-bold text-foreground tabular-nums">
+                            {currentQty}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Increase ${app.name} quantity`}
+                            onClick={() => handleStepperChange(app.id, 1, maxLimit)}
+                            disabled={currentQty >= maxLimit || isSavingAppliances}
+                            className="w-7 h-7 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                            title={currentQty >= maxLimit ? `Max limit (${maxLimit})` : `Add ${app.name}`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border/60 bg-muted/30 text-xs font-medium text-foreground">
+                          Qty: <strong>{currentQty}</strong>
+                        </span>
+                      )}
+
+                      <span className="w-20 text-right font-semibold text-foreground text-xs tabular-nums">
+                        {currentQty > 0 ? `₱${subtotal.toLocaleString()}/mo` : "₱0/mo"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
 
           {/* Footer Subtotal & Recalculation Callout */}

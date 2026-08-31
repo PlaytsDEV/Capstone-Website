@@ -242,6 +242,7 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
   UserSession: {},
   AcknowledgmentAccount: {},
   BusinessSettings: {},
+  Appliance: {},
   ChatConversation: {},
   ChatMessage: {},
   WaterBillingRecord: {},

@@ -1,5 +1,5 @@
 import { chatApi } from "../../../../shared/api/chatApi.js";
-import { BRANCH_DISPLAY_NAMES } from "../../../../shared/utils/constants";
+import { BRANCH_DISPLAY_NAMES } from "../../../../shared/utils/constants.js";
 
 export const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -39,8 +39,16 @@ export const CATEGORY_OPTIONS = [
   { value: "reservation_concern", label: "Reservation Concern" },
   { value: "payment_concern", label: "Payment Concern" },
   { value: "general_inquiry", label: "General Inquiry" },
-  { value: "urgent_issue", label: "Urgent Issue" },
 ];
+
+export const CATEGORY_FALLBACK_LABELS = {
+  urgent_issue: "Urgent Issue",
+  billing_dispute: "Billing & Utility Inquiry",
+  contract_lease: "Contract Renewal & Move-Out",
+  facility_repair: "Room & Facility Maintenance",
+  security_curfew: "Curfew & Security Concern",
+  roommate_concern: "Roommate & Common Space Concern",
+};
 
 export const PRIORITY_OPTIONS = [
   { value: "all", label: "All priorities" },
@@ -197,6 +205,7 @@ export const getStatusLabel = (status) =>
 
 export const getCategoryLabel = (category) =>
   CATEGORY_OPTIONS.find((item) => item.value === category)?.label ||
+  CATEGORY_FALLBACK_LABELS[category] ||
   "General Inquiry";
 
 export const getPriorityLabel = (priority) =>

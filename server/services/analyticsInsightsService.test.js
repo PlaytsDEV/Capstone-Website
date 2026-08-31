@@ -50,6 +50,37 @@ const billingReportData = {
   },
 };
 
+const acquisitionReportData = {
+  filters: { range: "30d" },
+  kpis: {
+    totalLeads: 71,
+    viewingsScheduled: 18,
+    convertedTenants: 22,
+    overallConversionRate: 31,
+  },
+  series: {
+    channels: [
+      { channel: "Website", source: "website", totalLeads: 40, viewingsScheduled: 10, convertedCount: 15, conversionRate: 38 },
+      { channel: "Facebook", source: "facebook", totalLeads: 20, viewingsScheduled: 5, convertedCount: 5, conversionRate: 25 },
+      { channel: "TikTok", source: "tiktok", totalLeads: 11, viewingsScheduled: 3, convertedCount: 2, conversionRate: 18 },
+    ],
+    funnelStages: [
+      { key: "leads", label: "Inquiries Received", count: 71, stageOrder: 1 },
+      { key: "viewings", label: "Viewing Tours", count: 18, stageOrder: 2 },
+      { key: "applications", label: "Applications Converted", count: 22, stageOrder: 3 },
+      { key: "approved", label: "Approved Bookings", count: 18, stageOrder: 4 },
+      { key: "moveIns", label: "Active Move-Ins", count: 14, stageOrder: 5 },
+    ],
+  },
+  tables: {
+    channels: [
+      { channel: "Website", source: "website", totalLeads: 40, viewingsScheduled: 10, convertedCount: 15, conversionRate: 38 },
+      { channel: "Facebook", source: "facebook", totalLeads: 20, viewingsScheduled: 5, convertedCount: 5, conversionRate: 25 },
+      { channel: "TikTok", source: "tiktok", totalLeads: 11, viewingsScheduled: 3, convertedCount: 2, conversionRate: 18 },
+    ],
+  },
+};
+
 const hubReportData = {
   filters: { range: "30d", billingRange: "3m", forecastMonths: 3 },
   reports: {
@@ -468,5 +499,38 @@ describe("generateAnalyticsInsight", () => {
       k.includes("Branch benchmark:") && k.includes("Gil Puyat") && k.includes("Guadalupe"),
     );
     expect(hasBenchmarkFinding).toBe(true);
+  });
+
+  test("generates acquisition insights with correct marketing metrics, quick actions, and terminology", async () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
+    delete process.env.GROQ_API_KEY;
+
+    const result = await generateAnalyticsInsight({
+      reportType: "acquisition",
+      scope: { role: "owner", branch: "all", branchesIncluded: ["gil-puyat", "guadalupe"] },
+      filters: acquisitionReportData.filters,
+      reportData: acquisitionReportData,
+    });
+
+    expect(result.snapshotMeta).toMatchObject({
+      reportType: "acquisition",
+      provider: "heuristic-fallback",
+      usedFallback: true,
+    });
+
+    expect(result.insight.headline).toBeDefined();
+    expect(result.insight.summary).toContain("71 total inquiries");
+    expect(result.insight.summary).toContain("22 tenant conversions");
+    expect(result.insight.summary).not.toMatch(/resident/i);
+
+    // Verify Quick Actions
+    expect(result.insight.actionableItems).toBeDefined();
+    expect(result.insight.actionableItems.length).toBeGreaterThan(0);
+    const filterAction = result.insight.actionableItems.find(
+      (item) => item.actionType === "FILTER_CHANNEL",
+    );
+    expect(filterAction).toBeDefined();
+    expect(filterAction.filterValue).toBe("has-conversions");
   });
 });

@@ -17,7 +17,6 @@ import { diffManilaDays } from "../../utils/dateUtils.js";
 import {
   getPenaltyRatePerDay,
   getLatePaymentGraceDays,
-  getMaxPenaltyCapPercent,
   resolvePenaltyRatePerDay,
   resolveLatePaymentGraceDays,
 } from "../../utils/businessSettings.js";
@@ -26,12 +25,11 @@ import {
  * Compute the penalty amount for a single overdue bill.
  */
 export async function computePenalty(bill, settings = null, now = dayjs()) {
-  const [configuredRate, configuredGraceDays, maxCapPercent] = settings
-    ? [settings.penaltyRatePerDay, settings.latePaymentGraceDays, settings.maxCapPercent]
+  const [configuredRate, configuredGraceDays] = settings
+    ? [settings.penaltyRatePerDay, settings.latePaymentGraceDays]
     : await Promise.all([
         getPenaltyRatePerDay(),
         getLatePaymentGraceDays(),
-        getMaxPenaltyCapPercent(),
       ]);
 
   // Compare calendar dates only (Asia/Manila billing day boundaries) —
@@ -66,18 +64,7 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
   // - 12th: daysLate = 2 > 1 grace day => billableDays = 1, penalty = ₱50
   // - 13th: daysLate = 3 > 1 grace day => billableDays = 2, penalty = ₱100
   const billableDays = Math.max(0, daysLate - graceDays);
-  const rawPenalty = billableDays * ratePerDay;
-
-  // Plan 4 (D2): Use contractRentAtMoveIn (the rent rate locked at the tenant's
-  // move-in date) as the base for the cap ceiling. Falls back to charges.rent
-  // for bills that pre-date this field being populated.
-  const rentBase =
-    bill.contractRentAtMoveIn ||
-    bill.penaltyDetails?.contractRentAtMoveIn ||
-    bill.charges?.rent ||
-    0;
-  const cap = rentBase > 0 ? (rentBase * maxCapPercent) / 100 : Infinity;
-  const penalty = billableDays > 0 ? Math.min(rawPenalty, cap) : 0;
+  const penalty = billableDays > 0 ? billableDays * ratePerDay : 0;
 
   return {
     penalty,
@@ -86,7 +73,7 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     graceDays,
     isWithinGracePeriod: daysLate > 0 && daysLate <= graceDays,
     ratePerDay,
-    capped: penalty < rawPenalty,
+    capped: false,
   };
 }
 
@@ -95,10 +82,9 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
  * computePenalty calls.
  */
 export async function fetchPenaltySettings() {
-  const [penaltyRatePerDay, latePaymentGraceDays, maxCapPercent] = await Promise.all([
+  const [penaltyRatePerDay, latePaymentGraceDays] = await Promise.all([
     getPenaltyRatePerDay(),
     getLatePaymentGraceDays(),
-    getMaxPenaltyCapPercent(),
   ]);
-  return { penaltyRatePerDay, latePaymentGraceDays, maxCapPercent };
+  return { penaltyRatePerDay, latePaymentGraceDays };
 }

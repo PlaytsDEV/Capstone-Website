@@ -66,3 +66,30 @@ export const buildPasswordChangedEmail = ({ USER_NAME, TIMESTAMP, IP_ADDRESS }) 
       detailsPanel(row("Date & Time", TIMESTAMP) + row("IP Address", IP_ADDRESS)) +
       `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:14px 18px;margin:0;"><p style="margin:0;color:#991B1B;font-size:13px;line-height:1.5;"><strong>Didn't make this change?</strong> Your account may be compromised — reset your password immediately or contact Lilycrest support.</p></div>`,
   });
+
+export const buildWelcomeAccountActivationEmail = ({ USER_NAME, ROLE_LABEL, USERNAME, SETUP_URL }) =>
+  renderLilycrestEmail({
+    title: "Welcome to Lilycrest — Set Up Your Account",
+    heading: "Set Up Your Password",
+    body:
+      p(`Hi <strong>${escapeHtml(USER_NAME || "there")}</strong>,`) +
+      p("Welcome to Lilycrest! Your account has been created. Please set up your password to activate your account and get started.", {
+        size: "14px",
+      }) +
+      detailsPanel(
+        row("Account Type", ROLE_LABEL || "User") +
+        (USERNAME ? row("Username", USERNAME) : "")
+      ) +
+      button("Set Up Password", SETUP_URL) +
+      p(
+        "This activation link can be used to securely create your password. If you did not expect this invitation or believe it was sent in error, please contact Lilycrest support.",
+        { size: "13px", color: "#6B7280", margin: "0 0 16px" },
+      ) +
+      p("If the button above doesn't work, copy and paste this link into your browser:", {
+        size: "13px",
+        color: "#6B7280",
+        margin: "0 0 6px",
+      }) +
+      `<p style="word-break:break-all;font-size:12px;margin:0;"><a href="${escapeHtml(SETUP_URL)}" style="color:${THEME.goldDeep};">${escapeHtml(SETUP_URL)}</a></p>`,
+  });
+

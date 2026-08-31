@@ -965,6 +965,67 @@ describe("analyticsController", () => {
     );
   });
 
+  test("builds AI insights for lead acquisition analytics", async () => {
+    getUserBranchInfo.mockResolvedValue({
+      role: "owner",
+      branch: "gil-puyat",
+      isOwner: true,
+    });
+
+    inquiryFind.mockReturnValue(
+      createLeanChain([
+        {
+          _id: "inq-1",
+          source: "website",
+          branch: "gil-puyat",
+          status: "resolved",
+          viewingStatus: "converted_to_application",
+          createdAt: new Date(),
+        },
+        {
+          _id: "inq-2",
+          source: "facebook",
+          branch: "gil-puyat",
+          status: "in-progress",
+          viewingStatus: "viewing_scheduled",
+          viewingDate: new Date(),
+          createdAt: new Date(),
+        },
+      ]),
+    );
+
+    const req = {
+      user: { uid: "owner-ai-acq", owner: true },
+      query: {},
+      body: {
+        reportType: "acquisition",
+        range: "30d",
+        question: "Which channels bring in the most viewings?",
+      },
+    };
+    const res = { req };
+
+    const next = jest.fn();
+    await getAnalyticsInsights(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        snapshotMeta: expect.objectContaining({
+          reportType: "acquisition",
+          provider: "heuristic-fallback",
+          usedFallback: true,
+        }),
+        insight: expect.objectContaining({
+          headline: expect.any(String),
+          keyFindings: expect.any(Array),
+          actionableItems: expect.any(Array),
+        }),
+      }),
+    );
+  });
+
   test("builds the consolidated AI hub without leaking branch-admin scope", async () => {
     process.env.AI_INSIGHTS_PROVIDER = "heuristic";
     getUserBranchInfo.mockResolvedValue({

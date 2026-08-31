@@ -39,6 +39,7 @@ export { analyticsApi } from "./analyticsApi.js";
 export { chatApi } from "./chatApi.js";
 export { contractApi } from "./contractApi.js";
 export { chatbotApi } from "./chatbotApi.js";
+export { applianceApi } from "./applianceApi.js";
 
 // =============================================================================
 // DEFAULT EXPORT (backward compatibility)

@@ -159,3 +159,18 @@ test("reset password container is centered vertically and horizontally matching 
   );
 });
 
+test("welcome landing flow is supported with specialized copy and branding", () => {
+  assert.match(
+    source,
+    /const isWelcomeFlow = searchParams\.get\("type"\) === "welcome";/,
+    "must inspect searchParams for type === 'welcome'",
+  );
+  assert.match(source, /isWelcomeFlow \? "Welcome to<br\/>Lilycrest" : "Create A<br\/>New Password"/);
+  assert.match(source, /isWelcomeFlow \? "Set up your account password" : "Secure your Lilycrest account"/);
+  assert.match(source, /isWelcomeFlow \? "Set up your password" : "Reset password"/);
+  assert.match(source, /isWelcomeFlow\s*\?\s*`Welcome to Lilycrest! Choose a secure password for \$\{email \|\| "your account"\}\.`/);
+  assert.match(source, /isWelcomeFlow \? "Setting up\.\.\." : "Updating\.\.\."/);
+  assert.match(source, /isWelcomeFlow \? "Set Password & Continue" : "Reset password"/);
+  assert.match(source, /isWelcomeFlow \? "Password established successfully\." : "Password reset successfully\."/);
+});
+

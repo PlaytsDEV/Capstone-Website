@@ -25,7 +25,7 @@ export default function BaseModal({
   subtitle,
   variant = "primary", // "primary" | "danger" | "warning" | "success" | "info"
   size = "md", // "sm" (440px) | "md" (560px) | "lg" (760px) | "xl" (960px)
-  showCloseButton = true,
+  showCloseButton,
   children,
   footer,
   confirmText,
@@ -59,6 +59,7 @@ export default function BaseModal({
     md: 560,
     lg: 760,
     xl: 960,
+    "2xl": 1040,
     full: 1120,
   };
   const maxWidth = sizeMaxWidths[size] || 560;
@@ -98,6 +99,13 @@ export default function BaseModal({
   };
 
   const v = variantTokens[variant] || variantTokens.primary;
+
+  // Intelligent close button derivation:
+  // If showCloseButton is explicitly provided (true/false), use it.
+  // Otherwise, hide 'X' when a footer Cancel button is already present to prevent redundancy.
+  const hasFooterCancel = Boolean(cancelText && (onConfirm || footer !== undefined));
+  const shouldShowCloseButton =
+    typeof showCloseButton === "boolean" ? showCloseButton : !hasFooterCancel;
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget && !loading) {
@@ -155,7 +163,7 @@ export default function BaseModal({
         }}
       >
         {/* Header */}
-        {(title || showCloseButton) && (
+        {(title || shouldShowCloseButton) && (
           <div
             style={{
               padding: "20px 24px 16px",
@@ -210,7 +218,7 @@ export default function BaseModal({
               </div>
             </div>
 
-            {showCloseButton && (
+            {shouldShowCloseButton && (
               <button
                 type="button"
                 onClick={onClose}

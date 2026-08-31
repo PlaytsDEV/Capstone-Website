@@ -25,7 +25,6 @@ const getLifecyclePolicySettings = jest.fn(async () => ({
   archiveCancelledAfterDays: 7,
 }));
 const getPenaltyRatePerDay = jest.fn(async () => 50);
-const getMaxPenaltyCapPercent = jest.fn(async () => 100);
 const resolvePenaltyRatePerDay = jest.fn((rate) => rate || 50);
 const dispatchDueScheduledAnnouncements = jest.fn();
 const maintenanceRequestFind = jest.fn();
@@ -128,7 +127,6 @@ await jest.unstable_mockModule("./businessSettings.js", () => ({
   getLifecyclePolicySettings,
   getPenaltyRatePerDay,
   getLatePaymentGraceDays: jest.fn(async () => 1),
-  getMaxPenaltyCapPercent,
   resolvePenaltyRatePerDay,
   resolveLatePaymentGraceDays: (s, c) => (s !== undefined && s !== null ? Number(s) : (c !== undefined && c !== null ? Number(c) : 1)),
 }));
@@ -201,8 +199,6 @@ describe("scheduler jobs", () => {
     });
     getPenaltyRatePerDay.mockReset();
     getPenaltyRatePerDay.mockResolvedValue(50);
-    getMaxPenaltyCapPercent.mockReset();
-    getMaxPenaltyCapPercent.mockResolvedValue(100);
     resolvePenaltyRatePerDay.mockReset();
     resolvePenaltyRatePerDay.mockImplementation((rate) => rate || 50);
     dispatchDueScheduledAnnouncements.mockReset();

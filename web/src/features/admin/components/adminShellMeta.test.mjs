@@ -61,7 +61,7 @@ test("system navigation labels and ordering match the consolidated IA", () => {
     { to: "/admin/users", text: "Accounts & Access" },
     { to: "/admin/branches", text: "Branches" },
     { to: "/admin/audit-logs", text: "Audit & Security" },
-    { to: "/admin/settings", text: "Policies & Maintenance" },
+    { to: "/admin/settings", text: "Settings & Policies" },
   ]);
 });
 
@@ -81,7 +81,7 @@ test("system topbar copy uses the consolidated labels", () => {
   );
 
   const settingsMeta = getPageMeta("/admin/settings");
-  assert.equal(settingsMeta.title, "Policies & Maintenance");
+  assert.equal(settingsMeta.title, "Settings & Policies");
   assert.equal(
     settingsMeta.description,
     "Control platform policies, defaults, branch overrides, and manage database backup and recovery.",
@@ -154,7 +154,7 @@ test("base pages stop at page name without extra sub-tab names in breadcrumbs", 
   const settingsMeta = getPageMeta("/admin/settings");
   assert.deepEqual(settingsMeta.breadcrumbs, [
     { label: "Admin", href: "/admin/dashboard" },
-    { label: "Policies & Maintenance" },
+    { label: "Settings & Policies" },
   ]);
 });
 
@@ -204,7 +204,7 @@ test("dynamic 3-level breadcrumbs are generated ONLY when an explicit sub-tab is
   const settingsBackups = getPageMeta("/admin/settings", "?tab=backups");
   assert.deepEqual(settingsBackups.breadcrumbs, [
     { label: "Admin", href: "/admin/dashboard" },
-    { label: "Policies & Maintenance", href: "/admin/settings" },
+    { label: "Settings & Policies", href: "/admin/settings" },
     { label: "Database Backup" },
   ]);
 });

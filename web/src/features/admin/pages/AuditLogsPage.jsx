@@ -75,7 +75,7 @@ import "../styles/design-tokens.css";
 import "../styles/admin-audit-logs.css";
 
 const RETENTION_OPTIONS = [
-  { value: "90", label: "90 Days", sublabel: "Standard" },
+  { value: "90", label: "90 Days", sublabel: "Standard (Recommended)" },
   { value: "180", label: "180 Days", sublabel: "6 Months" },
   { value: "365", label: "365 Days", sublabel: "1 Year" },
 ];
@@ -1683,16 +1683,43 @@ const AuditLogsPage = () => {
                 <div className="audit-retention-panel__heading">
                   <h3 className="audit-retention-panel__title">Log History & Storage Cleanup</h3>
                   <p className="audit-retention-panel__description">
-                    Keep your database fast and organized by clearing routine activity history older than your selected timeframe. Important security alerts and sign-in records are always saved safely.
+                    Keep your database fast, responsive, and organized by safely clearing routine activity history older than your selected timeframe. Important security alerts and sign-in records are always saved safely.
                   </p>
                 </div>
               </div>
 
               <div className="audit-retention-panel__body">
+                {/* Structured Safety Breakdown */}
+                <div className="audit-retention-panel__breakdown-grid">
+                  <div className="audit-retention-panel__breakdown-card">
+                    <div className="audit-retention-panel__breakdown-header">
+                      <Trash2 size={14} className="text-slate-500 dark:text-slate-400" />
+                      <span className="audit-retention-panel__breakdown-title">What Gets Cleared</span>
+                    </div>
+                    <ul className="audit-retention-panel__breakdown-list">
+                      <li>Routine page views and record browsing history</li>
+                      <li>General data table searches and filter logs</li>
+                      <li>Standard non-critical background system events</li>
+                    </ul>
+                  </div>
+
+                  <div className="audit-retention-panel__breakdown-card audit-retention-panel__breakdown-card--safe">
+                    <div className="audit-retention-panel__breakdown-header">
+                      <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
+                      <span className="audit-retention-panel__breakdown-title">Permanently Protected (Never Deleted)</span>
+                    </div>
+                    <ul className="audit-retention-panel__breakdown-list">
+                      <li>Security alerts, failed sign-ins & account lockouts</li>
+                      <li>Tenant contracts, digital signatures & leases</li>
+                      <li>Rent bills, payment receipts & financial audits</li>
+                    </ul>
+                  </div>
+                </div>
+
                 <div className="audit-retention-panel__control-row">
                   <div className="audit-retention-panel__picker">
                     <span className="audit-retention-panel__picker-label">
-                      Keep Logs For
+                      Keep Routine Logs For
                     </span>
                     <div
                       className="audit-retention-panel__segmented-control"
@@ -1751,7 +1778,7 @@ const AuditLogsPage = () => {
                 <div className="audit-retention-panel__guardrail">
                   <Shield size={14} className="audit-retention-panel__guardrail-icon" />
                   <span className="audit-retention-panel__guardrail-text">
-                    <strong>Safe & Protected:</strong> Important security events (such as failed sign-ins, account changes, and security alerts) are permanently saved and will never be removed.
+                    <strong>Owner Protection Guarantee:</strong> Critical security incidents and financial records are strictly exempt from cleanup and remain preserved indefinitely.
                   </span>
                 </div>
               </div>
@@ -2063,13 +2090,26 @@ const AuditLogsPage = () => {
         isOpen={isCleanupConfirmOpen}
         onClose={() => setIsCleanupConfirmOpen(false)}
         onConfirm={handleConfirmCleanup}
-        title="Clean Up Old Logs"
-        message={`Are you sure you want to clean up routine activity logs older than ${cleanupDays} days? Critical security alerts and sign-in records will stay safely saved in your system.`}
+        title="Clean Up Old Routine Logs"
+        message={`Are you sure you want to clean up routine operational activity logs older than ${cleanupDays} days (${cleanupDays === "90" ? "approx. 3 months" : cleanupDays === "180" ? "approx. 6 months" : "1 year"})?`}
         confirmText="Clean Up Logs"
         cancelText="Cancel"
         variant="danger"
         loading={cleanupAuditLogs.isPending}
-      />
+      >
+        <div className="audit-cleanup-confirm-reassurance">
+          <div className="audit-cleanup-confirm-reassurance__title">
+            <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
+            <span>Permanently Protected & Safe:</span>
+          </div>
+          <ul className="audit-cleanup-confirm-reassurance__list">
+            <li>All security alerts, failed sign-ins, and account changes</li>
+            <li>All tenant contracts, digital signatures, and room leases</li>
+            <li>All rent bills, payment receipts, and financial audit trails</li>
+            <li>All recent activity recorded in the last {cleanupDays} days</li>
+          </ul>
+        </div>
+      </ConfirmModal>
     </PageShell>
   );
 };

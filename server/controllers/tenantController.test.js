@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const genericModel = () => ({
   find: jest.fn(),
@@ -21,6 +21,7 @@ const contractModel = genericModel();
 const bedHistoryModel = genericModel();
 const utilityReadingModel = genericModel();
 const utilityPeriodModel = genericModel();
+const applianceModel = genericModel();
 
 const allModels = {
   User: userModel,
@@ -41,6 +42,7 @@ const allModels = {
   UserSession: genericModel(),
   AcknowledgmentAccount: genericModel(),
   BusinessSettings: genericModel(),
+  Appliance: applianceModel,
   VisitAvailability: genericModel(),
   VisitAvailabilityHistory: genericModel(),
   VisitConflictLog: genericModel(),
@@ -399,6 +401,72 @@ describe("tenantController - updateTenantAppliances", () => {
     expect(mockReservation.applianceFees).toBe(200);
     expect(mockReservation.totalPrice).toBe(4200);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test("prioritizes authoritative database catalog price over client-provided price", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      email: "tenant@example.com",
+    });
+
+    applianceModel.find.mockReturnValue({
+      lean: jest.fn().mockResolvedValue([
+        { code: "fan", name: "Electric Fan (Catalog)", monthlyFee: 350 },
+      ]),
+    });
+
+    const mockReservation = {
+      _id: "507f1f77bcf86cd799439022",
+      userId: "507f1f77bcf86cd799439011",
+      roomId: { branch: "guadalupe" },
+      monthlyRent: 4000,
+      totalPrice: 4000,
+      selectedAppliances: [],
+      applianceFees: 0,
+      save: jest.fn().mockResolvedValue(true),
+    };
+
+    const mockQuery = {
+      populate: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockResolvedValue(mockReservation),
+    };
+    reservationModel.findOne.mockReturnValue(mockQuery);
+    auditLogModel.log.mockResolvedValue({});
+
+    // Client sends stale or manipulated price: 100
+    const req = {
+      params: { id: "507f1f77bcf86cd799439011" },
+      user: { email: "admin@lilycrest.com", role: "branch_admin" },
+      body: {
+        selectedAppliances: [
+          { id: "fan", quantity: 2, price: 100 },
+        ],
+      },
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await updateTenantAppliances(req, res);
+
+    // Authoritative catalog monthlyFee is 350, so 2 * 350 = 700 (ignoring client price: 100)
+    expect(mockReservation.applianceFees).toBe(700);
+    expect(mockReservation.totalPrice).toBe(4700);
+    expect(mockReservation.selectedAppliances).toEqual([
+      { id: "fan", name: "Electric Fan (Catalog)", quantity: 2 },
+    ]);
+    expect(mockReservation.save).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        selectedAppliances: [
+          { id: "fan", name: "Electric Fan (Catalog)", quantity: 2 },
+        ],
+        applianceFees: 700,
+      },
+    });
   });
 });
 

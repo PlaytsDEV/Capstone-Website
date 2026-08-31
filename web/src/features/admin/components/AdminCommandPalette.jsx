@@ -146,7 +146,7 @@ const BASE_NAV_ITEMS = [
   },
   {
     id: "nav-settings",
-    label: "System Settings",
+    label: "Settings & Policies",
     subtext: "Dormitory policies, rules, and global configurations",
     to: "/admin/settings",
     icon: Settings,

@@ -150,4 +150,9 @@ export const queryKeys = {
     myBreakdown: (periodId) => ["water", "myBreakdown", periodId],
     breakdownByBill: (billId) => ["water", "breakdownByBill", billId],
   },
+
+  // ── Appliance Catalog ──
+  appliances: {
+    all: (params) => ["appliances", "list", params || {}],
+  },
 };

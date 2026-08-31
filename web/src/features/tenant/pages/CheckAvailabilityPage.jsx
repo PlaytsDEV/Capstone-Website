@@ -9,6 +9,7 @@ import { Search, ChevronLeft, ChevronRight, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { buildSignOutSuccessFlash } from "../../../shared/utils/authToasts";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import { useAppliances } from "../../../shared/hooks/queries/useAppliances";
 import { queryClient } from "../../../shared/lib/queryClient";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import BaseModal from "../../../shared/components/BaseModal";
@@ -122,6 +123,7 @@ function CheckAvailabilityPage() {
      gcTime: 300_000,
    }
  );
+ const { data: dbAppliances = [] } = useAppliances();
  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
 
   // Prefetch modal JS chunks in background during browser idle time (0ms cold click latency)
@@ -501,6 +503,26 @@ function CheckAvailabilityPage() {
     setInquiryRoomContext(null);
   }, []);
 
+  const activeAppliances = useMemo(() => {
+    if (Array.isArray(dbAppliances) && dbAppliances.length > 0) {
+      return dbAppliances.map((a) => ({
+        id: a.code || a._id,
+        name: a.name,
+        price: Number(a.monthlyFee ?? 200),
+        monthlyFee: Number(a.monthlyFee ?? 200),
+        maxQuantity: a.maxQuantity || 5,
+        category: a.category || "general",
+        description: a.description || "",
+      }));
+    }
+    return AVAILABLE_APPLIANCES.map((a) => ({
+      ...a,
+      monthlyFee: a.price,
+      maxQuantity: 5,
+      description: "",
+    }));
+  }, [dbAppliances]);
+
   const handleApplianceQuantityChange = useCallback((id, qty) => {
     setSelectedAppliances((prev) => ({
       ...prev,
@@ -520,14 +542,14 @@ function CheckAvailabilityPage() {
 
   const calculateApplianceFees = useCallback(
     () =>
-      AVAILABLE_APPLIANCES.reduce(
+      activeAppliances.reduce(
         (total, a) =>
           total +
-          (selectedRoom?.applianceFeeAmountPerUnit || a.price) *
+          (selectedRoom?.applianceFeeAmountPerUnit || a.monthlyFee || a.price || 200) *
             (selectedAppliances[a.id] || 0),
         0,
       ),
-    [selectedRoom, selectedAppliances],
+    [selectedRoom, selectedAppliances, activeAppliances],
   );
 
   // ── Reservation logic ──────────────────────────────────────
@@ -1010,10 +1032,7 @@ function CheckAvailabilityPage() {
         onSelectLeaseDuration={setSelectedLeaseDuration}
         selectedIntendedMoveInDate={selectedIntendedMoveInDate}
         onSelectIntendedMoveInDate={setSelectedIntendedMoveInDate}
-        availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
-          ...appliance,
-          price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,
-        }))}
+        availableAppliances={activeAppliances}
       />
     </Suspense>
   )}

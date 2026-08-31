@@ -43,7 +43,7 @@ export const PASSWORD_RESET_COOLDOWN_SECONDS = getPasswordResetCooldownSeconds()
  * canonical EMAIL_ACTION_URL. This makes the delivered link's host correct
  * unconditionally, independent of Firebase Console configuration.
  */
-export const buildCustomPasswordResetLink = (firebaseLink, environment = process.env) => {
+export const buildCustomPasswordResetLink = (firebaseLink, environment = process.env, extraParams = {}) => {
   const { emailActionUrl } = getPublicUrlConfig(environment);
   const generated = new URL(firebaseLink);
   const handler = new URL(emailActionUrl);
@@ -51,5 +51,11 @@ export const buildCustomPasswordResetLink = (firebaseLink, environment = process
     const value = generated.searchParams.get(name);
     if (value) handler.searchParams.set(name, value);
   }
+  for (const [key, val] of Object.entries(extraParams || {})) {
+    if (val !== undefined && val !== null) {
+      handler.searchParams.set(key, String(val));
+    }
+  }
   return handler.toString();
 };
+

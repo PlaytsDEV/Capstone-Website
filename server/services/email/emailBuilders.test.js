@@ -21,6 +21,12 @@ describe("Email Builders Layout & Standardization Tests", () => {
       TIMESTAMP: "August 17, 2026 6:30 PM",
       IP_ADDRESS: "192.168.1.1",
     },
+    WELCOME_ACCOUNT_ACTIVATION: {
+      USER_NAME: "Juan Dela Cruz",
+      ROLE_LABEL: "Applicant",
+      USERNAME: "juandelacruz",
+      SETUP_URL: "https://lilycrestdms.com/auth-action?mode=resetPassword&oobCode=abc123xyz&type=welcome",
+    },
     INQUIRY_RESPONSE: {
       CUSTOMER_NAME: "Maria Santos",
       INQUIRY_SUBJECT: "Available Rooms",
@@ -193,5 +199,20 @@ describe("Email Builders Layout & Standardization Tests", () => {
     expect(html).toContain("Payment Confirmed");
     expect(html).toContain("has been received and confirmed");
     expect(html).not.toContain("Payment Approved");
+  });
+
+  test("WELCOME_ACCOUNT_ACTIVATION builder renders welcome copy, role, username, and Set Up Password button", () => {
+    const vars = sampleVariables.WELCOME_ACCOUNT_ACTIVATION;
+    const subject = EMAIL_TEMPLATES.WELCOME_ACCOUNT_ACTIVATION.subject;
+    const html = EMAIL_TEMPLATES.WELCOME_ACCOUNT_ACTIVATION.builder(vars);
+
+    expect(subject).toBe("Welcome to Lilycrest — Set Up Your Account");
+    expect(html).toContain("Welcome to Lilycrest");
+    expect(html).toContain("Set Up Your Password");
+    expect(html).toContain("Juan Dela Cruz");
+    expect(html).toContain("Applicant");
+    expect(html).toContain("juandelacruz");
+    expect(html).toContain("Set Up Password");
+    expect(html).toContain(vars.SETUP_URL.replace(/&/g, "&amp;"));
   });
 });

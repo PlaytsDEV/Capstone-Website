@@ -12,8 +12,11 @@ import { ChatConversationListSkeleton } from "../AdminContentSkeletons";
 import {
   STATUS_OPTIONS,
   CATEGORY_OPTIONS,
+  PRIORITY_OPTIONS,
   STATUS_SECTION_ORDER,
   getStatusLabel,
+  getCategoryLabel,
+  getPriorityLabel,
   getBranchLabel,
   getRoomLabel,
   getInitials,
@@ -250,7 +253,7 @@ export default function AdminChatConversationList({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
               >
                 {STATUS_OPTIONS.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -267,7 +270,7 @@ export default function AdminChatConversationList({
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
               >
                 {CATEGORY_OPTIONS.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -277,15 +280,32 @@ export default function AdminChatConversationList({
               </select>
             </div>
 
+            <div className={isOwner ? "" : "col-span-2"}>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                Priority
+              </label>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                {PRIORITY_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {isOwner && (
-              <div className="col-span-2">
+              <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
                   Branch
                 </label>
                 <select
                   value={branchFilter}
                   onChange={(e) => onBranchFilterChange?.(e.target.value)}
-                  className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
                 >
                   <option value="all">All branches</option>
                   {BRANCH_OPTIONS.map((item) => (
@@ -371,7 +391,7 @@ export default function AdminChatConversationList({
                       />
 
                       {/* Middle Info */}
-                      <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-baseline justify-between gap-1">
                           <span
                             className={`text-xs truncate ${
@@ -391,6 +411,13 @@ export default function AdminChatConversationList({
                           {conversation.ticketId || "Inquiry ID pending"} · {getBranchLabel(conversation.branch)} · {getRoomLabel(conversation)}
                         </div>
 
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted/60 text-muted-foreground border border-border/50 truncate max-w-full">
+                            <span className="h-1 w-1 rounded-full bg-muted-foreground/60 shrink-0" />
+                            <span className="truncate">{getCategoryLabel(conversation.category)}</span>
+                          </span>
+                        </div>
+
                         <p className="text-[11px] text-muted-foreground truncate line-clamp-1 leading-tight font-normal">
                           {conversation.lastMessage || "No messages yet"}
                         </p>
@@ -407,6 +434,12 @@ export default function AdminChatConversationList({
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 dark:text-rose-400">
                             <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                             Urgent
+                          </span>
+                        )}
+                        {conversation.priority === "high" && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            High
                           </span>
                         )}
                       </div>

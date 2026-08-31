@@ -532,6 +532,26 @@ export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }
   });
 
 // =============================================================================
+// WELCOME & ACCOUNT ACTIVATION EMAIL
+// =============================================================================
+
+const welcomeActivationEmailIdempotencyKey = (to, setupLink) =>
+  crypto.createHash("sha256").update(`welcome-activation:${to}:${setupLink}`).digest("hex");
+
+export const sendWelcomeAccountActivationEmail = async ({ to, name, roleLabel, username, setupLink }) =>
+  sendLilycrestEmail({
+    to,
+    templateKey: "WELCOME_ACCOUNT_ACTIVATION",
+    idempotencyKey: welcomeActivationEmailIdempotencyKey(to, setupLink),
+    variables: {
+      USER_NAME: name || "there",
+      ROLE_LABEL: roleLabel || "User",
+      USERNAME: username || "",
+      SETUP_URL: setupLink,
+    },
+  });
+
+// =============================================================================
 // QA TEST HARNESS — force-send any template from the command line
 // =============================================================================
 //
@@ -634,6 +654,14 @@ const QA_TEMPLATES = {
       referenceId: "REF-TEST-0001", reservationCode: "RSV-TEST-001", roomName: "Room 204 - Bed A", branch: "Gil Puyat",
     }),
   otp: (to, name) => sendLoginOtpEmail({ to, name, otp: "482913", expiresInMinutes: 10 }),
+  welcome: (to, name) =>
+    sendWelcomeAccountActivationEmail({
+      to,
+      name,
+      roleLabel: "Applicant",
+      username: "juandelacruz",
+      setupLink: "https://lilycrestdms.com/auth-action?mode=resetPassword&oobCode=test123xyz&type=welcome",
+    }),
 };
 
 const isRunDirectly =

@@ -17,7 +17,6 @@ import {
   RotateCcw,
   Save,
   Settings2,
-  ShieldAlert,
   ShieldCheck,
   Zap,
 } from "lucide-react";
@@ -29,11 +28,13 @@ import {
   useUpdateSystemSettingsMutation,
   useUpdateBranchSettingsMutation,
 } from "../../../shared/hooks/queries/useSystemSettingsQuery";
+import { useAppliances } from "../../../shared/hooks/queries/useAppliances";
 import { showNotification } from "../../../shared/utils/notification";
 import { AdminPoliciesSettingsSkeleton } from "../../admin/components/AdminContentSkeletons";
 import SystemBackupPage from "../../admin/pages/SystemBackupPage";
 import AdminTabs from "../../../shared/components/AdminTabs";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
+import ApplianceCatalogModal from "../components/ApplianceCatalogModal";
 
 const BRANCH_META = {
   "gil-puyat": {
@@ -66,7 +67,6 @@ const DEFAULT_FORM = {
   reservationFeeAmount: 2000,
   penaltyRatePerDay: 50,
   latePaymentGraceDays: 1,
-  maxPenaltyCapPercent: 100,
   defaultElectricityRatePerKwh: 16,
   defaultWaterRatePerUnit: 0,
   rfidReplacementCharge: 1000,
@@ -115,7 +115,6 @@ const WHOLE_NUMBER_KEYS = new Set([
 ]);
 
 const PERCENTAGE_KEYS = new Set([
-  "maxPenaltyCapPercent",
   "defaultLongTermDiscountPercent",
   "quadrupleDiscountPercent",
   "doubleDiscountPercent",
@@ -126,7 +125,6 @@ const FIELD_LIMITS = Object.freeze({
   reservationFeeAmount: { min: 0, max: 50000, maxDigits: 6, unit: "PHP", label: "Reservation Deposit" },
   penaltyRatePerDay: { min: 0, max: 5000, maxDigits: 5, unit: "PHP/day", label: "Daily Late Penalty" },
   latePaymentGraceDays: { min: 0, max: 30, maxDigits: 2, unit: "days", label: "Late Payment Grace Period" },
-  maxPenaltyCapPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Max Penalty Cap" },
   defaultElectricityRatePerKwh: { min: 0, max: 500, maxDigits: 6, unit: "PHP/kWh", label: "Default Electricity Rate" },
   defaultWaterRatePerUnit: { min: 0, max: 500, maxDigits: 6, unit: "PHP/unit", label: "Default Water Rate" },
   rfidReplacementCharge: { min: 0, max: 5000, maxDigits: 5, unit: "PHP", label: "RFID Replacement Charge" },
@@ -261,19 +259,6 @@ const BILLING_SUBGROUPS = [
         max: 30,
         boundsHint: "Range: 0 – 30 days (Default: 1 day)",
         formatValue: (v) => `${Number(v || 0)} grace day${Number(v || 0) === 1 ? "" : "s"}`,
-      },
-      {
-        key: "maxPenaltyCapPercent",
-        label: "Max Late Penalty Cap",
-        description: "Upper limit on compounded penalties relative to base monthly rent.",
-        icon: ShieldAlert,
-        iconColor: "text-rose-600 dark:text-rose-400",
-        suffix: "%",
-        step: "1",
-        min: 0,
-        max: 100,
-        boundsHint: "Range: 0% – 100% of rent",
-        formatValue: (v) => `${Number(v || 0)}% of rent`,
       },
     ],
   },
@@ -485,6 +470,7 @@ export default function SystemSettingsPage() {
   const activeTab = validTabs.includes(rawTab) ? rawTab : "policies";
 
   const { data: serverSettings, isLoading: loading } = useSystemSettings();
+  const { data: rawAppliances = [] } = useAppliances({ includeInactive: true });
   const updateSettingsMutation = useUpdateSystemSettingsMutation();
   const updateBranchMutation = useUpdateBranchSettingsMutation();
 
@@ -498,6 +484,13 @@ export default function SystemSettingsPage() {
 
   const [pendingTab, setPendingTab] = useState(null);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const [isApplianceCatalogOpen, setIsApplianceCatalogOpen] = useState(false);
+
+  const activeCatalogCount = useMemo(() => {
+    return Array.isArray(rawAppliances)
+      ? rawAppliances.filter((a) => a.isActive).length
+      : 0;
+  }, [rawAppliances]);
 
   useEffect(() => {
     if (serverSettings) {
@@ -900,7 +893,7 @@ export default function SystemSettingsPage() {
 
       {/* ── Pattern 1 Sticky Sub-Header ── */}
       <AdminPageHeader
-        title="Policies & Maintenance"
+        title="Settings & Policies"
         subtitle="Control platform policies, defaults, branch overrides, and manage database backup and recovery."
         tabs={settingsTabs}
         activeTab={activeTab}
@@ -1136,7 +1129,7 @@ export default function SystemSettingsPage() {
                                 Enable Appliance Monthly Surcharge
                               </span>
                               <p className="sa-branch-control-sub">
-                                Applies to tenant-registered appliances (Electric Fan, Rice Cooker, Laptop).
+                                Applies to tenant-registered appliances from the active catalog.
                               </p>
                             </div>
                             <button
@@ -1160,37 +1153,31 @@ export default function SystemSettingsPage() {
                             </button>
                           </div>
 
-                          <div
-                            className={`sa-settings-input-group mt-3 ${
-                              !isEnabled ? "opacity-40" : ""
-                            }`}
-                          >
-                            <span className="sa-settings-input-affix sa-settings-input-affix--prefix">
-                              ₱
-                            </span>
-                            <input
-                              className="sa-settings-input has-prefix has-suffix"
-                              type="number"
-                              min="0"
-                              max="10000"
-                              step="1"
-                              value={
-                                branchSettings?.applianceFeeAmountPerUnit ?? 0
-                              }
-                              disabled={
-                                !isEnabled || savingBranch === branch
-                              }
-                              onChange={(event) =>
-                                updateBranchField(
-                                  branch,
-                                  "applianceFeeAmountPerUnit",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                            <span className="sa-settings-input-affix sa-settings-input-affix--suffix">
-                              / unit / mo
-                            </span>
+                          <div className="mt-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  Appliance Surcharge Catalog
+                                </span>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                  {activeCatalogCount} Active
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {isEnabled
+                                  ? "Itemized monthly surcharges applied per registered unit."
+                                  : "Catalog configured (surcharges disabled for this branch)."}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setIsApplianceCatalogOpen(true)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0 shadow-2xs flex items-center justify-center gap-1.5"
+                            >
+                              <Zap size={12} className="text-amber-500" />
+                              <span>Manage Catalog</span>
+                            </button>
                           </div>
                         </div>
 
@@ -1375,6 +1362,12 @@ export default function SystemSettingsPage() {
           </section>
         </>
       )}
+
+      {/* Appliance Surcharge Catalog Management Modal */}
+      <ApplianceCatalogModal
+        isOpen={isApplianceCatalogOpen}
+        onClose={() => setIsApplianceCatalogOpen(false)}
+      />
     </div>
   );
 }

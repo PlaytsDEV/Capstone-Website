@@ -201,5 +201,18 @@ assert.equal(breakdownWithAppliances.monthlyStayRate, 6700, "₱6,300 base + ₱
 assert.equal(breakdownWithAppliances.applianceBreakdown.items.length, 1);
 assert.equal(breakdownWithAppliances.applianceBreakdown.items[0].displayLabel, "Laptop (2x) · ₱200/mo each (+₱400/mo)");
 
+// Test dynamic custom catalog appliances (e.g. Mini Refrigerator @ ₱500 and Air Fryer @ ₱350)
+const customCatalogArray = [
+  { id: "mini-refrigerator", name: "Mini Refrigerator", monthlyFee: 500, quantity: 1 },
+  { id: "air-fryer", name: "Air Fryer", monthlyFee: 350, quantity: 2 },
+];
+const resolvedCustomCatalog = resolveApplianceBreakdown(customCatalogArray, 0);
+assert.equal(resolvedCustomCatalog.totalApplianceFees, 1200, "1 Mini Fridge (500) + 2 Air Fryers (700) should equal ₱1,200");
+assert.equal(resolvedCustomCatalog.items.length, 2);
+assert.equal(resolvedCustomCatalog.items[0].unitPrice, 500);
+assert.equal(resolvedCustomCatalog.items[0].subtotal, 500);
+assert.equal(resolvedCustomCatalog.items[1].unitPrice, 350);
+assert.equal(resolvedCustomCatalog.items[1].subtotal, 700);
+
 console.log("✔ roomDetailsPricing.test.mjs passed all lease duration, payment breakdown, and appliance resolver tests");
 

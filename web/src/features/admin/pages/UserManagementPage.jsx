@@ -188,7 +188,7 @@ function UserActionMenu({
     !isCurrentUser &&
     isArchived &&
     (isOwner || !isPrivilegedAccount);
-  const canDeleteAccount =
+  const canArchiveAccount =
     canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
   const canForceDeleteAccount =
     canManageUsers && isOwner && !isCurrentUser && (!isPrivilegedAccount || isOwner);
@@ -198,7 +198,7 @@ function UserActionMenu({
     canManagePermissions ||
     canEditAccount ||
     canRestoreAccount ||
-    canDeleteAccount ||
+    canArchiveAccount ||
     canForceDeleteAccount;
 
   return (
@@ -281,15 +281,15 @@ function UserActionMenu({
               </button>
             )}
 
-            {canDeleteAccount && (
+            {canArchiveAccount && (
               <button
-                className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+                className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
                 onClick={() => {
                   setIsOpen(false);
                   handleArchiveClick(u);
                 }}
               >
-                <Trash2 className="h-4 w-4" /> Archive Account
+                <Archive className="h-4 w-4" /> Archive Account
               </button>
             )}
 
@@ -301,7 +301,7 @@ function UserActionMenu({
                   handleHardDeleteClick(u);
                 }}
               >
-                <Trash2 className="h-4 w-4" /> Force Delete
+                <Trash2 className="h-4 w-4" /> Permanently Delete
               </button>
             )}
           </div>,
@@ -543,7 +543,7 @@ function UserManagementPage() {
       case "phone":
         return validatePHPhoneNumber(value);
       case "password":
-        if (!value) return "Password is required";
+        if (!value) return "";
         if (value.length < 6) return "Min 6 characters";
         if (value.length > 100) return "Max 100 characters";
         return "";
@@ -947,7 +947,7 @@ function UserManagementPage() {
           phone: addForm.phone || undefined,
           role: addForm.role,
           branch: addForm.branch || undefined,
-          password: addForm.password,
+          password: addForm.password || undefined,
         }),
       });
       showNotification(
@@ -956,6 +956,17 @@ function UserManagementPage() {
         4000,
       );
       setIsAddModalOpen(false);
+      setAddForm({
+        username: "",
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        role: "applicant",
+        branch: "",
+        password: "",
+      });
+      setAddFormErrors({});
       refetchAll();
     } catch (error) {
       const msg = error.message || "";

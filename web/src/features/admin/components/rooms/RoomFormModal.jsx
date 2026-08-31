@@ -22,12 +22,21 @@ import {
   ShieldCheck,
   AlertCircle,
   CheckCircle2,
+  RotateCcw,
+  Layers,
 } from "lucide-react";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
 import { uploadRoomPhotoIfFile } from "../../../../shared/utils/firebaseStorageUpload";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { useBusinessSettings } from "../../../../shared/hooks/queries/useSettings";
+import { useRooms } from "../../../../shared/hooks/queries/useRooms";
+import {
+  getBranchFloors,
+  getNextFloorOption,
+  getNextRoomNumberForFloor,
+  isRoomNumberDuplicate,
+} from "../../utils/roomNumberingUtils";
 import { showNotification } from "../../../../shared/utils/notification";
 import getFriendlyError from "../../../../shared/utils/friendlyError";
 
@@ -154,10 +163,22 @@ export default function RoomFormModal({ room, onClose, onSave }) {
   const { data: businessSettingsData } = useBusinessSettings();
   const settings = businessSettingsData?.data || businessSettingsData || {};
 
+  // Fetch all rooms for dynamic floor calculation and sequential numbering
+  const { data: roomsData } = useRooms();
+  const allRooms = useMemo(() => {
+    if (Array.isArray(roomsData)) return roomsData;
+    if (Array.isArray(roomsData?.data)) return roomsData.data;
+    if (Array.isArray(roomsData?.items)) return roomsData.items;
+    return [];
+  }, [roomsData]);
+
   const [form, setForm] = useState(() => ({
     ...INITIAL_FORM,
     branch: room?.branch || user?.branch || "gil-puyat",
   }));
+
+  const [isCustomFloor, setIsCustomFloor] = useState(false);
+  const [isRoomNumberCustomized, setIsRoomNumberCustomized] = useState(() => isEdit);
 
   const [initialSnapshot, setInitialSnapshot] = useState(null);
   const [errors, setErrors] = useState({});
@@ -176,6 +197,33 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       document.body.classList.remove("modal-open");
     };
   }, []);
+
+  // Compute floors for the selected branch
+  const branchFloors = useMemo(() => {
+    return getBranchFloors(allRooms, form.branch);
+  }, [allRooms, form.branch]);
+
+  // Compute next floor option
+  const nextFloorOption = useMemo(() => {
+    return getNextFloorOption(branchFloors);
+  }, [branchFloors]);
+
+  // Branch label for friendly UI text
+  const branchLabel = useMemo(() => {
+    return BRANCH_OPTIONS.find((b) => b.value === form.branch)?.label || form.branch;
+  }, [form.branch]);
+
+  // Real-time duplicate room number detection
+  const isDuplicateNumber = useMemo(() => {
+    if (!form.roomNumber) return false;
+    return isRoomNumberDuplicate(allRooms, form.branch, form.roomNumber, room?._id);
+  }, [allRooms, form.branch, form.roomNumber, room?._id]);
+
+  // Suggested room number for edit mode when floor changes
+  const suggestedForEditFloor = useMemo(() => {
+    if (!isEdit || !form.floor) return null;
+    return getNextRoomNumberForFloor(allRooms, form.branch, form.floor);
+  }, [isEdit, allRooms, form.branch, form.floor]);
 
   // Initialize or populate form
   useEffect(() => {
@@ -201,15 +249,113 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       };
       setForm(populated);
       setInitialSnapshot(JSON.stringify(populated));
+      setIsRoomNumberCustomized(true);
+      setIsCustomFloor(false);
     } else {
+      const targetBranch = user?.branch || "gil-puyat";
+      const availableFloors = getBranchFloors(allRooms, targetBranch);
+      const initialFloor = availableFloors[0] || 1;
+      const initialSuggestedRoom = getNextRoomNumberForFloor(allRooms, targetBranch, initialFloor);
+
       const initial = {
         ...INITIAL_FORM,
-        branch: user?.branch || "gil-puyat",
+        branch: targetBranch,
+        floor: initialFloor,
+        roomNumber: initialSuggestedRoom,
+        name: initialSuggestedRoom ? `Room ${initialSuggestedRoom}` : "",
       };
       setForm(initial);
       setInitialSnapshot(JSON.stringify(initial));
+      setIsRoomNumberCustomized(false);
+      setIsCustomFloor(false);
     }
   }, [room, user?.branch]);
+
+  // Automatic room numbering & naming synchronization when branch/floor changes in Add mode
+  useEffect(() => {
+    if (isEdit || isRoomNumberCustomized) return;
+    if (!form.branch || !form.floor) return;
+
+    const suggestedNumber = getNextRoomNumberForFloor(allRooms, form.branch, form.floor);
+    if (!suggestedNumber) return;
+
+    setForm((prev) => {
+      if (prev.roomNumber === suggestedNumber) return prev;
+
+      const currentName = (prev.name || "").trim();
+      const prevNumber = (prev.roomNumber || "").trim();
+      const isDefaultOrMatchesRoom =
+        !currentName ||
+        currentName.toLowerCase() === "room" ||
+        (prevNumber && currentName.toLowerCase() === `room ${prevNumber}`.toLowerCase());
+
+      const nextName = isDefaultOrMatchesRoom ? `Room ${suggestedNumber}` : prev.name;
+
+      const updated = {
+        ...prev,
+        roomNumber: suggestedNumber,
+        name: nextName,
+      };
+
+      // Keep initialSnapshot in sync if the user has not yet touched the form
+      setInitialSnapshot((prevSnap) => {
+        try {
+          const parsed = JSON.parse(prevSnap);
+          if (!parsed.type && !parsed.description && (!parsed.images || parsed.images.length === 0)) {
+            return JSON.stringify(updated);
+          }
+        } catch {
+          // ignore
+        }
+        return prevSnap;
+      });
+
+      return updated;
+    });
+  }, [isEdit, isRoomNumberCustomized, form.branch, form.floor, allRooms]);
+
+  // Reset to auto-suggested room number handler
+  const handleResetToSuggested = useCallback(() => {
+    setIsRoomNumberCustomized(false);
+    const suggested = getNextRoomNumberForFloor(allRooms, form.branch, form.floor);
+    setForm((prev) => {
+      const currentName = (prev.name || "").trim();
+      const prevNumber = (prev.roomNumber || "").trim();
+      const isDefaultOrMatchesRoom =
+        !currentName ||
+        currentName.toLowerCase() === "room" ||
+        (prevNumber && currentName.toLowerCase() === `room ${prevNumber}`.toLowerCase());
+
+      return {
+        ...prev,
+        roomNumber: suggested,
+        name: isDefaultOrMatchesRoom ? `Room ${suggested}` : prev.name,
+      };
+    });
+    setErrors((prev) => ({ ...prev, roomNumber: null }));
+  }, [allRooms, form.branch, form.floor]);
+
+  // Apply suggested room number in edit mode
+  const handleApplySuggestedForFloor = useCallback(() => {
+    if (!suggestedForEditFloor) return;
+    setForm((prev) => {
+      const currentName = (prev.name || "").trim();
+      const prevNumber = (prev.roomNumber || "").trim();
+      const isDefaultOrMatchesRoom =
+        !currentName ||
+        currentName.toLowerCase() === "room" ||
+        (prevNumber && currentName.toLowerCase() === `room ${prevNumber}`.toLowerCase());
+
+      return {
+        ...prev,
+        roomNumber: suggestedForEditFloor,
+        name: isDefaultOrMatchesRoom ? `Room ${suggestedForEditFloor}` : prev.name,
+      };
+    });
+    if (touched.roomNumber) {
+      validateField("roomNumber", suggestedForEditFloor);
+    }
+  }, [suggestedForEditFloor, touched.roomNumber]);
 
   // Check if form has unsaved modifications
   const isFormDirty = useCallback(() => {
@@ -304,6 +450,9 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     setForm((prev) => {
       const updated = { ...prev, [field]: nextValue };
+      if (field === "branch") {
+        setIsCustomFloor(false);
+      }
       if (field === "roomNumber") {
         // If room name is empty, "Room", or previously auto-named with the old room number, sync with new room number
         const currentName = prev.name.trim();
@@ -360,6 +509,8 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         err = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} digits`;
       } else if (!/^[0-9]+$/.test(trimmed)) {
         err = "Room number must contain numbers only";
+      } else if (isRoomNumberDuplicate(allRooms, form.branch, trimmed, room?._id)) {
+        err = `Room number ${trimmed} already exists in ${branchLabel}`;
       }
     }
 
@@ -426,6 +577,8 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       newErrors.roomNumber = `Room number cannot exceed ${LIMITS.ROOM_NUMBER_MAX} digits`;
     } else if (!/^[0-9]+$/.test(trimmedNumber)) {
       newErrors.roomNumber = "Room number must contain numbers only";
+    } else if (isRoomNumberDuplicate(allRooms, form.branch, trimmedNumber, room?._id)) {
+      newErrors.roomNumber = `Room number ${trimmedNumber} already exists in ${branchLabel}`;
     }
 
     if (!form.type || !["private", "double-sharing", "quadruple-sharing"].includes(form.type)) {
@@ -636,7 +789,8 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     /^[a-zA-Z0-9\s-]+$/.test(form.name.trim()) &&
     form.roomNumber.trim().length >= LIMITS.ROOM_NUMBER_MIN &&
     form.roomNumber.trim().length <= LIMITS.ROOM_NUMBER_MAX &&
-    /^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(form.roomNumber.trim()) &&
+    /^[0-9]+$/.test(form.roomNumber.trim()) &&
+    !isDuplicateNumber &&
     Boolean(form.type) &&
     ["private", "double-sharing", "quadruple-sharing"].includes(form.type) &&
     Number(form.capacity) >= 1 &&
@@ -725,12 +879,31 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                     </div>
 
                     {/* Room Number */}
-                    <div className={`room-form-group ${touched.roomNumber && errors.roomNumber ? "has-error" : ""}`}>
+                    <div className={`room-form-group ${(touched.roomNumber && errors.roomNumber) || isDuplicateNumber ? "has-error" : ""}`}>
                       <div className="rfm-field-header">
-                        <label htmlFor="rfm-number">
-                          Room Number <span className="rfm-required">*</span>
-                        </label>
-                        <span className="rfm-char-counter">{form.roomNumber.length}/{LIMITS.ROOM_NUMBER_MAX}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <label htmlFor="rfm-number">
+                            Room Number <span className="rfm-required">*</span>
+                          </label>
+                          {!isEdit && !isRoomNumberCustomized && form.roomNumber && (
+                            <span className="rfm-auto-badge" title="Automatically suggested next sequential room number for this floor">
+                              <Sparkles size={11} /> Auto
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {!isEdit && isRoomNumberCustomized && (
+                            <button
+                              type="button"
+                              className="rfm-reset-suggested-btn"
+                              onClick={handleResetToSuggested}
+                              title="Reset to next suggested sequential room number"
+                            >
+                              <RotateCcw size={11} /> Auto-suggest
+                            </button>
+                          )}
+                          <span className="rfm-char-counter">{form.roomNumber.length}/{LIMITS.ROOM_NUMBER_MAX}</span>
+                        </div>
                       </div>
                       <input
                         id="rfm-number"
@@ -740,14 +913,37 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                         spellCheck={false}
                         maxLength={LIMITS.ROOM_NUMBER_MAX}
                         value={form.roomNumber}
-                        onChange={(e) => handleChange("roomNumber", e.target.value)}
+                        onChange={(e) => {
+                          if (!isEdit) {
+                            setIsRoomNumberCustomized(true);
+                          }
+                          handleChange("roomNumber", e.target.value);
+                        }}
                         onBlur={() => handleBlur("roomNumber")}
                         placeholder="e.g. 101"
                       />
-                      {touched.roomNumber && errors.roomNumber && (
+
+                      {/* Edit mode floor change suggestion */}
+                      {isEdit && String(form.floor) !== String(room?.floor) && suggestedForEditFloor && form.roomNumber !== suggestedForEditFloor && (
+                        <div className="rfm-floor-change-suggestion">
+                          <span>
+                            Floor changed: Suggested for Floor {form.floor} is <strong>Room {suggestedForEditFloor}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            className="rfm-apply-suggestion-btn"
+                            onClick={handleApplySuggestedForFloor}
+                            title="Apply suggested room number for this floor"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      )}
+
+                      {((touched.roomNumber && errors.roomNumber) || isDuplicateNumber) && (
                         <span className="field-error" role="alert">
                           <AlertCircle size={12} className="shrink-0" />
-                          {errors.roomNumber}
+                          {errors.roomNumber || `Room number ${form.roomNumber} already exists in ${branchLabel}`}
                         </span>
                       )}
                     </div>
@@ -776,17 +972,77 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                     <div className={`room-form-group ${touched.floor && errors.floor ? "has-error" : ""}`}>
                       <div className="rfm-field-header">
                         <label htmlFor="rfm-floor">Floor <span className="rfm-required">*</span></label>
-                        <span className="rfm-char-counter">1 – {LIMITS.FLOOR_MAX}</span>
+                        <span className="rfm-char-counter">
+                          {branchFloors.length} {branchFloors.length === 1 ? "floor" : "floors"} active
+                        </span>
                       </div>
-                      <input
-                        id="rfm-floor"
-                        type="text"
-                        inputMode="numeric"
-                        value={form.floor}
-                        onChange={(e) => handleChange("floor", e.target.value)}
-                        onBlur={() => handleBlur("floor")}
-                        placeholder="1"
-                      />
+
+                      {!isCustomFloor ? (
+                        <div className="rfm-floor-select-wrap">
+                          <select
+                            id="rfm-floor"
+                            value={String(form.floor)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "add-next-floor") {
+                                handleChange("floor", nextFloorOption);
+                                setIsCustomFloor(false);
+                              } else if (val === "custom") {
+                                setIsCustomFloor(true);
+                              } else {
+                                handleChange("floor", val);
+                              }
+                            }}
+                            onBlur={() => handleBlur("floor")}
+                          >
+                            {branchFloors.map((f) => (
+                              <option key={f} value={String(f)}>
+                                Floor {f}
+                              </option>
+                            ))}
+                            {form.floor && !branchFloors.includes(Number(form.floor)) && (
+                              <option value={String(form.floor)}>
+                                Floor {form.floor}
+                              </option>
+                            )}
+                            <option value="add-next-floor">
+                              + Add Floor (Floor {nextFloorOption})
+                            </option>
+                            <option value="custom">
+                              Custom Floor...
+                            </option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="rfm-custom-floor-row">
+                          <input
+                            id="rfm-floor"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={form.floor}
+                            onChange={(e) => handleChange("floor", e.target.value)}
+                            onBlur={() => handleBlur("floor")}
+                            placeholder="Floor (1-100)"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="rfm-floor-cancel-btn"
+                            onClick={() => {
+                              setIsCustomFloor(false);
+                              const fallbackFloor = branchFloors.includes(Number(form.floor))
+                                ? form.floor
+                                : branchFloors[0] || 1;
+                              handleChange("floor", fallbackFloor);
+                            }}
+                            title="Cancel custom input and return to floor dropdown"
+                          >
+                            Back to list
+                          </button>
+                        </div>
+                      )}
+
                       {touched.floor && errors.floor && (
                         <span className="field-error" role="alert">
                           <AlertCircle size={12} className="shrink-0" />

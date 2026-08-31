@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -21,6 +21,7 @@ import { useApiClient } from "../../../shared/api/apiClient";
 import { buildBranchScopedHref } from "../../../shared/utils/branchFilterQuery.mjs";
 import { AdminBranchesSkeleton } from "../../admin/components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
+import BranchFinancialReportModal from "../components/BranchFinancialReportModal";
 import "../styles/owner-dashboard.css";
 import "../styles/owner-branches.css";
 
@@ -75,6 +76,7 @@ const formatSyncTime = (isoString) => {
 
 export default function BranchManagementPage() {
   const { authFetch } = useApiClient();
+  const [selectedFinancialBranch, setSelectedFinancialBranch] = useState(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt } =
     useQuery({
       queryKey: ["branches", "summary"],
@@ -690,16 +692,13 @@ export default function BranchManagementPage() {
                   >
                     Room Matrix
                   </Link>
-                  <Link
-                    to={buildBranchScopedHref(
-                      "/admin/analytics/details",
-                      branch.branch,
-                      { tab: "financials" },
-                    )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFinancialBranch(branch.branch)}
                     className="sa-branch-action-btn"
                   >
                     Financial Report
-                  </Link>
+                  </button>
                   <Link
                     to={buildBranchScopedHref("/admin/users", branch.branch)}
                     className="sa-branch-action-btn sa-branch-action-btn--primary"
@@ -711,6 +710,13 @@ export default function BranchManagementPage() {
             );
           })}
         </div>
+      )}
+
+      {selectedFinancialBranch && (
+        <BranchFinancialReportModal
+          branch={selectedFinancialBranch}
+          onClose={() => setSelectedFinancialBranch(null)}
+        />
       )}
     </div>
   );

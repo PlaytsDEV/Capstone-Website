@@ -206,10 +206,32 @@ export const sendTemplateEmail = async ({
   return dispatch({ emailType, templateKey, to, payload, idempotencyKey });
 };
 
+export const htmlToPlainText = (html = "") =>
+  String(html || "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/td>/gi, "  ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 /**
  * Path B — sends one email through Resend using pre-rendered inline HTML
  * (no dashboard template involved). Never includes `template` in the same
- * request.
+ * request. Automatically computes a plain-text counterpart for spam-score
+ * reduction and multipart/alternative MIME compatibility.
  *
  * @param {object} params
  * @param {string} params.emailType
@@ -217,6 +239,7 @@ export const sendTemplateEmail = async ({
  * @param {string|string[]} params.to
  * @param {string} params.subject
  * @param {string} params.html
+ * @param {string} [params.text]
  * @param {string} [params.from]
  * @param {string} [params.replyTo]
  * @param {object[]} [params.tags]
@@ -228,6 +251,7 @@ export const sendInlineHtmlEmail = async ({
   to,
   subject,
   html,
+  text,
   from,
   replyTo,
   tags,
@@ -238,11 +262,14 @@ export const sendInlineHtmlEmail = async ({
     return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
   }
 
+  const plainText = text || htmlToPlainText(html);
+
   const payload = {
     from: from || getResendFromEmail(),
     to: [].concat(to),
     subject,
     html,
+    text: plainText,
   };
   if (replyTo) payload.replyTo = replyTo;
   if (tags) payload.tags = tags;
@@ -251,3 +278,4 @@ export const sendInlineHtmlEmail = async ({
 };
 
 export default sendTemplateEmail;
+

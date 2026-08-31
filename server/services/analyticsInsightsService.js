@@ -412,6 +412,46 @@ const buildDemographicsSnapshot = (reportData) => {
   };
 };
 
+const buildAcquisitionSnapshot = (reportData) => {
+  const kpis = reportData?.kpis || {};
+  const channels = reportData?.series?.channels || tableRows(reportData?.tables?.channels) || [];
+  const funnelStages = reportData?.series?.funnelStages || [];
+
+  const sortedChannels = [...channels].sort((a, b) => Number(b.totalLeads || 0) - Number(a.totalLeads || 0));
+  const convertingChannels = [...channels]
+    .filter((c) => Number(c.totalLeads || 0) > 0)
+    .sort((a, b) => Number(b.conversionRate || 0) - Number(a.conversionRate || 0));
+  const topChannel = sortedChannels[0] || null;
+  const topConvertingChannel = convertingChannels[0] || null;
+
+  return {
+    metrics: {
+      totalLeads: Number(kpis.totalLeads || 0),
+      viewingsScheduled: Number(kpis.viewingsScheduled || 0),
+      convertedTenants: Number(kpis.convertedTenants || 0),
+      overallConversionRate: Number(kpis.overallConversionRate || 0),
+      topChannelName: topChannel?.channel || "Website",
+      topChannelLeads: Number(topChannel?.totalLeads || 0),
+      topConvertingChannelName: topConvertingChannel?.channel || "Website",
+      topConvertingRate: Number(topConvertingChannel?.conversionRate || 0),
+    },
+    topChannels: sortedChannels.slice(0, 5).map((entry) => ({
+      channel: entry.channel,
+      source: entry.source,
+      totalLeads: Number(entry.totalLeads || 0),
+      viewingsScheduled: Number(entry.viewingsScheduled || 0),
+      convertedCount: Number(entry.convertedCount || 0),
+      conversionRate: Number(entry.conversionRate || 0),
+    })),
+    funnelStages: funnelStages.map((stage) => ({
+      key: stage.key,
+      label: stage.label,
+      count: Number(stage.count || 0),
+      stageOrder: Number(stage.stageOrder || 0),
+    })),
+  };
+};
+
 const SNAPSHOT_BUILDERS = Object.freeze({
   hub: buildHubSnapshot,
   occupancy: buildOccupancySnapshot,
@@ -420,13 +460,30 @@ const SNAPSHOT_BUILDERS = Object.freeze({
   operations: buildOperationsSnapshot,
   audit: buildAuditSnapshot,
   demographics: buildDemographicsSnapshot,
+  acquisition: buildAcquisitionSnapshot,
 });
 
 const deriveActionableItems = (reportType, snapshot, recommendedActions = []) => {
   const items = [];
   const metrics = snapshot.metrics || {};
 
-  if (reportType === "occupancy") {
+  if (reportType === "acquisition") {
+    const topChannel = snapshot.topChannels?.[0];
+    if (topChannel?.channel) {
+      items.push({
+        label: `Search ${topChannel.channel}`,
+        actionType: "SEARCH",
+        target: "channels",
+        filterValue: String(topChannel.channel),
+      });
+    }
+    items.push({
+      label: "Filter Converting Channels",
+      actionType: "FILTER_CHANNEL",
+      target: "channels",
+      filterValue: "has-conversions",
+    });
+  } else if (reportType === "occupancy") {
     const constrained = snapshot.constrainedRooms || [];
     const weakestType = [...(snapshot.topRoomTypes || [])]
       .sort((left, right) => Number(left.occupancyRate || 0) - Number(right.occupancyRate || 0))[0];
@@ -1068,7 +1125,7 @@ const heuristicInsightBuilders = {
         metrics.topProvince && metrics.topProvince !== "N/A" ? `${metrics.topProvince} represents the top geographic origin (${metrics.topProvinceCount} tenants).` : null,
         roomTypePref.length > 0 ? `${roomTypePref[0].label} is the most popular room choice.` : null,
         topReferral ? `${topReferral.label} is the top referral source with ${topReferral.value} tenant(s).` : null,
-        topAgeGroup ? `The ${topAgeGroup.label} age bracket has the most residents.` : null,
+        topAgeGroup ? `The ${topAgeGroup.label} age bracket has the most tenants.` : null,
         topMonths.length >= 2 ? `${topMonths[0].label} and ${topMonths[1].label} are the busiest booking months.` : null,
       ].filter(Boolean).slice(0, MAX_FINDINGS),
       anomalies: [
@@ -1083,6 +1140,75 @@ const heuristicInsightBuilders = {
         topAgeGroup ? `Tailor amenities and community updates for the ${topAgeGroup.label} age group, which is your largest community segment.` : null,
       ].filter(Boolean).slice(0, MAX_ACTIONS),
       confidence: Number(metrics.totalAnalyzed || 0) >= 10 ? "medium" : "low",
+    };
+  },
+  acquisition: ({ snapshot, scope, question }) => {
+    const metrics = snapshot.metrics || {};
+    const topChannels = snapshot.topChannels || [];
+    const topChannel = topChannels[0];
+    const bestConverting = [...topChannels]
+      .filter((c) => Number(c.totalLeads || 0) >= 3)
+      .sort((a, b) => Number(b.conversionRate || 0) - Number(a.conversionRate || 0))[0] || topChannels[0];
+
+    const branchLabel =
+      scope.branch === "all"
+        ? "all branches"
+        : String(scope.branch || "the selected branch").replace(/-/g, " ");
+
+    if (Number(metrics.totalLeads || 0) === 0) {
+      return {
+        headline: "No inquiry or lead activity recorded for this period yet.",
+        summary: `The lead acquisition report for ${branchLabel} does not have enough inquiry records for a complete AI summary.`,
+        keyFindings: ["Inquiry and marketing channel records are needed before conversion trends can be clearly shown."],
+        anomalies: [],
+        recommendedActions: ["Check that new inquiries and discovery sources are recorded when prospective tenants reach out."],
+        confidence: "low",
+      };
+    }
+
+    const q = String(question || "").toLowerCase();
+    let headline = `${metrics.totalLeads} total inquiries generated ${metrics.convertedTenants} tenant conversions (${safePercent(metrics.overallConversionRate)} yield).`;
+    let summaryText = `In the selected period, ${branchLabel} handled ${metrics.totalLeads} total inquiries with ${metrics.viewingsScheduled} viewing tours booked and ${metrics.convertedTenants} tenant conversions.`;
+
+    if (topChannel) {
+      summaryText += ` ${topChannel.channel} was the primary intake channel with ${topChannel.totalLeads} inquiries.`;
+    }
+
+    if (q.includes("channel") || q.includes("marketing") || q.includes("highest") || q.includes("convert") || q.includes("best")) {
+      if (bestConverting) {
+        headline = `${bestConverting.channel} achieved the highest conversion rate at ${safePercent(bestConverting.conversionRate)}.`;
+        summaryText = `In response to your marketing inquiry query: ${bestConverting.channel} leads conversion efficiency with ${safePercent(bestConverting.conversionRate)} (${bestConverting.convertedCount} conversions from ${bestConverting.totalLeads} leads).`;
+      }
+    } else if (q.includes("viewing") || q.includes("tour")) {
+      headline = `${metrics.viewingsScheduled} viewing tours were scheduled across acquisition channels.`;
+      summaryText = `In response to your viewing inquiry: ${metrics.viewingsScheduled} prospective tenants scheduled tours out of ${metrics.totalLeads} inquiries (${safePercent(metrics.totalLeads > 0 ? (metrics.viewingsScheduled / metrics.totalLeads) * 100 : 0)} tour conversion).`;
+    }
+
+    return {
+      headline,
+      summary: summaryText,
+      keyFindings: [
+        topChannel ? `${topChannel.channel} brought in the most inquiries (${topChannel.totalLeads} leads, ${topChannel.convertedCount} conversions).` : null,
+        bestConverting ? `${bestConverting.channel} yielded the strongest conversion rate at ${safePercent(bestConverting.conversionRate)}.` : null,
+        metrics.viewingsScheduled > 0 ? `${metrics.viewingsScheduled} viewing tours were conducted during this period.` : null,
+        metrics.convertedTenants > 0 ? `${metrics.convertedTenants} prospective tenants finalized lease applications into active reservations.` : null,
+      ].filter(Boolean).slice(0, MAX_FINDINGS),
+      anomalies: [
+        Number(metrics.overallConversionRate || 0) < 15 && Number(metrics.totalLeads || 0) > 10
+          ? "Overall lead-to-lease conversion rate is below 15% — consider reviewing tour follow-up response times."
+          : null,
+        topChannels.find((c) => c.totalLeads >= 5 && c.convertedCount === 0)
+          ? `Inquiries from ${topChannels.find((c) => c.totalLeads >= 5 && c.convertedCount === 0)?.channel} have not yet produced tenant conversions.`
+          : null,
+      ].filter(Boolean).slice(0, MAX_ANOMALIES),
+      recommendedActions: [
+        bestConverting ? `Allocate promotional focus to ${bestConverting.channel} due to its proven conversion yield.` : null,
+        metrics.viewingsScheduled < metrics.totalLeads * 0.3
+          ? "Encourage prompt viewing tour scheduling to convert more inquiries into move-ins."
+          : "Maintain fast turnaround on viewing follow-ups to keep lease conversion velocity high.",
+        "Review channels with high inquiry volume but low conversions to ensure follow-up messages address tenant questions.",
+      ].filter(Boolean).slice(0, MAX_ACTIONS),
+      confidence: Number(metrics.totalLeads || 0) >= 10 ? "high" : "medium",
     };
   },
 };
@@ -1244,6 +1370,7 @@ const buildGeminiPrompt = ({ reportType, scope, filters, question, snapshot }) =
     "- Avoid heavy corporate, academic, or statistical jargon.",
     "- Use simple words: say 'unpaid bills' instead of 'uncollected revenue exposure', 'open beds' instead of 'occupancy utilization variance', 'popular room choices' instead of 'cohort polarization', and 'repairs on schedule' instead of 'SLA compliance threshold'.",
     "- When referencing collectedRevenue or collection amounts, call them collected payments or collections, not revenue.",
+    "- Strict Terminology: Always use 'Tenant' (NEVER 'Resident'). Always use 'Rent' or 'Rent Billing' (NEVER 'Rental Fee').",
     "- Write friendly, encouraging management insights with practical, realistic next steps.",
     "Keep recommendations operational and human-review focused. Do not say that records were changed.",
     "For owner/all-branch scope, include planning or branch-comparison implications when supported by the data.",
@@ -1391,6 +1518,7 @@ const createGroqProvider = () => {
       const systemPrompt =
         "You are a friendly, encouraging, and clear analytics assistant for Lilycrest Dormitory Management. " +
         "Use plain, jargon-free English without corporate buzzwords (say 'unpaid bills' instead of 'uncollected revenue exposure', 'open beds' instead of 'occupancy utilization variance', and 'repairs on schedule' instead of 'SLA compliance threshold'). " +
+        "Strictly use the term 'Tenant' (NEVER 'Resident'). " +
         "Provide actionable, encouraging next steps. " +
         "You MUST return ONLY a strictly valid JSON object matching this schema: " +
         '{"headline": string, "summary": string, "keyFindings": string[], "anomalies": string[], ' +
@@ -1463,6 +1591,7 @@ const createOpenRouterProvider = () => {
       const systemPrompt =
         "You are a friendly, encouraging, and clear analytics assistant for Lilycrest Dormitory Management. " +
         "Use plain, jargon-free English without corporate buzzwords (say 'unpaid bills' instead of 'uncollected revenue exposure', 'open beds' instead of 'occupancy utilization variance', and 'repairs on schedule' instead of 'SLA compliance threshold'). " +
+        "Strictly use the term 'Tenant' (NEVER 'Resident'). " +
         "Provide actionable, encouraging next steps. " +
         "You MUST return ONLY a strictly valid JSON object matching this schema: " +
         '{"headline": string, "summary": string, "keyFindings": string[], "anomalies": string[], ' +

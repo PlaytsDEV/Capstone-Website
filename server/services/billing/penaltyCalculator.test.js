@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { computePenalty } from "./penaltyCalculator.js";
 
-const settings = { penaltyRatePerDay: 50, latePaymentGraceDays: 1, maxCapPercent: 100 };
+const settings = { penaltyRatePerDay: 50, latePaymentGraceDays: 1 };
 
 // Local wall-clock dates (not UTC ISO strings) so the "same calendar day"
 // assertions below are meaningful regardless of the machine's timezone.
@@ -44,7 +44,7 @@ describe("computePenalty", () => {
   });
 
   test("supports custom grace days setting (e.g. 0 grace days charges ₱50 on Day 1)", async () => {
-    const zeroGraceSettings = { penaltyRatePerDay: 50, latePaymentGraceDays: 0, maxCapPercent: 100 };
+    const zeroGraceSettings = { penaltyRatePerDay: 50, latePaymentGraceDays: 0 };
     const day1Result = await computePenalty(bill(), zeroGraceSettings, localDate(2026, 6, 11));
     expect(day1Result.penalty).toBe(50);
     expect(day1Result.billableDays).toBe(1);
@@ -71,44 +71,15 @@ describe("computePenalty", () => {
     expect(threeDaysLate.penalty).toBe(100);
   });
 
-  test("caps the penalty at maxCapPercent of the rent charge", async () => {
+  test("calculates daily penalties continuously past due without capping", async () => {
     const result = await computePenalty(
       bill(),
-      { penaltyRatePerDay: 50, maxCapPercent: 1 },
-      localDate(2026, 7, 1),
+      settings,
+      localDate(2026, 7, 11), // 31 days late -> 30 billable days × ₱50 = ₱1500
     );
-    expect(result.capped).toBe(true);
-    expect(result.penalty).toBe(63); // 1% of 6300
-  });
-
-  // Plan 4 (D2): Cap uses contractRentAtMoveIn, not charges.rent
-  test("uses contractRentAtMoveIn for penalty cap when provided (D2)", async () => {
-    const billWithContract = bill({
-      contractRentAtMoveIn: 5000, // locked contract rate at move-in
-      charges: { rent: 7000 },    // current room rate is different (room upgraded)
-    });
-
-    // 200 days past due × ₱50/day = ₱10,000 raw — exceeds both caps, but cap should be 5000
-    const result = await computePenalty(
-      billWithContract,
-      { penaltyRatePerDay: 50, maxCapPercent: 100 },
-      localDate(2027, 1, 26), // ~200 days past Jun 10 2026 due date
-    );
-
-    // Cap should be based on 5000 (contractRentAtMoveIn × 100%), not 7000 (charges.rent)
-    expect(result.capped).toBe(true);
-    expect(result.penalty).toBe(5000); // ≤ contractRentAtMoveIn cap, not 7000
-  });
-
-  // Plan 4 (D2): Falls back to charges.rent when contractRentAtMoveIn is not set
-  test("falls back to charges.rent for cap when contractRentAtMoveIn is absent (D2 backward compat)", async () => {
-    // 200 days past due × ₱50/day = ₱10,000 raw — exceeds the ₱6300 cap
-    const result = await computePenalty(
-      bill(), // no contractRentAtMoveIn field
-      { penaltyRatePerDay: 50, maxCapPercent: 100 },
-      localDate(2027, 1, 26), // ~200 days past Jun 10 2026 due date
-    );
-    expect(result.capped).toBe(true);
-    expect(result.penalty).toBe(6300); // falls back to charges.rent = 6300
+    expect(result.capped).toBe(false);
+    expect(result.daysLate).toBe(31);
+    expect(result.billableDays).toBe(30);
+    expect(result.penalty).toBe(1500);
   });
 });

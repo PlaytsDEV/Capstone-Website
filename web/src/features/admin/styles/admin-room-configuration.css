@@ -3230,4 +3230,160 @@ body.modal-open {
 .dark .rcm-slot-pill--occupied {
   color: #f8fafc;
 }
+
+/* =============================================================================
+   DYNAMIC FLOOR DROPDOWN & AUTO ROOM NUMBERING (RFM)
+   ============================================================================= */
+
+.rfm-auto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #059669;
+  background: transparent;
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: var(--radius-sm, 4px);
+  padding: 1px 6px;
+  line-height: 1.2;
+}
+
+.dark .rfm-auto-badge {
+  color: #34d399;
+  border-color: #334155;
+}
+
+.rfm-reset-suggested-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  background: transparent;
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: var(--radius-sm, 4px);
+  padding: 1px 6px;
+  cursor: pointer;
+  transition: all var(--duration-fast, 150ms) ease;
+}
+
+.rfm-reset-suggested-btn:hover {
+  color: var(--text-primary, #0f172a);
+  border-color: var(--border-strong, #94a3b8);
+  background: var(--bg-hover, #f8fafc);
+}
+
+.dark .rfm-reset-suggested-btn {
+  color: #94a3b8;
+  border-color: #334155;
+}
+
+.dark .rfm-reset-suggested-btn:hover {
+  color: #f8fafc;
+  border-color: #475569;
+  background: #1e293b;
+}
+
+.rfm-floor-select-wrap {
+  width: 100%;
+}
+
+.rfm-floor-select-wrap select {
+  width: 100%;
+}
+
+.rfm-custom-floor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rfm-custom-floor-row input {
+  flex: 1;
+}
+
+.rfm-floor-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--duration-fast, 150ms) ease;
+}
+
+.rfm-floor-cancel-btn:hover {
+  color: var(--text-primary, #0f172a);
+  border-color: var(--border-strong, #94a3b8);
+  background: var(--bg-hover, #f8fafc);
+}
+
+.dark .rfm-floor-cancel-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.dark .rfm-floor-cancel-btn:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.rfm-floor-change-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--bg-inset, #f8fafc);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.75rem;
+  color: var(--text-secondary, #475569);
+}
+
+.dark .rfm-floor-change-suggestion {
+  background: #0f172a;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.rfm-apply-suggestion-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all var(--duration-fast, 150ms) ease;
+}
+
+.rfm-apply-suggestion-btn:hover {
+  border-color: var(--border-strong, #94a3b8);
+  background: var(--bg-hover, #f1f5f9);
+}
+
+.dark .rfm-apply-suggestion-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+.dark .rfm-apply-suggestion-btn:hover {
+  background: #334155;
+}
+
 

@@ -91,6 +91,7 @@ import ChatAttachment from "./ChatAttachment.js";
 // 7. System Administration Domain
 import AuditLog from "./AuditLog.js";
 import BusinessSettings from "./BusinessSettings.js";
+import Appliance from "./Appliance.js";
 import BackupConfig from "./BackupConfig.js";
 import BackupRecord from "./BackupRecord.js";
 import PaymongoWebhookEvent from "./PaymongoWebhookEvent.js";
@@ -130,6 +131,7 @@ export {
   UserSession,
   AcknowledgmentAccount,
   BusinessSettings,
+  Appliance,
   VisitAvailability,
   VisitAvailabilityHistory,
   VisitConflictLog,

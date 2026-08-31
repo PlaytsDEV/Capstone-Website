@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Copy, Check } from "lucide-react";
+import { Sparkles, Copy, Check, Info } from "lucide-react";
 import BaseModal from "../../../../shared/components/BaseModal";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
@@ -256,7 +256,9 @@ export default function AddUserModal({
 
           <div className={`form-group ${touched.password && addFormErrors.password ? "has-error" : ""}`}>
             <div className="flex items-center justify-between">
-              <label>Password *</label>
+              <label>
+                Password <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+              </label>
               <button
                 type="button"
                 onClick={handleGeneratePassword}
@@ -270,7 +272,7 @@ export default function AddUserModal({
             <div className="password-field-wrapper" style={{ position: "relative" }}>
               <input
                 type={showPassword ? "text" : "password"}
-                value={addForm.password}
+                value={addForm.password || ""}
                 onChange={(e) => {
                   if (/\s/.test(e.target.value)) return;
                   onFormChange("password", e.target.value.slice(0, NEW_PASSWORD_MAX_LENGTH));
@@ -290,9 +292,8 @@ export default function AddUserModal({
                   }
                 }}
                 onBlur={() => handleBlur("password")}
-                required
-                placeholder="Enter or generate password"
-                minLength={6}
+                placeholder="Leave blank to auto-generate, or set custom"
+                minLength={addForm.password ? 6 : undefined}
                 maxLength={NEW_PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
                 style={{ width: "100%", paddingRight: "56px" }}
@@ -312,6 +313,14 @@ export default function AddUserModal({
                 onToggle={() => setShowPassword((prev) => !prev)}
               />
             </div>
+
+            {/* Informative helper note when password is empty */}
+            {!addForm.password ? (
+              <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-1.5">
+                <Info className="h-3.5 w-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
+                <span>An activation link will be automatically emailed to this user to set up their password.</span>
+              </span>
+            ) : null}
 
             {/* Password strength indicator */}
             {addForm.password && (

@@ -198,7 +198,12 @@ function AuthAction() {
       return;
     }
     if (mode === "resetPassword") {
-      navigate(`/reset-password?${new URLSearchParams({ oobCode }).toString()}`, { replace: true });
+      const resetParams = new URLSearchParams({ oobCode });
+      const type = searchParams.get("type");
+      if (type) {
+        resetParams.set("type", type);
+      }
+      navigate(`/reset-password?${resetParams.toString()}`, { replace: true });
       return;
     }
     if (mode !== "verifyEmail") {

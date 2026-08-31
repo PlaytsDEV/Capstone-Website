@@ -24,7 +24,6 @@ const WHOLE_NUMBER_FIELDS = new Set([
 ]);
 
 const PERCENTAGE_FIELDS = new Set([
-  "maxPenaltyCapPercent",
   "defaultLongTermDiscountPercent",
   "quadrupleDiscountPercent",
   "doubleDiscountPercent",
@@ -35,7 +34,6 @@ const FIELD_ERROR_LABELS = Object.freeze({
   reservationFeeAmount: "Reservation fee amount",
   penaltyRatePerDay: "Penalty rate per day",
   latePaymentGraceDays: "Late payment grace days",
-  maxPenaltyCapPercent: "Maximum late penalty cap percentage",
   defaultElectricityRatePerKwh: "Default electricity rate",
   defaultWaterRatePerUnit: "Default water rate",
   checkoutLockDurationMinutes: "Checkout lock duration in minutes",
@@ -65,7 +63,6 @@ const buildComparablePayload = (payload) => ({
   reservationFeeAmount: payload.reservationFeeAmount,
   penaltyRatePerDay: payload.penaltyRatePerDay,
   latePaymentGraceDays: payload.latePaymentGraceDays,
-  maxPenaltyCapPercent: payload.maxPenaltyCapPercent,
   defaultElectricityRatePerKwh: payload.defaultElectricityRatePerKwh,
   defaultWaterRatePerUnit: payload.defaultWaterRatePerUnit,
   checkoutLockDurationMinutes: payload.checkoutLockDurationMinutes,
@@ -113,7 +110,6 @@ const buildChangedBy = (req) => ({
 const FIELD_LIMITS = Object.freeze({
   reservationFeeAmount: { min: 0, max: 100000 },
   penaltyRatePerDay: { min: 0, max: 10000 },
-  maxPenaltyCapPercent: { min: 0, max: 100 },
   defaultElectricityRatePerKwh: { min: 0, max: 1000 },
   defaultWaterRatePerUnit: { min: 0, max: 1000 },
   rfidReplacementCharge: { min: 0, max: 10000 },

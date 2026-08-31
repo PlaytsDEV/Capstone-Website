@@ -76,7 +76,7 @@ const PAGE_META = {
       "Adjust branch admin capabilities carefully so access stays predictable and auditable.",
   },
   "/admin/settings": {
-    title: "Policies & Maintenance",
+    title: "Settings & Policies",
     description:
       "Control platform policies, defaults, branch overrides, and manage database backup and recovery.",
   },

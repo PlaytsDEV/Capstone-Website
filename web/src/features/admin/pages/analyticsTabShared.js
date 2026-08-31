@@ -23,6 +23,7 @@ export {
   getDynamicOccupancyPrompts,
   getDynamicBillingPrompts,
   getDynamicOperationsPrompts,
+  getDynamicAcquisitionPrompts,
   getDynamicDemographicsPrompts,
   getDynamicFinancialsPrompts,
   getDynamicMonitoringPrompts,

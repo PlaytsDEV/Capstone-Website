@@ -58,4 +58,15 @@ describe("buildCustomPasswordResetLink — regression: raw Firebase link host mu
     const result = buildCustomPasswordResetLink(rawFirebaseLink, env);
     expect(result.startsWith("https://www.lilycrest.space/auth-action?")).toBe(true);
   });
+
+  test("safely attaches extraParams when provided", () => {
+    const rawFirebaseLink =
+      "https://example.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=abc123&apiKey=fake-key&continueUrl=https%3A%2F%2Fattacker.example%2Fphish";
+    const result = buildCustomPasswordResetLink(rawFirebaseLink, env, { type: "welcome" });
+    const parsed = new URL(result);
+    expect(parsed.searchParams.get("mode")).toBe("resetPassword");
+    expect(parsed.searchParams.get("oobCode")).toBe("abc123");
+    expect(parsed.searchParams.get("type")).toBe("welcome");
+  });
 });
+

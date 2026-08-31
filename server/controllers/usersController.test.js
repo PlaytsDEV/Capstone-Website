@@ -120,12 +120,17 @@ await jest.unstable_mockModule("../middleware/permissions.js", () => ({
   ],
 }));
 
-// --- GAP-02: mocks for the welcome / password-set email path ---
+// --- GAP-02: mocks for the welcome / account activation email path ---
+const sendWelcomeAccountActivationEmail = jest.fn().mockResolvedValue({ success: true });
 const sendPasswordResetLinkEmail = jest.fn().mockResolvedValue({ success: true });
-const buildCustomPasswordResetLink = jest.fn((link) => link + "?rewritten=1");
+const buildCustomPasswordResetLink = jest.fn((link, env, extraParams) => {
+  const extra = extraParams?.type ? `&type=${extraParams.type}` : "";
+  return link + "?rewritten=1" + extra;
+});
 const generatePasswordResetLink = jest.fn().mockResolvedValue("https://firebase.example.com/reset?oobCode=abc");
 
 await jest.unstable_mockModule("../config/email.js", () => ({
+  sendWelcomeAccountActivationEmail,
   sendPasswordResetLinkEmail,
   sendReservationConfirmedEmail: jest.fn(),
   sendVisitApprovedEmail: jest.fn(),
@@ -217,21 +222,25 @@ describe("usersController", () => {
     getAuth.mockClear();
     invalidateUserSessions.mockReset().mockResolvedValue({ failures: [] });
     auditLog.mockReset();
+    sendWelcomeAccountActivationEmail.mockReset().mockResolvedValue({ success: true });
     sendPasswordResetLinkEmail.mockReset().mockResolvedValue({ success: true });
-    buildCustomPasswordResetLink.mockReset().mockImplementation((link) => link + "?rewritten=1");
+    buildCustomPasswordResetLink.mockReset().mockImplementation((link, env, extraParams) => {
+      const extra = extraParams?.type ? `&type=${extraParams.type}` : "";
+      return link + "?rewritten=1" + extra;
+    });
     generatePasswordResetLink.mockReset().mockResolvedValue("https://firebase.example.com/reset?oobCode=abc");
   });
 
   // =========================================================================
-  // createUser — GAP-02: welcome / password-set email
+  // createUser — Welcome & Account Activation Flow
   // =========================================================================
 
-  test("createUser email mocks are correctly wired: link generation transforms and resolves", async () => {
+  test("createUser email mocks are correctly wired: link generation transforms with type=welcome and resolves", async () => {
     // In ESM, User is mocked as a plain object (not a class constructor),
     // so `new User(...)` cannot be called in unit tests without a real
     // integration harness. The full controller round-trip is covered by
     // manual / integration verification. This unit test confirms the three
-    // GAP-02 imports are correctly hoisted and the mock contracts are sound.
+    // imports are correctly hoisted and the mock contracts are sound.
 
     // 1. generatePasswordResetLink resolves a Firebase-style link
     const rawLink = await generatePasswordResetLink(
@@ -244,22 +253,26 @@ describe("usersController", () => {
       expect.objectContaining({ handleCodeInApp: false }),
     );
 
-    // 2. buildCustomPasswordResetLink rewrites the host
-    const customLink = buildCustomPasswordResetLink(rawLink);
-    expect(customLink).toContain("?rewritten=1");
+    // 2. buildCustomPasswordResetLink rewrites the host and includes type=welcome
+    const customLink = buildCustomPasswordResetLink(rawLink, process.env, { type: "welcome" });
+    expect(customLink).toContain("?rewritten=1&type=welcome");
 
-    // 3. sendPasswordResetLinkEmail delivers successfully
-    const delivery = await sendPasswordResetLinkEmail({
+    // 3. sendWelcomeAccountActivationEmail delivers successfully
+    const delivery = await sendWelcomeAccountActivationEmail({
       to: "newuser@example.com",
       name: "New User",
-      resetLink: customLink,
+      roleLabel: "Applicant",
+      username: "newuser",
+      setupLink: customLink,
     });
     expect(delivery.success).toBe(true);
-    expect(sendPasswordResetLinkEmail).toHaveBeenCalledWith(
+    expect(sendWelcomeAccountActivationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "newuser@example.com",
         name: "New User",
-        resetLink: expect.any(String),
+        roleLabel: "Applicant",
+        username: "newuser",
+        setupLink: expect.any(String),
       }),
     );
   });
@@ -268,29 +281,33 @@ describe("usersController", () => {
     // Simulate a transient Resend failure — the controller wraps this in a
     // try/catch so account creation is non-fatal. This test exercises the
     // mock contract to confirm the rejection behaviour is correct.
-    sendPasswordResetLinkEmail.mockRejectedValueOnce(new Error("Resend timeout"));
+    sendWelcomeAccountActivationEmail.mockRejectedValueOnce(new Error("Resend timeout"));
 
     // First call: should throw
     await expect(
-      sendPasswordResetLinkEmail({
+      sendWelcomeAccountActivationEmail({
         to: "another@example.com",
         name: "Another User",
-        resetLink: "https://example.com/reset",
+        roleLabel: "Applicant",
+        username: "anotheruser",
+        setupLink: "https://example.com/auth-action?type=welcome",
       }),
     ).rejects.toThrow("Resend timeout");
 
     // Second call: reverts to the default success mock
-    const recovery = await sendPasswordResetLinkEmail({
+    const recovery = await sendWelcomeAccountActivationEmail({
       to: "another@example.com",
       name: "Another User",
-      resetLink: "https://example.com/reset",
+      roleLabel: "Applicant",
+      username: "anotheruser",
+      setupLink: "https://example.com/auth-action?type=welcome",
     });
     expect(recovery.success).toBe(true);
   });
 
   test("createUser rejects missing required fields with 400", async () => {
     const req = {
-      body: { email: "only@example.com" }, // missing username, firstName, lastName, password
+      body: { email: "only@example.com" }, // missing username, firstName, lastName
       isOwner: false,
       authUser: {},
     };
@@ -301,6 +318,28 @@ describe("usersController", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.body.code).toBe("MISSING_REQUIRED_FIELDS");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createUser rejects password shorter than 6 characters with 400", async () => {
+    const req = {
+      body: {
+        email: "shortpass@example.com",
+        username: "shorty",
+        firstName: "Short",
+        lastName: "Pass",
+        password: "123",
+      },
+      isOwner: false,
+      authUser: {},
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await createUser(req, res, next);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.code).toBe("WEAK_PASSWORD");
     expect(next).not.toHaveBeenCalled();
   });
 

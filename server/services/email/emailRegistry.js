@@ -18,6 +18,7 @@ import {
   buildPasswordChangedEmail,
   buildPasswordResetEmail,
   buildVerificationEmail,
+  buildWelcomeAccountActivationEmail,
 } from "./builders/authEmails.js";
 import {
   buildDocumentsRejectedEmail,
@@ -41,6 +42,10 @@ export const EMAIL_TEMPLATES = Object.freeze({
   PASSWORD_RESET: { subject: "Reset your Lilycrest password", builder: buildPasswordResetEmail },
   LOGIN_OTP: { subject: "Your Lilycrest login verification code", builder: buildLoginOtpEmail },
   PASSWORD_CHANGED: { subject: "Your Lilycrest password was changed", builder: buildPasswordChangedEmail },
+  WELCOME_ACCOUNT_ACTIVATION: {
+    subject: "Welcome to Lilycrest — Set Up Your Account",
+    builder: buildWelcomeAccountActivationEmail,
+  },
 
   INQUIRY_RESPONSE: {
     subject: (v) =>

@@ -63,10 +63,10 @@ export default function HardDeleteUserModal({
                 alignItems: "flex-start",
                 padding: "10px 12px",
                 borderRadius: 8,
-                background: "rgba(220, 38, 38, 0.05)",
-                border: "1px solid #fecaca",
+                background: "var(--surface-muted, #f8fafc)",
+                border: "1px solid var(--border-card, #e2e8f0)",
                 fontSize: 13,
-                color: "#991b1b",
+                color: "var(--text-primary, #334155)",
                 cursor: "pointer",
               }}
             >

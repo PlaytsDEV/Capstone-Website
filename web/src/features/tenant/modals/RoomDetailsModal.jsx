@@ -685,11 +685,16 @@ export default function RoomDetailsModal({
                   <div className="divide-y divide-border/60">
                     {availableAppliances.map((appliance) => {
                       const qty = selectedAppliances[appliance.id] || 0;
+                      const maxQty = appliance.maxQuantity || 5;
+                      const unitFee = Number(appliance.monthlyFee ?? appliance.price ?? 200);
                       return (
                         <div key={appliance.id} className="flex items-center justify-between gap-3 py-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">{appliance.name}</p>
-                            <p className="text-xs text-muted-foreground">₱{appliance.price}/month each</p>
+                            <p className="text-xs text-muted-foreground">₱{unitFee.toLocaleString()}/month each</p>
+                            {appliance.description && (
+                              <p className="text-[11px] text-muted-foreground/80 line-clamp-1 mt-0.5">{appliance.description}</p>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <button
@@ -705,8 +710,10 @@ export default function RoomDetailsModal({
                             <button
                               type="button"
                               aria-label={`Increase ${appliance.name} quantity`}
-                              onClick={() => onApplianceQuantityChange(appliance.id, qty + 1)}
-                              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all"
+                              onClick={() => onApplianceQuantityChange(appliance.id, Math.min(maxQty, qty + 1))}
+                              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all disabled:opacity-40"
+                              disabled={qty >= maxQty}
+                              title={qty >= maxQty ? `Max limit reached (${maxQty})` : `Add ${appliance.name}`}
                             >
                               <Plus className="w-4 h-4" />
                             </button>

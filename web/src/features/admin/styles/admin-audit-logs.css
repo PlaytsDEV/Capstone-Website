@@ -393,6 +393,110 @@
   color: #f1f5f9;
 }
 
+/* Retention Panel Breakdown Cards */
+.audit-retention-panel__breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .audit-retention-panel__breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.audit-retention-panel__breakdown-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md, 8px);
+}
+
+:is(.dark *) .audit-retention-panel__breakdown-card {
+  background-color: #0b1120;
+  border-color: #1e293b;
+}
+
+.audit-retention-panel__breakdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audit-retention-panel__breakdown-title {
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 700;
+  color: var(--text-heading, #0f172a);
+  letter-spacing: -0.01em;
+}
+
+:is(.dark *) .audit-retention-panel__breakdown-title {
+  color: #f1f5f9;
+}
+
+.audit-retention-panel__breakdown-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-muted, #64748b);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:is(.dark *) .audit-retention-panel__breakdown-list {
+  color: #94a3b8;
+}
+
+/* Cleanup Reassurance in ConfirmModal */
+.audit-cleanup-confirm-reassurance {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+:is(.dark *) .audit-cleanup-confirm-reassurance {
+  background-color: #0f172a;
+  border-color: #1e293b;
+}
+
+.audit-cleanup-confirm-reassurance__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+:is(.dark *) .audit-cleanup-confirm-reassurance__title {
+  color: #f1f5f9;
+}
+
+.audit-cleanup-confirm-reassurance__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:is(.dark *) .audit-cleanup-confirm-reassurance__list {
+  color: #94a3b8;
+}
+
 /* -----------------------------------------------------------------------------
    Statistic Cards (AuditSummaryBar)
    ----------------------------------------------------------------------------- */

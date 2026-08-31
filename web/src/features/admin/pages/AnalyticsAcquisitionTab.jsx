@@ -24,18 +24,12 @@ import {
   handlePdfExport,
   MetricGrid,
   useReportInsights,
+  getDynamicAcquisitionPrompts,
 } from "./analyticsTabShared";
 import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
 import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-reports.css";
-
-const ACQUISITION_PROMPTS = [
-  "Which marketing channels have the highest conversion rate?",
-  "How can we convert more leads into move-ins?",
-  "Which channels bring in the most viewings?",
-  "Where should we focus our marketing efforts?",
-];
 
 const CHANNEL_COLUMNS = [
   { key: "channel", label: "Marketing Channel", sortable: true },
@@ -111,15 +105,23 @@ export default function AnalyticsAcquisitionTab({
     isLoading: isInsightLoading,
     isError: isInsightError,
   } = useReportInsights({
-    reportType: "operations",
+    reportType: "acquisition",
     range,
     branch: isOwner ? branch : undefined,
   });
+
+  const acquisitionPrompts = useMemo(
+    () => getDynamicAcquisitionPrompts(report),
+    [report],
+  );
 
   const handleExecuteAction = (action) => {
     if (!action) return;
     if (action.actionType === "SEARCH" && action.filterValue) {
       setSearchQuery(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "FILTER_CHANNEL" && action.filterValue) {
+      setChannelFilter(action.filterValue);
       setPage(1);
     }
   };
@@ -319,13 +321,13 @@ export default function AnalyticsAcquisitionTab({
       <AnalyticsInsightSection
         reportLabel="acquisition"
         summaryTitle="Lead Acquisition & Conversion Intelligence"
-        reportType="operations"
+        reportType="acquisition"
         range={range}
         branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
-        suggestedPrompts={ACQUISITION_PROMPTS}
+        suggestedPrompts={acquisitionPrompts}
         onExecuteAction={handleExecuteAction}
       />
 

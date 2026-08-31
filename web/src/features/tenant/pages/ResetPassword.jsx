@@ -44,6 +44,7 @@ function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const oobCode = searchParams.get("oobCode");
+  const isWelcomeFlow = searchParams.get("type") === "welcome";
   const [status, setStatus] = useState("checking");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -215,8 +216,8 @@ function ResetPassword() {
     <div className="min-h-screen grid lg:grid-cols-2" style={{ backgroundColor: "#0A1628" }}>
       <AuthBrandingPanel
         imageUrl={Lounge}
-        headline="Create A<br/>New Password"
-        subtitle="Secure your Lilycrest account"
+        headline={isWelcomeFlow ? "Welcome to<br/>Lilycrest" : "Create A<br/>New Password"}
+        subtitle={isWelcomeFlow ? "Set up your account password" : "Secure your Lilycrest account"}
       />
 
       <div className="flex items-center justify-center p-8 lg:p-12 bg-white overflow-y-auto">
@@ -235,10 +236,12 @@ function ResetPassword() {
             <>
               <div className="mb-8">
                 <h1 className="text-4xl font-light mb-3 tracking-tight" style={{ color: "#0A1628" }}>
-                  Reset password
+                  {isWelcomeFlow ? "Set up your password" : "Reset password"}
                 </h1>
                 <p className="text-gray-600 font-light" style={{ lineHeight: 1.6 }}>
-                  Enter a new password for {email || "your account"}.
+                  {isWelcomeFlow
+                    ? `Welcome to Lilycrest! Choose a secure password for ${email || "your account"}.`
+                    : `Enter a new password for ${email || "your account"}.`}
                 </p>
               </div>
 
@@ -297,10 +300,10 @@ function ResetPassword() {
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Updating...
+                      {isWelcomeFlow ? "Setting up..." : "Updating..."}
                     </>
                   ) : (
-                    "Reset password"
+                    isWelcomeFlow ? "Set Password & Continue" : "Reset password"
                   )}
                 </button>
               </form>
@@ -311,16 +314,18 @@ function ResetPassword() {
             <div className="text-center">
               <CheckCircle className="mx-auto mb-5" style={{ width: 56, height: 56, color: "#10B981" }} />
               <h1 className="text-3xl font-light mb-3 tracking-tight" style={{ color: "#0A1628" }}>
-                Password reset successfully.
+                {isWelcomeFlow ? "Password established successfully." : "Password reset successfully."}
               </h1>
-              <p className="text-gray-600 font-light mb-8">Redirecting to sign in in 3 seconds.</p>
+              <p className="text-gray-600 font-light mb-8">
+                {isWelcomeFlow ? "Redirecting to sign in..." : "Redirecting to sign in in 3 seconds."}
+              </p>
               <Link
                 to="/signin"
                 state={{ email }}
                 className="block w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
                 style={{ backgroundColor: "#D4AF37" }}
               >
-                Back to sign in
+                {isWelcomeFlow ? "Continue to sign in" : "Back to sign in"}
               </Link>
             </div>
           )}
