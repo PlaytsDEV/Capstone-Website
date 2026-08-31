@@ -10,7 +10,7 @@
  * - Standardized cancellation error identification
  */
 
-export const SOCIAL_AUTH_TIMEOUT_MS = 60000;
+export const SOCIAL_AUTH_TIMEOUT_MS = 30000;
 
 export const POPUP_CANCEL_CODES = new Set([
   "auth/popup-closed-by-user",

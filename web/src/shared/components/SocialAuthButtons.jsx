@@ -3,14 +3,11 @@ import { createDebouncedClick } from "../utils/socialAuthManager";
 
 /**
  * Google social auth button with branded SVG icon.
- * Minimalist design with divider, debounced click guard, accessibility attributes,
- * and optional cancellation action.
+ * Minimalist design with divider, debounced click guard, and accessibility attributes.
  */
 const SocialAuthButtons = ({
   onGoogle,
   loading,
-  onCancel,
-  cancelText = "Cancel sign-in",
   dividerText = "Or continue with",
 }) => {
   const handleGoogleClick = useMemo(() => {
@@ -62,19 +59,6 @@ const SocialAuthButtons = ({
         )}
         <span>{loading ? "Connecting to Google..." : "Continue with Google"}</span>
       </button>
-      {loading && onCancel && (
-        <div className="text-center mt-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px" }}
-            aria-label="Cancel ongoing Google sign-in"
-          >
-            {cancelText}
-          </button>
-        </div>
-      )}
     </>
   );
 };

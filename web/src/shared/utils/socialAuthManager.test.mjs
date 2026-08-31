@@ -8,6 +8,7 @@ import {
   createSocialAuthSession,
   isPopupCancellationError,
   createDebouncedClick,
+  SOCIAL_AUTH_TIMEOUT_MS,
 } from "./socialAuthManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -135,6 +136,12 @@ test("SocialAuthButtons integrates createDebouncedClick and accessibility tokens
   assert.match(rawCode, /createDebouncedClick/, "SocialAuthButtons must use createDebouncedClick");
   assert.match(rawCode, /aria-busy=\{loading\}/, "SocialAuthButtons must include aria-busy attribute");
   assert.match(rawCode, /aria-label=/, "SocialAuthButtons must include aria-label for screen readers");
+  assert.doesNotMatch(rawCode, /cancelText/, "SocialAuthButtons must not render visible cancelText button");
 });
+
+test("SOCIAL_AUTH_TIMEOUT_MS is configured to 30 seconds for rapid auto-recovery", () => {
+  assert.equal(SOCIAL_AUTH_TIMEOUT_MS, 30000);
+});
+
 
 
