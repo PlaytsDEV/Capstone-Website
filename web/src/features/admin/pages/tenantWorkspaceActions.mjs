@@ -70,6 +70,7 @@ export function resolveTenantNextAction(tenant) {
       };
     case "transfer_scheduled":
     case "complete_transfer":
+    case "review_transfer_request":
       // The Scheduled Room Transfer card (Reschedule / Complete Transfer
       // actions) lives on the tenant detail overview tab.
       return {
@@ -280,6 +281,26 @@ export function getTenantIndicator(tenant, { ignoreViewed = false } = {}) {
     };
   }
 
+  const hasPendingTransferRequest =
+    !tenant.scheduledRoomTransfer && (
+      tenant.nextAction === "review_transfer_request" ||
+      tenant.tenantTransferRequest?.status === "pending" &&
+      tenant.tenantTransferRequest?.canReview !== false
+    );
+  if (hasPendingTransferRequest) {
+    return {
+      hasIndicator: true,
+      type: "transfer_request",
+      label: "Review transfer request",
+      shortLabel: "Review transfer",
+      tabKey: "overview",
+      dotClass: "bg-blue-500",
+      pingClass: "bg-blue-400",
+      textClass: "text-blue-700 dark:text-blue-400",
+      tooltip: "Tenant room transfer request is pending review",
+    };
+  }
+
   // 6. Lease Expiring Soon / Renewal Needed (Amber / Yellow)
   const isExpiringSoon =
     tenant.leaseStatus === "expiring_soon" ||
@@ -369,9 +390,21 @@ export function getTenantTabIndicators(tenant) {
     (typeof tenant.daysUntilLeaseEnd === "number" &&
       tenant.daysUntilLeaseEnd <= 30 &&
       tenant.daysUntilLeaseEnd >= 0);
+  const hasPendingTransferRequest =
+    !tenant.scheduledRoomTransfer && (
+      tenant.nextAction === "review_transfer_request" ||
+      tenant.tenantTransferRequest?.status === "pending" &&
+      tenant.tenantTransferRequest?.canReview !== false
+    );
 
   let overview = null;
-  if (hasExpiredStay) {
+  if (hasPendingTransferRequest) {
+    overview = {
+      type: "transfer_request",
+      dotClass: "bg-blue-500",
+      tooltip: "Room transfer request awaiting review",
+    };
+  } else if (hasExpiredStay) {
     overview = {
       type: "expired",
       dotClass: "bg-rose-500",

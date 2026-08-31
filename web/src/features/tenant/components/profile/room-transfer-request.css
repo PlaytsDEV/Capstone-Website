@@ -1,0 +1,40 @@
+.tenant-transfer-panel { margin-top: 14px; }
+.tenant-transfer-request-button,
+.tenant-transfer-card__action { border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; color: #0f766e; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.tenant-transfer-request-button { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; }
+.tenant-transfer-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #dbe3ee; border-radius: 12px; background: #fff; }
+.tenant-transfer-card__icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 10px; background: #ecfdf5; color: #047857; }
+.tenant-transfer-card__body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; color: #0f172a; }
+.tenant-transfer-card__eyebrow { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.tenant-transfer-card__detail { display: flex; align-items: center; gap: 5px; color: #475569; font-size: 12px; }
+.tenant-transfer-card__guidance { color: #64748b; font-size: 12px; line-height: 1.45; }
+.tenant-transfer-card__action { padding: 8px 11px; }
+.tenant-transfer-card__action:disabled { cursor: wait; opacity: .6; }
+.tenant-transfer-card--declined .tenant-transfer-card__icon,
+.tenant-transfer-card--cancelled .tenant-transfer-card__icon { background: #fef2f2; color: #b91c1c; }
+.tenant-transfer-modal__overlay { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(15,23,42,.55); }
+.tenant-transfer-modal { width: min(100%, 500px); max-height: calc(100vh - 36px); overflow: auto; display: grid; gap: 15px; padding: 22px; border-radius: 14px; background: #fff; box-shadow: 0 24px 64px rgba(15,23,42,.25); }
+.tenant-transfer-modal__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.tenant-transfer-modal__header h3 { margin: 0; color: #0f172a; font-size: 19px; }
+.tenant-transfer-modal__header p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+.tenant-transfer-modal__header button { border: 0; background: transparent; color: #64748b; cursor: pointer; }
+.tenant-transfer-modal label { display: grid; gap: 6px; color: #334155; font-size: 13px; font-weight: 650; }
+.tenant-transfer-modal label span { color: #dc2626; }
+.tenant-transfer-modal label small { color: #94a3b8; font-weight: 500; }
+.tenant-transfer-modal input,
+.tenant-transfer-modal select,
+.tenant-transfer-modal textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 9px; padding: 10px 11px; background: #fff; color: #0f172a; font: inherit; resize: vertical; }
+.tenant-transfer-modal__notice { margin: 0; padding: 10px 12px; border-radius: 9px; background: #f0fdfa; color: #115e59; font-size: 12px; line-height: 1.45; }
+.tenant-transfer-modal__footer { display: flex; justify-content: flex-end; gap: 9px; }
+.tenant-transfer-modal__footer button { border: 1px solid #cbd5e1; border-radius: 9px; padding: 9px 14px; background: #fff; color: #334155; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.tenant-transfer-modal__footer button[type="submit"] { border-color: #0f766e; background: #0f766e; color: #fff; }
+.tenant-transfer-modal__footer button:disabled { cursor: wait; opacity: .65; }
+body.dark .tenant-transfer-card,
+body.dark .tenant-transfer-request-button,
+body.dark .tenant-transfer-modal { border-color: #334155; background: #111827; color: #e5e7eb; }
+body.dark .tenant-transfer-card__body,
+body.dark .tenant-transfer-modal__header h3 { color: #f8fafc; }
+body.dark .tenant-transfer-modal input,
+body.dark .tenant-transfer-modal select,
+body.dark .tenant-transfer-modal textarea { border-color: #475569; background: #0f172a; color: #f8fafc; }
+@media (max-width: 560px) { .tenant-transfer-card { align-items: flex-start; flex-wrap: wrap; } .tenant-transfer-card__body { min-width: calc(100% - 52px); } .tenant-transfer-card__action { margin-left: 48px; } .tenant-transfer-modal { padding: 18px; } }

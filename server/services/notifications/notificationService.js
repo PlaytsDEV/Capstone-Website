@@ -830,6 +830,49 @@ const notify = {
   general: (userId, title, message, options = {}) =>
     createNotification(userId, "general", title, message, options),
 
+  generalOnce: async (userId, title, message, dedupeKey, options = {}) => {
+    const result = await createNotificationOnce(
+      userId,
+      "general",
+      title,
+      message,
+      dedupeKey,
+      options,
+    );
+    return result.notification;
+  },
+
+  roomTransferLifecycleOnce: (
+    userId,
+    title,
+    message,
+    dedupeKey,
+    options = {},
+  ) => createNotificationWithPush(
+    userId,
+    "general",
+    title,
+    message,
+    {
+      entityType: "reservation",
+      actionUrl: "/applicant/profile?tab=stays&section=room-transfer",
+      ...options,
+      dedupeKey,
+    },
+    (_notification, pushIdentity) => sendMobilePushToRecipients([userId], {
+      title,
+      body: message,
+      data: {
+        ...pushIdentity,
+        type: options.pushType || "room_transfer",
+        event: options.event || "updated",
+        screen: "room_transfer",
+        url: "/room-transfer",
+        ...(options.entityId ? { reservation_id: String(options.entityId) } : {}),
+      },
+    }),
+  ),
+
   adminReply: (userId, conversationId, messageId) => {
     if (!userId || !conversationId || !messageId) {
       return Promise.reject(new Error("A tenant, conversation, and persisted message are required."));
@@ -1129,9 +1172,20 @@ export async function notifyBranchAdmins(branch, type, title, message, options =
     }).select("_id branch role").lean();
 
     const notifications = await Promise.all(
-      adminUsers.map((admin) =>
-        createNotification(admin._id, type, title, message, options)
-      )
+      adminUsers.map(async (admin) => {
+        if (options.dedupeKey) {
+          const result = await createNotificationOnce(
+            admin._id,
+            type,
+            title,
+            message,
+            options.dedupeKey,
+            options,
+          );
+          return result.notification;
+        }
+        return createNotification(admin._id, type, title, message, options);
+      }),
     );
 
     return notifications.filter(Boolean);

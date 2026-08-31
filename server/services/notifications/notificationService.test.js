@@ -150,3 +150,45 @@ describe("notify.billGenerated — billId propagation (bill-release notification
     expect(pushOptions.billId).toBeNull();
   });
 });
+
+describe("notify.roomTransferLifecycleOnce", () => {
+  beforeEach(() => {
+    saveMock.mockReset().mockResolvedValue(true);
+    sendMobilePushToRecipientsMock.mockClear();
+    NotificationMock.mockClear();
+  });
+
+  test("persists the tenant Web deep link and sends the safe Mobile room-transfer route", async () => {
+    await notify.roomTransferLifecycleOnce(
+      "user-123",
+      "Room Transfer Scheduled",
+      "Your room transfer has been scheduled.",
+      "room_transfer_scheduled:schedule-1",
+      { entityId: "reservation-1", event: "scheduled" },
+    );
+    expect(NotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      dedupeKey: "room_transfer_scheduled:schedule-1",
+      actionUrl: "/applicant/profile?tab=stays&section=room-transfer",
+      entityType: "reservation",
+      entityId: "reservation-1",
+    }));
+    expect(sendMobilePushToRecipientsMock).toHaveBeenCalledWith(["user-123"], expect.objectContaining({
+      data: expect.objectContaining({
+        screen: "room_transfer",
+        url: "/room-transfer",
+        event: "scheduled",
+      }),
+    }));
+  });
+
+  test("a duplicate persisted event cannot send another OS push", async () => {
+    saveMock.mockRejectedValueOnce(Object.assign(new Error("duplicate"), { code: 11000 }));
+    await notify.roomTransferLifecycleOnce(
+      "user-123",
+      "Room Transfer Completed",
+      "Your room transfer is complete.",
+      "room_transfer_completed:schedule-1",
+    );
+    expect(sendMobilePushToRecipientsMock).not.toHaveBeenCalled();
+  });
+});

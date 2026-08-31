@@ -20,6 +20,7 @@ import {
 import { formatCodedRoomAndBed } from "../../../../../shared/utils/bedIdentifier";
 import { formatDate, formatMoney } from "./tenantDetailConstants";
 import ScheduledRoomTransferCard from "./ScheduledRoomTransferCard.jsx";
+import TenantTransferRequestCard from "./TenantTransferRequestCard.jsx";
 import { adminApi } from "../../../services/adminApi";
 import { showNotification } from "../../../../../shared/utils/notification";
 import getFriendlyError from "../../../../../shared/utils/friendlyError";
@@ -35,6 +36,9 @@ export default function TenantOverviewTab({
   docsPanelRef,
   onPreviewDoc,
   onOpenDigitalContract,
+  onProceedTransferRequest,
+  onDeclineTransferRequest,
+  transferRequestLoading = false,
 }) {
   const queryClient = useQueryClient();
 
@@ -156,9 +160,17 @@ export default function TenantOverviewTab({
 
   const scheduledRoomTransfer =
     fetchedDetail?.scheduledRoomTransfer || tenant?.scheduledRoomTransfer || null;
+  const tenantTransferRequest =
+    fetchedDetail?.tenantTransferRequest || tenant?.tenantTransferRequest || null;
 
   return (
     <div className="space-y-4">
+      <TenantTransferRequestCard
+        request={tenantTransferRequest}
+        onProceed={onProceedTransferRequest}
+        onDecline={onDeclineTransferRequest}
+        loading={transferRequestLoading}
+      />
       {scheduledRoomTransfer ? (
         <ScheduledRoomTransferCard
           transfer={scheduledRoomTransfer}

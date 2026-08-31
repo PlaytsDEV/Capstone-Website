@@ -40,6 +40,7 @@ import {
 } from "./_helpers.js";
 import { getOpenScheduledRoomTransferForReservation } from "../../services/scheduledRoomTransferView.js";
 import { getRoomTransferHistoryForReservation } from "../../services/scheduledRoomTransferHistory.js";
+import { getAdminTransferLifecycleForReservation } from "../../services/tenantTransferRequestService.js";
 
 // In-memory throttle for tenant scope reconciliation (prevents redundant MongoDB write scans on repeated GET reads)
 const lastScopeReconcileTime = new Map();
@@ -288,12 +289,19 @@ export const getTenantWorkspaceById = async (req, res) => {
       { $set: { lastAdminViewedAt: readAt, isViewedByAdmin: true } },
     );
 
-    const scheduledRoomTransfer = await getOpenScheduledRoomTransferForReservation(
+    const transferLifecycle = await getAdminTransferLifecycleForReservation(
       reservation._id,
     ).catch((e) => {
-      logger.warn({ err: e, reservationId: String(reservation._id) }, "resolve scheduled room transfer (non-fatal)");
-      return null;
+      logger.warn({ err: e, reservationId: String(reservation._id) }, "resolve canonical tenant transfer lifecycle (non-fatal)");
+      return { request: null, scheduledTransfer: null };
     });
+    const scheduledRoomTransfer = transferLifecycle.scheduledTransfer
+      ? await getOpenScheduledRoomTransferForReservation(reservation._id).catch((e) => {
+          logger.warn({ err: e, reservationId: String(reservation._id) }, "serialize scheduled room transfer (non-fatal)");
+          return null;
+        })
+      : null;
+    const tenantTransferRequest = transferLifecycle.request;
 
     // F3 — the complete Room Transfer audit trail for Tenant Details -> History
     // (all ScheduledRoomTransfer statuses + derived legacy immediate transfers).
@@ -318,6 +326,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
       scheduledRoomTransfer,
+      tenantTransferRequest,
       roomTransferHistory,
       now: new Date(),
     });

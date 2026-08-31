@@ -23,6 +23,7 @@ import {
  StatGridSkeleton,
 } from "../../../../shared/components/LoadingSkeletons";
 import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
+import RoomTransferRequestPanel from "./RoomTransferRequestPanel.jsx";
 
 // Shared empty state style — matches My Bills
 const emptyStyle = {
@@ -261,6 +262,7 @@ const StaysTab = () => {
  <StayCard key={stay._id} stay={stay} isCurrent />
  ))}
  </div>
+ <RoomTransferRequestPanel hasCurrentStay={currentStays.length > 0} currentStay={currentStays[0]} />
  </div>
  )}
 
