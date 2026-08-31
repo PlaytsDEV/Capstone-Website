@@ -95,16 +95,30 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
   }, 120_000);
 
   beforeEach(async () => {
+    // Freeze "now" to the fixed transfer date these fixtures assume. Since
+    // round-4, transferStayWorkflow uses `new Date()` (the actual cutover
+    // moment) as the billing boundary — pinning it keeps the day-count
+    // fixtures deterministic. Only Date is faked; mongo's real timers are
+    // left alone.
+    jest.useFakeTimers({
+      now: new Date("2026-08-15T10:00:00.000+08:00"),
+      doNotFake: ["nextTick", "setImmediate", "setInterval", "setTimeout", "clearInterval", "clearTimeout", "queueMicrotask"],
+    });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
       Bill.deleteMany({}), BusinessSettings.deleteMany({}),
     ]);
     await BusinessSettings.create({
-      key: "global", quadrupleDiscountPercent: 10, doubleDiscountPercent: 5,
+      key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7], quadrupleDiscountPercent: 10, doubleDiscountPercent: 5,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   // Both rooms are the SAME type (double-sharing) — a room-type change is
@@ -137,6 +151,7 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
       reservationFeeAmount: 2000, preferredRoomType: "double-sharing",
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: 5400,
       selectedBed: { id: "bed-a1" }, moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+      securityDepositHeld: 5400,
     });
     roomA.beds[0].occupiedBy.reservationId = reservation._id;
     await roomA.save();
@@ -287,8 +302,9 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
     })).rejects.toMatchObject({ code: "BED_NOT_AVAILABLE" });
   });
 
-  test("blocks with an outstanding balance unless forceOverride", async () => {
+  test("an UNRELATED outstanding balance does NOT block the cutover (spec §9); only an unpaid transfer_settlement Bill does", async () => {
     const { tenant, roomA, roomB, reservation, actorId } = await seedScenario();
+    // A regular unpaid monthly rent Bill — unrelated to the transfer.
     await Bill.create({
       billType: "monthly", reservationId: reservation._id, userId: tenant._id,
       branch: roomA.branch, roomId: roomA._id, billingMonth: new Date("2026-08-01T00:00:00.000Z"),
@@ -297,19 +313,33 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
       totalAmount: 5400, grossAmount: 5400, remainingAmount: 5400, paidAmount: 0, status: "pending",
     });
 
+    // The cutover proceeds — the ₱5,400 regular debt stays owed, it does not gate.
+    const result = await transferStayWorkflow({
+      reservationId: reservation._id,
+      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
+      actorId,
+    });
+    expect(result.contractCutover.successorStatus).toBe("generated");
+
+    // The regular Bill is untouched (still unpaid).
+    const regular = await Bill.findOne({ reservationId: reservation._id, billType: "monthly" });
+    expect(regular.remainingAmount).toBe(5400);
+  });
+
+  test("an UNPAID transfer_settlement Bill DOES block the cutover (TRANSFER_SETTLEMENT_UNPAID)", async () => {
+    const { tenant, roomA, roomB, reservation, actorId } = await seedScenario();
+    await Bill.create({
+      billType: "transfer_settlement", reservationId: reservation._id, userId: tenant._id,
+      branch: roomA.branch, roomId: roomA._id, billingMonth: new Date("2026-08-15T00:00:00.000Z"),
+      billingCycleStart: new Date("2026-08-01T00:00:00.000Z"), billingCycleEnd: new Date("2026-09-01T00:00:00.000Z"),
+      charges: { rent: 1000, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, securityDeposit: 0, discount: 0 },
+      totalAmount: 1000, grossAmount: 1000, remainingAmount: 1000, paidAmount: 0, status: "pending",
+    });
     await expect(transferStayWorkflow({
       reservationId: reservation._id,
       payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
       actorId,
-    })).rejects.toMatchObject({ code: "OUTSTANDING_BILLS_BLOCKING_TRANSFER" });
-
-    // forceOverride proceeds.
-    const result = await transferStayWorkflow({
-      reservationId: reservation._id,
-      payload: { confirm: true, targetRoomId: roomB._id, targetBedId: "bed-b1", forceOverride: true, effectiveTransferDate: "2026-08-15T00:00:00.000Z" },
-      actorId,
-    });
-    expect(result.contractCutover.successorStatus).toBe("generated");
+    })).rejects.toMatchObject({ code: "TRANSFER_SETTLEMENT_UNPAID" });
   });
 
   test("retrying the same transfer after success is rejected and does not double-bill or duplicate the successor", async () => {

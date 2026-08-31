@@ -110,6 +110,7 @@ describe("Phase 3 — recurring rent after room transfer", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -117,6 +118,7 @@ describe("Phase 3 — recurring rent after room transfer", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
@@ -169,6 +171,32 @@ describe("Phase 3 — recurring rent after room transfer", () => {
           }
         : {}),
     });
+    if (structured) {
+      const initialAmount = RATE[sourceType] * 2;
+      const initialBill = await Bill.create({
+        billType: "initial_payment",
+        reservationId: reservation._id,
+        userId: tenant._id,
+        branch: roomA.branch,
+        roomId: roomA._id,
+        billingMonth: moveIn,
+        charges: { rent: 0, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+        initialPaymentBreakdown: {
+          advanceRent: RATE[sourceType],
+          securityDeposit: RATE[sourceType],
+          grossInitialAmount: initialAmount,
+          initialPaymentTotal: initialAmount,
+        },
+        totalAmount: initialAmount,
+        grossAmount: initialAmount,
+        paidAmount: initialAmount,
+        remainingAmount: 0,
+        status: "paid",
+      });
+      reservation.initialPaymentBillId = initialBill._id;
+      reservation.initialPaymentStatus = "paid";
+      await reservation.save({ validateModifiedOnly: true });
+    }
     if (srcBeds.length) { roomA.beds[0].occupiedBy.reservationId = reservation._id; await roomA.save(); }
     const stay = await Stay.create({
       tenantId: tenant._id, reservationId: reservation._id, branch: roomA.branch,
@@ -200,6 +228,7 @@ describe("Phase 3 — recurring rent after room transfer", () => {
 
   async function runTransfer({ reservation, roomB, actorId, destType, transferDate = "2026-08-15T00:00:00.000Z" }) {
     const destBedId = NEEDS_BED.has(destType) ? "dst-b1" : undefined;
+    jest.setSystemTime(new Date(`${String(transferDate).slice(0, 10)}T10:00:00.000+08:00`));
     return transferStayWorkflow({
       reservationId: reservation._id,
       payload: {
@@ -238,6 +267,20 @@ describe("Phase 3 — recurring rent after room transfer", () => {
     return c._id;
   }
 
+  // A prior transfer's settlement Bill must be PAID before a subsequent
+  // transfer can complete (round-2: TRANSFER_SETTLEMENT_UNPAID gate).
+  async function payAllTransferSettlements(reservationId) {
+    const bills = await Bill.find({
+      reservationId, billType: "transfer_settlement", status: { $ne: "voided" },
+    });
+    for (const b of bills) {
+      const remaining = Math.round((Number(b.totalAmount || 0) - Number(b.paidAmount || 0)) * 100) / 100;
+      if (remaining > 0) {
+        await Bill.updateOne({ _id: b._id }, { $set: { paidAmount: b.totalAmount, remainingAmount: 0, status: "paid" } });
+      }
+    }
+  }
+
   // ── Single transfer: next regular Bill uses the destination rate ─────────
   // (Private -> Quadruple is already proven in transferFinancialSettlement #8.)
   const SINGLE = [
@@ -262,6 +305,8 @@ describe("Phase 3 — recurring rent after room transfer", () => {
   });
 
   // ── Same-rate transfer: no manufactured adjustment ─────────────────────
+  afterEach(() => { jest.useRealTimers(); });
+
   test("same-rate transfer (Double 8100 -> another Double 8100): recurring rent stays 8100, next Bill charges 8100", async () => {
     const { reservation, roomB, actorId } = await seed({ sourceType: "double-sharing", destType: "double-sharing" });
     await runTransfer({ reservation, roomB, actorId, destType: "double-sharing" });
@@ -351,7 +396,9 @@ describe("Phase 3 — recurring rent after room transfer", () => {
 
     // ── Transfer #2: Double -> Private, effective Aug 25 (same cycle) ────
     await markCurrentContractActive(reservation._id);
+    await payAllTransferSettlements(reservation._id);
     const roomC = await makeRoom("private", "701");
+    jest.setSystemTime(new Date("2026-08-25T10:00:00.000+08:00"));
     await transferStayWorkflow({
       reservationId: reservation._id,
       payload: {
@@ -392,7 +439,9 @@ describe("Phase 3 — recurring rent after room transfer", () => {
     const stay1 = await Stay.findOne({ reservationId: reservation._id, status: "active" });
 
     await markCurrentContractActive(reservation._id);
+    await payAllTransferSettlements(reservation._id);
     const roomC = await makeRoom("private", "702");
+    jest.setSystemTime(new Date("2026-08-25T10:00:00.000+08:00"));
     await transferStayWorkflow({
       reservationId: reservation._id,
       payload: { confirm: true, targetRoomId: roomC._id, effectiveTransferDate: "2026-08-25T00:00:00.000Z", forceOverride: true },

@@ -36,22 +36,29 @@ export const toDateInputValue = (value) => {
 export const localTodayStr = (now = new Date()) => toDateInputValue(now);
 
 /**
- * The EARLIEST date a new Admin Room Transfer may be scheduled for: tomorrow,
- * as a local calendar `YYYY-MM-DD` string. Under the future-only rule the
- * wizard's date picker uses this as its `min`. Philippine users are UTC+8, so
- * local calendar === Manila calendar; the backend
- * (`isFutureManilaDate` / `getManilaToday`) stays authoritative and rejects
- * anything not strictly after today Manila with TRANSFER_DATE_MUST_BE_FUTURE.
- * Never derived via `toISOString()` (which shifts to UTC and can roll a day).
+ * The EARLIEST date a new Admin Room Transfer may be scheduled for. Same-day
+ * transfers are ALLOWED, so this is TODAY, as a local calendar `YYYY-MM-DD`
+ * string — the wizard's date picker uses it as `min`. Philippine users are
+ * UTC+8, so local calendar === Manila calendar; the backend (`isPastManilaDate`)
+ * stays authoritative and rejects a past date (PAST_TRANSFER_DATE).
  *
  * @param {Date} [now] - injectable for tests
  * @returns {string}
  */
-export const minScheduleDateStr = (now = new Date()) => {
-  const d = new Date(now);
-  if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() + 1);
-  return toDateInputValue(d);
+export const minScheduleDateStr = (now = new Date()) => toDateInputValue(now);
+
+/** "HH:mm" -> minutes from midnight, or null. */
+export const timeStrToMinutes = (value) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!m) return null;
+  const mins = Number(m[1]) * 60 + Number(m[2]);
+  return Number.isFinite(mins) && mins >= 0 && mins < 24 * 60 ? mins : null;
+};
+
+/** minutes from midnight -> "HH:mm". */
+export const minutesToTimeStr = (minutes) => {
+  const m = Number.isFinite(Number(minutes)) ? Number(minutes) : 0;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 };
 
 /**

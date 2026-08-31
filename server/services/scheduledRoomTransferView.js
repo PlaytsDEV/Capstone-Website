@@ -23,18 +23,21 @@
  */
 
 import { Bill, Contract } from "../models/index.js";
+import { getManilaToday, toManilaStartOfDay } from "../utils/dateUtils.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
-  "awaiting_payment",
-  "ready",
+  "scheduled",
+  "ready_for_transfer",
+  "awaiting_settlement",
   "completed",
   "action_required",
   "cancelled",
 ]);
 
 export const SCHEDULED_TRANSFER_STATUS_LABELS = Object.freeze({
-  awaiting_payment: "Awaiting Payment",
-  ready: "Ready",
+  scheduled: "Scheduled",
+  ready_for_transfer: "Ready for Transfer",
+  awaiting_settlement: "Awaiting Settlement",
   completed: "Completed",
   action_required: "Action Required",
   cancelled: "Cancelled",
@@ -48,15 +51,21 @@ const ACTION_REQUIRED_MESSAGES = Object.freeze({
   TRANSFER_BALANCE_UNPAID:
     "The Scheduled Room Transfer Balance is not fully settled. The tenant remains in the current room. Settle the balance, then retry.",
   ADDITIONAL_BALANCE_DUE:
-    "The settlement recomputed at the effective date is higher than what was billed. The extra amount was added to the transfer balance Bill. Settle it, then retry.",
+    "The settlement recomputed higher than the amount already paid. Settle the remaining transfer balance, then retry.",
   FINANCIAL_ADJUSTMENT_REQUIRED:
-    "The final transfer amount is lower than what the tenant already paid. No automatic refund is made — please coordinate with the Administration Office, 2nd Floor.",
+    "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.",
   PAYMENT_ALREADY_RECEIVED:
-    "A payment was already received for this transfer. It cannot be cancelled automatically — please coordinate with the Administration Office, 2nd Floor.",
+    "A payment was already received for this transfer. It cannot be cancelled automatically. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
+  PAID_TRANSFER_CANNOT_COMPLETE:
+    "This paid Room Transfer cannot complete until its financial adjustment is resolved. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
   OPERATIONAL_VALIDATION_FAILED:
     "The destination room or bed is no longer valid. Review the destination and retry after correcting it.",
   EXECUTION_FAILED:
     "The transfer could not be completed on the effective date. Review the destination room/bed and retry.",
+  DESTINATION_UNAVAILABLE:
+    "The destination room or bed is no longer available for this tenant's stay. Reschedule the transfer or pick another room.",
+  ADDENDUM_EFFECTIVE_DATE_LOCKED:
+    "The Room Transfer Addendum was already acknowledged for the originally scheduled date. Reschedule the transfer to re-issue the Addendum for the actual date, then complete it.",
 });
 
 export function describeScheduledTransferActionRequired(reason) {
@@ -133,26 +142,41 @@ export async function resolveScheduledTransferBalance(scheduledTransfer, { sessi
 }
 
 /**
- * Derive the user-facing status from the record's internal status + balance.
+ * Derive the UI-facing status from the stored status + the effective
+ * calendar date + the settlement Bill. The stored time remains guidance. There is no extra DB status —
+ * "Ready for Transfer" / "Awaiting Settlement" are computed:
+ *
+ *   executed              -> completed
+ *   cancelled             -> cancelled
+ *   action_required       -> action_required  (unless a Bill is now unpaid,
+ *                            in which case awaiting_settlement is clearer)
+ *   scheduled + calendar date NOT reached       -> scheduled
+ *   scheduled + date reached + unpaid balance   -> awaiting_settlement
+ *   scheduled + date reached + no/settled bill  -> ready_for_transfer
  */
-export function deriveScheduledTransferUserStatus(scheduledTransfer, balance) {
-  switch (scheduledTransfer.status) {
-    case "executed":
-      return "completed";
-    case "cancelled":
-      return "cancelled";
-    case "action_required":
-      return "action_required";
-    case "scheduled":
-    default: {
-      // Nothing owed (zero-balance transfer, or the balance Bill is fully
-      // settled / absent) => Ready. Otherwise Awaiting Payment.
-      if (!balance || balance.paymentState === "none" || balance.paymentState === "paid") {
-        return "ready";
-      }
-      return "awaiting_payment";
-    }
+export function deriveScheduledTransferUserStatus(scheduledTransfer, balance, now = new Date()) {
+  if (scheduledTransfer.status === "executed") return "completed";
+  if (scheduledTransfer.status === "cancelled") return "cancelled";
+
+  const effectiveDay = toManilaStartOfDay(scheduledTransfer.effectiveTransferDate);
+  const dueReached = !!effectiveDay && !effectiveDay.isAfter(getManilaToday(now));
+  const balanceUnpaid =
+    balance && balance.hasBill && balance.paymentState !== "paid" && balance.paymentState !== "none";
+
+  if (scheduledTransfer.status === "action_required") {
+    // A payment blocker that has since been settled -> the transfer is ready to
+    // complete again (the admin re-runs Complete Transfer).
+    const paymentBlocker =
+      scheduledTransfer.lastError === "TRANSFER_BALANCE_UNPAID" ||
+      scheduledTransfer.lastError === "ADDITIONAL_BALANCE_DUE";
+    if (balanceUnpaid) return "awaiting_settlement";
+    if (paymentBlocker) return "ready_for_transfer";
+    return "action_required";
   }
+
+  // status === "scheduled"
+  if (!dueReached) return "scheduled";
+  return balanceUnpaid ? "awaiting_settlement" : "ready_for_transfer";
 }
 
 /**
@@ -235,12 +259,37 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
     destinationBed: doc.destinationNeedsBed ? (doc.destinationBedId || null) : null,
 
     effectiveTransferDate: doc.effectiveTransferDate,
+    effectiveTransferTimeMinutes: doc.effectiveTransferTimeMinutes ?? 9 * 60,
+    // "HH:mm" convenience for display.
+    effectiveTransferTimeLabel: (() => {
+      const m = doc.effectiveTransferTimeMinutes ?? 9 * 60;
+      return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    })(),
     reason: doc.reason || null,
     status: userStatus,
     statusLabel: SCHEDULED_TRANSFER_STATUS_LABELS[userStatus] || userStatus,
+    // The stored orchestration status (scheduled | executed | cancelled |
+    // action_required) — distinct from the derived UI `status` above.
+    recordStatus: doc.status,
+    // Whether the admin Complete Transfer flow is available (calendar date
+    // reached and not already executed/cancelled). The stored time is guidance.
+    completable: ["ready_for_transfer", "awaiting_settlement", "action_required"].includes(userStatus),
     actionRequiredReason: doc.status === "action_required" ? (doc.lastError || null) : null,
     actionRequiredMessage:
       doc.status === "action_required" ? describeScheduledTransferActionRequired(doc.lastError) : null,
+
+    // Append-only reschedule audit trail (Admin Room Transfer §1).
+    scheduleHistory: Array.isArray(doc.scheduleHistory)
+      ? doc.scheduleHistory.map((h) => ({
+          previousDate: h.previousDate || null,
+          previousTimeMinutes: h.previousTimeMinutes ?? null,
+          newDate: h.newDate || null,
+          newTimeMinutes: h.newTimeMinutes ?? null,
+          at: h.at || null,
+          reason: h.reason || "",
+          kind: h.kind || "rescheduled",
+        }))
+      : [],
 
     // Rent / deposit figures — the executed settlement once it exists,
     // otherwise the scheduling-time preview. (rent.* rates only exist on the

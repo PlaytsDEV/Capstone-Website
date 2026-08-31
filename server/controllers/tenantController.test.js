@@ -51,6 +51,8 @@ const allModels = {
   WaterBillingRecord: genericModel(),
   UtilityPeriod: utilityPeriodModel,
   UtilityReading: utilityReadingModel,
+  UtilityFinalization: genericModel(),
+  ScheduledRoomTransfer: genericModel(),
   BedHistory: bedHistoryModel,
   Stay: stayModel,
   Contract: contractModel,

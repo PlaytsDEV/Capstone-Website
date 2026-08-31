@@ -54,6 +54,7 @@ import LeaseRenewal from "./LeaseRenewal.js";
 // 4. Billing & Utility Domain (Active Modular System)
 import UtilityPeriod from "./UtilityPeriod.js";
 import UtilityReading from "./UtilityReading.js";
+import UtilityFinalization from "./UtilityFinalization.js";
 import Bill from "./Bill.js";
 import Payment from "./Payment.js";
 import TenantCredit from "./TenantCredit.js";
@@ -139,6 +140,7 @@ export {
   WaterBillingRecord,
   UtilityPeriod,
   UtilityReading,
+  UtilityFinalization,
   BedHistory,
   Stay,
   Contract,
@@ -259,6 +261,7 @@ export default {
   WaterBillingRecord,
   UtilityPeriod,
   UtilityReading,
+  UtilityFinalization,
   BedHistory,
   Stay,
   Contract,

@@ -76,6 +76,8 @@ import {
   discardRoomTransferAddendumAction,
   cancelScheduledRoomTransferAction,
   retryScheduledRoomTransferAction,
+  rescheduleRoomTransferAction,
+  completeRoomTransferAction,
   processDepositRefund,
   cancelMoveOutAction,
   earlyTerminationAction,
@@ -920,6 +922,43 @@ router.post(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   retryScheduledRoomTransferAction,
+);
+
+/**
+ * PATCH /api/reservations/:reservationId/scheduled-transfer/reschedule
+ *
+ * Move an OPEN scheduled room transfer to a new Manila date + time on the SAME
+ * destination. Revalidates intent + hold + (same-day) office hours; appends a
+ * schedule-history entry. Changing the destination = cancel + new schedule.
+ *
+ * Access: Admin | Owner
+ */
+router.patch(
+  "/:reservationId/scheduled-transfer/reschedule",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  rescheduleRoomTransferAction,
+);
+
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/complete
+ *
+ * Admin-driven room transfer completion on/after the effective date + time:
+ * meter reading → settlement → settle → atomic cutover (transferStayWorkflow).
+ * Returns outcome "awaiting_settlement" (202) with the Bill when the transfer
+ * balance is unpaid — no cutover. Idempotent.
+ *
+ * Access: Admin | Owner
+ */
+router.post(
+  "/:reservationId/scheduled-transfer/complete",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  completeRoomTransferAction,
 );
 
 /**

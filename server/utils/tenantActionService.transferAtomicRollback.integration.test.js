@@ -94,6 +94,7 @@ describe("Phase 7 — forced cutover failure reverts every domain together", () 
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick", "setImmediate", "setInterval", "setTimeout", "clearInterval", "clearTimeout", "queueMicrotask"] });
     mockActivateDraft.mockClear();
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
@@ -103,10 +104,13 @@ describe("Phase 7 — forced cutover failure reverts every domain together", () 
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   test("Private(13500) -> Quadruple(5400): rollback leaves NO credit, NO cutoff readings, NO deposit ledger entry, NO destination rate, tenant fully in the source room", async () => {
     const tenant = await User.create({

@@ -49,7 +49,8 @@ import { resolveAuthoritativeLeasePricing } from "../../services/contractPricing
 import { resolveCurrentStayForReservation } from "../../services/tenantContractSelectionService.js";
 import {
   scheduleRoomTransfer,
-  isFutureManilaDate,
+  rescheduleRoomTransfer,
+  completeRoomTransfer,
   isPastManilaDate,
 } from "../../services/scheduledRoomTransferService.js";
 import {
@@ -907,26 +908,21 @@ export const transferTenant = async (req, res, next) => {
     const oldData = reservation.toObject();
     const actor = await findDbUser(req.user.uid);
 
-    // ── Future-only Admin Room Transfer rule ─────────────────────────────────
-    // Every NEW Admin/API room transfer must carry an EXPLICIT future Manila
-    // business date. There is no same-day Admin transfer: missing / past /
-    // today are all rejected with TRANSFER_DATE_MUST_BE_FUTURE. A missing date
-    // is NOT silently defaulted to tomorrow — the admin must choose one.
+    // ── Room Transfer scheduling ────────────────────────────────────────────
+    // Every NEW Admin/API room transfer carries an EXPLICIT effective date +
+    // time. Same-day is allowed provided the chosen date/time is within
+    // configured office hours (enforced inside scheduleRoomTransfer, backend-
+    // authoritative). A future date is always allowed; a missing or past date
+    // is rejected.
     //
-    // The physical cutover engine (transferStayWorkflow) is NOT called here
-    // anymore. It stays the canonical INTERNAL cutover engine invoked by
-    // scheduledRoomTransferExecutor on the effective date (where the scheduled
-    // date legitimately IS "today" at execution time).
-    const effectiveTransferDate = req.body.effectiveTransferDate;
-    if (
-      !effectiveTransferDate ||
-      isPastManilaDate(effectiveTransferDate) ||
-      !isFutureManilaDate(effectiveTransferDate)
-    ) {
+    // scheduleRoomTransfer no longer cuts over and creates NO Bill — the
+    // physical cutover + settlement Bill happen in the admin Complete Transfer
+    // flow (POST /scheduled-transfer/complete) on the transfer day.
+    const { effectiveTransferDate } = req.body;
+    if (!effectiveTransferDate || isPastManilaDate(effectiveTransferDate)) {
       return res.status(400).json({
-        error:
-          "Room transfers must be scheduled at least one day in advance. Please select a future effective date.",
-        code: "TRANSFER_DATE_MUST_BE_FUTURE",
+        error: "Please select a valid effective transfer date (today or later).",
+        code: "TRANSFER_DATE_INVALID",
       });
     }
 
@@ -937,6 +933,8 @@ export const transferTenant = async (req, res, next) => {
           ...req.body,
           targetRoomId: req.body.targetRoomId || req.body.newRoomId,
           targetBedId: req.body.targetBedId || req.body.newBedId,
+          effectiveTransferTimeMinutes:
+            req.body.effectiveTransferTimeMinutes ?? req.body.effectiveTransferTime,
         },
         actorId: actor?._id || null,
       });
@@ -1215,7 +1213,14 @@ export const retryScheduledRoomTransferAction = async (req, res, next) => {
     }
 
     const actor = await findDbUser(req.user.uid);
-    const result = await retryScheduledRoomTransfer(rec._id, { actorId: actor?._id || null });
+    const result = await retryScheduledRoomTransfer(rec._id, {
+      actorId: actor?._id || null,
+      payload: {
+        sourceRoomMeterReading: req.body.sourceRoomMeterReading,
+        targetRoomMeterReading: req.body.targetRoomMeterReading,
+        notes: req.body.notes,
+      },
+    });
 
     await auditLogger.logModification(
       req, "reservation", reservationId, {},
@@ -1227,8 +1232,8 @@ export const retryScheduledRoomTransferAction = async (req, res, next) => {
     return res.status(200).json({
       message:
         result.outcome === "executed"
-          ? "Scheduled room transfer executed."
-          : "The scheduled room transfer still cannot be completed. See the status for details.",
+          ? "Room transfer completed."
+          : result.message || "The room transfer still cannot be completed. See the status for details.",
       outcome: result.outcome,
       reason: result.reason || null,
       scheduledRoomTransfer,
@@ -1240,6 +1245,151 @@ export const retryScheduledRoomTransferAction = async (req, res, next) => {
       return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULED_TRANSFER_RETRY_FAILED" });
     }
     handleReservationError(res, error, "retry scheduled room transfer");
+  }
+};
+
+/**
+ * PATCH /api/reservations/:reservationId/scheduled-transfer/reschedule
+ *
+ * Move an OPEN scheduled room transfer to a new Manila date + time, keeping
+ * the SAME destination room/bed (and therefore the same hold and Addendum).
+ * Revalidates the canonical transfer intent, the destination hold, and — for
+ * a same-day reschedule — office hours. Appends a schedule-history entry.
+ * Changing the destination is not a reschedule: cancel + create a new one.
+ *
+ * Access: Admin | Owner
+ * @body {string} effectiveTransferDate
+ * @body {number|string} [effectiveTransferTimeMinutes|effectiveTransferTime]
+ * @body {string} [reason]
+ */
+export const rescheduleRoomTransferAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await rescheduleRoomTransfer({
+      reservationId,
+      payload: {
+        effectiveTransferDate: req.body.effectiveTransferDate,
+        effectiveTransferTimeMinutes:
+          req.body.effectiveTransferTimeMinutes ?? req.body.effectiveTransferTime,
+        reason: req.body.reason,
+      },
+      actorId: actor?._id || null,
+    });
+
+    await auditLogger.logModification(
+      req, "reservation", reservationId, {},
+      {
+        scheduledTransferId: String(result.scheduledTransfer._id),
+        effectiveTransferDate: result.scheduledTransfer.effectiveTransferDate,
+        effectiveTransferTimeMinutes: result.scheduledTransfer.effectiveTransferTimeMinutes,
+      },
+      `Scheduled room transfer rescheduled to ${dayjs(result.scheduledTransfer.effectiveTransferDate).format("YYYY-MM-DD")}`,
+    );
+
+    return res.status(200).json({
+      message: "Scheduled room transfer rescheduled.",
+      scheduledRoomTransfer: await serializeScheduledRoomTransfer(result.scheduledTransfer),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Reschedule room transfer error");
+    await auditLogger.logError(req, error, "Failed to reschedule room transfer");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "RESCHEDULE_TRANSFER_FAILED" });
+    }
+    handleReservationError(res, error, "reschedule room transfer");
+  }
+};
+
+/**
+ * POST /api/reservations/:reservationId/scheduled-transfer/complete
+ *
+ * Admin-driven room transfer completion, on/after the scheduled effective
+ * date + time. Runs the meter reading → settlement → settle → cutover
+ * sequence. If the transfer-settlement balance is not fully paid, returns
+ * outcome "awaiting_settlement" with the Bill and performs NO cutover.
+ * Idempotent — a second call after completion is a no-op success.
+ *
+ * Access: Admin | Owner
+ * @body {number} [sourceRoomMeterReading]  closing kWh of the tenant's current room
+ * @body {number} [targetRoomMeterReading]  opening kWh of the destination room
+ * @body {string} [notes]
+ */
+export const completeRoomTransferAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await completeRoomTransfer({
+      reservationId,
+      payload: {
+        sourceRoomMeterReading: req.body.sourceRoomMeterReading,
+        targetRoomMeterReading: req.body.targetRoomMeterReading,
+        notes: req.body.notes || "",
+      },
+      actorId: actor?._id || null,
+    });
+
+    await auditLogger.logModification(
+      req, "reservation", reservationId, {},
+      {
+        scheduledTransferId: String(result.scheduledTransfer?._id || ""),
+        outcome: result.outcome,
+        reason: result.reason || null,
+        settlementBillId: result.bill?._id ? String(result.bill._id) : null,
+      },
+      `Room transfer completion -> ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`,
+    );
+
+    const status = result.outcome === "executed" ? 200 : 202;
+    return res.status(status).json({
+      message: result.message || (result.outcome === "executed" ? "Room transfer completed." : "Room transfer not yet completed."),
+      outcome: result.outcome,
+      reason: result.reason || null,
+      bill: result.bill
+        ? {
+            id: String(result.bill._id),
+            totalAmount: result.bill.totalAmount,
+            paidAmount: result.bill.paidAmount,
+            remainingAmount: result.bill.remainingAmount,
+            status: result.bill.status,
+          }
+        : null,
+      scheduledRoomTransfer: result.scheduledTransfer
+        ? await serializeScheduledRoomTransfer(result.scheduledTransfer)
+        : null,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Complete room transfer error");
+    await auditLogger.logError(req, error, "Failed to complete room transfer");
+    if (error?.code === "TRANSFER_SETTLEMENT_UNPAID" || error?.code === "OUTSTANDING_BILLS_BLOCKING_TRANSFER") {
+      return res.status(error.statusCode || 409).json({
+        error: error.message,
+        code: error.code,
+        outstandingBalance: error.outstandingBalance,
+      });
+    }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "COMPLETE_TRANSFER_FAILED" });
+    }
+    handleReservationError(res, error, "complete room transfer");
   }
 };
 

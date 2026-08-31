@@ -40,7 +40,8 @@ import { diffManilaDays, toManilaStartOfDay } from "../../utils/dateUtils.js";
  * @returns {{
  *   totalCoverageDays: number, sourceDays: number, destinationDays: number,
  *   sourceConsumedValue: number, unusedPrepaidCredit: number,
- *   destinationProratedValue: number, settlementAmount: number,
+ *   destinationProratedValue: number, rentLiabilityForPeriod: number,
+ *   settlementAmount: number,
  *   additionalAmountDue: number, excessCredit: number,
  * }}
  */
@@ -72,6 +73,7 @@ export function calculateRoomTransferRentSettlement({
       sourceConsumedValue: 0,
       unusedPrepaidCredit: roundMoney(prepaidRent),
       destinationProratedValue: 0,
+      rentLiabilityForPeriod: 0,
       settlementAmount: roundMoney(-prepaidRent),
       additionalAmountDue: 0,
       excessCredit: roundMoney(prepaidRent),
@@ -92,7 +94,11 @@ export function calculateRoomTransferRentSettlement({
   // that this settlement does not create, erase, or otherwise touch.
   const unusedPrepaidCredit = roundMoney(Math.max(0, prepaidRent - sourceConsumedValue));
   const destinationProratedValue = roundMoney((destinationRate / totalCoverageDays) * destinationDays);
-  const settlementAmount = roundMoney(destinationProratedValue - unusedPrepaidCredit);
+  // Reconcile the entire rental-cycle liability, not only paid value. A
+  // regular monthly Bill already represents rent for this same coverage even
+  // while unpaid or partially paid; payment readiness is handled separately.
+  const rentLiabilityForPeriod = roundMoney(sourceConsumedValue + destinationProratedValue);
+  const settlementAmount = roundMoney(rentLiabilityForPeriod - prepaidRent);
 
   return {
     totalCoverageDays,
@@ -101,6 +107,7 @@ export function calculateRoomTransferRentSettlement({
     sourceConsumedValue,
     unusedPrepaidCredit,
     destinationProratedValue,
+    rentLiabilityForPeriod,
     settlementAmount,
     additionalAmountDue: settlementAmount > 0 ? settlementAmount : 0,
     excessCredit: settlementAmount < 0 ? roundMoney(-settlementAmount) : 0,

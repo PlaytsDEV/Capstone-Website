@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { formatManilaDate, getManilaDayjs } from "./dateUtils.js";
-import { Bill, Reservation, Room, User } from "../models/index.js";
+import { Bill, Reservation, Room, User, UtilityFinalization } from "../models/index.js";
 import {
   sendBillGeneratedEmail,
   sendUtilityChargeAvailableEmail,
@@ -147,6 +147,26 @@ export async function upsertDraftBillsForUtility({
   const updatedSummaries = [];
   const utilityCycle = getUtilityCycleFromPeriod(period);
 
+  // Reconciliation tolerance for the "already finalized on transfer day" check.
+  const RECONCILIATION_TOLERANCE = 1; // ₱1 — Hamilton-cent rounding across paths.
+  const periodId = period?._id || period?.id || null;
+
+  // Any transfer-day finalizations for this period? (electricity only today.)
+  // A tenant with a finalization row was ALREADY billed for their source-room
+  // share on the transfer_settlement Bill — they still participated fully in
+  // the canonical allocation above (their moveOut reading bounds their
+  // segments), we just must NOT create a second draft Bill for them here.
+  const finalizations = periodId
+    ? await UtilityFinalization.find({
+        utilityPeriodId: periodId,
+        utilityType,
+        isArchived: { $ne: true },
+      }).lean()
+    : [];
+  const finalizationByReservation = new Map(
+    finalizations.map((f) => [String(f.reservationId), f]),
+  );
+
   for (const summary of tenantSummaries || []) {
     const billingContext = await getReservationBillingContextForUser(
       summary.tenantId,
@@ -155,6 +175,41 @@ export async function upsertDraftBillsForUtility({
     const billingMonth =
       billingContext?.cycle?.billingMonth || period.startDate;
     const reservationId = billingContext?.reservation?._id || null;
+
+    // ── Transfer-day finalization: suppress the duplicate draft Bill ────────
+    const finalization =
+      finalizationByReservation.get(String(summary.reservationId || "")) ||
+      finalizationByReservation.get(String(reservationId || ""));
+    if (finalization) {
+      const canonical = roundMoney(summary.billAmount || 0);
+      const settled = roundMoney(finalization.settledAmount || 0);
+      const variance = roundMoney(canonical - settled);
+      const flagged = Math.abs(variance) > RECONCILIATION_TOLERANCE;
+      // Record the reconciliation outcome on the finalization row; if it is
+      // out of tolerance, flag the period for manual review (the period still
+      // closes for co-occupants).
+      await UtilityFinalization.updateOne(
+        { _id: finalization._id },
+        {
+          $set: {
+            "reconciliation.periodSummaryAmount": canonical,
+            "reconciliation.variance": variance,
+            "reconciliation.reconciledAt": new Date(),
+            "reconciliation.flagged": flagged,
+          },
+        },
+      );
+      updatedSummaries.push({
+        ...summary,
+        billId: finalization.settlementBillId || null,
+        settledOnTransfer: true,
+        finalizedAmount: settled,
+        reconciliationVariance: variance,
+        reconciliationFlagged: flagged,
+      });
+      // NO draft Bill created/updated for this tenant.
+      continue;
+    }
 
     let bill = await Bill.findOne({
       userId: summary.tenantId,

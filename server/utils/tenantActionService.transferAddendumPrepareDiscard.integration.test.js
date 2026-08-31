@@ -171,6 +171,7 @@ describe("R2 — prepareRoomTransferAddendum (preview, no cutover)", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -178,12 +179,15 @@ describe("R2 — prepareRoomTransferAddendum (preview, no cutover)", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   test("prepares an amendment Draft with original lease dates + transfer date, and mutates NOTHING physical", async () => {
     const { reservation, roomA, stay, original, actorId } = await seed({ sourceType: "quadruple-sharing" });
@@ -324,6 +328,7 @@ describe("R4 — discardRoomTransferAddendum (pre-cutover only)", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
@@ -428,6 +433,7 @@ describe("stale room-transfer Addendum — self-heal on re-target", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
@@ -506,7 +512,7 @@ describe("stale room-transfer Addendum — self-heal on re-target", () => {
         payload: { targetRoomId: roomY._id, targetBedId: "r811-b1", effectiveTransferDate: TRANSFER },
         actorId,
       }),
-    ).rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" });
+    ).rejects.toMatchObject({ code: "ROOM_TRANSFER_ADDENDUM_TERMS_MISMATCH" });
 
     // The published successor is untouched.
     const still = await Contract.findById(prep.addendum.contractId);

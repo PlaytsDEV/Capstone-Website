@@ -1,15 +1,19 @@
 /**
- * transferTenant controller — FUTURE-ONLY Admin Room Transfer rule.
+ * transferTenant + reschedule + complete controller branch decisions.
  *
- *   effectiveTransferDate missing        -> 400 TRANSFER_DATE_MUST_BE_FUTURE
- *   effectiveTransferDate < today Manila -> 400 TRANSFER_DATE_MUST_BE_FUTURE
- *   effectiveTransferDate = today Manila -> 400 TRANSFER_DATE_MUST_BE_FUTURE
- *   effectiveTransferDate > today Manila -> 201, ScheduledRoomTransfer created,
- *                                           NO physical cutover
+ * SCHEDULING (transferTenant):
+ *   effectiveTransferDate missing / past  -> 400 TRANSFER_DATE_INVALID
+ *   effectiveTransferDate today or future -> 201, scheduleRoomTransfer called,
+ *                                            transferStayWorkflow NEVER called
+ *   (there is no office-hours restriction — any date/time is allowed; only a
+ *    genuinely past date is rejected, inside scheduleRoomTransfer.)
  *
- * The Admin/API endpoint NEVER calls transferStayWorkflow directly anymore —
- * that engine is only invoked by scheduledRoomTransferExecutor on the
- * effective date (covered by scheduledRoomTransfer.executor.integration.test).
+ * RESCHEDULE (rescheduleRoomTransferAction): PATCH -> rescheduleRoomTransfer.
+ * COMPLETE  (completeRoomTransferAction):    POST  -> completeRoomTransfer,
+ *   200 on executed, 202 on awaiting_settlement, meter readings forwarded.
+ *
+ * The controller NEVER calls transferStayWorkflow directly — the admin-driven
+ * completeRoomTransfer service owns that (its own suites cover the cutover).
  */
 import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -30,23 +34,23 @@ await jest.unstable_mockModule("../../utils/occupancyManager.js", () => ({
   updateOccupancyOnReservationChange: jest.fn(),
 }));
 
-// The immediate transfer engine + the scheduling service are stubbed so this
-// test isolates the CONTROLLER branch decision. (Their real behavior is
-// covered by their own integration suites.)
-const transferStayWorkflowMock = jest.fn(async () => ({
-  reservation: { userId: new mongoose.Types.ObjectId(), toObject: () => ({}) },
-  stay: {},
-  fromRoomName: "Room 301",
-  toRoomName: "Room 205",
-  billingSnapshot: null,
-}));
+const transferStayWorkflowMock = jest.fn(async () => ({ reservation: {}, stay: {}, billingSnapshot: null }));
 const scheduleRoomTransferMock = jest.fn(async ({ payload }) => ({
   scheduledTransfer: {
     _id: new mongoose.Types.ObjectId(),
     effectiveTransferDate: new Date(payload.effectiveTransferDate),
+    effectiveTransferTimeMinutes: payload.effectiveTransferTimeMinutes ?? 540,
     toObject() { return { _id: this._id, effectiveTransferDate: this.effectiveTransferDate }; },
   },
 }));
+const rescheduleRoomTransferMock = jest.fn(async ({ payload }) => ({
+  scheduledTransfer: {
+    _id: new mongoose.Types.ObjectId(),
+    effectiveTransferDate: new Date(payload.effectiveTransferDate),
+    effectiveTransferTimeMinutes: payload.effectiveTransferTimeMinutes ?? 600,
+  },
+}));
+const completeRoomTransferMock = jest.fn();
 
 const realService = await import("../../utils/tenantActionService.js");
 await jest.unstable_mockModule("../../utils/tenantActionService.js", () => ({
@@ -57,15 +61,18 @@ const realSched = await import("../../services/scheduledRoomTransferService.js")
 await jest.unstable_mockModule("../../services/scheduledRoomTransferService.js", () => ({
   ...realSched,
   scheduleRoomTransfer: scheduleRoomTransferMock,
+  rescheduleRoomTransfer: rescheduleRoomTransferMock,
+  completeRoomTransfer: completeRoomTransferMock,
 }));
 const realSchedView = await import("../../services/scheduledRoomTransferView.js");
 await jest.unstable_mockModule("../../services/scheduledRoomTransferView.js", () => ({
   ...realSchedView,
-  serializeScheduledRoomTransfer: jest.fn(async (d) => ({ id: String(d._id), effectiveTransferDate: d.effectiveTransferDate })),
+  serializeScheduledRoomTransfer: jest.fn(async (d) => ({ id: String(d?._id || ""), effectiveTransferDate: d?.effectiveTransferDate })),
   getOpenScheduledRoomTransferForReservation: jest.fn().mockResolvedValue(null),
 }));
 
-const { transferTenant } = await import("./tenancyActionsController.js");
+const { transferTenant, rescheduleRoomTransferAction, completeRoomTransferAction } =
+  await import("./tenancyActionsController.js");
 const { getManilaToday } = await import("../../utils/dateUtils.js");
 const { Reservation, Room, User } = await import("../../models/index.js");
 
@@ -74,9 +81,6 @@ const response = () => ({
   status(code) { this.statusCode = code; return this; },
   json(body) { this.body = body; return this; },
 });
-
-// A bare YYYY-MM-DD in the Manila business calendar, exactly what a
-// <input type="date"> in the admin UI submits.
 function dateStr(offsetDays) {
   return getManilaToday().add(offsetDays, "day").format("YYYY-MM-DD");
 }
@@ -84,7 +88,7 @@ function dateStr(offsetDays) {
 let mongo;
 beforeAll(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-  await mongoose.connect(mongo.getUri(), { dbName: "sched_transfer_2c" });
+  await mongoose.connect(mongo.getUri(), { dbName: "sched_transfer_branch" });
 }, 120_000);
 afterAll(async () => {
   await mongoose.disconnect();
@@ -94,6 +98,8 @@ beforeEach(async () => {
   await Promise.all([Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({})]);
   transferStayWorkflowMock.mockClear();
   scheduleRoomTransferMock.mockClear();
+  rescheduleRoomTransferMock.mockClear();
+  completeRoomTransferMock.mockReset();
 });
 
 async function seedMovedIn() {
@@ -113,7 +119,6 @@ async function seedMovedIn() {
   });
   return { user, room, reservation };
 }
-
 function req({ reservationId, body }) {
   return {
     params: { reservationId: String(reservationId) },
@@ -124,8 +129,8 @@ function req({ reservationId, body }) {
   };
 }
 
-describe("transferTenant — future-only rule", () => {
-  test("MISSING effective date -> 400 TRANSFER_DATE_MUST_BE_FUTURE, neither path called", async () => {
+describe("transferTenant — scheduling branch", () => {
+  test("MISSING effective date -> 400 TRANSFER_DATE_INVALID, neither path called", async () => {
     const { reservation } = await seedMovedIn();
     const res = response();
     await transferTenant(req({
@@ -133,13 +138,12 @@ describe("transferTenant — future-only rule", () => {
       body: { targetRoomId: String(new mongoose.Types.ObjectId()), confirm: true },
     }), res);
     expect(res.statusCode).toBe(400);
-    expect(res.body.code).toBe("TRANSFER_DATE_MUST_BE_FUTURE");
-    expect(res.body.error).toMatch(/at least one day in advance/i);
+    expect(res.body.code).toBe("TRANSFER_DATE_INVALID");
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
     expect(scheduleRoomTransferMock).not.toHaveBeenCalled();
   });
 
-  test("PAST effective date -> 400 TRANSFER_DATE_MUST_BE_FUTURE, neither path called", async () => {
+  test("PAST effective date -> 400 TRANSFER_DATE_INVALID", async () => {
     const { reservation } = await seedMovedIn();
     const res = response();
     await transferTenant(req({
@@ -147,39 +151,29 @@ describe("transferTenant — future-only rule", () => {
       body: { targetRoomId: String(new mongoose.Types.ObjectId()), effectiveTransferDate: dateStr(-3), confirm: true },
     }), res);
     expect(res.statusCode).toBe(400);
-    expect(res.body.code).toBe("TRANSFER_DATE_MUST_BE_FUTURE");
-    expect(transferStayWorkflowMock).not.toHaveBeenCalled();
+    expect(res.body.code).toBe("TRANSFER_DATE_INVALID");
     expect(scheduleRoomTransferMock).not.toHaveBeenCalled();
   });
 
-  test("TODAY (Manila) effective date -> 400 TRANSFER_DATE_MUST_BE_FUTURE, neither path called", async () => {
+  test("TODAY (same-day) effective date -> 201, scheduleRoomTransfer called (office-hours enforced in the service), cutover engine NOT called", async () => {
     const { reservation } = await seedMovedIn();
     const res = response();
     await transferTenant(req({
       reservationId: reservation._id,
-      body: { targetRoomId: String(new mongoose.Types.ObjectId()), effectiveTransferDate: dateStr(0), confirm: true },
-    }), res);
-    expect(res.statusCode).toBe(400);
-    expect(res.body.code).toBe("TRANSFER_DATE_MUST_BE_FUTURE");
-    expect(transferStayWorkflowMock).not.toHaveBeenCalled();
-    expect(scheduleRoomTransferMock).not.toHaveBeenCalled();
-  });
-
-  test("FUTURE (tomorrow) effective date -> 201, scheduleRoomTransfer called, cutover engine NEVER called", async () => {
-    const { reservation } = await seedMovedIn();
-    const res = response();
-    await transferTenant(req({
-      reservationId: reservation._id,
-      body: { targetRoomId: String(new mongoose.Types.ObjectId()), targetBedId: "b1", effectiveTransferDate: dateStr(1), confirm: true },
+      body: {
+        targetRoomId: String(new mongoose.Types.ObjectId()), targetBedId: "b1",
+        effectiveTransferDate: dateStr(0), effectiveTransferTime: "14:00", confirm: true,
+      },
     }), res);
     expect(res.statusCode).toBe(201);
     expect(res.body.message).toMatch(/scheduled/i);
-    expect(res.body.scheduledRoomTransfer).toBeTruthy();
     expect(scheduleRoomTransferMock).toHaveBeenCalledTimes(1);
+    // The time is forwarded to the service.
+    expect(scheduleRoomTransferMock.mock.calls[0][0].payload.effectiveTransferTimeMinutes).toBe("14:00");
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
   });
 
-  test("FUTURE (a week out) effective date -> 201, scheduleRoomTransfer called", async () => {
+  test("FUTURE effective date -> 201, scheduleRoomTransfer called", async () => {
     const { reservation } = await seedMovedIn();
     const res = response();
     await transferTenant(req({
@@ -191,18 +185,82 @@ describe("transferTenant — future-only rule", () => {
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
   });
 
-  test("FUTURE + scheduling service throws a coded error -> that status/code is surfaced", async () => {
+  test("scheduling service throws a coded error -> that status/code is surfaced (e.g. PAST_TRANSFER_DATE)", async () => {
     const { reservation } = await seedMovedIn();
     scheduleRoomTransferMock.mockRejectedValueOnce(
-      Object.assign(new Error("already scheduled"), { statusCode: 409, code: "SCHEDULED_TRANSFER_ALREADY_EXISTS" }),
+      Object.assign(new Error("past date"), { statusCode: 400, code: "PAST_TRANSFER_DATE" }),
     );
     const res = response();
     await transferTenant(req({
       reservationId: reservation._id,
-      body: { targetRoomId: String(new mongoose.Types.ObjectId()), effectiveTransferDate: dateStr(9), confirm: true },
+      body: { targetRoomId: String(new mongoose.Types.ObjectId()), effectiveTransferDate: dateStr(0), effectiveTransferTime: "22:00", confirm: true },
     }), res);
-    expect(res.statusCode).toBe(409);
-    expect(res.body.code).toBe("SCHEDULED_TRANSFER_ALREADY_EXISTS");
+    expect(res.statusCode).toBe(400);
+    expect(res.body.code).toBe("PAST_TRANSFER_DATE");
     expect(transferStayWorkflowMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("rescheduleRoomTransferAction (PATCH)", () => {
+  test("delegates to rescheduleRoomTransfer with date + time; 200", async () => {
+    const { reservation } = await seedMovedIn();
+    const res = response();
+    await rescheduleRoomTransferAction(req({
+      reservationId: reservation._id,
+      body: { effectiveTransferDate: dateStr(3), effectiveTransferTime: "10:00", reason: "tenant asked" },
+    }), res);
+    expect(res.statusCode).toBe(200);
+    expect(rescheduleRoomTransferMock).toHaveBeenCalledTimes(1);
+    const call = rescheduleRoomTransferMock.mock.calls[0][0];
+    expect(call.payload.effectiveTransferTimeMinutes).toBe("10:00");
+  });
+});
+
+describe("completeRoomTransferAction (POST)", () => {
+  test("outcome executed -> 200; meter readings forwarded", async () => {
+    const { reservation } = await seedMovedIn();
+    completeRoomTransferMock.mockResolvedValueOnce({
+      outcome: "executed", message: "Room transfer completed.",
+      scheduledTransfer: { _id: new mongoose.Types.ObjectId() },
+    });
+    const res = response();
+    await completeRoomTransferAction(req({
+      reservationId: reservation._id,
+      body: { sourceRoomMeterReading: 1310, targetRoomMeterReading: 500 },
+    }), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.outcome).toBe("executed");
+    const call = completeRoomTransferMock.mock.calls[0][0];
+    expect(call.payload.sourceRoomMeterReading).toBe(1310);
+    expect(call.payload.targetRoomMeterReading).toBe(500);
+  });
+
+  test("outcome awaiting_settlement -> 202 with the Bill", async () => {
+    const { reservation } = await seedMovedIn();
+    completeRoomTransferMock.mockResolvedValueOnce({
+      outcome: "awaiting_settlement", reason: "TRANSFER_BALANCE_UNPAID",
+      message: "Settle the Room Transfer balance…",
+      bill: { _id: new mongoose.Types.ObjectId(), totalAmount: 4860, paidAmount: 0, remainingAmount: 4860, status: "pending" },
+      scheduledTransfer: { _id: new mongoose.Types.ObjectId() },
+    });
+    const res = response();
+    await completeRoomTransferAction(req({ reservationId: reservation._id, body: {} }), res);
+    expect(res.statusCode).toBe(202);
+    expect(res.body.outcome).toBe("awaiting_settlement");
+    expect(res.body.bill).toMatchObject({ totalAmount: 4860, paidAmount: 0 });
+  });
+
+  test("TRANSFER_SETTLEMENT_UNPAID coded error -> 409 with outstandingBalance", async () => {
+    const { reservation } = await seedMovedIn();
+    completeRoomTransferMock.mockRejectedValueOnce(
+      Object.assign(new Error("settlement unpaid"), {
+        statusCode: 409, code: "TRANSFER_SETTLEMENT_UNPAID", outstandingBalance: 1234.5,
+      }),
+    );
+    const res = response();
+    await completeRoomTransferAction(req({ reservationId: reservation._id, body: {} }), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("TRANSFER_SETTLEMENT_UNPAID");
+    expect(res.body.outstandingBalance).toBe(1234.5);
   });
 });

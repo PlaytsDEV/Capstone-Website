@@ -64,7 +64,7 @@ const { reconcileOccupancyIntegrity } = await import("../utils/scheduler.js");
 const { generateContractNumber } = await import("./contractService.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, UtilityReading, ScheduledRoomTransfer,
+  MoveOutClearance, TenantCredit, TerminationReview, UtilityReading, ScheduledRoomTransfer,
 } = await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -182,12 +182,17 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
+    MoveOutClearance.deleteMany({}), TerminationReview.deleteMany({}),
     UtilityReading.deleteMany({}), ScheduledRoomTransfer.deleteMany({}),
   ]);
   await BusinessSettings.create({
     key: "global",
     privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
     isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+    // Default office hours wide open so future-dated schedules in this suite
+    // are never blocked; the same-day-guard tests override per-case.
+    officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440,
+    officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
   });
   mockValidate.mockClear();
   mockGenerate.mockClear();
@@ -240,15 +245,13 @@ describe("scheduleRoomTransfer — private destination", () => {
     expect(stayAfter.status).toBe("active");
     expect(roomAAfter.currentOccupancy).toBe(roomAOccBefore);
 
-    // A Quad->Private schedule raises rent + deposit, so a balance Bill IS
-    // created (Phase 2D) — but NO TenantCredit and NO UtilityReading cutoff.
+    // Scheduling creates NO Bill (Round-2 decision) — the transfer_settlement
+    // Bill is created during the admin Complete Transfer flow on the transfer
+    // day. NO TenantCredit, NO UtilityReading cutoff either.
     expect(await TenantCredit.countDocuments({ reservationId: reservation._id })).toBe(0);
     expect(await UtilityReading.countDocuments({})).toBe(0);
-    const balBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(balBill).toBeTruthy();
-    expect(String(scheduledTransfer.settlementBillId)).toBe(String(balBill._id));
-    expect(balBill.charges.electricity).toBe(0);
-    expect(balBill.charges.water).toBe(0);
+    expect(await Bill.countDocuments({ reservationId: reservation._id, billType: "transfer_settlement" })).toBe(0);
+    expect(scheduledTransfer.settlementBillId == null).toBe(true);
 
     // Addendum: generated + not current.
     const addendum = await Contract.findById(scheduledTransfer.addendumContractId);
@@ -344,19 +347,60 @@ describe("scheduleRoomTransfer — guards", () => {
       reservationId: reservation._id,
       payload: payloadFor({ targetRoom: dest, transferDate: pastDateISO(3) }),
       actorId,
-    })).rejects.toMatchObject({ code: expect.stringMatching(/PAST_TRANSFER_DATE|NOT_A_FUTURE_TRANSFER/) });
+    })).rejects.toMatchObject({ code: "PAST_TRANSFER_DATE" });
     expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
   });
 
-  test("rejects today's date (immediate path owns today)", async () => {
+  test("same-day is ALLOWED (no future-only rejection), any time of day", async () => {
     const { reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    await expect(scheduleRoomTransfer({
+    const today = new Date(); today.setHours(9, 0, 0, 0);
+    const { scheduledTransfer } = await scheduleRoomTransfer({
       reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: today.toISOString() }),
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: today.toISOString(),
+        effectiveTransferTimeMinutes: 540,
+      },
       actorId,
-    })).rejects.toMatchObject({ code: "NOT_A_FUTURE_TRANSFER" });
+    });
+    expect(scheduledTransfer.status).toBe("scheduled");
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(540);
+    // scheduleHistory[0] seeded.
+    expect(scheduledTransfer.scheduleHistory[0].kind).toBe("scheduled");
+  });
+
+  test("same-day at ANY time (e.g. 23:30) is accepted — no office-hours restriction", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    const today = new Date(); today.setHours(23, 30, 0, 0);
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: today.toISOString(),
+        effectiveTransferTimeMinutes: 23 * 60 + 30,
+      },
+      actorId,
+    });
+    expect(scheduledTransfer.status).toBe("scheduled");
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(23 * 60 + 30);
+  });
+
+  test("a FUTURE date + any time (incl. weekend / late night) is accepted", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: {
+        confirm: true, targetRoomId: String(dest._id),
+        effectiveTransferDate: futureDateISO(12),
+        effectiveTransferTimeMinutes: 21 * 60, // 21:00
+      },
+      actorId,
+    });
+    expect(scheduledTransfer.status).toBe("scheduled");
+    expect(scheduledTransfer.effectiveTransferTimeMinutes).toBe(21 * 60);
   });
 
   test("only one open schedule per reservation", async () => {
@@ -396,6 +440,49 @@ describe("scheduleRoomTransfer — guards", () => {
       actorId,
     })).rejects.toMatchObject({ code: "FUTURE_RENEWAL_EXISTS" });
     expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+  });
+
+  test("an initiated move-out clearance blocks scheduling before a hold is placed", async () => {
+    const { reservation, stay, tenant, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await MoveOutClearance.collection.insertOne({
+      reservationId: reservation._id,
+      stayId: stay._id,
+      tenantId: tenant._id,
+      branch: "gil-puyat",
+      status: "initiated",
+      intendedMoveOutDate: futureDateISO(20),
+    });
+
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(10) }),
+      actorId,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_MOVE_OUT_CONFLICT" });
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+  });
+
+  test("an active termination review blocks scheduling before a hold is placed", async () => {
+    const { reservation, tenant, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await TerminationReview.collection.insertOne({
+      reservationId: reservation._id,
+      tenantId: tenant._id,
+      branch: "gil-puyat",
+      triggerType: "manual",
+      triggerReason: "test conflict",
+      status: "under_review",
+      executionStatus: "not_applicable",
+      openedBy: actorId,
+      openedAt: new Date(),
+    });
+
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(10) }),
+      actorId,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_TERMINATION_CONFLICT" });
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
   });
 

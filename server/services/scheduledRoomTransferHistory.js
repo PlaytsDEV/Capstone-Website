@@ -243,7 +243,7 @@ function scheduledToHistoryEntry(s) {
   return {
     id: s.id,
     source: "scheduled",
-    status: s.status, // awaiting_payment | ready | completed | action_required | cancelled
+    status: s.status, // scheduled | ready_for_transfer | awaiting_settlement | completed | action_required | cancelled
     userFacingStatus: s.statusLabel,
     statusLabel: s.statusLabel,
 
@@ -280,13 +280,14 @@ function scheduledToHistoryEntry(s) {
     // Actions are still driven by the live card on Overview; history exposes
     // the same allowances for a compact inline control if the UI wants one.
     actionsAllowed: {
-      cancel: ["awaiting_payment", "ready"].includes(s.status) ||
-        (s.status === "action_required" && Number(s.transferBalance?.amountPaid || 0) === 0),
-      retry:
-        s.status === "action_required" &&
-        ["TRANSFER_BALANCE_UNPAID", "ADDITIONAL_BALANCE_DUE"].includes(
-          String(s.actionRequiredReason || ""),
-        ),
+      // Open (not executed/cancelled) and no payment yet → cancellable.
+      cancel:
+        !["completed", "cancelled"].includes(s.status) &&
+        Number(s.transferBalance?.amountPaid || 0) === 0,
+      // The admin-driven Complete Transfer flow replaces the old auto-executor
+      // "retry"; it is available once the scheduled calendar date is reached
+      // (server `completable`; the stored time is guidance only).
+      retry: !!s.completable,
     },
   };
 }

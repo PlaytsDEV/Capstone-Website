@@ -16,6 +16,8 @@ import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { transferStayWorkflow } from "./tenantActionService.js";
 import { generateContractNumber } from "../services/contractService.js";
 import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
+import { resolveAuthoritativeLeasePricing } from "../services/contractPricingResolver.js";
+import { getBusinessSettings } from "./businessSettings.js";
 import { Contract, Reservation, Room, User, Stay, BedHistory, Bill } from "../models/index.js";
 
 jest.setTimeout(120_000);
@@ -34,6 +36,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
   }, 120_000);
 
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}),
       Room.deleteMany({}),
@@ -71,6 +74,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
       selectedBed: { id: "bed-a1" },
       moveInDate,
+      securityDepositHeld: structuredAdvanceRentAmount ?? 6300,
     };
     if (structuredAdvanceRentAmount != null) {
       reservationData.financialWorkflowVersion = "structured-initial-payment-v1";
@@ -90,6 +94,33 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
       };
     }
     const reservation = await Reservation.create(reservationData);
+    if (structuredAdvanceRentAmount != null) {
+      const initialTotal = structuredAdvanceRentAmount * 2;
+      const initialBill = await Bill.create({
+        billType: "initial_payment",
+        reservationId: reservation._id,
+        userId: tenant._id,
+        branch: roomA.branch,
+        roomId: roomA._id,
+        billingMonth: moveInDate,
+        charges: { rent: 0, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+        initialPaymentBreakdown: {
+          advanceRent: structuredAdvanceRentAmount,
+          securityDeposit: structuredAdvanceRentAmount,
+          grossInitialAmount: initialTotal,
+          initialPaymentTotal: initialTotal,
+        },
+        totalAmount: initialTotal,
+        grossAmount: initialTotal,
+        paidAmount: initialTotal,
+        remainingAmount: 0,
+        status: "paid",
+        publicationState: "published",
+      });
+      reservation.initialPaymentBillId = initialBill._id;
+      reservation.initialPaymentStatus = "paid";
+      await reservation.save({ validateModifiedOnly: true });
+    }
     roomA.beds[0].occupiedBy.reservationId = reservation._id;
     await roomA.save();
 
@@ -122,12 +153,24 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const number = await generateContractNumber(roomB.branch, new Date());
+    const destinationPricing = resolveAuthoritativeLeasePricing({
+      room: roomB,
+      roomType: roomB.type,
+      branch: roomB.branch,
+      leaseDurationMonths: 6,
+      settings: await getBusinessSettings(),
+    });
     const successor = await Contract.create({
       ...number, contractPurpose: "amendment", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
-      roomType: "quadruple-sharing", leaseType: "long_term", approvedMonthlyRate: 14400,
+      roomType: "quadruple-sharing", leaseType: "long_term",
+      bedId: "bed-b1",
+      amendmentEffectiveDate: new Date("2026-08-15T00:00:00.000Z"),
+      regularMonthlyRate: destinationPricing.regularMonthlyRate,
+      discountPercentage: destinationPricing.discountPercentage,
+      approvedMonthlyRate: destinationPricing.finalMonthlyRate,
       leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),
       leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
       status: "generated", isCurrent: false, tenantVisible: true,
@@ -137,6 +180,8 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
 
     return { tenant, roomA, roomB, reservation, stay, bedHistory, predecessor, successor, actorId };
   }
+
+  afterEach(() => { jest.useRealTimers(); });
 
   test("first (advance-covered) period: uses pricingSnapshot.advanceRentAmount, not Contract.approvedMonthlyRate", async () => {
     const moveInDate = new Date("2026-08-01T00:00:00.000Z");
@@ -155,7 +200,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const transferBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("initial_pricing_snapshot");
+    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("verified_initial_payment_bill");
     expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(5400);
     // sourceApprovedRate (values days consumed) now uses the tenant's approved
     // DISCOUNTED rent (pricingSnapshot.finalMonthlyRate = 5400), not the
@@ -206,7 +251,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const transferBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill");
+    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_billed_rent");
     expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(7000);
     // Not the original snapshot's 5400, and not blindly the Contract's 6300.
     expect(transferBill.transferSnapshot.applicablePrepaidRent).not.toBe(5400);
@@ -271,7 +316,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     expect(transferBill.transferSnapshot.sourceApprovedRate).toBe(5400);
   });
 
-  test("later period, partially paid rent-only current Bill: credit capped at the amount actually paid", async () => {
+  test("later period, partially paid rent-only current Bill: reconciles the full rent already billed", async () => {
     const moveInDate = new Date("2026-05-01T00:00:00.000Z");
     const { reservation, roomB, actorId } = await seedScenario({ moveInDate });
     const transferDate = new Date("2026-08-15T00:00:00.000Z");
@@ -296,12 +341,11 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const transferBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_partial_rent_only");
-    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(3000);
-    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBeLessThanOrEqual(6300);
+    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_billed_rent");
+    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(6300);
   });
 
-  test("later period, unpaid current Bill (force-overridden): no false prepaid credit is generated", async () => {
+  test("later period, unpaid current Bill: reconciles billed rent without mutating the original Bill", async () => {
     const moveInDate = new Date("2026-05-01T00:00:00.000Z");
     const { reservation, roomB, actorId } = await seedScenario({ moveInDate });
     const transferDate = new Date("2026-08-15T00:00:00.000Z");
@@ -326,9 +370,8 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const transferBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_unpaid");
-    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(0);
-    expect(transferBill.transferSnapshot.unusedPrepaidCredit).toBe(0);
+    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_billed_rent");
+    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(6300);
 
     // The original unpaid rent obligation must remain untouched on its own Bill.
     const reloadedOriginalBill = await Bill.findOne({
@@ -338,7 +381,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     expect(reloadedOriginalBill.status).toBe("pending");
   });
 
-  test("later period, partially paid MIXED (rent + electricity) current Bill: does not treat utility payment as rent credit", async () => {
+  test("later period, partially paid mixed Bill: reconciles only the billed rent component", async () => {
     const moveInDate = new Date("2026-05-01T00:00:00.000Z");
     const { reservation, roomB, actorId } = await seedScenario({ moveInDate });
     const transferDate = new Date("2026-08-15T00:00:00.000Z");
@@ -363,7 +406,7 @@ describe("transferStayWorkflow — structured pricing prepaid-rent resolution", 
     });
 
     const transferBill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
-    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_partial_mixed_unallocated");
-    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(0);
+    expect(transferBill.transferSnapshot.prepaidRentSource).toBe("current_bill_billed_rent");
+    expect(transferBill.transferSnapshot.applicablePrepaidRent).toBe(6300);
   });
 });

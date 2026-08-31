@@ -154,15 +154,17 @@ async function makeScheduled({
 }
 
 describe("getRoomTransferHistoryForReservation — scheduled records", () => {
-  test("Awaiting Payment: scheduled + unpaid balance Bill", async () => {
+  test("Scheduled: future transfer + unpaid balance Bill (not yet due)", async () => {
     const f = await baseFixture();
     await makeScheduled({ ...f, status: "scheduled", withBill: true, settlementPaid: 0 });
     const hist = await getRoomTransferHistoryForReservation(f.reservation._id);
     expect(hist).toHaveLength(1);
     const e = hist[0];
     expect(e.source).toBe("scheduled");
-    expect(e.userFacingStatus).toBe("Awaiting Payment");
-    expect(e.status).toBe("awaiting_payment");
+    // The date/time has not been reached, so it stays "Scheduled" regardless of
+    // the settlement Bill state — settlement is collected at Complete Transfer.
+    expect(e.userFacingStatus).toBe("Scheduled");
+    expect(e.status).toBe("scheduled");
     expect(e.fromRoom.name).toBe("Room 301");
     expect(e.toRoom.name).toBe("Room 205");
     expect(e.toBed).toBe("b2"); // destination needs a bed
@@ -174,19 +176,19 @@ describe("getRoomTransferHistoryForReservation — scheduled records", () => {
     expect(e.utilityNote).toMatch(/normal utility billing cycle/i);
   });
 
-  test("Ready: scheduled + fully paid balance Bill", async () => {
+  test("Scheduled: future transfer + fully paid balance Bill (still not due)", async () => {
     const f = await baseFixture();
     await makeScheduled({ ...f, status: "scheduled", withBill: true, settlementPaid: 8100 });
     const [e] = await getRoomTransferHistoryForReservation(f.reservation._id);
-    expect(e.userFacingStatus).toBe("Ready");
-    expect(e.status).toBe("ready");
+    expect(e.userFacingStatus).toBe("Scheduled");
+    expect(e.status).toBe("scheduled");
   });
 
-  test("Ready: scheduled with no balance Bill (zero-balance transfer)", async () => {
+  test("Scheduled: future transfer with no balance Bill (zero-balance transfer)", async () => {
     const f = await baseFixture();
     await makeScheduled({ ...f, status: "scheduled", withBill: false });
     const [e] = await getRoomTransferHistoryForReservation(f.reservation._id);
-    expect(e.userFacingStatus).toBe("Ready");
+    expect(e.userFacingStatus).toBe("Scheduled");
     expect(e.transferBalance.hasBill).toBe(false);
   });
 
@@ -220,12 +222,16 @@ describe("getRoomTransferHistoryForReservation — scheduled records", () => {
     expect(e.actionsAllowed.retry).toBe(false);
   });
 
-  test("Action Required: friendly message, no raw code as primary text", async () => {
+  test("Action Required + unpaid balance surfaces as Awaiting Settlement with a friendly message", async () => {
     const f = await baseFixture();
     await makeScheduled({ ...f, status: "action_required", withBill: true, settlementPaid: 0 });
     const [e] = await getRoomTransferHistoryForReservation(f.reservation._id);
-    expect(e.userFacingStatus).toBe("Action Required");
-    expect(e.status).toBe("action_required");
+    // An action_required record whose only blocker is the unpaid transfer
+    // settlement is presented to the admin as "Awaiting Settlement".
+    expect(e.userFacingStatus).toBe("Awaiting Settlement");
+    expect(e.status).toBe("awaiting_settlement");
+    // The raw orchestration reason is still available for context, but never as
+    // the primary message.
     expect(e.actionRequiredReason).toBe("TRANSFER_BALANCE_UNPAID");
     expect(e.actionRequiredMessage).toMatch(/not fully settled/i);
     expect(e.actionRequiredMessage).not.toMatch(/TRANSFER_BALANCE_UNPAID/);

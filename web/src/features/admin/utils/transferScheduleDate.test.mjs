@@ -16,6 +16,8 @@ import {
   localTodayStr,
   minScheduleDateStr,
   isScheduledTransferDate,
+  timeStrToMinutes,
+  minutesToTimeStr,
 } from "./transferScheduleDate.js";
 
 // A fixed "now" so the assertions are deterministic. Local noon avoids any
@@ -37,14 +39,13 @@ test("localTodayStr is toDateInputValue(now)", () => {
   assert.equal(localTodayStr(AUG_29_2026), "2026-08-29");
 });
 
-test("minScheduleDateStr is tomorrow (local calendar) — the future-only wizard's date-picker min", () => {
-  assert.equal(minScheduleDateStr(AUG_29_2026), "2026-08-30");
-  // month rollover
-  assert.equal(minScheduleDateStr(new Date(2026, 7, 31, 12, 0, 0)), "2026-09-01");
-  // year rollover
-  assert.equal(minScheduleDateStr(new Date(2026, 11, 31, 12, 0, 0)), "2027-01-01");
-  // never today
-  assert.notEqual(minScheduleDateStr(AUG_29_2026), localTodayStr(AUG_29_2026));
+test("minScheduleDateStr is TODAY (local calendar) — same-day transfers are allowed", () => {
+  assert.equal(minScheduleDateStr(AUG_29_2026), "2026-08-29");
+  assert.equal(minScheduleDateStr(new Date(2026, 7, 31, 12, 0, 0)), "2026-08-31");
+  assert.equal(minScheduleDateStr(new Date(2026, 11, 31, 12, 0, 0)), "2026-12-31");
+  // equals today (same-day and any future date are allowed; only a past date
+  // is rejected — by the backend)
+  assert.equal(minScheduleDateStr(AUG_29_2026), localTodayStr(AUG_29_2026));
   // unparseable now -> ""
   assert.equal(minScheduleDateStr(new Date("nope")), "");
 });
@@ -90,4 +91,18 @@ test("does NOT accept a locale-formatted display string for business logic", () 
 test("a Date object (not a string) is normalized before comparison", () => {
   assert.equal(isScheduledTransferDate(new Date(2026, 8, 5, 12, 0, 0), AUG_29_2026), true);
   assert.equal(isScheduledTransferDate(new Date(2026, 7, 29, 12, 0, 0), AUG_29_2026), false);
+});
+
+test("timeStrToMinutes / minutesToTimeStr round-trip (transfer TIME picker)", () => {
+  assert.equal(timeStrToMinutes("09:00"), 540);
+  assert.equal(timeStrToMinutes("00:00"), 0);
+  assert.equal(timeStrToMinutes("14:00"), 14 * 60);
+  // A late-night time is valid — there is no office-hours restriction.
+  assert.equal(timeStrToMinutes("23:30"), 23 * 60 + 30);
+  assert.equal(timeStrToMinutes("23:59"), 1439);
+  assert.equal(timeStrToMinutes("24:00"), null);
+  assert.equal(timeStrToMinutes(""), null);
+  assert.equal(timeStrToMinutes("bad"), null);
+  assert.equal(minutesToTimeStr(540), "09:00");
+  assert.equal(minutesToTimeStr(0), "00:00");
 });

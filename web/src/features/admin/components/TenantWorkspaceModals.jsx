@@ -550,14 +550,13 @@ function WizardStepper({ steps, currentStep }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Transfer Tenant Modal — FUTURE-ONLY scheduled wizard
-     Step 1: Target Room & Date  →  Step 2: Review
-   Every new Admin Room Transfer is SCHEDULED for a future Manila business date
-   (there is no same-day Admin transfer — the backend rejects a missing / past /
-   today date with TRANSFER_DATE_MUST_BE_FUTURE). The tenant stays in the
-   current room until the effective date; meter readings and the physical
-   cutover are finalized by the effective-date executor. There is deliberately
-   NO Meter Readings step and no immediate-transfer path here.
+   Transfer Tenant Modal — SCHEDULE step (2-step wizard)
+     Step 1: Target Room, Date & Time  →  Step 2: Review
+   Scheduling only places a destination hold. Same-day and any future date are
+   allowed (only a past date is rejected). The tenant stays in the current room
+   — no bill, no meter readings, no occupancy change — until the admin runs the
+   separate Complete Transfer step on the scheduled date, where boundary meter
+   readings are entered and the settlement is paid.
    ───────────────────────────────────────────────────────────────────────────── */
 export function TransferTenantModal({
   open,
@@ -567,8 +566,8 @@ export function TransferTenantModal({
   onClose,
   onSubmit,
   // sourceRoomLatestReading / electricityRatePerUnit are still passed by the
-  // callers but no longer used: a future-only scheduled transfer captures no
-  // scheduling-day meter readings (the effective-date executor finalizes them).
+  // callers but no longer used: the SCHEDULE step captures no meter readings
+  // (the admin enters boundary readings at the Complete Transfer step).
 }) {
   const branch = detail?.basicInfo?.branch || tenant?.branch || "";
   const { data: roomsData = [], isLoading: roomsLoading } = useRooms(
@@ -584,16 +583,16 @@ export function TransferTenantModal({
   const [roomId, setRoomId] = useState("");
   const [bedId, setBedId] = useState("");
   const [reason, setReason] = useState("Room transfer");
-  const [forceOverride, setForceOverride] = useState(false);
   const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
+  // The admin also picks a TIME. Defaults to the current wall-clock time on open.
+  const [effectiveTransferTime, setEffectiveTransferTime] = useState("");
 
   const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
   const hasOutstanding = outstandingBalance > 0;
 
   // ── Reset on open ─────────────────────────────────────────────────────────
-  // No default effective date — the future-only rule requires the admin to
-  // explicitly pick a future date (the backend rejects a missing / past /
-  // today date). The picker's `min` is tomorrow.
+  // Same-day and any future date are allowed; default the date to today and
+  // the time to "now".
   useEffect(() => {
     if (!open) return;
     setStep(1);
@@ -601,9 +600,12 @@ export function TransferTenantModal({
     setRoomId("");
     setBedId("");
     setReason("Room transfer");
-    setForceOverride(false);
     setPreparedAddendum(null);
-    setEffectiveTransferDate("");
+    setEffectiveTransferDate(minScheduleDateStr());
+    const now = new Date();
+    setEffectiveTransferTime(
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+    );
   }, [open]);
 
   // ── Derived room / bed data ───────────────────────────────────────────────
@@ -659,10 +661,24 @@ export function TransferTenantModal({
   const reservationId = tenant?.reservationId || detail?.reservationId || null;
   const { data: previewResp, isFetching: previewLoading } = useRoomTransferPreview(
     reservationId,
-    { targetRoomId: roomId || null, effectiveTransferDate: effectiveTransferDate || null },
-    { enabled: !!reservationId && !!roomId && !!effectiveTransferDate && isReviewStep },
+    {
+      targetRoomId: roomId || null,
+      effectiveTransferDate: effectiveTransferDate || null,
+      includeCandidates: true,
+    },
+    { enabled: !!reservationId && !!effectiveTransferDate },
   );
   const preview = previewResp?.data?.transferPreview ?? previewResp?.transferPreview ?? null;
+  const transferCandidates =
+    previewResp?.data?.transferCandidates ?? previewResp?.transferCandidates ?? null;
+  const candidateByRoomId = useMemo(() => {
+    const map = new Map();
+    (transferCandidates || []).forEach((c) => {
+      map.set(String(c.roomId), c);
+    });
+    return map;
+  }, [transferCandidates]);
+  const selectedCandidate = candidateByRoomId.get(String(roomId)) || null;
 
   // ── Step gate validation ──────────────────────────────────────────────────
   const step1Valid =
@@ -670,8 +686,9 @@ export function TransferTenantModal({
     (!destinationNeedsBed || !!bedId) &&
     !!effectiveTransferDate &&
     effectiveTransferDate >= minScheduleDateStr() &&
+    !!effectiveTransferTime &&
     reason.trim().length > 0 &&
-    (!hasOutstanding || forceOverride);
+    (!selectedCandidate || selectedCandidate.selectable);
 
   // ── Step transition validation handlers with friendly toasts ────────────────
   const handleNextStep1 = () => {
@@ -686,20 +703,24 @@ export function TransferTenantModal({
     }
     if (!effectiveTransferDate || effectiveTransferDate < minScheduleDateStr()) {
       showNotification(
-        "Room transfers must be scheduled at least one day in advance. Please pick a future effective date.",
+        "Pick an effective date of today or later.",
+        "warning",
+      );
+      return;
+    }
+    if (!effectiveTransferTime) {
+      showNotification("Please pick a transfer time.", "warning");
+      return;
+    }
+    if (selectedCandidate && !selectedCandidate.selectable) {
+      showNotification(
+        selectedCandidate.unavailableReason || "That room is not available for this date.",
         "warning",
       );
       return;
     }
     if (!reason.trim()) {
       showNotification("Please enter a reason for the room transfer.", "warning");
-      return;
-    }
-    if (hasOutstanding && !forceOverride) {
-      showNotification(
-        "Please acknowledge the tenant's outstanding balance before proceeding.",
-        "warning",
-      );
       return;
     }
     setStep(2);
@@ -842,11 +863,11 @@ export function TransferTenantModal({
                 roomId,
                 bedId,
                 reason,
-                forceOverride,
                 effectiveTransferDate,
+                effectiveTransferTime,
                 // A scheduled transfer never carries scheduling-day meter
-                // readings — the effective-date executor finalizes the
-                // boundary readings.
+                // readings — the admin enters the boundary readings at the
+                // real cutover on the Complete Transfer step.
                 sourceRoomMeterReading: null,
                 targetRoomMeterReading: null,
               });
@@ -888,19 +909,14 @@ export function TransferTenantModal({
           </div>
 
           {hasOutstanding && (
-            <div className="twm-callout twm-callout--danger">
-              <strong>⚠ Outstanding Balance: {fmtMoney(outstandingBalance)}</strong>
-              <p style={{ margin: "4px 0 8px", fontSize: 13 }}>
-                This tenant has unpaid bills. Settle them first, or acknowledge and force-proceed.
+            <div className="twm-callout twm-callout--info">
+              <strong>Note: Outstanding balance {fmtMoney(outstandingBalance)}</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 13 }}>
+                Scheduling a transfer does not require the current balance to be
+                cleared. The transfer&apos;s own settlement (rent, deposit, and
+                finalized electricity) is calculated and must be paid at the
+                Complete Transfer step, before the physical cutover.
               </p>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={forceOverride}
-                  onChange={(e) => setForceOverride(e.target.checked)}
-                />
-                I acknowledge the outstanding balance and confirm this transfer
-              </label>
             </div>
           )}
 
@@ -937,6 +953,24 @@ export function TransferTenantModal({
                 fmtMoney={fmtMoney}
                 isInvalid={attemptedStep1 && !roomId}
               />
+              {selectedCandidate && (
+                <span
+                  className="twm-meter-hint"
+                  style={{
+                    color: selectedCandidate.selectable ? "#15803d" : "#b91c1c",
+                  }}
+                >
+                  <span aria-hidden style={{ flexShrink: 0, marginTop: 2 }}>
+                    {selectedCandidate.selectable ? "●" : "▲"}
+                  </span>
+                  <span>
+                    {selectedCandidate.selectable
+                      ? "Available for this date."
+                      : selectedCandidate.unavailableReason ||
+                        "Not available for this date."}
+                  </span>
+                </span>
+              )}
             </div>
 
             {destinationNeedsBed ? (
@@ -1003,25 +1037,35 @@ export function TransferTenantModal({
             </div>
           )}
 
-          <div className={`tenant-modal-field ${attemptedStep1 && (!effectiveTransferDate || effectiveTransferDate < minScheduleDateStr()) ? "tenant-modal-field--invalid" : ""}`}>
-            <span>Effective Transfer Date</span>
-            <input
-              type="date"
-              value={effectiveTransferDate}
-              min={minScheduleDateStr()}
-              onChange={(e) => setEffectiveTransferDate(e.target.value)}
-              onClick={triggerPicker}
-            />
-            <span className="twm-meter-hint">
-              <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
-              <span>
-                <strong>Transfer timing.</strong> Room transfers must be scheduled at
-                least one day in advance. The tenant remains in the current room until
-                the effective transfer date, when room, rent, and utility
-                responsibility switch over.
-              </span>
-            </span>
+          <div className="tenant-modal-grid">
+            <div className={`tenant-modal-field ${attemptedStep1 && (!effectiveTransferDate || effectiveTransferDate < minScheduleDateStr()) ? "tenant-modal-field--invalid" : ""}`}>
+              <span>Effective Transfer Date</span>
+              <input
+                type="date"
+                value={effectiveTransferDate}
+                min={minScheduleDateStr()}
+                onChange={(e) => setEffectiveTransferDate(e.target.value)}
+                onClick={triggerPicker}
+              />
+            </div>
+            <div className={`tenant-modal-field ${attemptedStep1 && !effectiveTransferTime ? "tenant-modal-field--invalid" : ""}`}>
+              <span>Transfer Time</span>
+              <input
+                type="time"
+                value={effectiveTransferTime}
+                onChange={(e) => setEffectiveTransferTime(e.target.value)}
+              />
+            </div>
           </div>
+          <span className="twm-meter-hint">
+            <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
+            <span>
+              <strong>Transfer timing.</strong> Same-day or any future date is
+              allowed. The tenant stays in the current room until you complete
+              the transfer on the scheduled date, when room, rent, and utility
+              responsibility switch over.
+            </span>
+          </span>
 
           <label className={`tenant-modal-field ${attemptedStep1 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
@@ -1074,15 +1118,17 @@ export function TransferTenantModal({
             </div>
 
             <div className="twm-review-card">
-              <span className="twm-review-card__label">Effective Date</span>
+              <span className="twm-review-card__label">Effective Date &amp; Time</span>
               <span className="twm-review-card__value">
                 {fmtDate(effectiveTransferDate)}
+                {effectiveTransferTime ? ` · ${effectiveTransferTime}` : ""}
               </span>
             </div>
             <div className="twm-review-field">
               <span className="twm-review-field__label">Meter readings</span>
               <span className="twm-review-field__value">
-                To be finalized on the effective transfer date.
+                Entered by the admin at the Complete Transfer step, on the
+                real cutover.
               </span>
             </div>
             <div className="twm-review-field">
@@ -1120,10 +1166,10 @@ export function TransferTenantModal({
           <div className="twm-callout twm-callout--info">
             <strong>Utilities</strong>
             <p style={{ margin: "4px 0 0", fontSize: 13 }}>
-              Meter readings will be finalized on the effective transfer date.
-              Electricity and applicable water charges will follow the normal
-              utility billing process and are not included in the Scheduled
-              Room Transfer Balance.
+              Meter readings are entered at the Complete Transfer step, on the
+              real cutover. Electricity is finalized then; water follows the
+              normal end-of-cycle billing process. Neither is part of this
+              scheduled balance.
             </p>
           </div>
 
@@ -1169,9 +1215,9 @@ export function TransferTenantModal({
                     {preview.rent.excessCredit > 0 && (
                       <div className="twm-settlement-row twm-settlement-row--success">
                         <span className="twm-settlement-row__label">
-                          Excess Prepaid Rent → Rent Credit
+                          Potential Prepaid-Rent Adjustment
                           <span className="twm-settlement-row__hint">
-                            Applied automatically to future rent bills. Not a refund.
+                            No automatic refund or rent credit. Coordinate with the Administration Office on the 2nd Floor.
                           </span>
                         </span>
                         <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
@@ -1184,7 +1230,7 @@ export function TransferTenantModal({
                     <span className="twm-settlement-row__label">
                       Source-room electricity
                       <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                        {`Meter readings will be finalized on ${fmtDate(effectiveTransferDate)}; the final charge follows the normal utility period close.`}
+                        {`Meter readings are entered by the admin at the Complete Transfer step; the final charge follows the normal utility period close.`}
                       </span>
                     </span>
                     <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
@@ -1225,9 +1271,9 @@ export function TransferTenantModal({
                     {preview.deposit.excessHeld > 0 && (
                       <div className="twm-settlement-row twm-settlement-row--success">
                         <span className="twm-settlement-row__label">
-                          Excess Held Deposit
+                          Potential Excess Held Deposit
                           <span className="twm-settlement-row__hint">
-                            Stays as refundable held deposit. Not auto-refunded, not a rent credit.
+                            Remains held. No automatic refund or rent conversion; coordinate with the Administration Office on the 2nd Floor.
                           </span>
                         </span>
                         <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
@@ -1244,7 +1290,7 @@ export function TransferTenantModal({
                       <span className="twm-settlement-row__label">
                         Source-room electricity
                         <span className="twm-settlement-row__hint">
-                          {`Meter readings will be finalized on ${fmtDate(effectiveTransferDate)}; the final charge follows the normal utility period close.`}
+                          {`Meter readings are entered by the admin at the Complete Transfer step; the final charge follows the normal utility period close.`}
                         </span>
                       </span>
                       <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
@@ -1368,7 +1414,7 @@ export function TransferTenantModal({
                     {preview.deposit.balanceDue > 0
                       ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
                       : preview.deposit.excessHeld > 0
-                        ? ` (${fmtMoney(preview.deposit.excessHeld)} excess stays held)`
+                        ? ` (${fmtMoney(preview.deposit.excessHeld)} potential excess remains held; Administration Office, 2nd Floor)`
                         : ""}
                   </span>
                 </div>
@@ -1393,9 +1439,10 @@ export function TransferTenantModal({
             </p>
           </div>
 
-          {hasOutstanding && forceOverride && (
-            <div className="twm-callout twm-callout--warning">
-              ⚠ You have acknowledged the outstanding balance of {fmtMoney(outstandingBalance)} and are force-proceeding.
+          {hasOutstanding && (
+            <div className="twm-callout twm-callout--info">
+              The tenant&apos;s current balance of {fmtMoney(outstandingBalance)} is
+              tracked separately and is not affected by scheduling this transfer.
             </div>
           )}
         </>

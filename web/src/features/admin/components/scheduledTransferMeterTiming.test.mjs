@@ -1,11 +1,14 @@
 /**
- * FUTURE-ONLY ADMIN ROOM TRANSFER WIZARD
+ * ADMIN ROOM TRANSFER — SCHEDULE WIZARD
  *
- * Focused source-assertion coverage (house style): every new Admin Room
- * Transfer is scheduled for a future date, so the wizard is permanently
- * 2 steps (Target Room → Review), never asks for meter readings, always
- * labels the Confirm button "Confirm Schedule", never submits scheduling-day
- * readings, and its date picker's `min` is tomorrow (minScheduleDateStr).
+ * Focused source-assertion coverage (house style): scheduling only places a
+ * destination hold, so the wizard is permanently 2 steps (Target Room →
+ * Review), never asks for meter readings (the admin enters boundary readings
+ * in the separate Complete Transfer step), always labels the Confirm button
+ * "Confirm Schedule", never submits scheduling-day readings. Same-day and any
+ * future date are allowed (only a past date is rejected — there is NO
+ * office-hours restriction), so the date picker's `min` is TODAY
+ * (minScheduleDateStr) and a transfer TIME is also collected.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -36,10 +39,10 @@ test("no immediate-transfer / meter-reading state remains", () => {
   assert.doesNotMatch(transfer, /meterStepValid/);
   assert.doesNotMatch(transfer, /attemptedStep2/);
   assert.doesNotMatch(transfer, /handleNextStep2/);
-  assert.doesNotMatch(transfer, /isScheduledTransfer/);
-  // The only allowed occurrence of the meter keys is the constant null payload.
+  // The meter keys appear only in the comment + the constant null payload.
   const meterKeyHits = transfer.match(/sourceRoomMeterReading/g) || [];
-  assert.equal(meterKeyHits.length, 1); // `sourceRoomMeterReading: null`
+  assert.ok(meterKeyHits.length <= 2, `expected ≤2 sourceRoomMeterReading hits, got ${meterKeyHits.length}`);
+  assert.match(transfer, /sourceRoomMeterReading: null/);
 });
 
 test("Confirm button always reads 'Confirm Schedule'", () => {
@@ -52,24 +55,30 @@ test("submit always sends null meter readings", () => {
   assert.match(transfer, /targetRoomMeterReading: null/);
 });
 
-test("date picker minimum is tomorrow via minScheduleDateStr()", () => {
+test("date picker minimum is TODAY via minScheduleDateStr(); a transfer TIME is also collected", () => {
   assert.match(modalSource, /from "\.\.\/utils\/transferScheduleDate"/);
   assert.match(modalSource, /minScheduleDateStr/);
   assert.match(transfer, /min=\{minScheduleDateStr\(\)\}/);
-  assert.doesNotMatch(transfer, /min=\{localTodayStr\(\)\}/);
+  assert.match(transfer, /type="time"/);
+  assert.match(transfer, /effectiveTransferTime/);
 });
 
-test("review shows meter readings are finalized on the effective date + the Utilities note", () => {
-  assert.match(transfer, /To be finalized on the effective transfer date/);
-  assert.match(transfer, /Electricity and applicable water charges will follow the normal/);
-  assert.match(transfer, /not included in the Scheduled\s*\n?\s*Room Transfer Balance/s);
+test("review shows meter readings are entered at the Complete Transfer step + the Utilities note", () => {
+  assert.match(transfer, /Entered by the admin at the Complete Transfer step/);
+  assert.match(transfer, /Meter readings are entered at the Complete Transfer step/);
+  assert.match(transfer, /Neither is part of this\s*\n?\s*scheduled balance/s);
 });
 
-test("effective date is a required, future-validated field with a future-only hint", () => {
-  assert.match(transfer, /Room transfers must be scheduled at\s*\n?\s*least one day in advance/s);
+test("effective date is required (today or later); NO office-hours plumbing remains", () => {
+  assert.match(transfer, /Same-day or any future date is\s*\n?\s*allowed/s);
   assert.match(transfer, /effectiveTransferDate < minScheduleDateStr\(\)/);
+  assert.doesNotMatch(transfer, /checkScheduleWithinOfficeHours/);
+  assert.doesNotMatch(transfer, /checkSameDayOfficeHours/);
+  assert.doesNotMatch(transfer, /officeHoursCheck/);
+  assert.doesNotMatch(transfer, /officeHours/);
 });
 
-test("preview query requires a destination room AND a future effective date", () => {
-  assert.match(transfer, /enabled: !!reservationId && !!roomId && !!effectiveTransferDate && isReviewStep/);
+test("preview query enables on a reservation + effective date and includes room candidates", () => {
+  assert.match(transfer, /includeCandidates: true/);
+  assert.match(transfer, /enabled: !!reservationId && !!effectiveTransferDate/);
 });

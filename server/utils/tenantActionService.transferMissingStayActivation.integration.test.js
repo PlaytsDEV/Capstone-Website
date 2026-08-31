@@ -169,6 +169,7 @@ describe("Room transfer — lazy Stay activation for a moved-in tenant with no S
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({ now: new Date("2026-08-15T10:00:00.000+08:00"), doNotFake: ["nextTick","setImmediate","setInterval","setTimeout","clearInterval","clearTimeout","queueMicrotask"] });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}),
@@ -176,12 +177,15 @@ describe("Room transfer — lazy Stay activation for a moved-in tenant with no S
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   test("transferStayWorkflow into a shared destination materializes the missing Stay and completes without duplicating the Contract or resetting lease dates", async () => {
     const { reservation, wetSigned, actorId } = await seedMovedInNoStay();

@@ -59,7 +59,7 @@ await jest.unstable_mockModule("./contractService.js", () => ({
   validateContractForGeneration: mockValidate,
 }));
 
-const { scheduleRoomTransfer } = await import("./scheduledRoomTransferService.js");
+const { scheduleRoomTransfer, completeRoomTransfer } = await import("./scheduledRoomTransferService.js");
 const {
   serializeScheduledRoomTransfer,
   resolveScheduledTransferBalance,
@@ -69,7 +69,7 @@ const { generateContractNumber } = await import("./contractService.js");
 const { getManilaToday, toManilaStartOfDay } = await import("../utils/dateUtils.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, ScheduledRoomTransfer,
+  TenantCredit, UtilityPeriod, ScheduledRoomTransfer,
 } = await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -107,6 +107,10 @@ async function seed({
   const roomA = await Room.create({
     name: `Room ${roomNumber}`, roomNumber, branch: "gil-puyat",
     type: sourceType, capacity: CAP[sourceType], currentOccupancy: 1, price: RATE[sourceType], beds: srcBeds,
+  });
+  await UtilityPeriod.create({
+    utilityType: "electricity", roomId: roomA._id, branch: "gil-puyat",
+    startDate: moveIn, startReading: 0, ratePerUnit: 1, status: "open",
   });
   const srcBedId = NEEDS_BED.has(sourceType) ? `r${roomNumber}-b1` : "";
   const reservation = await Reservation.create({
@@ -152,10 +156,15 @@ async function seed({
 }
 
 async function emptyRoom(type, roomNumber) {
-  return Room.create({
+  const room = await Room.create({
     name: `Room ${roomNumber}`, roomNumber, branch: "gil-puyat",
     type, capacity: CAP[type], currentOccupancy: 0, price: RATE[type], beds: bedsFor(type, `r${roomNumber}`),
   });
+  await UtilityPeriod.create({
+    utilityType: "electricity", roomId: room._id, branch: "gil-puyat",
+    startDate: MOVE_IN, startReading: 0, ratePerUnit: 1, status: "open",
+  });
+  return room;
 }
 function payloadFor({ targetRoom, transferDate }) {
   const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
@@ -181,173 +190,156 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
-    ScheduledRoomTransfer.deleteMany({}),
+    UtilityPeriod.deleteMany({}), ScheduledRoomTransfer.deleteMany({}),
   ]);
   await BusinessSettings.create({
     key: "global",
     privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
     isDiscountEnabled: true, longTermLeaseMinMonths: 6,
+    officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
   });
   mockValidate.mockClear();
   mockGenerate.mockClear();
 });
 
-describe("balance Bill — higher rent + higher deposit (Quad -> Private)", () => {
-  test("one transfer_settlement Bill, rent + securityDeposit only, due = effective date, linked", async () => {
+
+// The transfer_settlement Bill is created by the admin Complete Transfer flow
+// on the transfer day — NOT at scheduling. Helper: schedule same-day (office
+// hours wide open in beforeEach), back-date so it is due, then run
+// completeRoomTransfer with meter readings so the Bill is created + linked
+// (returns awaiting_settlement — no cutover while unpaid).
+async function scheduleThenComplete({ reservation, dest, actorId, daysAgo = 3, source = 0, target = 0 }) {
+  const today = new Date(); today.setHours(9, 0, 0, 0);
+  const destBedId = NEEDS_BED.has(dest.type) ? `r${dest.roomNumber}-b1` : undefined;
+  const { scheduledTransfer, previewSnapshot } = await scheduleRoomTransfer({
+    reservationId: reservation._id,
+    payload: {
+      confirm: true, targetRoomId: String(dest._id),
+      ...(destBedId ? { targetBedId: destBedId } : {}),
+      effectiveTransferDate: today.toISOString(), effectiveTransferTimeMinutes: 540,
+    },
+    actorId,
+  });
+  const back = new Date(); back.setDate(back.getDate() - daysAgo); back.setHours(0, 0, 0, 0);
+  await ScheduledRoomTransfer.updateOne({ _id: scheduledTransfer._id }, { $set: { effectiveTransferDate: back } });
+  const r = await completeRoomTransfer({
+    reservationId: String(reservation._id),
+    payload: { sourceRoomMeterReading: source, targetRoomMeterReading: target },
+    actorId,
+  });
+  const rec = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
+  return { scheduledTransfer: rec, previewSnapshot, outcome: r.outcome, billId: r.bill?._id || rec.settlementBillId || null };
+}
+
+describe("transfer_settlement Bill is created at Complete Transfer (NOT at scheduling)", () => {
+  test("scheduling creates NO Bill; Complete Transfer creates ONE with rent + securityDeposit (+ electricity), water = 0, linked", async () => {
     const { reservation, roomA, stay, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
-    const transferDate = futureDateStr(10);
 
-    const { scheduledTransfer, previewSnapshot } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate }),
+    // Schedule for a future date -> no Bill.
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }), actorId,
+    });
+    expect(scheduledTransfer.settlementBillId == null).toBe(true);
+    expect(await Bill.countDocuments({ reservationId: reservation._id, billType: "transfer_settlement" })).toBe(0);
+
+    // Back-date + Complete Transfer -> ONE Bill, unpaid, linked.
+    const back = new Date(); back.setDate(back.getDate() - 3); back.setHours(0, 0, 0, 0);
+    await ScheduledRoomTransfer.updateOne({ _id: scheduledTransfer._id }, { $set: { effectiveTransferDate: back } });
+    const r = await completeRoomTransfer({
+      reservationId: String(reservation._id),
+      payload: { sourceRoomMeterReading: 0, targetRoomMeterReading: 0 },
       actorId,
     });
+    expect(r.outcome).toBe("awaiting_settlement");
 
     const bills = await Bill.find({ reservationId: reservation._id, billType: "transfer_settlement" });
     expect(bills).toHaveLength(1);
     const bill = bills[0];
     expect(bill.charges.rent).toBeGreaterThan(0);
     expect(bill.charges.securityDeposit).toBeGreaterThan(0);
-    expect(bill.charges.electricity).toBe(0);
-    expect(bill.charges.water).toBe(0);
+    expect(bill.charges.water).toBe(0);              // water NEVER on this Bill
+    expect(bill.charges.electricity).toBeGreaterThanOrEqual(0); // 0 here (reading 0 == baseline)
     expect(bill.totalAmount).toBe(
-      Math.round((bill.charges.rent + bill.charges.securityDeposit) * 100) / 100,
+      Math.round((bill.charges.rent + bill.charges.securityDeposit + (bill.charges.electricity || 0)) * 100) / 100,
     );
     expect(bill.status).toBe("pending");
     expect(bill.paidAmount).toBe(0);
+    expect(String((await ScheduledRoomTransfer.findById(scheduledTransfer._id)).settlementBillId)).toBe(String(bill._id));
 
-    // Due date = the effective transfer date (Manila start-of-day), NOT shifted.
-    const expectedDue = toManilaStartOfDay(transferDate).toDate();
-    expect(new Date(bill.dueDate).getTime()).toBe(expectedDue.getTime());
-
-    expect(String(scheduledTransfer.settlementBillId)).toBe(String(bill._id));
-
-    // Components mirror the canonical preview.
-    expect(bill.charges.rent).toBe(Math.max(0, previewSnapshot.rent.adjustmentDue));
-    expect(bill.charges.securityDeposit).toBe(Math.max(0, previewSnapshot.deposit.balanceDue));
-
-    // No operational mutation, no TenantCredit, no cutoff.
+    // No cutover while unpaid: source room / Stay / rent untouched, no TenantCredit.
     const [resAfter, stayAfter, roomAAfter] = await Promise.all([
-      Reservation.findById(reservation._id),
-      Stay.findById(stay._id),
-      Room.findById(roomA._id),
+      Reservation.findById(reservation._id), Stay.findById(stay._id), Room.findById(roomA._id),
     ]);
     expect(String(resAfter.roomId)).toBe(String(roomA._id));
     expect(Number(resAfter.monthlyRent)).toBe(RATE["quadruple-sharing"]);
     expect(stayAfter.status).toBe("active");
+    expect(roomAAfter.currentOccupancy).toBe(1);
     expect(await TenantCredit.countDocuments({})).toBe(0);
   });
 
-  test("serializer: unpaid -> awaiting_payment; partial -> awaiting_payment + partial; paid -> ready", async () => {
+  test("serializer: due + unpaid -> awaiting_settlement; partial -> awaiting_settlement + partial; paid -> ready_for_transfer", async () => {
     const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
-    });
-    const billId = scheduledTransfer.settlementBillId;
+    const { scheduledTransfer, billId } = await scheduleThenComplete({ reservation, dest, actorId });
+    expect(billId).toBeTruthy();
 
     let view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
-    expect(view.status).toBe("awaiting_payment");
+    expect(view.status).toBe("awaiting_settlement");
     expect(view.transferBalance.paymentState).toBe("unpaid");
-    expect(view.transferBalance.amountDue).toBeGreaterThan(0);
-    expect(view.transferBalance.remaining).toBe(view.transferBalance.amountDue);
 
-    // Partial payment.
     const bill = await Bill.findById(billId);
-    await Bill.updateOne({ _id: billId }, {
-      $set: { paidAmount: 1000, remainingAmount: bill.totalAmount - 1000, status: "partially-paid" },
-    });
+    await Bill.updateOne({ _id: billId }, { $set: { paidAmount: 1000, remainingAmount: bill.totalAmount - 1000, status: "partially-paid" } });
     view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
-    expect(view.status).toBe("awaiting_payment");
+    expect(view.status).toBe("awaiting_settlement");
     expect(view.transferBalance.paymentState).toBe("partial");
     expect(view.transferBalance.amountPaid).toBe(1000);
 
-    // Full payment.
-    await Bill.updateOne({ _id: billId }, {
-      $set: { paidAmount: bill.totalAmount, remainingAmount: 0, status: "paid" },
-    });
+    await Bill.updateOne({ _id: billId }, { $set: { paidAmount: bill.totalAmount, remainingAmount: 0, status: "paid" } });
     view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
-    expect(view.status).toBe("ready");
+    expect(view.status).toBe("ready_for_transfer");
     expect(view.transferBalance.paymentState).toBe("paid");
     expect(view.transferBalance.remaining).toBe(0);
-  });
-
-  test("recording a payment does not change current room / Stay / rent", async () => {
-    const { reservation, roomA, stay, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
-    const dest = await emptyRoom("private", "205");
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
-    });
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId);
-    await Bill.updateOne({ _id: bill._id }, { $set: { paidAmount: bill.totalAmount, remainingAmount: 0, status: "paid" } });
-
-    const [resAfter, stayAfter] = await Promise.all([
-      Reservation.findById(reservation._id),
-      Stay.findById(stay._id),
-    ]);
-    expect(String(resAfter.roomId)).toBe(String(roomA._id));
-    expect(resAfter.recurringRentRate == null || resAfter.recurringRentRate === 0).toBe(true);
-    expect(Number(resAfter.monthlyRent)).toBe(RATE["quadruple-sharing"]);
-    expect(String(stayAfter.roomId)).toBe(String(roomA._id));
-    expect(stayAfter.status).toBe("active");
   });
 
   test("mobile billing bridge exposes the same canonical Bill", async () => {
     const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
-    const { scheduledTransfer } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
-    });
-    const bill = await Bill.findById(scheduledTransfer.settlementBillId).lean();
+    const { billId } = await scheduleThenComplete({ reservation, dest, actorId });
+    const bill = await Bill.findById(billId).lean();
     const mobile = toMobileBill(bill);
     expect(mobile.billing_id).toBe(String(bill._id));
     expect(mobile.rent).toBe(bill.charges.rent);
     expect(mobile.security_deposit).toBe(bill.charges.securityDeposit);
-    expect(mobile.electricity).toBe(0);
     expect(mobile.water).toBe(0);
     expect(mobile.total).toBe(bill.totalAmount);
-    expect(mobile.remaining_amount).toBe(bill.totalAmount);
     expect(mobile.paid_amount).toBe(0);
-    expect(new Date(mobile.due_date).getTime()).toBe(new Date(bill.dueDate).getTime());
   });
 });
 
-describe("zero-balance schedule (no payable Bill)", () => {
-  // A move-in only ~5 days ago keeps the (future) transfer inside rent cycle 0,
-  // which the resolver treats as funded by the contract-basis rate — so a
-  // same-rate transfer nets ~0 rent adjustment. Lease end well in the future.
+describe("zero-balance transfer (nothing owed)", () => {
   const recentMoveIn = getManilaToday().subtract(5, "day").toDate();
   const farLeaseEnd = getManilaToday().add(300, "day").toDate();
 
-  test("same-type same-rate transfer with deposit already covering -> no Bill, status ready", async () => {
-    // Quad -> Quad, held deposit already = Quad rate (destination required).
-    const { reservation, actorId } = await seed({
+  test("same-type same-rate, deposit already covering -> Complete Transfer creates NO Bill and CUTS OVER", async () => {
+    const { reservation, roomA, actorId } = await seed({
       sourceType: "quadruple-sharing", roomNumber: "301",
       moveIn: recentMoveIn, leaseEnd: farLeaseEnd,
     });
     const dest = await emptyRoom("quadruple-sharing", "302");
-    const { scheduledTransfer, balanceTotal } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
-    });
-    // Same-rate, mid-cycle: rent adjustment is 0 (consumed vs prorated net ~0),
-    // deposit required == held == Quad rate -> nothing owed.
-    expect(scheduledTransfer.settlementBillId == null).toBe(true);
-    expect(await Bill.countDocuments({ reservationId: reservation._id, billType: "transfer_settlement" })).toBe(0);
+    const { scheduledTransfer, outcome, billId } = await scheduleThenComplete({ reservation, dest, actorId });
+
+    // Nothing owed -> the payment gate is satisfied and the transfer executes.
+    expect(outcome).toBe("executed");
+    expect(billId == null || (await Bill.findById(billId))?.status === "paid").toBeTruthy();
 
     const view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
-    expect(view.status).toBe("ready");
-    expect(view.transferBalance.hasBill).toBe(false);
-    expect(view.transferBalance.paymentState).toBe("none");
-    expect(balanceTotal).toBe(0);
+    expect(view.status).toBe("completed");
+
+    // The tenant actually moved.
+    const stayAfter = await Stay.findOne({ reservationId: reservation._id });
+    expect(String(stayAfter.roomId)).toBe(String(dest._id));
+    void roomA;
   });
 });
 
@@ -355,34 +347,22 @@ describe("cheaper destination (Private -> Quad)", () => {
   const recentMoveIn = getManilaToday().subtract(5, "day").toDate();
   const farLeaseEnd = getManilaToday().add(300, "day").toDate();
 
-  test("no TenantCredit created at scheduling; excess held deposit informational only", async () => {
+  test("no TenantCredit at scheduling; excess rent/deposit stay informational for manual review", async () => {
     const { reservation, actorId } = await seed({
       sourceType: "private", roomNumber: "101",
       moveIn: recentMoveIn, leaseEnd: farLeaseEnd,
     });
     const dest = await emptyRoom("quadruple-sharing", "301");
-    const { scheduledTransfer, previewSnapshot } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
+
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }), actorId,
     });
-
-    // Cheaper room: rent adjustment <= 0, additional deposit 0 -> no Bill.
-    expect(scheduledTransfer.settlementBillId == null).toBe(true);
     expect(await TenantCredit.countDocuments({})).toBe(0);
-
     const view = await serializeScheduledRoomTransfer(await ScheduledRoomTransfer.findById(scheduledTransfer._id));
-    expect(view.status).toBe("ready");
-    // Informational-only fields surface the estimates without touching accounting.
-    if (previewSnapshot.rent.excessCredit > 0) {
-      expect(view.estimatedRentCreditAfterTransfer).toBe(previewSnapshot.rent.excessCredit);
-    }
-    if (previewSnapshot.deposit.excessHeld > 0) {
-      expect(view.estimatedExcessDepositHeld).toBe(previewSnapshot.deposit.excessHeld);
-    }
-    // Nothing refunded / credited.
-    const resAfter = await Reservation.findById(reservation._id);
-    expect(Number(resAfter.securityDepositHeld)).toBe(RATE.private); // unchanged
+    // Future, not yet due -> scheduled.
+    expect(view.status).toBe("scheduled");
+    // Nothing refunded / credited at scheduling.
+    expect(Number((await Reservation.findById(reservation._id)).securityDepositHeld)).toBe(RATE.private);
   });
 });
 
@@ -398,22 +378,14 @@ describe("all cross-room-type combinations schedule (no type-specific logic)", (
     ["double-sharing", "double-sharing"],
     ["quadruple-sharing", "quadruple-sharing"],
   ];
-  test.each(COMBOS)("%s -> %s schedules and links a Bill iff something is owed", async (src, dst) => {
+  test.each(COMBOS)("%s -> %s schedules (no Bill created at scheduling)", async (src, dst) => {
     const { reservation, actorId } = await seed({ sourceType: src, roomNumber: "701" });
     const dest = await emptyRoom(dst, "801");
-    const { scheduledTransfer, balanceTotal } = await scheduleRoomTransfer({
-      reservationId: reservation._id,
-      payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }),
-      actorId,
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id, payload: payloadFor({ targetRoom: dest, transferDate: futureDateStr(10) }), actorId,
     });
     expect(scheduledTransfer.status).toBe("scheduled");
-    if (balanceTotal > 0) {
-      expect(scheduledTransfer.settlementBillId).toBeTruthy();
-      const bill = await Bill.findById(scheduledTransfer.settlementBillId);
-      expect(bill.charges.electricity).toBe(0);
-      expect(bill.charges.water).toBe(0);
-    } else {
-      expect(scheduledTransfer.settlementBillId == null).toBe(true);
-    }
+    expect(scheduledTransfer.settlementBillId == null).toBe(true);
+    expect(await Bill.countDocuments({ reservationId: reservation._id, billType: "transfer_settlement" })).toBe(0);
   });
 });

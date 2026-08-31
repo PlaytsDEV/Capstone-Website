@@ -102,6 +102,10 @@ describe("Phase 6 — transfer settlement hardening", () => {
     await mongo?.stop();
   }, 120_000);
   beforeEach(async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-15T10:00:00.000+08:00"),
+      doNotFake: ["nextTick", "setImmediate", "setInterval", "setTimeout", "clearInterval", "clearTimeout", "queueMicrotask"],
+    });
     await Promise.all([
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
@@ -110,12 +114,15 @@ describe("Phase 6 — transfer settlement hardening", () => {
     ]);
     await BusinessSettings.create({
       key: "global",
+      officeHoursStartMinutes: 0, officeHoursEndMinutes: 1440, officeDaysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       privateDiscountPercent: 10, doubleDiscountPercent: 10, quadrupleDiscountPercent: 10,
       isDiscountEnabled: true, longTermLeaseMinMonths: 6,
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   async function seed({ sourceType, roomNumber = "301", branch = "gil-puyat" }) {
     const tenant = await User.create({
@@ -178,6 +185,9 @@ describe("Phase 6 — transfer settlement hardening", () => {
 
   async function runTransfer({ reservation, targetRoom, actorId, transferDate = "2026-08-15T00:00:00.000Z", sourceReading, targetReading }) {
     const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
+    // Round-4: rent/deposit prorate by the actual cutover day. Pin the fake
+    // clock to this leg's transferDate so multi-transfer fixtures stay stable.
+    jest.setSystemTime(new Date(`${String(transferDate).slice(0, 10)}T10:00:00.000+08:00`));
     return transferStayWorkflow({
       reservationId: reservation._id,
       payload: {
@@ -194,63 +204,56 @@ describe("Phase 6 — transfer settlement hardening", () => {
   const settlementBill = (reservationId) =>
     Bill.findOne({ reservationId, billType: "transfer_settlement" });
 
-  // ── 1. Source electricity charged EXACTLY ONCE ────────────────────────
-  test("admin supplies a source meter reading: transfer_settlement Bill carries NO electricity charge; the source period close bills it once", async () => {
-    const { tenant, roomA, reservation, actorId } = await seed({ sourceType: "quadruple-sharing" });
+  // ── 1. Source electricity FINALIZED on the transfer_settlement Bill ───
+  //    (Round-3: old-room electricity must be settled BEFORE the physical
+  //    cutover, not deferred to the normal period close.)
+  test("admin supplies the source closing reading: transfer_settlement Bill carries the FINALIZED source electricity; a UtilityFinalization prevents a period-close re-bill; water stays 0", async () => {
+    const { roomA, reservation, actorId } = await seed({ sourceType: "quadruple-sharing" });
     const roomB = await emptyRoom("private", "402");
 
-    // Source-room electricity period-start baseline BEFORE the transfer.
-    await UtilityReading.create({
-      utilityType: "electricity", roomId: roomA._id, branch: roomA.branch,
-      reading: 1000, date: MOVE_IN, eventType: "periodStart", recordedBy: actorId, activeTenantIds: [],
-    });
-    // An OPEN electricity UtilityPeriod so the workflow can compute its
-    // best-effort transfer-time estimate (ratePerUnit needed).
+    // Source-room OPEN electricity period, baseline 1000 kWh, ₱10/kWh.
     await UtilityPeriod.create({
       utilityType: "electricity", roomId: roomA._id, branch: roomA.branch,
       startDate: MOVE_IN, startReading: 1000, ratePerUnit: 10, status: "open",
     });
+    await UtilityReading.create({
+      utilityType: "electricity", roomId: roomA._id, branch: roomA.branch,
+      reading: 1000, date: MOVE_IN, eventType: "periodStart", readingStatus: "locked",
+      recordedBy: actorId, activeTenantIds: [],
+    });
+    // Destination OPEN period (private, sole occupant).
+    await UtilityPeriod.create({
+      utilityType: "electricity", roomId: roomB._id, branch: roomB.branch,
+      startDate: MOVE_IN, startReading: 5000, ratePerUnit: 10, status: "open",
+    });
 
-    // Transfer WITH a source meter reading (1140 -> 140 kWh consumed Aug 1..15).
+    // Transfer WITH the fresh source closing reading (1140 -> 140 kWh; sole
+    // occupant of a quad room, so the whole 140 kWh is theirs).
     await runTransfer({ reservation, targetRoom: roomB, actorId, sourceReading: 1140, targetReading: 5000 });
 
     const bill = await settlementBill(reservation._id);
-    // The estimate is recorded for admin visibility ...
-    expect(bill.transferSnapshot.estimatedElectricityKwh).toBeCloseTo(140, 2);
-    expect(bill.transferSnapshot.estimatedElectricityCharge).toBeGreaterThan(0);
-    expect(bill.transferSnapshot.sourceElectricitySettledAtPeriodClose).toBe(true);
-    // ... but it is NOT a charge on this Bill.
-    expect(bill.charges.electricity).toBe(0);
-    // Bill total = rent + deposit only (no electricity, no water).
+    // The finalized source electricity IS a charge on this Bill.
+    expect(bill.charges.electricity).toBeCloseTo(1400, 1); // 140 kWh × ₱10
+    expect(bill.charges.water).toBe(0);                     // water never here
+    expect(bill.transferSnapshot.finalizedSourceElectricity).toBeTruthy();
+    expect(bill.transferSnapshot.finalizedSourceElectricity.amount).toBeCloseTo(1400, 1);
+    // Bill total includes electricity now.
     expect(bill.totalAmount).toBeCloseTo(
-      roundMoney(bill.charges.rent + bill.charges.securityDeposit), 2,
+      roundMoney(bill.charges.rent + bill.charges.securityDeposit + bill.charges.electricity), 2,
     );
 
-    // Now close the source room's electricity period: the departed tenant is
-    // billed for EXACTLY their pre-transfer segment (140 kWh), once.
-    const RATE_KWH = 10;
-    const srcReadings = [
-      { tenantId: null, eventType: "periodStart", date: MOVE_IN, reading: 1000 },
-      { tenantId: String(tenant._id), eventType: "moveOut", date: new Date("2026-08-15T00:00:00.000Z"), reading: 1140 },
-      { tenantId: null, eventType: "periodEnd", date: CYCLE_END, reading: 1500 },
-    ];
-    const scoped = await resolveRoomScopedReservationsForPeriod({ room: roomA, periodStart: MOVE_IN, periodEnd: CYCLE_END });
-    const billable = filterBillableReservationsForPeriod({ reservations: scoped, cycleStart: MOVE_IN, cycleEnd: CYCLE_END });
-    const period = { startDate: MOVE_IN, endDate: CYCLE_END, startReading: 1000, endReading: 1500, ratePerUnit: RATE_KWH };
-    const { buildTenantEventsForPeriod } = await import("../utils/utilityFlowRules.js");
-    const tenantEvents = buildTenantEventsForPeriod({ period, reservations: billable, readings: srcReadings });
-    const closeResult = computeBilling({
-      utilityPeriod: period, readings: srcReadings, reservations: billable, tenantEvents,
-      forceSegmented: true, utilityType: "electricity", roomType: roomA.type,
-    });
-    const mine = closeResult.tenantSummaries.find((s) => String(s.tenantId) === String(tenant._id));
-    expect(mine).toBeTruthy();
-    expect(mine.totalUsage).toBeCloseTo(140, 4);            // exactly the pre-transfer segment
-    expect(mine.billAmount).toBeCloseTo(140 * RATE_KWH, 2); // charged once, here
-
-    // Only ONE electricity figure exists for this tenant+room+consumption:
-    // the transfer Bill's is 0; the close's is 140*rate.
-    expect(bill.charges.electricity + mine.billAmount).toBeCloseTo(140 * RATE_KWH, 2);
+    // A UtilityFinalization row links the settlement to the source period so
+    // the normal period close will NOT create a second electricity draft Bill
+    // for this tenant (the reconciliation invariant is proven end-to-end in
+    // services/billing/transferElectricityFinalization.integration.test.js).
+    const { UtilityFinalization } = await import("../models/index.js");
+    const fin = await UtilityFinalization.findOne({
+      reservationId: reservation._id, utilityType: "electricity",
+    }).lean();
+    expect(fin).toBeTruthy();
+    expect(fin.settledAmount).toBeCloseTo(1400, 1);
+    expect(String(fin.settlementBillId)).toBe(String(bill._id));
+    expect(fin.throughReading).toBe(1140);
   });
 
   // ── 2. Source water is NOT settled at transfer ───────────────────────
@@ -312,6 +315,7 @@ describe("Phase 6 — transfer settlement hardening", () => {
     expect(midState.securityDepositHeld).toBe(8100);        // now the CURRENT held cash
 
     // ── Transfer #2 (Aug 20): Double -> Private ────────────────────────
+    jest.setSystemTime(new Date("2026-08-20T10:00:00.000+08:00"));
     await transferStayWorkflow({
       reservationId: reservation._id,
       payload: { confirm: true, targetRoomId: roomC._id, effectiveTransferDate: "2026-08-20T00:00:00.000Z", forceOverride: true },
