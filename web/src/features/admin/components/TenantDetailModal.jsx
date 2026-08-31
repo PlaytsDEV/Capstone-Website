@@ -66,6 +66,7 @@ export default function TenantDetailModal({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
+  const [transferRequestActionLoading, setTransferRequestActionLoading] = useState(false);
   const [safeguardsData, setSafeguardsData] = useState(null);
   const [dedicatedContract, setDedicatedContract] = useState(null);
   // "MULTIPLE_CANONICAL_CONTRACTS" | "LOOKUP_FAILED" | null — set only when the
@@ -1127,6 +1128,28 @@ export default function TenantDetailModal({
                       docsPanelRef={docsPanelRef}
                       onPreviewDoc={setPreviewDoc}
                       onOpenDigitalContract={handleOpenDigitalContract}
+                      transferRequestLoading={transferRequestActionLoading}
+                      onProceedTransferRequest={(request) =>
+                        setDialogState({ type: "transfer", loading: false, error: null, request })
+                      }
+                      onDeclineTransferRequest={async (declineReason) => {
+                        const request = fetchedDetail?.tenantTransferRequest;
+                        if (!request?.id) return;
+                        setTransferRequestActionLoading(true);
+                        try {
+                          const response = await reservationApi.declineTenantTransferRequest(
+                            request.id,
+                            declineReason,
+                          );
+                          await invalidateTenantQueries();
+                          await refetchDetail();
+                          showNotification(response?.message || "Room transfer request declined.", "success");
+                        } catch (error) {
+                          showNotification(error?.message || "Could not decline the room transfer request.", "error");
+                        } finally {
+                          setTransferRequestActionLoading(false);
+                        }
+                      }}
                     />
                   </div>
                 )}
@@ -1261,6 +1284,7 @@ export default function TenantDetailModal({
           open
           tenant={tenant}
           detail={fetchedDetail || initialTenant}
+          transferRequest={dialogState.request || null}
           loading={dialogState.loading}
           sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
           electricityRatePerUnit={actionContext?.electricityRatePerUnit ?? null}
@@ -1271,6 +1295,7 @@ export default function TenantDetailModal({
               const res = await reservationApi.transfer(reservationId, {
                 targetRoomId: payload.roomId,
                 targetBedId: payload.bedId,
+                tenantTransferRequestId: dialogState.request?.id || undefined,
                 effectiveTransferDate: payload.effectiveTransferDate || new Date().toISOString().slice(0, 10),
                 reason: payload.reason,
                 notes: payload.notes || "",

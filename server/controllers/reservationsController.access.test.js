@@ -81,6 +81,22 @@ await jest.unstable_mockModule("../services/scheduledRoomTransferExecutor.js", (
   nudgeDueScheduledRoomTransfers: jest.fn(),
   executeDueScheduledRoomTransfers: jest.fn(),
 }));
+await jest.unstable_mockModule("../services/tenantTransferRequestService.js", () => ({
+  claimTenantTransferRequestForScheduling: jest.fn(),
+  linkScheduledTransferToRequest: jest.fn(),
+  refreshTenantTransferSchedulingClaim: jest.fn(),
+  releaseTenantTransferSchedulingClaim: jest.fn(),
+  syncRequestFromScheduledTransfer: jest.fn(),
+  resolveTenantTransferLifecycleRecords: jest.fn().mockResolvedValue({
+    request: null,
+    scheduledTransfer: null,
+  }),
+  serializeTenantTransferRequest: jest.fn().mockResolvedValue(null),
+  getAdminTransferLifecycleForReservation: jest.fn().mockResolvedValue({
+    request: null,
+    scheduledTransfer: null,
+  }),
+}));
 
 await jest.unstable_mockModule("../models/BusinessSettings.js", () => ({
   default: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },

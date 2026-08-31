@@ -21,6 +21,13 @@ import {
   Appliance,
   ROOM_BRANCHES,
 } from "../../models/index.js";
+import ScheduledRoomTransfer from "../../models/ScheduledRoomTransfer.js";
+import TenantTransferRequest from "../../models/TenantTransferRequest.js";
+import { serializeScheduledRoomTransfer } from "../../services/scheduledRoomTransferView.js";
+import {
+  resolveTenantTransferLifecycleRecords,
+  serializeTenantTransferRequest,
+} from "../../services/tenantTransferRequestService.js";
 import { BUSINESS } from "../../config/constants.js";
 import { isOwnerRole, isAdminRole, OWNER_ROLE_VALUES } from "../../config/roles.js";
 import logger from "../../middleware/logger.js";
@@ -1742,8 +1749,23 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
         .filter(Boolean),
     ),
   ];
+  // Several controller unit suites intentionally exercise this helper with
+  // model doubles and no database connection. Do not let newly-added optional
+  // workspace enrichment turn those read-only tests into buffered Mongo calls.
+  const canLoadTransferLifecycle =
+    ScheduledRoomTransfer.db?.readyState === 1 &&
+    TenantTransferRequest.db?.readyState === 1;
 
-  const [bills, bedHistoryRecords, stays, branchRooms, contracts, violations] = await Promise.all([
+  const [
+    bills,
+    bedHistoryRecords,
+    stays,
+    branchRooms,
+    contracts,
+    violations,
+    scheduledTransfers,
+    transferRequests,
+  ] = await Promise.all([
     Bill.find({
       reservationId: { $in: reservationIds },
       isArchived: { $ne: true },
@@ -1785,6 +1807,18 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     })
       .sort({ dateOfIncident: -1, createdAt: -1 })
       .lean(),
+    canLoadTransferLifecycle
+      ? ScheduledRoomTransfer.find({
+          reservationId: { $in: reservationIds },
+          isArchived: { $ne: true },
+        }).sort({ scheduledAt: -1, createdAt: -1 })
+      : Promise.resolve([]),
+    canLoadTransferLifecycle
+      ? TenantTransferRequest.find({ reservationId: { $in: reservationIds } })
+          .populate("tenantId", "firstName lastName name fullName email")
+          .populate("preferredRoomId", "name roomNumber type branch")
+          .sort({ submittedAt: -1, createdAt: -1 })
+      : Promise.resolve([]),
   ]);
 
   const billsByReservationId = new Map();
@@ -1803,6 +1837,21 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
   const violationsByReservationId = new Map();
   const violationsByTenantId = new Map();
   const branchAvailability = new Map();
+  const scheduledTransfersByReservationId = new Map();
+  const transferRequestByReservationId = new Map();
+
+  for (const transfer of scheduledTransfers) {
+    const key = String(transfer.reservationId || "");
+    if (!key) continue;
+    if (!scheduledTransfersByReservationId.has(key)) scheduledTransfersByReservationId.set(key, []);
+    scheduledTransfersByReservationId.get(key).push(transfer);
+  }
+
+  for (const request of transferRequests) {
+    const key = String(request.reservationId || "");
+    if (!key || transferRequestByReservationId.has(key)) continue;
+    transferRequestByReservationId.set(key, request);
+  }
 
   for (const violation of (violations || [])) {
     if (violation.reservationId) {
@@ -1870,7 +1919,7 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     });
   }
 
-  return visibleReservations.map((reservation) => {
+  return Promise.all(visibleReservations.map(async (reservation) => {
     const reservationKey = String(reservation._id);
     const tenantKey = String(reservation.userId?._id || reservation.userId || "");
     const stayHistory = staysByReservationId.get(reservationKey) || [];
@@ -1883,6 +1932,24 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
         (room.roomId !== String(currentStay?.roomId || reservation.roomId?._id || "") ||
           room.bedIds.some((bedId) => String(bedId) !== String(currentStay?.bedId || reservation.selectedBed?.id || ""))),
     );
+    const rawTransferRequest = transferRequestByReservationId.get(reservationKey) || null;
+    const canonicalTransfer = await resolveTenantTransferLifecycleRecords({
+      reservationId: reservation._id,
+      request: rawTransferRequest,
+      scheduledTransfers: scheduledTransfersByReservationId.get(reservationKey) || [],
+    });
+    const scheduledRoomTransfer = canonicalTransfer.scheduledTransfer &&
+      ["scheduled", "action_required"].includes(
+        canonicalTransfer.scheduledTransfer.recordStatus || canonicalTransfer.scheduledTransfer.status,
+      )
+      ? await serializeScheduledRoomTransfer(canonicalTransfer.scheduledTransfer)
+      : null;
+    const tenantTransferRequest = canonicalTransfer.request
+      ? await serializeTenantTransferRequest(canonicalTransfer.request, {
+          scheduledTransfer: canonicalTransfer.scheduledTransfer,
+          admin: true,
+        })
+      : null;
     return buildTenantWorkspaceEntry({
       reservation,
       currentStay,
@@ -1902,9 +1969,11 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
         [],
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
+      scheduledRoomTransfer,
+      tenantTransferRequest,
       now,
     });
-  });
+  }));
 };
 
 /* ── Cached user lookup ── */

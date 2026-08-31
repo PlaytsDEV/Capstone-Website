@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileText,
   History,
+  Home,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -82,6 +83,17 @@ const buildNavSections = (isTenant, hasContract = false) => [
               label: "My Contract",
               icon: FileText,
               path: "/applicant/contracts",
+            },
+          ]
+        : []),
+      ...(isTenant
+        ? [
+            {
+              id: "stays",
+              label: "My Stays",
+              icon: Home,
+              path: "/applicant/profile",
+              tab: "stays",
             },
           ]
         : []),

@@ -63,6 +63,33 @@ import {
 } from "../../services/scheduledRoomTransferExecutor.js";
 import { ScheduledRoomTransfer } from "../../models/index.js";
 import { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } from "../../models/ScheduledRoomTransfer.js";
+import {
+  claimTenantTransferRequestForScheduling,
+  linkScheduledTransferToRequest,
+  refreshTenantTransferSchedulingClaim,
+  releaseTenantTransferSchedulingClaim,
+  syncRequestFromScheduledTransfer,
+} from "../../services/tenantTransferRequestService.js";
+
+const linkTenantTransferRequestSafely = async (args, requestId) => {
+  try {
+    return await linkScheduledTransferToRequest(args);
+  } catch (error) {
+    logger.warn({ err: error, requestId }, "Scheduled transfer succeeded but request linking needs reconciliation");
+    return null;
+  }
+};
+
+const syncTenantTransferRequestSafely = async (scheduledTransfer, options, requestId) => {
+  try {
+    return await syncRequestFromScheduledTransfer(scheduledTransfer, options);
+  } catch (error) {
+    logger.warn({ err: error, requestId }, "Scheduled transfer lifecycle sync needs reconciliation");
+    return null;
+  }
+};
+
+const TENANT_TRANSFER_CLAIM_HEARTBEAT_MS = 30 * 1000;
 
 export const archiveReservation = async (req, res, next) => {
   try {
@@ -926,7 +953,30 @@ export const transferTenant = async (req, res, next) => {
       });
     }
 
+    let schedulingClaim = null;
+    let schedulingHeartbeat = null;
+    const tenantTransferRequestId = req.body.tenantTransferRequestId || null;
     try {
+      if (tenantTransferRequestId) {
+        schedulingClaim = await claimTenantTransferRequestForScheduling({
+          requestId: tenantTransferRequestId,
+          reservationId,
+          actorId: actor?._id || null,
+        });
+        schedulingHeartbeat = setInterval(() => {
+          refreshTenantTransferSchedulingClaim({
+            requestId: tenantTransferRequestId,
+            reservationId,
+            schedulingToken: schedulingClaim.token,
+          }).catch((heartbeatError) => {
+            logger.warn(
+              { err: heartbeatError, requestId: req.id, tenantTransferRequestId },
+              "Room transfer scheduling claim heartbeat failed",
+            );
+          });
+        }, TENANT_TRANSFER_CLAIM_HEARTBEAT_MS);
+        schedulingHeartbeat.unref?.();
+      }
       const scheduled = await scheduleRoomTransfer({
         reservationId,
         payload: {
@@ -938,6 +988,13 @@ export const transferTenant = async (req, res, next) => {
         },
         actorId: actor?._id || null,
       });
+      await linkTenantTransferRequestSafely({
+        reservationId,
+        scheduledTransfer: scheduled.scheduledTransfer,
+        requestId: tenantTransferRequestId,
+        actorId: actor?._id || null,
+        schedulingToken: schedulingClaim?.token || null,
+      }, req.id);
       await auditLogger.logModification(
         req,
         "reservation",
@@ -951,6 +1008,18 @@ export const transferTenant = async (req, res, next) => {
         scheduledRoomTransfer: await serializeScheduledRoomTransfer(scheduled.scheduledTransfer),
       });
     } catch (error) {
+      if (schedulingClaim?.token) {
+        await releaseTenantTransferSchedulingClaim({
+          requestId: tenantTransferRequestId,
+          reservationId,
+          schedulingToken: schedulingClaim.token,
+        }).catch((releaseError) => {
+          logger.warn(
+            { err: releaseError, requestId: req.id, tenantTransferRequestId },
+            "Room transfer scheduling claim needs reconciliation",
+          );
+        });
+      }
       logger.error({ err: error, requestId: req.id }, "Schedule transfer error");
       await auditLogger.logError(req, error, "Failed to schedule room transfer");
       // The canonical transfer-intent validation (shared with the immediate
@@ -967,6 +1036,8 @@ export const transferTenant = async (req, res, next) => {
         return res.status(error.statusCode).json({ error: error.message, code: error.code || "SCHEDULE_TRANSFER_FAILED" });
       }
       return handleReservationError(res, error, "schedule transfer");
+    } finally {
+      if (schedulingHeartbeat) clearInterval(schedulingHeartbeat);
     }
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Transfer error");
@@ -1137,6 +1208,11 @@ export const cancelScheduledRoomTransferAction = async (req, res, next) => {
     const actor = await findDbUser(req.user.uid);
     const result = await cancelScheduledRoomTransfer(open._id, { actorId: actor?._id || null, system: false });
 
+    if (result.outcome === "cancelled") {
+      const cancelledRecord = await ScheduledRoomTransfer.findById(open._id);
+      await syncTenantTransferRequestSafely(cancelledRecord, {}, req.id);
+    }
+
     if (result.outcome === "skipped" && result.reason === "TRANSFER_ALREADY_COMPLETED") {
       return res.status(409).json({
         error: "This room transfer has already been completed and cannot be cancelled here.",
@@ -1222,6 +1298,12 @@ export const retryScheduledRoomTransferAction = async (req, res, next) => {
       },
     });
 
+    if (result.scheduledTransfer) {
+      await syncTenantTransferRequestSafely(result.scheduledTransfer, {}, req.id);
+    } else if (result.outcome === "executed") {
+      await syncTenantTransferRequestSafely(await ScheduledRoomTransfer.findById(rec._id), {}, req.id);
+    }
+
     await auditLogger.logModification(
       req, "reservation", reservationId, {},
       { scheduledTransferId: String(rec._id), retryOutcome: result.outcome, reason: result.reason || null },
@@ -1285,6 +1367,7 @@ export const rescheduleRoomTransferAction = async (req, res, next) => {
       },
       actorId: actor?._id || null,
     });
+    await syncTenantTransferRequestSafely(result.scheduledTransfer, { event: "rescheduled" }, req.id);
 
     await auditLogger.logModification(
       req, "reservation", reservationId, {},
@@ -1346,6 +1429,9 @@ export const completeRoomTransferAction = async (req, res, next) => {
       },
       actorId: actor?._id || null,
     });
+    if (result.scheduledTransfer) {
+      await syncTenantTransferRequestSafely(result.scheduledTransfer, {}, req.id);
+    }
 
     await auditLogger.logModification(
       req, "reservation", reservationId, {},

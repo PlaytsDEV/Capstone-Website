@@ -1093,7 +1093,7 @@ const roomTypeRequiresBed = (roomType) => BED_REQUIRED_ROOM_TYPES.has(String(roo
 //     must NOT be blocked just because Addendum #1's document-signing step
 //     has not finished — the continuing lease is valid regardless.
 const FINAL_PREDECESSOR_STATUSES = new Set(["active", "published", "expiring_soon"]);
-const isValidTransferPredecessor = (contract) => {
+export const isValidTransferPredecessor = (contract) => {
   if (!contract) return false;
   if (FINAL_PREDECESSOR_STATUSES.has(contract.status)) return true;
   return (

@@ -35,6 +35,7 @@ export default function useSocketClient() {
   const clearNotifications = useNotificationStore((s) => s.clear);
   const activeIdentityRef = useRef(null);
   const hasLoggedConnectionRef = useRef(false);
+  const hasConnectedOnceRef = useRef(false);
 
   useEffect(() => {
     const identity = user?.id || user?._id
@@ -44,6 +45,7 @@ export default function useSocketClient() {
     if (activeIdentityRef.current !== identity) {
       clearNotifications();
       activeIdentityRef.current = identity;
+      hasConnectedOnceRef.current = false;
     }
   }, [user?.id, user?._id, user?.role, clearNotifications]);
 
@@ -66,6 +68,11 @@ export default function useSocketClient() {
       socket.on("connect", () => {
         lastSocketErrorRef.current = "";
         setConnected(true);
+        if (hasConnectedOnceRef.current) {
+          qc.invalidateQueries({ queryKey: ["tenant", "roomTransfer"] });
+          qc.refetchQueries({ queryKey: ["tenant", "roomTransfer"], type: "active" });
+        }
+        hasConnectedOnceRef.current = true;
         const transport = socket.io.engine?.transport?.name || "unknown";
         if (!hasLoggedConnectionRef.current) {
           hasLoggedConnectionRef.current = true;
@@ -164,6 +171,12 @@ export default function useSocketClient() {
         // Real-time page data refetching for active UI screens
         const entityType = String(notification?.entityType || "").toLowerCase();
         const notificationType = String(notification?.type || "").toLowerCase();
+        const notificationTitle = String(notification?.title || "").toLowerCase();
+
+        if (notificationTitle.includes("room transfer")) {
+          qc.invalidateQueries({ queryKey: ["tenant", "roomTransfer"] });
+          qc.refetchQueries({ queryKey: ["tenant", "roomTransfer"], type: "active" });
+        }
 
         if (
           entityType === "reservation" ||

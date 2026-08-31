@@ -565,6 +565,7 @@ export function TransferTenantModal({
   loading,
   onClose,
   onSubmit,
+  transferRequest = null,
   // sourceRoomLatestReading / electricityRatePerUnit are still passed by the
   // callers but no longer used: the SCHEDULE step captures no meter readings
   // (the admin enters boundary readings at the Complete Transfer step).
@@ -599,14 +600,18 @@ export function TransferTenantModal({
     setAttemptedStep1(false);
     setRoomId("");
     setBedId("");
-    setReason("Room transfer");
+    setReason(transferRequest?.reason || "Room transfer");
     setPreparedAddendum(null);
-    setEffectiveTransferDate(minScheduleDateStr());
+    setEffectiveTransferDate(
+      transferRequest?.preferredTransferDate
+        ? toDateInputValue(transferRequest.preferredTransferDate)
+        : minScheduleDateStr(),
+    );
     const now = new Date();
     setEffectiveTransferTime(
       `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
     );
-  }, [open]);
+  }, [open, transferRequest]);
 
   // ── Derived room / bed data ───────────────────────────────────────────────
   const currentRoomType =
@@ -898,6 +903,16 @@ export function TransferTenantModal({
       footer={renderFooter()}
     >
       <WizardStepper steps={wizardSteps} currentStep={step} />
+
+      {transferRequest ? (
+        <div className="twm-callout twm-callout--info">
+          Tenant preference: {prettyRoomType(transferRequest.preferredRoomType)}
+          {transferRequest.preferredRoom?.name ? ` · ${transferRequest.preferredRoom.name}` : ""}
+          {transferRequest.preferredTransferDate
+            ? ` · ${new Date(transferRequest.preferredTransferDate).toLocaleDateString("en-PH")}`
+            : ""}. Confirm a valid destination below using the normal availability rules.
+        </div>
+      ) : null}
 
       {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
       {step === 1 && (

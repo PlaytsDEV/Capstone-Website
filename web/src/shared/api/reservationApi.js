@@ -9,6 +9,11 @@ const withLifecycleNormalization = (promise) =>
   promise.then((payload) => normalizeLifecyclePayload(payload));
 
 export const reservationApi = {
+  declineTenantTransferRequest: (requestId, declineReason = "") =>
+    authFetch(`/tenant/room-transfer-requests/${requestId}/decline`, {
+      method: "PATCH",
+      body: JSON.stringify({ declineReason }),
+    }),
   /**
    * Get all reservations
    */

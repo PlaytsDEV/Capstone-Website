@@ -25,6 +25,7 @@ const NEXT_ACTION_LABELS = Object.freeze({
   settle_transfer: "Settle transfer",
   complete_transfer: "Complete transfer",
   transfer_scheduled: "Transfer scheduled",
+  review_transfer_request: "Review transfer request",
   none: "No action needed",
 });
 
@@ -551,10 +552,17 @@ export function buildNextAction({
   leaseStatus,
   billingSummary,
   scheduledRoomTransfer = null,
+  tenantTransferRequest = null,
 }) {
   if (billingSummary.hasPendingVerification) return "verify_payment";
   if (billingSummary.hasOverdue) return "review_overdue_account";
   if (stayStatus === "moving_out") return "process_move_out";
+
+  if (
+    tenantTransferRequest?.status === "pending" &&
+    tenantTransferRequest?.canReview !== false &&
+    !scheduledRoomTransfer
+  ) return "review_transfer_request";
 
   // An in-progress room transfer takes the row's Action Needed slot (there is
   // no separate transfer button in the table). Derived from the serialized
@@ -781,6 +789,9 @@ export function buildTenantWorkspaceEntry({
   // room / rent / occupancy fields (the tenant stays in the source room
   // until the effective date).
   scheduledRoomTransfer = null,
+  // Latest tenant-submitted room-transfer intent. This is separate from the
+  // operational ScheduledRoomTransfer and never changes occupancy itself.
+  tenantTransferRequest = null,
   // F3 — the complete Room Transfer audit trail (all ScheduledRoomTransfer
   // statuses + derived legacy immediate transfers), from
   // getRoomTransferHistoryForReservation. Surfaced verbatim under
@@ -813,6 +824,7 @@ export function buildTenantWorkspaceEntry({
     leaseStatus,
     billingSummary,
     scheduledRoomTransfer,
+    tenantTransferRequest,
   });
   const hasFutureRenewal = stayHistory.some((stay) =>
     currentStay?._id &&
@@ -964,6 +976,9 @@ export function buildTenantWorkspaceEntry({
           else if (v.createdAt) timestamps.push(new Date(v.createdAt).getTime());
         }
       }
+      if (tenantTransferRequest?.status === "pending" && tenantTransferRequest.submittedAt) {
+        timestamps.push(new Date(tenantTransferRequest.submittedAt).getTime());
+      }
       if (timestamps.length > 0) {
         const valid = timestamps.filter((t) => !Number.isNaN(t) && t > 0);
         if (valid.length > 0) return new Date(Math.max(...valid)).toISOString();
@@ -1021,6 +1036,7 @@ export function buildTenantWorkspaceEntry({
     // Display-only: the tenant remains in `basicInfo.room` / `paymentInfo`
     // rates until its effectiveDate.
     scheduledRoomTransfer: scheduledRoomTransfer || null,
+    tenantTransferRequest: tenantTransferRequest || null,
     // Complete Room Transfer audit trail (F3) — newest first. Audit-only:
     // never feeds current room / rent / occupancy. The open transfer (if any)
     // also appears here AND as `scheduledRoomTransfer` above — same serializer,

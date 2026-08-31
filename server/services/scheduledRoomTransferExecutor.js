@@ -445,13 +445,24 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
   );
 
   try {
-    await notify.general(
+    await notify.roomTransferLifecycleOnce(
       sched.tenantId,
       "Scheduled Room Transfer Cancelled",
       "Your scheduled room transfer has been cancelled. You remain in your current room.",
-      { entityType: "reservation", entityId: String(sched.reservationId) },
+      `room_transfer_cancelled:${String(sched._id)}`,
+      { entityId: String(sched.reservationId), event: "cancelled" },
     );
   } catch { /* non-fatal */ }
+
+  try {
+    const { syncRequestFromScheduledTransfer } = await import("./tenantTransferRequestService.js");
+    await syncRequestFromScheduledTransfer(doc);
+  } catch (error) {
+    logger.warn(
+      { err: error, scheduledTransferId: String(sched._id) },
+      "[cancelScheduledRoomTransfer] tenant request sync failed (non-fatal)",
+    );
+  }
 
   logger.info(
     {
