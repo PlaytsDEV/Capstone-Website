@@ -31,6 +31,9 @@ test("vercel.json contains all 6 required security headers on global route /(.*)
   );
   assert.match(cspHeader.value, /script-src 'self'/, "CSP must contain script-src 'self'");
   assert.doesNotMatch(cspHeader.value, /script-src[^;]*'unsafe-inline'/, "CSP script-src must NOT contain 'unsafe-inline' for Grade A+");
+  assert.match(cspHeader.value, /img-src[^;]*googleusercontent\.com/, "CSP must allow Google avatars in img-src");
+  assert.match(cspHeader.value, /img-src[^;]*firebasestorage\.googleapis\.com/, "CSP must allow Firebase Storage in img-src");
+  assert.doesNotMatch(cspHeader.value, /connect-src[^;]*http:\/\/localhost/, "CSP connect-src must NOT contain unencrypted localhost in production");
   assert.match(cspHeader.value, /frame-src[^;]*google\.com/, "CSP must allow Google Maps frames");
   assert.match(cspHeader.value, /connect-src[^;]*identitytoolkit\.googleapis\.com/, "CSP must allow Firebase auth");
   assert.match(cspHeader.value, /frame-ancestors 'none'/, "CSP must prohibit third-party framing");
