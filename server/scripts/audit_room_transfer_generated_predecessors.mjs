@@ -3,17 +3,24 @@ import "dotenv/config";
 import mongoose from "mongoose";
 import { Contract, Reservation, Stay, User } from "../models/index.js";
 import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
+import {
+  openRoomTransferReadOnlyAudit,
+  parseRoomTransferAuditMode,
+  printRoomTransferAuditMode,
+} from "./roomTransferReadOnlyAuditSafety.mjs";
 
-if (process.argv.some((arg) => ["--apply", "--write", "--fix", "--repair", "--delete"].includes(arg))) {
-  throw new Error("This predecessor audit is read-only.");
-}
-if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
+const mode = parseRoomTransferAuditMode(process.argv.slice(2), { allowApply: false });
+printRoomTransferAuditMode(mode);
 
 const TARGETS = ["joanne ong", "juanito dela cruz", "juanito dela cruzz", "saoirse de dios"];
 const sid = (value) => (value ? String(value) : null);
 const normalizedName = (user) => `${user?.firstName || ""} ${user?.lastName || ""}`.trim().toLowerCase();
 
-await mongoose.connect(process.env.MONGODB_URI);
+const auditConnection = await openRoomTransferReadOnlyAudit({
+  mongoose,
+  models: { Contract, Reservation, Stay, User },
+  apply: false,
+});
 try {
   const users = await User.find({ isArchived: { $ne: true } }).select("firstName lastName email user_id role tenantStatus").lean();
   const targets = users.filter((user) => TARGETS.includes(normalizedName(user)));
@@ -78,5 +85,5 @@ try {
     automaticPublicationPerformed: false,
   }, null, 2)}\n`);
 } finally {
-  await mongoose.disconnect();
+  await auditConnection.close();
 }

@@ -1,27 +1,31 @@
 /**
  * Adriane Handumon Room Transfer forensic reconstruction and narrow repair.
- * DEFAULT: DRY RUN. --apply is accepted only on a write-authorized connection
- * after every proof predicate in the generated report is true.
+ * DEFAULT: DRY RUN. --apply remains explicit but is refused by the production
+ * read-only audit connection path. Repair proof predicates remain preserved for
+ * a separately reviewed future repair procedure.
  */
 import "dotenv/config";
 import mongoose from "mongoose";
 import { Bill, Contract, Payment, Reservation, Room, ScheduledRoomTransfer, Stay, User } from "../models/index.js";
 import { resolveVerifiedSecurityDepositHeld } from "../services/billing/securityDepositEvidenceService.js";
 import { roundMoney, sumBillCharges } from "../services/billing/billingPolicy.js";
+import {
+  openRoomTransferReadOnlyAudit,
+  parseRoomTransferAuditMode,
+  printRoomTransferAuditMode,
+} from "./roomTransferReadOnlyAuditSafety.mjs";
 
-const apply = process.argv.includes("--apply");
-if (process.argv.some((arg) => ["--write", "--fix", "--delete"].includes(arg))) {
-  throw new Error("Use only --apply after reviewing the dry-run report.");
-}
-if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
-if (apply && process.env.RESERVATION_AUDIT_READ_ONLY_AUTHORIZED === "true") {
-  throw new Error("Refusing --apply through the read-only audit profile.");
-}
+const { apply } = parseRoomTransferAuditMode(process.argv.slice(2));
+printRoomTransferAuditMode({ apply });
 
 const sid = (value) => (value ? String(value) : null);
 const SETTLED_PAYMENT_STATUSES = ["approved", "paid", "confirmed"];
 
-await mongoose.connect(process.env.MONGODB_URI);
+const auditConnection = await openRoomTransferReadOnlyAudit({
+  mongoose,
+  models: { Bill, Contract, Payment, Reservation, Room, ScheduledRoomTransfer, Stay, User },
+  apply,
+});
 try {
   const users = await User.find({ firstName: /^Adriane$/i, lastName: /^Handumon$/i }).lean();
   if (users.length !== 1) throw new Error(`Expected exactly one Adriane Handumon user; found ${users.length}.`);
@@ -194,5 +198,5 @@ try {
     paymentsCreatedOrChanged: false,
   }, null, 2)}\n`);
 } finally {
-  await mongoose.disconnect();
+  await auditConnection.close();
 }

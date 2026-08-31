@@ -1,25 +1,29 @@
 /**
  * Room Transfer legacy security-deposit-held backfill.
- * DEFAULT: DRY RUN. Writes require --apply and a write-authorized connection.
+ * DEFAULT: DRY RUN. --apply remains explicit but is refused by the production
+ * read-only audit connection path.
  */
 import "dotenv/config";
 import mongoose from "mongoose";
 import { Reservation, Room, User } from "../models/index.js";
 import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 import { resolveVerifiedSecurityDepositHeld } from "../services/billing/securityDepositEvidenceService.js";
+import {
+  openRoomTransferReadOnlyAudit,
+  parseRoomTransferAuditMode,
+  printRoomTransferAuditMode,
+} from "./roomTransferReadOnlyAuditSafety.mjs";
 
-const apply = process.argv.includes("--apply");
-if (process.argv.some((arg) => ["--write", "--fix", "--repair", "--delete"].includes(arg))) {
-  throw new Error("Use only --apply for the explicitly reviewed backfill.");
-}
-if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
-if (apply && process.env.RESERVATION_AUDIT_READ_ONLY_AUTHORIZED === "true") {
-  throw new Error("Refusing --apply through the read-only audit profile.");
-}
+const { apply } = parseRoomTransferAuditMode(process.argv.slice(2));
+printRoomTransferAuditMode({ apply });
 
 const sid = (value) => (value ? String(value) : null);
 
-await mongoose.connect(process.env.MONGODB_URI);
+const auditConnection = await openRoomTransferReadOnlyAudit({
+  mongoose,
+  models: { Reservation, Room, User },
+  apply,
+});
 try {
   const reservations = await Reservation.find({
     status: CURRENT_RESIDENT_STATUS_QUERY,
@@ -115,5 +119,5 @@ try {
   };
   process.stdout.write(`${JSON.stringify({ dryRun: !apply, generatedAt: new Date().toISOString(), counts, records }, null, 2)}\n`);
 } finally {
-  await mongoose.disconnect();
+  await auditConnection.close();
 }
