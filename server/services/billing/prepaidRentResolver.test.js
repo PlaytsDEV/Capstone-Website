@@ -103,6 +103,22 @@ describe("resolveSourceEffectiveRentForTransfer", () => {
       }),
     ).toEqual({ sourceEffectiveRate: 6300, sourceRateSource: "contract_approved_monthly_rate" });
   });
+
+  test("legacy moved-in tenancy uses the active Stay approved rate when the Contract rate is missing", () => {
+    expect(resolveSourceEffectiveRentForTransfer({
+      reservation: { financialWorkflowVersion: null, monthlyRent: 0 },
+      predecessorContract: { approvedMonthlyRate: null },
+      activeStay: { monthlyRent: 6300 },
+    })).toEqual({ sourceEffectiveRate: 6300, sourceRateSource: "active_stay_approved_monthly_rate" });
+  });
+
+  test("missing current-rate evidence returns unverified instead of silently displaying zero", () => {
+    expect(resolveSourceEffectiveRentForTransfer({
+      reservation: { financialWorkflowVersion: null, monthlyRent: 0 },
+      predecessorContract: { approvedMonthlyRate: null },
+      activeStay: { monthlyRent: null },
+    })).toEqual({ sourceEffectiveRate: 0, sourceRateSource: "unverified" });
+  });
 });
 
 describe("resolveApplicablePrepaidRentForTransfer", () => {

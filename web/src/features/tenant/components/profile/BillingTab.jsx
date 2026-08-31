@@ -219,6 +219,7 @@ const getBillChargeSummary = (bill = {}) => {
 const getStatementPresentation = (bill = {}) => {
   const summary = getBillChargeSummary(bill);
   const isInitial = bill.billType === "initial_payment";
+  const isTransferSettlement = bill.billType === "transfer_settlement";
   const monthText = fmtMonth(bill.billingMonth);
 
   if (isInitial) {
@@ -229,6 +230,17 @@ const getStatementPresentation = (bill = {}) => {
       category: "movein",
       icon: Package,
       dotColor: "#059669",
+    };
+  }
+
+  if (isTransferSettlement) {
+    return {
+      title: "Room Transfer Settlement",
+      badgeType: "type-transfer",
+      badgeLabel: "Transfer",
+      category: "transfer",
+      icon: Receipt,
+      dotColor: "#2563eb",
     };
   }
 
@@ -864,6 +876,7 @@ const StatementLedgerCard = ({
   const summary = getBillChargeSummary(bill);
   const presentation = getStatementPresentation(bill);
   const isInitialPayment = bill.billType === "initial_payment";
+  const isTransferSettlement = bill.billType === "transfer_settlement";
   const initial = bill.initialPaymentBreakdown || {};
 
   const resolvedAdvanceRent = Number(
@@ -1034,7 +1047,9 @@ const StatementLedgerCard = ({
           <div className="statement-card__cycle" style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
             {isInitialPayment
               ? "Advance rent, security deposit, and initial charges"
-              : `Cycle: ${fmtCycle(bill) || "—"}`}
+              : isTransferSettlement
+                ? "Room transfer settlement components"
+                : `Cycle: ${fmtCycle(bill) || "—"}`}
           </div>
           {bill.dueDate && (
             <div style={{ marginTop: 2 }}>
@@ -1102,12 +1117,12 @@ const StatementLedgerCard = ({
       {isOpen && (
         <div className="statement-card__body" style={{ padding: "0 20px 20px", borderTop: "1px solid #f1f5f9" }}>
           {/* Rent Breakdown - ONLY rendered when rent actually exists */}
-          {(summary.hasRentCharges || isInitialPayment) && (
+          {(summary.hasRentCharges || isInitialPayment || isTransferSettlement) && (
             <div className="statement-breakdown-card" style={{ marginTop: 14 }}>
               <div className="statement-breakdown-header">
                 <span className="statement-breakdown-header__title">
                   <Home size={14} color="#0A1628" />
-                  Rental Statement Breakdown
+                  {isTransferSettlement ? "Room Transfer Settlement Breakdown" : "Rental Statement Breakdown"}
                 </span>
                 <span style={{ fontWeight: 700 }}>{fmtMonth(bill.billingMonth)}</span>
               </div>
@@ -1144,6 +1159,33 @@ const StatementLedgerCard = ({
                         -{fmt(resolvedReservationCredit)}
                       </span>
                     </div>
+                  </>
+                ) : isTransferSettlement ? (
+                  <>
+                    <div className="statement-breakdown-row">
+                      <span className="statement-breakdown-label">Rent Adjustment</span>
+                      <span className="statement-breakdown-value">{fmt(Number(charges.rent || 0))}</span>
+                    </div>
+                    <div className="statement-breakdown-row">
+                      <span className="statement-breakdown-label">Security Deposit Top-up</span>
+                      <span className="statement-breakdown-value">{fmt(Number(charges.securityDeposit || 0))}</span>
+                    </div>
+                    <div className="statement-breakdown-row">
+                      <span className="statement-breakdown-label">Finalized Electricity</span>
+                      <span className="statement-breakdown-value">{fmt(Number(charges.electricity || 0))}</span>
+                    </div>
+                    {Number(charges.applianceFees || 0) > 0 && (
+                      <div className="statement-breakdown-row">
+                        <span className="statement-breakdown-label">Transfer-specific Appliance Fees</span>
+                        <span className="statement-breakdown-value">{fmt(charges.applianceFees)}</span>
+                      </div>
+                    )}
+                    {Number(charges.corkageFees || 0) > 0 && (
+                      <div className="statement-breakdown-row">
+                        <span className="statement-breakdown-label">Other Transfer-specific Charges</span>
+                        <span className="statement-breakdown-value">{fmt(charges.corkageFees)}</span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>

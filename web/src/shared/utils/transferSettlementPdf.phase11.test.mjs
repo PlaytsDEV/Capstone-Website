@@ -53,8 +53,8 @@ test("transfer modal passes the canonical preview object into the PDF generator"
   assert.match(transferModal, /transferPreview: preview,/);
   assert.match(transferModal, /currentRent: preview\.rent\?\.sourceEffectiveRate \?\? currentPrice,/);
   assert.match(transferModal, /newRent: preview\.rent\?\.destinationApprovedRate \?\? newPrice,/);
-  // the download button is gated on the preview being present
-  assert.match(transferModal, /disabled=\{pdfLoading \|\| !preview\}/);
+  // A financial estimate requires both a loaded preview and verified held cash.
+  assert.match(transferModal, /disabled=\{pdfLoading \|\| !preview \|\| preview\.deposit\?\.heldKnown === false\}/);
 });
 
 test("transfer modal no longer computes a hand-rolled proration / estimatedTotal", () => {

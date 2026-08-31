@@ -214,11 +214,21 @@ export function buildWarningFlags({
     let overdueElecTotal = 0;
     let overdueWaterTotal = 0;
     let overduePenaltyTotal = 0;
+    let overdueTransferTotal = 0;
+    let overdueTransferBillId = null;
     let latestDueDate = null;
     let latestCycle = null;
     let primaryBillId = null;
 
     overdueBills.forEach(({ bill, snapshot }) => {
+      if (bill?.billType === "transfer_settlement") {
+        overdueTransferTotal += Number(snapshot?.remainingAmount ?? bill?.remainingAmount ?? 0);
+        overdueTransferBillId ||= bill._id;
+        if (!latestDueDate || (bill.dueDate && new Date(bill.dueDate) < new Date(latestDueDate))) {
+          latestDueDate = bill.dueDate;
+        }
+        return;
+      }
       const charges = bill?.charges || {};
       const rentAmt = Number(charges.rent || 0);
       const elecAmt = Number(charges.electricity || 0);
@@ -244,6 +254,24 @@ export function buildWarningFlags({
     });
 
     const overdueDays = latestDueDate ? Math.max(1, Math.round((new Date(now).getTime() - new Date(latestDueDate).getTime()) / (1000 * 60 * 60 * 24))) : null;
+
+    if (overdueTransferTotal > 0) {
+      flags.push({
+        id: `overdue-transfer-${overdueTransferBillId || "overdue"}`,
+        code: "overdue_transfer_settlement",
+        category: "transfer_settlement",
+        billType: "transfer_settlement",
+        severity: WARNING_SEVERITY.error,
+        title: "Room Transfer Settlement",
+        amount: roundMoney(overdueTransferTotal),
+        dueDate: latestDueDate,
+        overdueDays,
+        billId: overdueTransferBillId,
+        message: `Room Transfer Settlement balance of ₱${roundMoney(overdueTransferTotal).toLocaleString()} is overdue.`,
+        details: "This balance belongs to the Room Transfer settlement, not recurring monthly rent.",
+        recommendation: "Review the transfer-specific rent, deposit top-up, and finalized electricity components.",
+      });
+    }
 
     // Overdue Electricity Flag
     if (overdueElecTotal > 0 && supportsSeparateElec) {
@@ -331,7 +359,7 @@ export function buildWarningFlags({
     }
 
     // Fallback if neither rent/elec/water was separated but bill is overdue
-    if (overdueElecTotal === 0 && overdueRentTotal === 0 && overdueWaterTotal === 0 && overduePenaltyTotal === 0) {
+    if (overdueElecTotal === 0 && overdueRentTotal === 0 && overdueWaterTotal === 0 && overduePenaltyTotal === 0 && overdueTransferTotal === 0) {
       flags.push({
         id: "overdue-balance-general",
         code: "overdue_balance",
@@ -353,11 +381,18 @@ export function buildWarningFlags({
     let pendingRentTotal = 0;
     let pendingElecTotal = 0;
     let pendingWaterTotal = 0;
+    let pendingTransferTotal = 0;
+    let pendingTransferBillId = null;
     let nextDueDate = billingSummary?.nextDueDate || null;
     let primaryBillId = null;
     let latestPendingCycle = null;
 
     pendingBills.forEach(({ bill }) => {
+      if (bill?.billType === "transfer_settlement") {
+        pendingTransferTotal += Number(bill?.remainingAmount || 0);
+        pendingTransferBillId ||= bill._id;
+        return;
+      }
       const charges = bill?.charges || {};
       const rentAmt = Number(charges.rent || 0);
       const elecAmt = Number(charges.electricity || 0);
@@ -376,6 +411,23 @@ export function buildWarningFlags({
         };
       }
     });
+
+    if (pendingTransferTotal > 0) {
+      flags.push({
+        id: `outstanding-transfer-${pendingTransferBillId || "pending"}`,
+        code: "outstanding_transfer_settlement",
+        category: "transfer_settlement",
+        billType: "transfer_settlement",
+        severity: WARNING_SEVERITY.warning,
+        title: "Room Transfer Settlement",
+        amount: roundMoney(pendingTransferTotal),
+        dueDate: nextDueDate,
+        billId: pendingTransferBillId,
+        message: `Current Room Transfer Settlement balance: ₱${roundMoney(pendingTransferTotal).toLocaleString()}.`,
+        details: "This balance belongs to the Room Transfer settlement, not recurring monthly rent.",
+        recommendation: "Review the transfer-specific rent, deposit top-up, and finalized electricity components.",
+      });
+    }
 
     if (pendingElecTotal > 0 && supportsSeparateElec) {
       flags.push({
@@ -435,7 +487,7 @@ export function buildWarningFlags({
     }
 
     // General fallback if no specific charge broke down
-    if (pendingElecTotal === 0 && pendingRentTotal === 0 && pendingWaterTotal === 0) {
+    if (pendingElecTotal === 0 && pendingRentTotal === 0 && pendingWaterTotal === 0 && pendingTransferTotal === 0) {
       flags.push({
         id: "outstanding-balance-general",
         code: "outstanding_balance",

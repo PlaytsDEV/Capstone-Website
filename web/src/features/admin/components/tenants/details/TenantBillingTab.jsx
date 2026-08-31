@@ -354,7 +354,7 @@ export default function TenantBillingTab({
                         ? "Excess held stays refundable at move-out clearance. Not auto-refunded."
                         : heldKnown
                           ? "Held in escrow for checkout clearance."
-                          : "This tenancy predates online deposit tracking — held amount is not recorded, but 1 month required deposit carries over automatically upon room transfer."}
+                          : "This tenancy predates online deposit tracking — the held amount is unknown and must be verified from payment/deposit records before completing a room transfer."}
                   </div>
                 </div>
               );

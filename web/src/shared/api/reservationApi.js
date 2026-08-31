@@ -497,7 +497,7 @@ export const reservationApi = {
    * 200 { outcome:"executed" } / 202 { outcome:"awaiting_settlement", bill }
    * / 409 { code:"TRANSFER_SETTLEMENT_UNPAID" }.
    * @param {string} reservationId
-   * @param {{ sourceRoomMeterReading?, targetRoomMeterReading?, notes? }} data
+   * @param {{ sourceRoomMeterReading?, targetRoomMeterReading?, notes?, depositHeldOverride?, depositHeldVerificationConfirmed?, depositVerificationSource?, depositVerificationReason? }} data
    */
   completeRoomTransfer: (reservationId, data = {}) =>
     authFetch(`/reservations/${reservationId}/scheduled-transfer/complete`, {

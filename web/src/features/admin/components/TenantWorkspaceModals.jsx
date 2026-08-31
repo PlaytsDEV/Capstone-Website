@@ -1195,9 +1195,15 @@ export function TransferTenantModal({
               <button
                 type="button"
                 className="twm-settlement-card__download-btn"
-                disabled={pdfLoading || !preview}
+                disabled={pdfLoading || !preview || preview.deposit?.heldKnown === false}
                 onClick={handleDownloadTransferPDF}
-                title={preview ? "Download printable settlement estimate" : "Preview still loading…"}
+                title={
+                  preview?.deposit?.heldKnown === false
+                    ? "Deposit verification is required before a financial estimate can be generated"
+                    : preview
+                      ? "Download printable settlement estimate"
+                      : "Preview still loading…"
+                }
               >
                 <Download size={13} />
                 <span>{pdfLoading ? "Generating..." : "Download Estimate PDF"}</span>
@@ -1277,6 +1283,11 @@ export function TransferTenantModal({
                         {preview.deposit.heldKnown ? fmtMoney(preview.deposit.held) : "Unavailable (legacy record)"}
                       </span>
                     </div>
+                    {!preview.deposit.heldKnown && (
+                      <div className="twm-callout twm-callout--info">
+                        Security deposit held has not been verified. You may schedule this transfer, but deposit verification is required before Complete Transfer.
+                      </div>
+                    )}
                     {preview.deposit.balanceDue > 0 && (
                       <div className="twm-settlement-row">
                         <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
@@ -1333,7 +1344,11 @@ export function TransferTenantModal({
                   {/* ── THE ONE BALANCE FIGURE: rent adjustment + additional deposit only ── */}
                   <div className="twm-settlement-row twm-settlement-row--total">
                     <span className="twm-settlement-row__label">Scheduled Room Transfer Balance</span>
-                    <span className="twm-settlement-row__value">{fmtMoney(preview.totalImmediateDue)}</span>
+                    <span className="twm-settlement-row__value">
+                      {preview.deposit.heldKnown
+                        ? fmtMoney(preview.totalImmediateDue)
+                        : "Calculated after deposit verification at Complete Transfer"}
+                    </span>
                   </div>
                 </div>
                 <p className="twm-settlement-card__note">
@@ -1426,7 +1441,9 @@ export function TransferTenantModal({
                   <span className="twm-settlement-row__label">Security deposit requirement</span>
                   <span className="twm-settlement-row__value">
                     {fmtMoney(preview.deposit.required)}
-                    {preview.deposit.balanceDue > 0
+                    {!preview.deposit.heldKnown
+                      ? " (held amount must be verified before completion)"
+                      : preview.deposit.balanceDue > 0
                       ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
                       : preview.deposit.excessHeld > 0
                         ? ` (${fmtMoney(preview.deposit.excessHeld)} potential excess remains held; Administration Office, 2nd Floor)`

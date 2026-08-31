@@ -1295,6 +1295,10 @@ export const retryScheduledRoomTransferAction = async (req, res, next) => {
         sourceRoomMeterReading: req.body.sourceRoomMeterReading,
         targetRoomMeterReading: req.body.targetRoomMeterReading,
         notes: req.body.notes,
+        depositHeldOverride: req.body.depositHeldOverride,
+        depositHeldVerificationConfirmed: req.body.depositHeldVerificationConfirmed,
+        depositVerificationSource: req.body.depositVerificationSource,
+        depositVerificationReason: req.body.depositVerificationReason,
       },
     });
 
@@ -1406,6 +1410,10 @@ export const rescheduleRoomTransferAction = async (req, res, next) => {
  * @body {number} [sourceRoomMeterReading]  closing kWh of the tenant's current room
  * @body {number} [targetRoomMeterReading]  opening kWh of the destination room
  * @body {string} [notes]
+ * @body {number} [depositHeldOverride] verified held cash; only when canonical evidence is unavailable
+ * @body {boolean} [depositHeldVerificationConfirmed] explicit records-reviewed confirmation
+ * @body {string} [depositVerificationSource] payment/deposit record source reviewed
+ * @body {string} [depositVerificationReason] reason for manual verification
  */
 export const completeRoomTransferAction = async (req, res, next) => {
   try {
@@ -1426,6 +1434,10 @@ export const completeRoomTransferAction = async (req, res, next) => {
         sourceRoomMeterReading: req.body.sourceRoomMeterReading,
         targetRoomMeterReading: req.body.targetRoomMeterReading,
         notes: req.body.notes || "",
+        depositHeldOverride: req.body.depositHeldOverride,
+        depositHeldVerificationConfirmed: req.body.depositHeldVerificationConfirmed,
+        depositVerificationSource: req.body.depositVerificationSource,
+        depositVerificationReason: req.body.depositVerificationReason,
       },
       actorId: actor?._id || null,
     });

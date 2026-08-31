@@ -96,7 +96,7 @@ function bedsFor(type, prefix) {
   }));
 }
 
-async function seed({ sourceType = "quadruple-sharing", roomNumber = "301" } = {}) {
+async function seed({ sourceType = "quadruple-sharing", roomNumber = "301", securityDepositHeld = RATE[sourceType] } = {}) {
   const tenant = await User.create({
     firebaseUid: `fb-${new mongoose.Types.ObjectId()}`, email: `t-${new mongoose.Types.ObjectId()}@ex.test`,
     username: `t_${new mongoose.Types.ObjectId().toString().slice(-10)}`,
@@ -114,7 +114,7 @@ async function seed({ sourceType = "quadruple-sharing", roomNumber = "301" } = {
     reservationFeeAmount: 2000, preferredRoomType: sourceType,
     agreedToPrivacy: true, agreedToCertification: true,
     totalPrice: RATE[sourceType], monthlyRent: RATE[sourceType],
-    selectedBed: { id: srcBedId }, moveInDate: MOVE_IN, securityDepositHeld: RATE[sourceType],
+    selectedBed: { id: srcBedId }, moveInDate: MOVE_IN, securityDepositHeld,
   });
   if (srcBeds.length) { roomA.beds[0].occupiedBy.reservationId = reservation._id; await roomA.save(); }
   const stay = await Stay.create({
@@ -199,6 +199,45 @@ beforeEach(async () => {
 });
 
 describe("scheduleRoomTransfer — private destination", () => {
+  test("unknown held deposit remains null, allows scheduling, and creates no Bill", async () => {
+    const { reservation, actorId } = await seed({
+      sourceType: "quadruple-sharing",
+      roomNumber: "300",
+      securityDepositHeld: null,
+    });
+    const dest = await emptyRoom("private", "204");
+    const { scheduledTransfer, previewSnapshot } = await scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(8) }),
+      actorId,
+    });
+
+    expect(scheduledTransfer.status).toBe("scheduled");
+    expect(previewSnapshot.deposit).toMatchObject({ held: null, heldKnown: false, balanceDue: null });
+    expect(previewSnapshot.totalImmediateDue).toBeNull();
+    expect((await Reservation.findById(reservation._id)).securityDepositHeld).toBeNull();
+    expect(await Bill.countDocuments({ reservationId: reservation._id })).toBe(0);
+  });
+
+  test("generated initial predecessor remains blocked and is never auto-published", async () => {
+    const { reservation, original, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "299" });
+    await Contract.updateOne(
+      { _id: original._id },
+      { $set: { status: "generated", contractPurpose: "initial", finalDocument: null } },
+    );
+    const dest = await emptyRoom("private", "203");
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(7) }),
+      actorId,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" });
+
+    const after = await Contract.findById(original._id);
+    expect(after.status).toBe("generated");
+    expect(after.contractPurpose).toBe("initial");
+    expect(after.isCurrent).toBe(true);
+  });
+
   test("creates a scheduled record, holds one capacity slot, no fake bed, no operational mutation", async () => {
     const { reservation, roomA, stay, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
@@ -258,6 +297,8 @@ describe("scheduleRoomTransfer — private destination", () => {
     expect(addendum.contractPurpose).toBe("amendment");
     expect(addendum.status).toBe("generated");
     expect(addendum.isCurrent).toBe(false);
+    expect(addendum.previousApprovedMonthlyRate).toBe(RATE["quadruple-sharing"]);
+    expect(addendum.approvedMonthlyRate).toBeGreaterThan(0);
   });
 
   test("a second tenant cannot be scheduled into a private room already held", async () => {

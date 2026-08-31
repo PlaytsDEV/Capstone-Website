@@ -75,7 +75,7 @@ function hasApprovedStructuredSnapshot(reservation) {
  * @param {Object} params.predecessorContract - the tenant's current, active source-room Contract.
  * @returns {{sourceEffectiveRate: number, sourceRateSource: string}}
  */
-export function resolveSourceEffectiveRentForTransfer({ reservation, predecessorContract } = {}) {
+export function resolveSourceEffectiveRentForTransfer({ reservation, predecessorContract, activeStay } = {}) {
   // (1) A prior transfer already set the tenant's current effective recurring
   // rent here — this is what rentGenerator.resolveReservationRentAmount bills
   // TODAY, so on a subsequent transfer it is the correct SOURCE rate. Wins
@@ -96,9 +96,30 @@ export function resolveSourceEffectiveRentForTransfer({ reservation, predecessor
       };
     }
   }
+  const contractRate = Number(predecessorContract?.approvedMonthlyRate);
+  if (Number.isFinite(contractRate) && contractRate > 0) {
+    return {
+      sourceEffectiveRate: roundMoney(contractRate),
+      sourceRateSource: "contract_approved_monthly_rate",
+    };
+  }
+  const stayRate = Number(activeStay?.monthlyRent);
+  if (Number.isFinite(stayRate) && stayRate > 0) {
+    return {
+      sourceEffectiveRate: roundMoney(stayRate),
+      sourceRateSource: "active_stay_approved_monthly_rate",
+    };
+  }
+  const reservationRate = Number(reservation?.monthlyRent);
+  if (Number.isFinite(reservationRate) && reservationRate > 0) {
+    return {
+      sourceEffectiveRate: roundMoney(reservationRate),
+      sourceRateSource: "reservation_approved_monthly_rate",
+    };
+  }
   return {
-    sourceEffectiveRate: roundMoney(predecessorContract?.approvedMonthlyRate),
-    sourceRateSource: "contract_approved_monthly_rate",
+    sourceEffectiveRate: 0,
+    sourceRateSource: "unverified",
   };
 }
 

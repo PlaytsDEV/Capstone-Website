@@ -160,6 +160,7 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
       regularMonthlyRate: destinationPricing.regularMonthlyRate,
       discountPercentage: destinationPricing.discountPercentage,
       approvedMonthlyRate: destinationPricing.finalMonthlyRate,
+      previousApprovedMonthlyRate: 6300,
       bedId: needsBed(destType) ? destBed : "",
       amendmentEffectiveDate: new Date("2026-08-15T00:00:00.000Z"),
       leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),

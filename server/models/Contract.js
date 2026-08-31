@@ -205,6 +205,9 @@ const contractSchema = new mongoose.Schema(
     replacementReason: { type: String, default: "", trim: true },
     amendmentReason: { type: String, default: "", trim: true },
     amendmentFields: { type: [String], default: [] },
+    // Room Transfer Addendum audit value: the proven approved monthly rate
+    // immediately before the amended destination rate takes effect.
+    previousApprovedMonthlyRate: { type: Number, default: null, min: 0 },
     // The date the amended terms take effect — for a Room Transfer Addendum
     // this is the transfer effective date. It is DELIBERATELY SEPARATE from
     // leaseStartDate: a room transfer amends the room/rate/bed of the

@@ -425,6 +425,10 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
   const [result, setResult] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(true);
+  const [verifiedDepositHeld, setVerifiedDepositHeld] = useState("");
+  const [depositVerificationSource, setDepositVerificationSource] = useState("");
+  const [depositVerificationReason, setDepositVerificationReason] = useState("");
+  const [depositVerificationConfirmed, setDepositVerificationConfirmed] = useState(false);
 
   // Server-authoritative electricity applicability (audit item 4). Branch rules
   // are NOT duplicated here — we render from these flags.
@@ -457,6 +461,7 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
   const anyMeterInput = sourceSubMetered || destSubMetered;
   const sourcePreviousReading = preview?.electricity?.previousReading ?? null;
   const destCurrentReading = preview?.destinationElectricity?.currentReading ?? null;
+  const needsDepositVerification = preview?.deposit?.heldKnown === false;
 
   const submit = async () => {
     const body = { notes: notes.trim() || undefined };
@@ -481,6 +486,20 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
     if (destSubMetered && targetReading === "") {
       showNotification("Enter the destination room's current electricity reading.", "warning");
       return;
+    }
+    if (needsDepositVerification) {
+      if (verifiedDepositHeld === "" || Number.isNaN(Number(verifiedDepositHeld)) || Number(verifiedDepositHeld) < 0) {
+        showNotification("Enter the verified security deposit currently held.", "warning");
+        return;
+      }
+      if (!depositVerificationConfirmed || depositVerificationSource.trim().length < 3 || depositVerificationReason.trim().length < 3) {
+        showNotification("Confirm the records review and enter its source and reason.", "warning");
+        return;
+      }
+      body.depositHeldOverride = Number(verifiedDepositHeld);
+      body.depositHeldVerificationConfirmed = true;
+      body.depositVerificationSource = depositVerificationSource.trim();
+      body.depositVerificationReason = depositVerificationReason.trim();
     }
     setBusy(true);
     try {
@@ -587,6 +606,30 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
               onChange={(e) => setTargetReading(e.target.value)}
               placeholder="Meter reading now, in the NEW room"
             />
+          </div>
+        ) : null}
+
+        {needsDepositVerification ? (
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3 space-y-2">
+            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+              Security deposit held has not been verified. Completion remains blocked until you verify the cash held against payment/deposit records.
+            </p>
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium">Verified Security Deposit Currently Held (₱)</span>
+              <input type="number" min="0" inputMode="decimal" className={fieldCls} value={verifiedDepositHeld} onChange={(e) => setVerifiedDepositHeld(e.target.value)} />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium">Payment/deposit record source</span>
+              <input type="text" className={fieldCls} value={depositVerificationSource} onChange={(e) => setDepositVerificationSource(e.target.value)} placeholder="e.g. paid initial Bill and receipt IDs" />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium">Verification reason / notes</span>
+              <input type="text" className={fieldCls} value={depositVerificationReason} onChange={(e) => setDepositVerificationReason(e.target.value)} />
+            </label>
+            <label className="flex items-start gap-2 text-[11px] font-medium">
+              <input type="checkbox" checked={depositVerificationConfirmed} onChange={(e) => setDepositVerificationConfirmed(e.target.checked)} />
+              <span>I verified this amount against the tenant&apos;s payment/deposit records.</span>
+            </label>
           </div>
         ) : null}
 

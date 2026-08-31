@@ -44,6 +44,7 @@ import { readMoveOutDate } from "../utils/lifecycleNaming.js";
 import { computeLeaseEndDate } from "../utils/tenantWorkspace.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 import { sumBillCharges, syncBillAmounts } from "./billing/billingPolicy.js";
+import { resolveVerifiedSecurityDepositHeld } from "./billing/securityDepositEvidenceService.js";
 import {
   resolveValidatedRoomTransferIntent,
   prepareRoomTransferAddendum,
@@ -52,6 +53,133 @@ import {
 } from "../utils/tenantActionService.js";
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+export async function verifyCompletionDepositHeld({ reservation, record, payload, actorId }) {
+  const evidence = await resolveVerifiedSecurityDepositHeld({ reservation });
+  const canonicalWasUnknown =
+    reservation.securityDepositHeld === null ||
+    reservation.securityDepositHeld === undefined ||
+    !Number.isFinite(Number(reservation.securityDepositHeld));
+  const overrideProvided = payload.depositHeldOverride !== null && payload.depositHeldOverride !== undefined;
+
+  if (evidence.heldKnown) {
+    if (overrideProvided) {
+      throw err(
+        "A verified canonical security deposit is already recorded; a manual override is not allowed.",
+        409,
+        "ROOM_TRANSFER_DEPOSIT_OVERRIDE_NOT_ALLOWED",
+      );
+    }
+    if (canonicalWasUnknown) {
+      const amount = roundMoney(evidence.amount);
+      const idempotencyKey = `room_transfer_deposit_evidence:${String(record._id)}`;
+      await Reservation.updateOne(
+        {
+          _id: reservation._id,
+          $or: [
+            { securityDepositHeld: null },
+            { securityDepositHeld: { $exists: false } },
+          ],
+          "securityDepositLedger.idempotencyKey": { $ne: idempotencyKey },
+        },
+        {
+          $set: { securityDepositHeld: amount },
+          $push: {
+            securityDepositLedger: {
+              kind: "backfill",
+              previousHeld: null,
+              adjustmentAmount: amount,
+              resultingHeld: amount,
+              sourceRef: {
+                kind: evidence.evidenceSourceRef?.kind || (evidence.billIds?.[0] ? "bill" : "payment"),
+                id: evidence.evidenceSourceRef?.id || evidence.billIds?.[0] || evidence.paymentIds?.[0] || null,
+              },
+              scheduledRoomTransferId: record._id,
+              billId: evidence.billIds?.[0] || null,
+              paymentId: evidence.paymentIds?.[0] || null,
+              idempotencyKey,
+              reason: `Verified from ${evidence.source} before Room Transfer completion.`,
+              createdBy: actorId || null,
+              createdAt: new Date(),
+            },
+          },
+        },
+      );
+    }
+    return roundMoney(evidence.amount);
+  }
+
+  if (!overrideProvided) {
+    throw err(
+      "Verify the tenant's recorded security deposit through payment/deposit records before completing the transfer.",
+      409,
+      "ROOM_TRANSFER_DEPOSIT_HELD_UNVERIFIED",
+    );
+  }
+  const amount = Number(payload.depositHeldOverride);
+  const source = String(payload.depositVerificationSource || "").trim();
+  const reason = String(payload.depositVerificationReason || "").trim();
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw err("Enter a valid verified security deposit amount.", 400, "ROOM_TRANSFER_DEPOSIT_OVERRIDE_INVALID");
+  }
+  if (payload.depositHeldVerificationConfirmed !== true) {
+    throw err(
+      "Confirm that the amount was verified against the tenant's payment/deposit records.",
+      400,
+      "ROOM_TRANSFER_DEPOSIT_OVERRIDE_CONFIRMATION_REQUIRED",
+    );
+  }
+  if (!actorId || source.length < 3 || reason.length < 3) {
+    throw err(
+      "A verification source, reason, and authenticated admin are required for a deposit override.",
+      400,
+      "ROOM_TRANSFER_DEPOSIT_OVERRIDE_AUDIT_REQUIRED",
+    );
+  }
+
+  const verifiedAmount = roundMoney(amount);
+  const idempotencyKey = `room_transfer_deposit_manual_verification:${String(record._id)}`;
+  const updated = await Reservation.findOneAndUpdate(
+    {
+      _id: reservation._id,
+      $or: [
+        { securityDepositHeld: null },
+        { securityDepositHeld: { $exists: false } },
+      ],
+      "securityDepositLedger.idempotencyKey": { $ne: idempotencyKey },
+    },
+    {
+      $set: { securityDepositHeld: verifiedAmount },
+      $push: {
+        securityDepositLedger: {
+          kind: "manual_correction",
+          previousHeld: null,
+          adjustmentAmount: verifiedAmount,
+          resultingHeld: verifiedAmount,
+          sourceRef: { kind: "scheduled_room_transfer", id: record._id },
+          scheduledRoomTransferId: record._id,
+          idempotencyKey,
+          reason: `Admin-verified held deposit. Source: ${source}. Reason: ${reason}`,
+          createdBy: actorId,
+          createdAt: new Date(),
+        },
+      },
+    },
+    { new: true },
+  );
+  if (updated) return verifiedAmount;
+
+  const concurrentlyUpdated = await Reservation.findById(reservation._id).lean();
+  const concurrentEvidence = await resolveVerifiedSecurityDepositHeld({ reservation: concurrentlyUpdated });
+  if (concurrentEvidence.heldKnown && roundMoney(concurrentEvidence.amount) === verifiedAmount) {
+    return verifiedAmount;
+  }
+  throw err(
+    "The recorded security deposit changed while this transfer was being reviewed. Refresh and verify the canonical value.",
+    409,
+    "ROOM_TRANSFER_DEPOSIT_VERIFICATION_CONFLICT",
+  );
+}
 
 const MANUAL_FINANCIAL_GUIDANCE =
   "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.";
@@ -1193,7 +1321,12 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
   // held amount as it stood BEFORE that funding — otherwise a paid deposit
   // component reads as "the destination requirement dropped" and the whole
   // settlement looks lower than the (correct) Bill.
-  let depositHeldOverride = null;
+  let depositHeldOverride = await verifyCompletionDepositHeld({
+    reservation,
+    record,
+    payload,
+    actorId,
+  });
   if (record.settlementBillId) {
     const freshReservation = await Reservation.findById(reservationId)
       .select("securityDepositLedger")
@@ -1218,6 +1351,7 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     asOfCutoverDate: actualCutoverDay,                   // authoritative billing boundary
     depositHeldOverride: depositHeldOverride ?? undefined,
     destinationApprovedRateOverride: transferAddendum?.approvedMonthlyRate,
+    requireVerifiedDeposit: true,
   });
   if (!preview) {
     throw err("The transfer settlement could not be computed. Review the tenant's billing/lease state.", 409, "OPERATIONAL_VALIDATION_FAILED");
