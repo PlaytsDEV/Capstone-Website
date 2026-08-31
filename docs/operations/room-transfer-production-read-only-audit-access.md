@@ -78,3 +78,22 @@ node scripts/audit_room_transfer_generated_predecessors.mjs
 ```
 
 Do not pass `--apply` during production validation.
+
+## Deferred, non-blocking OPS follow-ups
+
+Production validation is intentionally deferred until the approved read-only
+access path exists. This does not block application-code review because Room
+Transfer fails closed when legacy deposit or current-rent evidence cannot be
+proved.
+
+The following remain separate operator-approved tasks and are not application
+startup, scheduler, deployment, or migration steps:
+
+1. Audit production evidence for `securityDepositHeld`.
+2. Plan and approve any safe legacy deposit backfill.
+3. Reconcile Adriane's Room Transfer financial chronology.
+4. Audit generated-initial Contract finalization eligibility.
+5. Optionally sample production current-rent source resolution.
+
+No production repair, Contract publication, refund, rent credit, or data
+mutation is authorized by this document.

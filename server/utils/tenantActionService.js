@@ -2222,10 +2222,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // Canonical required deposit = 1x the destination room's approved monthly
       // rate (successorContract.approvedMonthlyRate — the same rule move-in
       // uses via structuredInitialPaymentPolicy / depositUtils). "Held" is the
-      // ACTUAL deposit cash: reservation.securityDepositHeld, initialised here
-      // from the tenant's move-in financials when it has never been populated
-      // (legacy records) — deterministically, from the same resolver move-in
-      // used, NOT fabricated from "the Contract said a deposit was required".
+      // ACTUAL deposit cash: reservation.securityDepositHeld or independently
+      // verified payment/deposit evidence. Evidence may drive settlement, but
+      // Completion never writes it back as an implicit legacy-data backfill.
       const destinationRequiredDeposit = roundMoney(Number(successorContract.approvedMonthlyRate) || 0);
       // Scheduled transfer: if the pre-paid Scheduled Transfer Balance Bill
       // already funded securityDepositHeld (Phase 2F), the ADDITIONAL deposit
@@ -2257,7 +2256,6 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             : verifiedDepositEvidence?.heldKnown
               ? Number(verifiedDepositEvidence.amount)
               : null;
-      let heldWasBackfilled = Boolean(!isExplicitHeld && verifiedDepositEvidence?.heldKnown);
       if (!Number.isFinite(depositCurrentlyHeld)) {
         throw Object.assign(
           new Error("The tenant's actual security deposit held cannot be verified. Review payment/deposit records before transferring."),
@@ -2477,7 +2475,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           additionalDepositDue: depositSettlement.additionalDepositDue,
           excessDepositHeld: depositSettlement.excessDepositHeld,
           depositHeldAfterTransferBeforePayment: depositSettlement.depositHeldAfterTransferBeforePayment,
-          depositHeldWasBackfilled: heldWasBackfilled,
+          depositHeldWasBackfilled: false,
           rentComponentDue,
           depositComponentDue,
           totalImmediateDue: transferSettlementTotal,
@@ -2573,7 +2571,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               additionalDepositDue: depositSettlement.additionalDepositDue,
               excessDepositHeld: depositSettlement.excessDepositHeld,
               depositHeldAfterTransferBeforePayment: depositSettlement.depositHeldAfterTransferBeforePayment,
-              depositHeldWasBackfilled: heldWasBackfilled,
+              depositHeldWasBackfilled: false,
               // ── FINAL settlement components ─────────────────────────────
               rentComponentDue,
               depositComponentDue,
@@ -2638,28 +2636,12 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const heldBefore = hasResHeld
         ? roundMoney(Number(rawResHeld))
         : roundMoney(depositCurrentlyHeld);
-      reservation.securityDepositHeld = heldBefore;
+      // Completion may use verified financial evidence, but it must not turn
+      // that read into an implicit legacy-data backfill. An explicit Admin
+      // verification has already populated the canonical field before this
+      // workflow, so only an existing canonical value is preserved here.
+      if (hasResHeld) reservation.securityDepositHeld = heldBefore;
       reservation.securityDepositLedger = reservation.securityDepositLedger || [];
-      if (heldWasBackfilled) {
-        const evidenceLedgerKey = `room_transfer_deposit_evidence:${String(predecessorContract._id)}`;
-        if (!reservation.securityDepositLedger.some((e) => e.idempotencyKey === evidenceLedgerKey)) {
-          reservation.securityDepositLedger.push({
-            kind: "backfill",
-            previousHeld: null,
-            adjustmentAmount: heldBefore,
-            resultingHeld: heldBefore,
-            sourceRef: {
-              kind: verifiedDepositEvidence?.evidenceSourceRef?.kind || (verifiedDepositEvidence?.billIds?.[0] ? "bill" : "payment"),
-              id: verifiedDepositEvidence?.evidenceSourceRef?.id || verifiedDepositEvidence?.billIds?.[0] || verifiedDepositEvidence?.paymentIds?.[0] || null,
-            },
-            billId: verifiedDepositEvidence?.billIds?.[0] || null,
-            paymentId: verifiedDepositEvidence?.paymentIds?.[0] || null,
-            idempotencyKey: evidenceLedgerKey,
-            reason: `Verified from ${verifiedDepositEvidence?.source || "canonical deposit evidence"} before Room Transfer cutover.`,
-            createdBy: actorId,
-          });
-        }
-      }
       const depositLedgerKey = `room_transfer_adjustment_due:${String(predecessorContract._id)}`;
       if (!reservation.securityDepositLedger.some((e) => e.idempotencyKey === depositLedgerKey)) {
         reservation.securityDepositLedger.push({

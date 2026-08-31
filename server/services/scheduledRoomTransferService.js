@@ -56,10 +56,6 @@ const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 export async function verifyCompletionDepositHeld({ reservation, record, payload, actorId }) {
   const evidence = await resolveVerifiedSecurityDepositHeld({ reservation });
-  const canonicalWasUnknown =
-    reservation.securityDepositHeld === null ||
-    reservation.securityDepositHeld === undefined ||
-    !Number.isFinite(Number(reservation.securityDepositHeld));
   const overrideProvided = payload.depositHeldOverride !== null && payload.depositHeldOverride !== undefined;
 
   if (evidence.heldKnown) {
@@ -70,42 +66,9 @@ export async function verifyCompletionDepositHeld({ reservation, record, payload
         "ROOM_TRANSFER_DEPOSIT_OVERRIDE_NOT_ALLOWED",
       );
     }
-    if (canonicalWasUnknown) {
-      const amount = roundMoney(evidence.amount);
-      const idempotencyKey = `room_transfer_deposit_evidence:${String(record._id)}`;
-      await Reservation.updateOne(
-        {
-          _id: reservation._id,
-          $or: [
-            { securityDepositHeld: null },
-            { securityDepositHeld: { $exists: false } },
-          ],
-          "securityDepositLedger.idempotencyKey": { $ne: idempotencyKey },
-        },
-        {
-          $set: { securityDepositHeld: amount },
-          $push: {
-            securityDepositLedger: {
-              kind: "backfill",
-              previousHeld: null,
-              adjustmentAmount: amount,
-              resultingHeld: amount,
-              sourceRef: {
-                kind: evidence.evidenceSourceRef?.kind || (evidence.billIds?.[0] ? "bill" : "payment"),
-                id: evidence.evidenceSourceRef?.id || evidence.billIds?.[0] || evidence.paymentIds?.[0] || null,
-              },
-              scheduledRoomTransferId: record._id,
-              billId: evidence.billIds?.[0] || null,
-              paymentId: evidence.paymentIds?.[0] || null,
-              idempotencyKey,
-              reason: `Verified from ${evidence.source} before Room Transfer completion.`,
-              createdBy: actorId || null,
-              createdAt: new Date(),
-            },
-          },
-        },
-      );
-    }
+    // Verified financial evidence may authorize this Completion calculation,
+    // but it is not a data-cleanup authorization. Leave a legacy null field
+    // untouched; only the explicit audited Admin path below may populate it.
     return roundMoney(evidence.amount);
   }
 
