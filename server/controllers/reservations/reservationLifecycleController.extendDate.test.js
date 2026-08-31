@@ -46,6 +46,7 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
   },
+  ScheduledRoomTransfer: { findOne: jest.fn(), updateOne: jest.fn() },
   BedHistory: {},
   Stay: {},
   Contract: {},
