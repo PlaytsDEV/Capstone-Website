@@ -42,10 +42,10 @@ export function ContactFooter() {
         borderTop: '1px solid var(--lp-border)',
       }}
     >
-      <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
+      <div className="max-w-screen-2xl mx-auto px-6 sm:px-8 lg:px-12">
         <h2 className="sr-only">Contact and Site Navigation</h2>
         {/* Main content */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6">
           {/* Brand + Social */}
           <div>
             <h3
@@ -118,7 +118,7 @@ export function ContactFooter() {
                       e.preventDefault();
                       smoothScrollTo(link.id, 80);
                     }}
-                    className="text-sm font-light transition-colors cursor-pointer"
+                    className="inline-block py-1 text-sm font-light transition-colors cursor-pointer"
                     style={{ color: 'var(--lp-text-secondary)' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
@@ -143,7 +143,7 @@ export function ContactFooter() {
                 <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
                   Gil Puyat
                 </p>
-                <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
+                <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
                   Lilycrest Gil Puyat, Sen. Gil J. Puyat Ave, Makati City, Metro Manila
                 </p>
               </li>
@@ -151,7 +151,7 @@ export function ContactFooter() {
                 <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
                   Guadalupe
                 </p>
-                <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
+                <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
                   1212, 9431 Magallanes, Makati, 1212 Kalakhang Maynila
                 </p>
               </li>
@@ -167,7 +167,7 @@ export function ContactFooter() {
               Get in Touch
             </h3>
             <ul className="space-y-2">
-              <li className="flex items-center gap-2.5">
+              <li className="flex items-center gap-2.5 min-h-[32px]">
                 <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <a
                   href="mailto:lilycrestadmin@gmail.com"
@@ -179,7 +179,7 @@ export function ContactFooter() {
                   lilycrestadmin@gmail.com
                 </a>
               </li>
-              <li className="flex items-center gap-2.5">
+              <li className="flex items-center gap-2.5 min-h-[32px]">
                 <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <a
                   href="tel:+639123456789"
@@ -191,7 +191,7 @@ export function ContactFooter() {
                   +63 912 345 6789
                 </a>
               </li>
-              <li className="flex items-center gap-2.5">
+              <li className="flex items-center gap-2.5 min-h-[32px]">
                 <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                 <span className="text-sm font-light" style={{ color: 'var(--lp-text-secondary)' }}>
                   Manila, Philippines
@@ -202,15 +202,21 @@ export function ContactFooter() {
         </div>
 
         {/* Bottom */}
-        <div className="pt-4" style={{ borderTop: '1px solid var(--lp-border)' }}>
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-light" style={{ color: 'var(--lp-text-secondary)' }}>
+        <div
+          className="pt-4"
+          style={{
+            borderTop: '1px solid var(--lp-border)',
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <p className="text-xs font-light text-center sm:text-left" style={{ color: 'var(--lp-text-secondary)' }}>
               © {new Date().getFullYear()} Lilycrest. All rights reserved.
             </p>
             <div className="flex gap-6">
               <Link
                 to="/privacy-policy"
-                className="text-xs font-light transition-colors"
+                className="text-xs font-light transition-colors py-1"
                 style={{ color: 'var(--lp-text-secondary)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
@@ -219,7 +225,7 @@ export function ContactFooter() {
               </Link>
               <Link
                 to="/terms-of-service"
-                className="text-xs font-light transition-colors"
+                className="text-xs font-light transition-colors py-1"
                 style={{ color: 'var(--lp-text-secondary)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}

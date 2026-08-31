@@ -92,7 +92,7 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     <button
       onClick={handleClick}
       onAnimationEnd={() => setIsGlowing(false)}
-      className={`theme-toggle-btn hidden md:flex items-center justify-center ${isGlowing ? "theme-toggle--glow" : ""}`}
+      className={`theme-toggle-btn hidden lg:flex items-center justify-center ${isGlowing ? "theme-toggle--glow" : ""}`}
       aria-label="Toggle theme"
       style={btnStyles}
       onMouseEnter={(e) => {

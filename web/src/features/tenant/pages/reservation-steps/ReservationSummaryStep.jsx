@@ -861,7 +861,7 @@ const ReservationSummaryStep = ({
             <button
               type="button"
               onClick={onNext}
-              className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 shrink-0"
+              className="w-full sm:w-auto min-w-[180px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 shrink-0"
             >
               <span>Continue</span>
               <ArrowRight size={16} />
@@ -879,7 +879,7 @@ const ReservationSummaryStep = ({
                     onChangeRoom();
                   }
                 }}
-                className="group w-full sm:w-auto h-11 px-5 rounded-xl font-semibold text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                className="group w-full sm:w-auto min-h-[48px] h-12 px-5 rounded-xl font-semibold text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                 title="Change your selected room"
               >
                 <ArrowLeft size={15} className="text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 transition-colors" />
@@ -890,7 +890,7 @@ const ReservationSummaryStep = ({
             <button
               type="button"
               onClick={handleConfirmAndContinue}
-              className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              className="w-full sm:w-auto min-w-[200px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
               title="Confirm room selection and proceed to next step"
             >
               <span>Confirm & Continue</span>

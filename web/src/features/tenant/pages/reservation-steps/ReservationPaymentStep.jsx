@@ -483,7 +483,7 @@ const ReservationPaymentStep = ({
           <button
             type="button"
             onClick={onPrev}
-            className="w-full sm:w-auto h-11 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto min-h-[48px] h-12 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
           >
             <ArrowLeft size={14} />
             <span>Back to Application</span>
