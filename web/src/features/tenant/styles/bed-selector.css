@@ -108,6 +108,10 @@
 .bs-bed {
   border-radius: 8px;
   padding: 10px 12px;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   transition: background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
@@ -125,6 +129,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
 }
 
 .bs-bed-left {

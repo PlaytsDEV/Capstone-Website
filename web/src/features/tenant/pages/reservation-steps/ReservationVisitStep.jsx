@@ -1366,7 +1366,7 @@ const ReservationVisitStep = ({
           <div className="col-span-1 lg:col-span-12 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-6 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
-              className="w-full sm:w-auto h-11 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+              className="w-full sm:w-auto min-h-[48px] h-12 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
               onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}
             >
               <ArrowLeft size={14} />
@@ -1375,7 +1375,7 @@ const ReservationVisitStep = ({
 
             <button
               type="button"
-              className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              className="w-full sm:w-auto min-w-[180px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
               onClick={handleContinueValidation}
               disabled={isSaving || !canSubmitViewingPreference}
             >

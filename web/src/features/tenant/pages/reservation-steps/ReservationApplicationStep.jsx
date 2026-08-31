@@ -738,7 +738,7 @@ const ReservationApplicationStep = ({
           <button
             type="button"
             onClick={onPrev}
-            className="w-full sm:w-auto h-11 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto min-h-[48px] h-12 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
           >
             <ArrowLeft size={14} />
             <span>Previous Step</span>
@@ -751,7 +751,7 @@ const ReservationApplicationStep = ({
           <button
             type="button"
             onClick={onNext}
-            className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
+            className="w-full sm:w-auto min-w-[200px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
           >
             <span>{paymentApproved ? "View Reservation" : "Proceed to Payment"}</span>
             <ArrowRight size={16} />
@@ -760,7 +760,7 @@ const ReservationApplicationStep = ({
           <button
             type="button"
             onClick={onEditApplication}
-            className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
+            className="w-full sm:w-auto min-w-[180px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
           >
             <span>Edit Application</span>
           </button>
@@ -769,7 +769,7 @@ const ReservationApplicationStep = ({
             type="button"
             onClick={onNext}
             disabled={submitDisabled || isSubmittingApplication}
-            className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2"
+            className="w-full sm:w-auto min-w-[200px] min-h-[48px] h-12 px-6 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2"
           >
             <span>{applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}</span>
             <ArrowRight size={16} />

@@ -52,22 +52,16 @@ export function PublicChatbotLauncher() {
       (entries) => {
         const entry = entries[0];
         if (entry && entry.isIntersecting) {
-          const visibleHeight = entry.intersectionRect.height;
-          setBottomOffset(Math.max(24, Math.round(visibleHeight + 24)));
+          setBottomOffset(24);
         } else {
           setBottomOffset(24);
         }
       },
-      {
-        threshold: [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0],
-      }
+      { threshold: [0, 0.5, 1.0] }
     );
 
     observer.observe(footer);
-
-    return () => {
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, [location.pathname]);
 
   // Listen for custom event from other public sections (e.g., FAQ accordion)
@@ -185,7 +179,7 @@ export function PublicChatbotLauncher() {
       {/* Floating Launcher Container */}
       <div
         className="fixed z-[990] flex items-center gap-3 select-none pointer-events-none"
-        style={{ bottom: `${bottomOffset}px`, right: "24px" }}
+        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, right: "24px" }}
       >
         {/* Floating Attention Pill / Tooltip (pure fade on hover, perfectly centered) */}
         {!isOpen && (

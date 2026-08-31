@@ -1,6 +1,7 @@
 import { Menu, User, X } from "lucide-react";
 import { RippleButton } from "../../../registry/magicui/ripple-button";
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
@@ -68,6 +69,17 @@ export function Navigation({ type } = {}) {
 
     return () => observers.forEach((obs) => obs.disconnect());
   }, []);
+
+  // Escape key handler to close mobile menu
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isMenuOpen) {
+        setIsMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMenuOpen]);
 
   useBodyScrollLock(isMenuOpen);
 
@@ -143,8 +155,9 @@ export function Navigation({ type } = {}) {
   };
 
   return (
-    <nav
-      className="fixed top-0 left-0 right-0 z-50"
+    <>
+      <nav
+        className="fixed top-0 left-0 right-0 z-50"
       style={{
         backgroundColor: isScrolled
           ? "var(--lp-bg)"
@@ -160,7 +173,7 @@ export function Navigation({ type } = {}) {
       }}
     >
       <div
-        className="max-w-screen-2xl mx-auto px-8 lg:px-12"
+        className="max-w-screen-2xl mx-auto px-4 sm:px-8 lg:px-12"
         style={{
           paddingTop: isScrolled ? "18px" : "24px",
           paddingBottom: isScrolled ? "18px" : "24px",
@@ -194,13 +207,15 @@ export function Navigation({ type } = {}) {
             </Link>
             {/* Theme Toggle — desktop only */}
             {type === "landing" && (
-              <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
+              <div className="hidden lg:flex items-center">
+                <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
+              </div>
             )}
           </div>
 
-          {/* Desktop Nav Links — absolutely centered */}
+          {/* Desktop Nav Links — absolutely centered on lg/xl with responsive gap */}
           <div
-            className="hidden md:flex items-center gap-2"
+            className="hidden lg:flex items-center gap-1 xl:gap-2"
             style={{
               position: "absolute",
               left: "50%",
@@ -257,14 +272,14 @@ export function Navigation({ type } = {}) {
             })}
           </div>
 
-          {/* Right Side: Sign In + Book Now + Mobile hamburger */}
+          {/* Right Side: Sign In + Book Now + Mobile/Tablet hamburger */}
           <div className="flex items-center gap-3 ml-auto">
             {!loading && (
               <>
                 {isAuthenticated ? (
                   <Link
                     to={profileUrl}
-                    className="hidden md:flex items-center justify-center no-underline cursor-pointer"
+                    className="hidden lg:flex items-center justify-center no-underline cursor-pointer"
                     style={{
                       width: "36px",
                       height: "36px",
@@ -300,7 +315,7 @@ export function Navigation({ type } = {}) {
                   /* Not logged in: ghost-button Sign In */
                   <Link
                     to="/signin"
-                    className="hidden md:inline-flex items-center justify-center no-underline cursor-pointer"
+                    className="hidden lg:inline-flex items-center justify-center no-underline cursor-pointer"
                     style={ghostBtnStyle}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = ghostBgHover;
@@ -328,7 +343,7 @@ export function Navigation({ type } = {}) {
             )}
             <Link
               to="/applicant/check-availability"
-              className="hidden md:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
+              className="hidden lg:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
               style={{
                 color: "white",
                 backgroundColor: "var(--lp-accent)",
@@ -351,8 +366,12 @@ export function Navigation({ type } = {}) {
               Book Now
             </Link>
             <button
-              className="md:hidden bg-transparent border-none cursor-pointer"
-              style={{ color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)") }}
+              className="lg:hidden bg-transparent border-none cursor-pointer min-w-[48px] min-h-[48px] flex items-center justify-center p-2 rounded-lg"
+              style={{
+                color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                minWidth: "48px",
+                minHeight: "48px",
+              }}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-expanded={isMenuOpen}
               aria-label={isMenuOpen ? "Close menu" : "Open menu"}
@@ -361,143 +380,202 @@ export function Navigation({ type } = {}) {
             </button>
           </div>
         </div>
+      </div>
+    </nav>
 
-        {/* Mobile Menu */}
-        {isMenuOpen && (
-          <div
-            className="md:hidden mt-4 backdrop-blur-lg rounded-2xl p-6"
-            style={{
-              backgroundColor: isScrolled
-                ? "var(--lp-bg-card)"
-                : (isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)"),
-              border: isScrolled
-                ? "1px solid var(--lp-border)"
-                : (isDark ? "none" : "1px solid rgba(10,22,40,0.12)"),
-            }}
-          >
-            {/* Nav links with stagger animation */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              {navLinks.map((link, index) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className="block font-light transition-colors no-underline cursor-pointer"
-                  onClick={(e) => {
-                    setIsMenuOpen(false);
-                    handleNavClick(e, link.id);
-                  }}
-                  style={{
-                    color: activeSection === link.id
-                      ? "var(--lp-accent-text)"
-                      : (isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)")),
-                    fontWeight: activeSection === link.id ? "500" : "300",
-                    padding: "12px 0",
-                    animation: `navFadeIn 0.3s ease forwards`,
-                    animationDelay: `${index * 60}ms`,
-                    opacity: 0,
-                  }}
-                >
-                  {link.label}
-                </a>
-              ))}
-            </div>
-
-            {/* Divider */}
+      {/* Mobile / Tablet Backdrop & Right Slide-Over Sheet via Portal directly on document.body */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <>
+            {/* Backdrop Overlay */}
             <div
+              className={`lg:hidden fixed inset-0 transition-opacity duration-300 ${
+                isMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+              }`}
               style={{
-                height: "1px",
-                backgroundColor: isScrolled ? "var(--lp-border)" : "rgba(255,255,255,0.15)",
-                margin: "12px 0",
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: "100vw",
+                height: "100vh",
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                backdropFilter: "blur(4px)",
+                WebkitBackdropFilter: "blur(4px)",
+                zIndex: 99998,
               }}
+              onClick={() => setIsMenuOpen(false)}
+              aria-hidden="true"
             />
 
-            {/* Action buttons — side by side */}
+            {/* Slide-Over Drawer */}
             <div
+              className="lg:hidden flex flex-col transition-transform duration-300 ease-out"
               style={{
-                display: "flex",
-                gap: "10px",
-                animation: "navFadeIn 0.3s ease forwards",
-                animationDelay: `${navLinks.length * 60}ms`,
-                opacity: 0,
+                position: "fixed",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: "100%",
+                maxWidth: "340px",
+                height: "100dvh",
+                backgroundColor: isDark ? "var(--lp-bg-card, #111C31)" : "#ffffff",
+                color: isDark ? "#F8FAFC" : "var(--lp-navy, #0A1628)",
+                borderLeft: isDark
+                  ? "1px solid var(--lp-border, #27334A)"
+                  : "1px solid rgba(10,22,40,0.12)",
+                boxShadow: isDark
+                  ? "-8px 0 32px rgba(0, 0, 0, 0.6)"
+                  : "-8px 0 32px rgba(10, 22, 40, 0.15)",
+                transform: isMenuOpen ? "translateX(0)" : "translateX(100%)",
+                padding: "24px",
+                paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+                overflowY: "auto",
+                zIndex: 99999,
               }}
+              aria-hidden={!isMenuOpen}
             >
-              {!loading &&
-                (isAuthenticated ? (
-                  <Link
-                    to={profileUrl}
-                    className="flex items-center justify-center gap-2 no-underline capitalize"
-                    onClick={() => setIsMenuOpen(false)}
-                    style={{
-                      flex: 1,
-                      color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                      padding: "14px 0",
-                      fontWeight: "500",
-                      fontSize: "15px",
-                      borderRadius: "12px",
-                      border: ghostBorderRest,
-                      textAlign: "center",
-                    }}
-                  >
-                    <User className="w-4 h-4" />
-                    {displayName}
-                  </Link>
-                ) : (
-                  <Link
-                    to="/signin"
-                    className="no-underline"
-                    onClick={() => setIsMenuOpen(false)}
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                      fontSize: "15px",
-                      fontWeight: "500",
-                      padding: "14px 0",
-                      borderRadius: "12px",
-                      border: ghostBorderRest,
-                      backgroundColor: "transparent",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    Sign In
-                  </Link>
-                ))}
-              <Link
-                to="/applicant/check-availability"
-                className="no-underline flex items-center justify-center rounded-full text-center cursor-pointer transition-all"
-                onClick={() => setIsMenuOpen(false)}
+              {/* Drawer Header */}
+              <div
+                className="flex items-center justify-between pb-4 mb-2 flex-shrink-0"
                 style={{
-                  flex: 1,
-                  color: "white",
-                  backgroundColor: "var(--lp-accent)",
-                  fontWeight: "500",
-                  fontSize: "15px",
-                  padding: "14px 0",
+                  borderBottom: isDark
+                    ? "1px solid var(--lp-border, #27334A)"
+                    : "1px solid rgba(10,22,40,0.1)",
                 }}
               >
-                Book Now
-              </Link>
-            </div>
-          </div>
-        )}
-      </div>
+                <div className="flex items-center gap-2.5">
+                  <img src={logo} alt="Lilycrest logo" style={{ width: "26px", height: "26px" }} />
+                  <span
+                    className="font-semibold tracking-wide text-lg"
+                    style={{ color: isDark ? "white" : "var(--lp-navy)" }}
+                  >
+                    Lilycrest
+                  </span>
+                </div>
+                <button
+                  className="bg-transparent border-none cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-full transition-colors"
+                  style={{ color: isDark ? "white" : "var(--lp-navy)" }}
+                  onClick={() => setIsMenuOpen(false)}
+                  aria-label="Close navigation menu"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-      {/* Keyframe for stagger fade-in */}
-      <style>{`
-        @keyframes navFadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-    </nav>
+              {/* Drawer Navigation Links */}
+              <div className="flex flex-col gap-1 py-3 flex-1 overflow-y-auto">
+                {navLinks.map((link) => {
+                  const isActive = activeSection === link.id;
+                  return (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      className="font-normal transition-colors no-underline cursor-pointer rounded-xl flex items-center px-4"
+                      onClick={(e) => {
+                        setIsMenuOpen(false);
+                        handleNavClick(e, link.id);
+                      }}
+                      style={{
+                        minHeight: "48px",
+                        color: isActive
+                          ? (isDark ? "var(--lp-accent, #D4AF37)" : "var(--lp-accent-text, #8C6200)")
+                          : (isDark ? "#F8FAFC" : "var(--lp-navy, #0A1628)"),
+                        backgroundColor: isActive
+                          ? (isDark
+                              ? "rgba(212, 175, 55, 0.14)"
+                              : "rgba(212, 175, 55, 0.10)")
+                          : "transparent",
+                        fontWeight: isActive ? "600" : "400",
+                        fontSize: "15px",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {link.label}
+                    </a>
+                  );
+                })}
+              </div>
+
+              {/* Drawer Footer: Theme Switcher & Actions */}
+              <div
+                className="pt-4 flex flex-col gap-3 flex-shrink-0"
+                style={{
+                  borderTop: isDark
+                    ? "1px solid var(--lp-border, #27334A)"
+                    : "1px solid rgba(10,22,40,0.1)",
+                }}
+              >
+                {type === "landing" && (
+                  <div className="px-2">
+                    <ThemeToggleButton variant="mobile" />
+                  </div>
+                )}
+
+                {!loading && (
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    {isAuthenticated ? (
+                      <Link
+                        to={profileUrl}
+                        className="no-underline capitalize w-full flex items-center justify-center gap-2 rounded-xl transition-all"
+                        onClick={() => setIsMenuOpen(false)}
+                        style={{
+                          minHeight: "48px",
+                          padding: "12px 16px",
+                          color: isDark ? "white" : "var(--lp-navy)",
+                          fontWeight: "500",
+                          fontSize: "15px",
+                          border: ghostBorderRest,
+                          backgroundColor: "transparent",
+                        }}
+                      >
+                        <User className="w-4 h-4" />
+                        {displayName}
+                      </Link>
+                    ) : (
+                      <Link
+                        to="/signin"
+                        className="no-underline w-full flex items-center justify-center rounded-xl transition-all"
+                        onClick={() => setIsMenuOpen(false)}
+                        style={{
+                          minHeight: "48px",
+                          padding: "12px 16px",
+                          color: isDark ? "white" : "var(--lp-navy)",
+                          fontSize: "15px",
+                          fontWeight: "500",
+                          border: ghostBorderRest,
+                          backgroundColor: "transparent",
+                        }}
+                      >
+                        Sign In
+                      </Link>
+                    )}
+
+                    <Link
+                      to="/applicant/check-availability"
+                      className="no-underline w-full flex items-center justify-center rounded-full text-center cursor-pointer transition-all"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        minHeight: "48px",
+                        padding: "12px 16px",
+                        color: "white",
+                        backgroundColor: "var(--lp-accent)",
+                        fontWeight: "500",
+                        fontSize: "15px",
+                        boxShadow: "0 4px 16px rgba(212, 175, 55, 0.25)",
+                      }}
+                    >
+                      Book Now
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+    </>
   );
 }
 

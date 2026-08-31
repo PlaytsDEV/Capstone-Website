@@ -6,6 +6,9 @@ import { useTheme } from "../context/ThemeContext";
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
 import hero3 from "../../../assets/images/hero3.webp";
+import hero1Mobile from "../../../assets/images/hero1-mobile.webp";
+import hero2Mobile from "../../../assets/images/hero2-mobile.webp";
+import hero3Mobile from "../../../assets/images/hero3-mobile.webp";
 import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
 
 
@@ -53,6 +56,12 @@ const heroImages = [
   hero1,
   hero2,
   hero3,
+];
+
+const heroMobileImages = [
+  hero1Mobile,
+  hero2Mobile,
+  hero3Mobile,
 ];
 
 export function HeroSection() {
@@ -111,7 +120,7 @@ export function HeroSection() {
   return (
     <>
       {/* Full-bleed Hero */}
-      <section className="relative h-screen overflow-hidden flex items-center">
+      <section className="relative min-h-[100dvh] h-[100dvh] overflow-hidden flex items-center">
         {/* Background Slideshow with Responsive Picture Tag */}
         {heroImages.map((src, i) => (
           <div
@@ -125,7 +134,7 @@ export function HeroSection() {
             <picture>
               <source
                 media="(max-width: 768px)"
-                srcSet={src}
+                srcSet={heroMobileImages[i]}
                 type="image/webp"
               />
               <img
@@ -157,7 +166,7 @@ export function HeroSection() {
         />
 
         {/* Content */}
-        <div className="relative z-10 max-w-screen-2xl mx-auto px-8 lg:px-12 w-full">
+        <div className="relative z-10 max-w-screen-2xl mx-auto px-5 sm:px-8 lg:px-12 w-full">
           <div className="max-w-2xl pt-12 lg:pt-15">
             {/* Badge */}
             <div
@@ -181,7 +190,7 @@ export function HeroSection() {
 
             {/* Headline */}
             <h1
-              className="text-5xl lg:text-7xl font-medium leading-[1.08] mb-6 tracking-tight transition-opacity duration-700"
+              className="text-3xl sm:text-5xl lg:text-7xl font-medium leading-[1.12] mb-4 sm:mb-6 tracking-tight transition-opacity duration-700"
               style={{ color: heroTextPrimary }}
             >
               Affordable, Safe,{" "}
@@ -191,7 +200,7 @@ export function HeroSection() {
 
             {/* Subheadline */}
             <p
-              className="text-lg mb-10 leading-relaxed font-light max-w-lg transition-opacity duration-700"
+              className="text-base sm:text-lg mb-6 sm:mb-10 leading-relaxed font-light max-w-lg transition-opacity duration-700"
               style={{ color: heroTextSecondary }}
             >
               Browse available rooms, create your account, and find your perfect
@@ -199,11 +208,12 @@ export function HeroSection() {
             </p>
 
             {/* CTA Buttons */}
-            <div className="flex flex-wrap gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6">
               <Link
                 to="/applicant/check-availability"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300 no-underline cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 no-underline cursor-pointer"
                 style={{
+                  minHeight: "48px",
                   color: isDark ? "white" : "var(--lp-navy)",
                   backgroundColor: "var(--lp-accent)",
                   boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
@@ -221,7 +231,7 @@ export function HeroSection() {
                 }}
               >
                 Browse Available Rooms
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
               </Link>
               <a
                 href="#inquiry"
@@ -229,8 +239,9 @@ export function HeroSection() {
                   e.preventDefault();
                   smoothScrollTo("inquiry", 80);
                 }}
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300 cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 cursor-pointer"
                 style={{
+                  minHeight: "48px",
                   border: isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)",
                   color: heroTextPrimary,
                   backgroundColor: "transparent",
@@ -250,7 +261,7 @@ export function HeroSection() {
 
             {/* Reassurance */}
             <p
-              className="text-sm font-normal mb-6"
+              className="text-xs sm:text-sm font-normal mb-6"
               style={{ color: heroTextMuted }}
             >
               ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
@@ -260,14 +271,12 @@ export function HeroSection() {
             <motion.div
               {...fadeUp(1.1)}
               ref={statRef}
-              className="inline-flex items-center gap-0 flex-wrap"
+              className="inline-flex items-center gap-2 sm:gap-0 flex-wrap p-2 sm:p-2.5 sm:px-5 rounded-[50px]"
               style={{
                 background: isDark ? "rgba(10, 22, 40, 0.65)" : "rgba(255, 255, 255, 0.75)",
                 backdropFilter: "blur(12px)",
                 border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(212, 175, 55, 0.22)",
                 boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(212, 175, 55, 0.08)",
-                borderRadius: "50px",
-                padding: "10px 20px",
               }}
             >
               {stats.map((stat, i) => {
@@ -276,7 +285,7 @@ export function HeroSection() {
                   <div key={i} className="flex items-center">
                     {i > 0 && (
                       <div
-                        className="mx-4 hidden sm:block"
+                        className="mx-2 sm:mx-4 hidden sm:block"
                         style={{
                           width: '1px',
                           height: '24px',
@@ -348,18 +357,18 @@ function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
       initial={{ opacity: 0, y: 10 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.5, delay, ease: "easeOut" }}
-      className="flex items-center gap-2"
+      className="flex items-center gap-1.5 sm:gap-2"
     >
-      <Icon className="w-4 h-4" style={{ color: "var(--lp-accent)" }} />
+      <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" style={{ color: "var(--lp-accent)" }} />
       <motion.span
         animate={done ? { scale: [1, 1.15, 1] } : {}}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className="text-lg font-medium inline-block"
+        className="text-base sm:text-lg font-medium inline-block"
         style={{ color: done ? 'var(--lp-accent-text)' : (isDark ? 'white' : 'var(--lp-navy)'), transition: 'color 0.5s ease' }}
       >
         {count}{suffix}
       </motion.span>
-      <span className="text-sm font-light" style={{ color: isDark ? '#E2E8F0' : '#1e293b' }}>{label}</span>
+      <span className="text-xs sm:text-sm font-light whitespace-nowrap" style={{ color: isDark ? '#E2E8F0' : '#1e293b' }}>{label}</span>
     </motion.div>
   );
 }

@@ -17,7 +17,7 @@ export default function CheckAvailabilityPageSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="min-h-screen"
+      className="ca-page-container min-h-screen"
       style={{ backgroundColor: "var(--surface-page)" }}
     >
       {/* ── 1. AvailabilityHeader ──────────────────────────────────────── */}

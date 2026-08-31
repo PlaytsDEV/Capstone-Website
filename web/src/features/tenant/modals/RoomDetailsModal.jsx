@@ -696,19 +696,19 @@ export default function RoomDetailsModal({
                               type="button"
                               aria-label={`Decrease ${appliance.name} quantity`}
                               onClick={() => onApplianceQuantityChange(appliance.id, Math.max(0, qty - 1))}
-                              className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+                              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all disabled:opacity-40"
                               disabled={qty === 0}
                             >
-                              <Minus className="w-3.5 h-3.5" />
+                              <Minus className="w-4 h-4" />
                             </button>
-                            <span className="w-6 text-center text-sm font-semibold text-foreground tabular-nums">{qty}</span>
+                            <span className="w-7 text-center text-sm font-semibold text-foreground tabular-nums">{qty}</span>
                             <button
                               type="button"
                               aria-label={`Increase ${appliance.name} quantity`}
                               onClick={() => onApplianceQuantityChange(appliance.id, qty + 1)}
-                              className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted transition-colors"
+                              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all"
                             >
-                              <Plus className="w-3.5 h-3.5" />
+                              <Plus className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -854,7 +854,10 @@ export default function RoomDetailsModal({
         </div>
 
         {/* Footer — persistent price + CTA */}
-        <div className="shrink-0 border-t border-border px-5 sm:px-7 py-4 bg-card shadow-[0_-6px_18px_-8px_rgba(0,0,0,0.08)]">
+        <div
+          className="shrink-0 border-t border-border px-5 sm:px-7 py-4 bg-card shadow-[0_-6px_18px_-8px_rgba(0,0,0,0.08)]"
+          style={{ paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))" }}
+        >
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <CreditCard className="w-5 h-5 shrink-0" style={{ color: "var(--primary)" }} />
@@ -876,7 +879,7 @@ export default function RoomDetailsModal({
             <button
               type="button"
               onClick={handleProceedClick}
-              className="px-7 py-3.5 rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed hover:brightness-95"
+              className="w-full sm:w-auto min-h-[48px] px-7 py-3.5 rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed hover:brightness-95 flex items-center justify-center"
               style={{
                 backgroundColor: "var(--primary)",
                 color: "var(--primary-foreground)",

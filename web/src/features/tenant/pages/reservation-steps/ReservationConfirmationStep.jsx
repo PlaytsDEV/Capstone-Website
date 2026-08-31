@@ -299,7 +299,7 @@ const ReservationConfirmationStep = ({
                   pauseRedirect();
                   onViewDetails?.();
                 }}
-                className="w-full h-11 px-5 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 cursor-pointer"
+                className="w-full min-h-[48px] h-12 px-5 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 cursor-pointer"
               >
                 View My Reservation
               </button>
@@ -309,7 +309,7 @@ const ReservationConfirmationStep = ({
                   pauseRedirect();
                   onReturnHome?.();
                 }}
-                className="w-full h-11 px-5 rounded-xl font-medium text-xs sm:text-sm text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full min-h-[48px] h-12 px-5 rounded-xl font-medium text-xs sm:text-sm text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
               >
                 Go to Dashboard
               </button>
@@ -320,17 +320,17 @@ const ReservationConfirmationStep = ({
                 <button
                   type="button"
                   onClick={handleViewReceipt}
-                  className="w-full h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  className="w-full min-h-[42px] h-10 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Printer size={13} className="text-slate-500 dark:text-slate-400" />
+                  <Printer size={14} className="text-slate-500 dark:text-slate-400" />
                   <span>View / Print Receipt</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleDownloadReceipt}
-                  className="w-full h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  className="w-full min-h-[42px] h-10 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Download size={13} className="text-slate-500 dark:text-slate-400" />
+                  <Download size={14} className="text-slate-500 dark:text-slate-400" />
                   <span>Download PDF</span>
                 </button>
               </div>

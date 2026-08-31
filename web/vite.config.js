@@ -28,8 +28,10 @@ export default defineConfig({
           "vendor-firebase": ["firebase/app", "firebase/auth"],
           "vendor-icons": ["lucide-react", "@tabler/icons-react"],
           "vendor-charts": ["recharts"],
-          "vendor-pdf": ["jspdf", "jspdf-autotable", "html2canvas"],
+          "vendor-pdf": ["jspdf", "jspdf-autotable", "html2canvas", "html2pdf.js"],
           "vendor-motion": ["framer-motion"],
+          "vendor-phone": ["libphonenumber-js"],
+          "vendor-socket": ["socket.io-client"],
         },
       },
     },
@@ -40,7 +42,7 @@ export default defineConfig({
     exclude: [],
   },
   optimizeDeps: {
-    include: ["jspdf", "html2canvas"],
+    include: ["jspdf", "html2canvas", "html2pdf.js"],
     esbuildOptions: {
       loader: {
         ".js": "jsx",

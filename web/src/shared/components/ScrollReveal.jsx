@@ -11,6 +11,12 @@ export default function ScrollReveal({ children, variant = "fade-up", delay = 0,
  const el = ref.current;
  if (!el) return;
 
+ const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+ if (prefersReducedMotion) {
+   Object.assign(el.style, { opacity: "1", transform: "none" });
+   return;
+ }
+
  const getTransform = () => {
  switch (variant) {
  case "fade-up": return "translateY(32px)";
