@@ -56,6 +56,8 @@ test("Cancel is offered while the record is open and no payment exists yet", () 
 test("Reschedule is offered while the record is open; Complete Transfer follows the server `completable` flag", () => {
   assert.match(card, /const canReschedule = isOpenRecord/);
   assert.match(card, /const canComplete = !!completable/);
+  assert.match(card, /The scheduled transfer date has not been reached yet/);
+  assert.doesNotMatch(card, /scheduled transfer date\/time has not been reached/i);
   // Reschedule sends date + time on the same destination.
   assert.match(card, /reservationApi\.rescheduleRoomTransfer\(/);
   assert.match(card, /effectiveTransferTimeMinutes: mins/);
@@ -68,7 +70,9 @@ test("Reschedule is offered while the record is open; Complete Transfer follows 
 
 test("payment-already-received cancel path directs to Administration Office, no auto-reversal", () => {
   assert.match(card, /Administration Office/);
+  assert.match(card, /2nd Floor/);
   assert.match(card, /cannot be cancelled automatically/i);
+  assert.match(card, /PAID_TRANSFER_CANNOT_COMPLETE/);
 });
 
 test("utilities are shown as deferred to period close, entered at Complete Transfer", () => {

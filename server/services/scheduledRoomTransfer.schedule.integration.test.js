@@ -64,7 +64,7 @@ const { reconcileOccupancyIntegrity } = await import("../utils/scheduler.js");
 const { generateContractNumber } = await import("./contractService.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, UtilityReading, ScheduledRoomTransfer,
+  MoveOutClearance, TenantCredit, TerminationReview, UtilityReading, ScheduledRoomTransfer,
 } = await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -182,6 +182,7 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
+    MoveOutClearance.deleteMany({}), TerminationReview.deleteMany({}),
     UtilityReading.deleteMany({}), ScheduledRoomTransfer.deleteMany({}),
   ]);
   await BusinessSettings.create({
@@ -439,6 +440,49 @@ describe("scheduleRoomTransfer — guards", () => {
       actorId,
     })).rejects.toMatchObject({ code: "FUTURE_RENEWAL_EXISTS" });
     expect(await ScheduledRoomTransfer.countDocuments({})).toBe(0);
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+  });
+
+  test("an initiated move-out clearance blocks scheduling before a hold is placed", async () => {
+    const { reservation, stay, tenant, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await MoveOutClearance.collection.insertOne({
+      reservationId: reservation._id,
+      stayId: stay._id,
+      tenantId: tenant._id,
+      branch: "gil-puyat",
+      status: "initiated",
+      intendedMoveOutDate: futureDateISO(20),
+    });
+
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(10) }),
+      actorId,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_MOVE_OUT_CONFLICT" });
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
+  });
+
+  test("an active termination review blocks scheduling before a hold is placed", async () => {
+    const { reservation, tenant, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    await TerminationReview.collection.insertOne({
+      reservationId: reservation._id,
+      tenantId: tenant._id,
+      branch: "gil-puyat",
+      triggerType: "manual",
+      triggerReason: "test conflict",
+      status: "under_review",
+      executionStatus: "not_applicable",
+      openedBy: actorId,
+      openedAt: new Date(),
+    });
+
+    await expect(scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureDateISO(10) }),
+      actorId,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_TERMINATION_CONFLICT" });
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(0);
   });
 

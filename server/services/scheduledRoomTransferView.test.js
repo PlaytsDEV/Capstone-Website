@@ -18,6 +18,7 @@ describe("describeScheduledTransferActionRequired", () => {
       "ADDITIONAL_BALANCE_DUE",
       "FINANCIAL_ADJUSTMENT_REQUIRED",
       "PAYMENT_ALREADY_RECEIVED",
+      "PAID_TRANSFER_CANNOT_COMPLETE",
       "OPERATIONAL_VALIDATION_FAILED",
       "EXECUTION_FAILED",
     ]) {
@@ -25,6 +26,18 @@ describe("describeScheduledTransferActionRequired", () => {
       expect(typeof msg).toBe("string");
       expect(msg.length).toBeGreaterThan(10);
       expect(msg).not.toContain(code);
+    }
+  });
+
+  it("manual financial paths consistently point to the Administration Office on the 2nd Floor", () => {
+    for (const code of [
+      "FINANCIAL_ADJUSTMENT_REQUIRED",
+      "PAYMENT_ALREADY_RECEIVED",
+      "PAID_TRANSFER_CANNOT_COMPLETE",
+    ]) {
+      const msg = describeScheduledTransferActionRequired(code);
+      expect(msg).toMatch(/Administration Office/i);
+      expect(msg).toMatch(/2nd Floor/i);
     }
   });
 
@@ -39,7 +52,7 @@ describe("describeScheduledTransferActionRequired", () => {
   });
 });
 
-describe("deriveScheduledTransferUserStatus — DERIVED from stored status + date/time + settlement Bill", () => {
+describe("deriveScheduledTransferUserStatus — DERIVED from stored status + calendar date + settlement Bill", () => {
   // A moment well in the future / past, in Manila.
   const FUTURE = new Date("2999-01-01T00:00:00.000+08:00");
   const PAST = new Date("2000-01-01T00:00:00.000+08:00");
@@ -55,9 +68,23 @@ describe("deriveScheduledTransferUserStatus — DERIVED from stored status + dat
     expect(deriveScheduledTransferUserStatus({ status: "cancelled", effectiveTransferDate: PAST }, null, NOW)).toBe("cancelled");
   });
 
-  it("scheduled + date/time NOT reached -> scheduled (even with an unpaid balance)", () => {
+  it("scheduled + calendar date NOT reached -> scheduled (even with an unpaid balance)", () => {
     expect(deriveScheduledTransferUserStatus(sched(FUTURE), { hasBill: true, paymentState: "unpaid" }, NOW)).toBe("scheduled");
     expect(deriveScheduledTransferUserStatus(sched(FUTURE), null, NOW)).toBe("scheduled");
+  });
+
+  it("scheduled for today is ready even before its guidance time", () => {
+    const sameDay = {
+      status: "scheduled",
+      effectiveTransferDate: new Date("2026-08-30T00:00:00.000+08:00"),
+      effectiveTransferTimeMinutes: 23 * 60 + 59,
+    };
+    expect(deriveScheduledTransferUserStatus(sameDay, null, NOW)).toBe("ready_for_transfer");
+    expect(deriveScheduledTransferUserStatus(
+      sameDay,
+      { hasBill: true, paymentState: "unpaid" },
+      NOW,
+    )).toBe("awaiting_settlement");
   });
 
   it("scheduled + reached + no/settled balance -> ready_for_transfer", () => {

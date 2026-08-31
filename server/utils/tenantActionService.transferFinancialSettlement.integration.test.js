@@ -7,7 +7,7 @@
  *   RENT (actual-day, same cycle, anchor unchanged):
  *     destinationProratedRent − unusedPrepaidRent
  *       > 0  -> charges.rent (additional rent due)
- *       < 0  -> excess rent -> a reusable TenantCredit(category:"rent")
+ *       < 0  -> excess rent -> manual Administration Office review only
  *
  *   SECURITY DEPOSIT (independent, never netted with rent):
  *     destinationRequiredDeposit − depositCurrentlyHeld
@@ -283,7 +283,7 @@ describe("room-transfer financial settlement", () => {
   });
 
   // ── 2. Lower rent + lower deposit (Private -> Quadruple) ────────────────
-  test("lower rent + lower deposit: excess rent -> TenantCredit, excess deposit stays held (not a credit)", async () => {
+  test("lower rent + lower deposit: excess amounts are disclosed for manual review; no TenantCredit is created", async () => {
     const { tenant, reservation, roomB, actorId } = await seed({
       sourceType: "private", destType: "quadruple-sharing", heldDeposit: 13500,
     });
@@ -302,13 +302,9 @@ describe("room-transfer financial settlement", () => {
     expect(bill.transferSnapshot.excessDepositHeld).toBe(roundMoney(13500 - 5400)); // 8100
     expect(bill.transferSnapshot.additionalDepositDue).toBe(0);
 
-    // Excess RENT -> a reusable TenantCredit (category rent).
+    // Official transfer policy: no automatic refund or rent credit.
     const credits = await TenantCredit.find({ userId: tenant._id });
-    expect(credits).toHaveLength(1);
-    expect(credits[0].category).toBe("rent");
-    expect(credits[0].sourceType).toBe("room_transfer");
-    expect(credits[0].originalAmount).toBeCloseTo(excessRent, 2);
-    expect(credits[0].remainingBalance).toBeCloseTo(excessRent, 2);
+    expect(credits).toHaveLength(0);
 
     // Excess DEPOSIT is NOT a TenantCredit and held cash is UNCHANGED.
     const r = await Reservation.findById(reservation._id);
@@ -385,7 +381,7 @@ describe("room-transfer financial settlement", () => {
   });
 
   // ── 6. Transfer very early in cycle -> large unused prepaid ────────────
-  test("transfer early in cycle: little source rent consumed, large unused prepaid -> big rent credit on a cheaper room", async () => {
+  test("transfer early in cycle: large excess is disclosed but does not create an automatic rent credit", async () => {
     const { tenant, reservation, roomB, actorId } = await seed({
       sourceType: "private", destType: "quadruple-sharing", heldDeposit: 13500,
     });
@@ -401,7 +397,7 @@ describe("room-transfer financial settlement", () => {
     expect(bill.transferSnapshot.proRataDays).toBe(2);
     expect(bill.transferSnapshot.excessCredit).toBeCloseTo(excessRent, 2);
     const credits = await TenantCredit.find({ userId: tenant._id });
-    expect(credits[0].originalAmount).toBeCloseTo(excessRent, 2);
+    expect(credits).toHaveLength(0);
   });
 
   // ── 7. Calendar variations: actual cycle days (Feb, 30-day, 31-day) ────
@@ -437,15 +433,14 @@ describe("room-transfer financial settlement", () => {
   });
 
   // ── 8. Next regular rent Bill uses the destination rate + consumes credit ──
-  test("post-transfer: next regular rent Bill uses destination rate and auto-consumes rent credit", async () => {
+  test("post-transfer: next regular rent Bill uses destination rate with no automatic transfer credit", async () => {
     const { tenant, reservation, roomB, actorId } = await seed({
       sourceType: "private", destType: "quadruple-sharing", heldDeposit: 13500,
     });
     await runTransfer({ reservation, roomB, actorId, destType: "quadruple-sharing" });
 
     const credit = await TenantCredit.findOne({ userId: tenant._id, category: "rent" });
-    expect(credit).toBeTruthy();
-    const creditAmount = credit.originalAmount;
+    expect(credit).toBeNull();
 
     // Generate the tenant's next regular rent Bill (well after move-in so a
     // regular cycle is due).
@@ -459,16 +454,9 @@ describe("room-transfer financial settlement", () => {
     const rentBill = gen.bill;
     // Destination (quadruple) rate, NOT the old private 13500.
     expect(rentBill.charges.rent).toBe(5400);
-    // Rent credit consumed against the rent component -> discount + reduced total.
-    const applied = Math.min(creditAmount, 5400);
-    expect(rentBill.charges.discount).toBeCloseTo(applied, 2);
-    expect(rentBill.tenantCreditApplied).toBeCloseTo(applied, 2);
-    expect(rentBill.totalAmount).toBeCloseTo(roundMoney(5400 - applied), 2);
-
-    const creditAfter = await TenantCredit.findById(credit._id);
-    expect(creditAfter.consumedAmount).toBeCloseTo(applied, 2);
-    expect(creditAfter.applications).toHaveLength(1);
-    expect(String(creditAfter.applications[0].billId)).toBe(String(rentBill._id));
+    expect(rentBill.charges.discount).toBe(0);
+    expect(rentBill.tenantCreditApplied).toBe(0);
+    expect(rentBill.totalAmount).toBeCloseTo(5400, 2);
 
     // Re-running generation for the SAME cycle must not double-consume.
     const gen2 = await ensureCurrentCycleRentBill({
@@ -477,12 +465,11 @@ describe("room-transfer financial settlement", () => {
       notifyTenant: false,
     });
     expect(gen2.status).toBe("skipped");
-    const creditAfter2 = await TenantCredit.findById(credit._id);
-    expect(creditAfter2.consumedAmount).toBeCloseTo(applied, 2);
+    expect(await TenantCredit.countDocuments({ userId: tenant._id })).toBe(0);
   });
 
   // ── 9. Rent credit never touches deposit / non-rent ───────────────────
-  test("rent credit is never applied to a security-deposit component", async () => {
+  test("excess rent does not auto-offset a security-deposit component", async () => {
     // Cheaper room first (creates a rent credit), then a hypothetical higher
     // deposit requirement: the credit must not offset charges.securityDeposit.
     const { tenant, reservation, roomB, actorId } = await seed({
@@ -495,13 +482,13 @@ describe("room-transfer financial settlement", () => {
     expect(bill.charges.securityDeposit).toBe(5400);
     expect(bill.charges.rent).toBe(0);
     const credit = await TenantCredit.findOne({ userId: tenant._id, category: "rent" });
-    expect(credit.remainingBalance).toBeGreaterThan(0);
+    expect(credit).toBeNull();
     // The deposit component is still fully due — credit did NOT reduce it.
     expect(bill.totalAmount).toBe(5400);
   });
 
   // ── 10. Idempotent retry: no duplicate Bill / credit / ledger ─────────
-  test("retrying the transfer does not duplicate the settlement Bill, the rent credit, or the deposit ledger", async () => {
+  test("retrying the transfer does not duplicate the settlement Bill or deposit ledger and creates no transfer credit", async () => {
     const { tenant, reservation, roomB, actorId, predecessor } = await seed({
       sourceType: "private", destType: "quadruple-sharing", heldDeposit: 13500,
     });
@@ -516,7 +503,7 @@ describe("room-transfer financial settlement", () => {
       TenantCredit.find({ userId: tenant._id }),
     ]);
     expect(bills).toHaveLength(1);
-    expect(credits).toHaveLength(1);
+    expect(credits).toHaveLength(0);
     const r = await Reservation.findById(reservation._id);
     const dueEntries = r.securityDepositLedger.filter((e) => e.transferReference && String(e.transferReference) === String(predecessor._id));
     expect(dueEntries.length).toBeLessThanOrEqual(1);
@@ -569,7 +556,7 @@ describe("room-transfer financial settlement", () => {
     await runTransfer({ reservation, roomB, actorId, destType: "private", transferDate: "2026-08-15T00:00:00.000Z" });
     const bill = await Bill.findOne({ reservationId: reservation._id, billType: "transfer_settlement" });
     expect(bill.transferSnapshot.applicablePrepaidRent).toBe(5400);
-    expect(["current_bill"]).toContain(bill.transferSnapshot.prepaidRentSource);
+    expect(bill.transferSnapshot.prepaidRentSource).toBe("current_bill_billed_rent");
     const consumed = dailyPortion(5400, 14);
     expect(bill.transferSnapshot.proRataRent).toBeCloseTo(consumed, 2);
     expect(bill.transferSnapshot.unusedPrepaidCredit).toBeCloseTo(roundMoney(5400 - consumed), 2);

@@ -619,6 +619,13 @@ const billSchema = new mongoose.Schema(
           // reservations) and where it came from, for explainability only.
           applicablePrepaidRent: { type: Number, default: null },
           prepaidRentSource: { type: String, default: null },
+          // Existing same-cycle rent liability reconciled by this transfer.
+          // A monthly source Bill is linked here while this transfer Bill
+          // deliberately leaves billingCycleStart null to avoid claiming the
+          // regular Bill's unique cycle key.
+          rentCoverageBillId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", default: null },
+          rentCoverageBillType: { type: String, default: null },
+          rentLiabilityForPeriod: { type: Number, default: null },
           // Rent-cycle boundaries used for the proration (audit).
           cycleStart: { type: Date, default: null },
           cycleEnd: { type: Date, default: null },
@@ -664,12 +671,18 @@ const billSchema = new mongoose.Schema(
           createdAtCompletion: { type: Boolean, default: false },
           recomputedAtCompletion: { type: Boolean, default: false },
           reconciledAtExecution: { type: Boolean, default: false },
+          // A paid transfer Bill may only be adjusted upward automatically.
+          // These fields preserve the pre-adjustment amount for audit; paid
+          // downward adjustments remain manual and leave the Bill unchanged.
+          upwardAdjustmentFrom: { type: Number, default: null },
+          upwardAdjustmentTo: { type: Number, default: null },
+          upwardAdjustmentAt: { type: Date, default: null },
           // ── Security-deposit settlement (independent of the rent numbers
           //    above; see roomTransferDepositSettlement.js). All in PHP. ──
           depositPreviouslyHeld: { type: Number, default: null }, // reservation.securityDepositHeld at transfer time
           destinationRequiredDeposit: { type: Number, default: null }, // 1x successor Contract approved monthly rate
           additionalDepositDue: { type: Number, default: null }, // billed as charges.securityDeposit
-          excessDepositHeld: { type: Number, default: null }, // stays refundable, NOT converted to rent credit
+          excessDepositHeld: { type: Number, default: null }, // remains held; manual office review, never a rent credit
           depositHeldAfterTransferBeforePayment: { type: Number, default: null },
           depositHeldWasBackfilled: { type: Boolean, default: false }, // true when securityDepositHeld was derived from move-in financials
           // ── Final settlement components (rent and deposit kept separate) ─

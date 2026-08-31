@@ -512,7 +512,7 @@ describe("stale room-transfer Addendum — self-heal on re-target", () => {
         payload: { targetRoomId: roomY._id, targetBedId: "r811-b1", effectiveTransferDate: TRANSFER },
         actorId,
       }),
-    ).rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" });
+    ).rejects.toMatchObject({ code: "ROOM_TRANSFER_ADDENDUM_TERMS_MISMATCH" });
 
     // The published successor is untouched.
     const still = await Contract.findById(prep.addendum.contractId);

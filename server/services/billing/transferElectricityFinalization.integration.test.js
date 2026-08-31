@@ -75,7 +75,10 @@ await jest.unstable_mockModule("../contractService.js", () => ({
 
 const { transferStayWorkflow } = await import("../../utils/tenantActionService.js");
 const { generateContractNumber } = await import("../contractService.js");
-const { computeTransfereeSourceElectricityLiability } = await import("./transferUtilityFinalization.js");
+const {
+  computeTransfereeSourceElectricityLiability,
+  validateTransferDestinationOpeningReading,
+} = await import("./transferUtilityFinalization.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
   UtilityReading, UtilityPeriod, UtilityFinalization,
@@ -225,6 +228,105 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
     expect(liab.baselineReading).toBe(1000);
     expect(liab.closingReading).toBe(1080);
     expect(liab.waterNote).toMatch(/water/i);
+  });
+
+  test("room-scoped move-in reading, not period start, is D's opening boundary", async () => {
+    const { roomA, reservations, users, actorId } = await seedQuadRoom();
+    const enteredRoomAt = new Date("2026-08-10T09:00:00.000Z");
+    await BedHistory.updateOne(
+      { reservationId: reservations.D._id, roomId: roomA._id },
+      { $set: { moveInDate: enteredRoomAt, effectiveStartDate: enteredRoomAt } },
+    );
+    await UtilityReading.create({
+      utilityType: "electricity",
+      roomId: roomA._id,
+      branch: roomA.branch,
+      reading: 1075,
+      date: enteredRoomAt,
+      eventType: "moveIn",
+      tenantId: users.D._id,
+      recordedBy: actorId,
+      readingStatus: "recorded",
+    });
+
+    const liability = await computeTransfereeSourceElectricityLiability({
+      reservation: { _id: reservations.D._id, userId: users.D._id },
+      sourceRoom: roomA,
+      cutoverDate: new Date("2026-08-16T14:00:00.000Z"),
+      freshSourceClosingReading: 1150,
+    });
+
+    // D participates only in 1075..1150, shared with A/B/C.
+    expect(liability.kwh).toBeCloseTo(18.75, 2);
+    expect(liability.amount).toBeCloseTo(93.75, 2);
+  });
+
+  test("former source-room occupants remain in pre-departure sharing segments", async () => {
+    const { roomA, roomB, reservations, users, actorId } = await seedQuadRoom();
+    const leftAt = new Date("2026-08-08T10:00:00.000Z");
+    await BedHistory.updateOne(
+      { reservationId: reservations.C._id, roomId: roomA._id },
+      { $set: { status: "transferred", moveOutDate: leftAt, effectiveEndDate: leftAt } },
+    );
+    await Reservation.updateOne(
+      { _id: reservations.C._id },
+      { $set: { roomId: roomB._id } },
+    );
+    await UtilityReading.create({
+      utilityType: "electricity",
+      roomId: roomA._id,
+      branch: roomA.branch,
+      reading: 1040,
+      date: leftAt,
+      eventType: "moveOut",
+      tenantId: users.C._id,
+      recordedBy: actorId,
+      readingStatus: "recorded",
+    });
+
+    const liability = await computeTransfereeSourceElectricityLiability({
+      reservation: { _id: reservations.D._id, userId: users.D._id },
+      sourceRoom: roomA,
+      cutoverDate: new Date("2026-08-16T14:00:00.000Z"),
+      freshSourceClosingReading: 1080,
+    });
+
+    // 1000..1040 / 4 + 1040..1080 / 3 = 23.33 kWh for D.
+    expect(liability.kwh).toBeCloseTo(23.33, 2);
+    expect(liability.amount).toBeCloseTo(116.66, 2);
+  });
+
+  test("missing source period and regressing destination opening require review", async () => {
+    const { roomA, roomB, reservations, users, actorId } = await seedQuadRoom();
+    await UtilityPeriod.deleteMany({ roomId: roomA._id, utilityType: "electricity" });
+    await expect(computeTransfereeSourceElectricityLiability({
+      reservation: { _id: reservations.D._id, userId: users.D._id },
+      sourceRoom: roomA,
+      cutoverDate: new Date("2026-08-16T14:00:00.000Z"),
+      freshSourceClosingReading: 1080,
+    })).rejects.toMatchObject({
+      code: "ROOM_TRANSFER_SOURCE_ELECTRICITY_PERIOD_MISSING",
+      manualReviewRequired: true,
+    });
+
+    await UtilityReading.create({
+      utilityType: "electricity",
+      roomId: roomB._id,
+      branch: roomB.branch,
+      reading: 550,
+      date: new Date("2026-08-15T12:00:00.000Z"),
+      eventType: "regularBilling",
+      recordedBy: actorId,
+      readingStatus: "recorded",
+    });
+    await expect(validateTransferDestinationOpeningReading({
+      destinationRoom: roomB,
+      cutoverDate: new Date("2026-08-16T14:00:00.000Z"),
+      freshDestinationOpeningReading: 540,
+    })).rejects.toMatchObject({
+      code: "ROOM_TRANSFER_DESTINATION_READING_REGRESSION",
+      manualReviewRequired: true,
+    });
   });
 
   test("cutover: transfer_settlement.charges.electricity is finalized; water stays 0; UtilityFinalization written; cutoverAt is a real timestamp", async () => {

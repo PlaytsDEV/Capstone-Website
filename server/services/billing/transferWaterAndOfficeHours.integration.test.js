@@ -57,6 +57,8 @@ await jest.unstable_mockModule("../contractService.js", () => ({
 const { transferStayWorkflow } = await import("../../utils/tenantActionService.js");
 const { generateContractNumber } = await import("../contractService.js");
 const { computeBilling } = await import("./billingEngine.js");
+const { resolveRoomScopedReservationsForUtilityPeriod } =
+  await import("./roomScopedUtilityParticipants.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
   UtilityReading, UtilityPeriod, UtilityFinalization,
@@ -221,5 +223,88 @@ describe("Transfer — water (no early finalization) + office-hours completion g
     const bill = await Bill.findById(result.billingSnapshot.transferBillId).lean();
     expect(bill.charges.water).toBe(0);
     expect(Number(bill.charges.electricity)).toBeGreaterThan(0); // 60 kWh, sole occupant
+  });
+
+  test("two same-day transfers retain the zero-length audit row but exclude it from WATER participants", async () => {
+    await seedBusinessSettings();
+    const { res, roomB, actorId, tenant } = await seedSimple();
+    // This audit isolates Room Transfer-created occupancy boundaries. With no
+    // open electricity period, neither transfer introduces an unrelated
+    // settlement gate.
+    await Promise.all([
+      UtilityPeriod.deleteMany({}),
+      UtilityReading.deleteMany({}),
+    ]);
+    const roomC = await Room.create({
+      name: "R-3", roomNumber: "R3", branch: "gil-puyat",
+      type: "double-sharing", capacity: 2, currentOccupancy: 0, price: 8100,
+      beds: [
+        { id: "rc-b1", position: "lower", status: "available" },
+        { id: "rc-b2", position: "upper", status: "available" },
+      ],
+    });
+    const transferDay = "2026-08-16T00:00:00.000Z";
+
+    await transferStayWorkflow({
+      reservationId: res._id,
+      payload: {
+        confirm: true, forceOverride: true,
+        targetRoomId: roomB._id, targetBedId: "rb-b1",
+        effectiveTransferDate: transferDay,
+        sourceRoomMeterReading: 160, targetRoomMeterReading: 50,
+      },
+      actorId,
+    });
+    await transferStayWorkflow({
+      reservationId: res._id,
+      payload: {
+        confirm: true, forceOverride: true,
+        targetRoomId: roomC._id, targetBedId: "rc-b1",
+        effectiveTransferDate: transferDay,
+        sourceRoomMeterReading: 50, targetRoomMeterReading: 20,
+      },
+      actorId,
+    });
+
+    const middle = await BedHistory.findOne({
+      reservationId: res._id,
+      roomId: roomB._id,
+      status: "transferred",
+    }).lean();
+    expect(middle).toBeTruthy();
+    expect(new Date(middle.effectiveStartDate).getTime()).toBe(
+      new Date(middle.effectiveEndDate).getTime(),
+    );
+
+    const participants = await resolveRoomScopedReservationsForUtilityPeriod({
+      room: roomB,
+      periodStart: MOVE_IN,
+      periodEnd: new Date("2026-09-01T00:00:00.000Z"),
+      utilityType: "water",
+    });
+    expect(
+      participants.some((participant) =>
+        String(participant.userId?._id || participant.userId) === String(tenant._id)),
+    ).toBe(false);
+
+    const electricityParticipants =
+      await resolveRoomScopedReservationsForUtilityPeriod({
+        room: roomB,
+        periodStart: MOVE_IN,
+        periodEnd: new Date("2026-09-01T00:00:00.000Z"),
+        utilityType: "electricity",
+      });
+    expect(
+      electricityParticipants.some((participant) =>
+        String(participant.userId?._id || participant.userId) === String(tenant._id)),
+    ).toBe(true);
+
+    // The resolver filter is billing-only; transfer history remains available
+    // for audit and still records the exact zero-length boundary.
+    const retainedMiddle = await BedHistory.findById(middle._id).lean();
+    expect(retainedMiddle).toBeTruthy();
+    expect(new Date(retainedMiddle.effectiveStartDate).getTime()).toBe(
+      new Date(retainedMiddle.effectiveEndDate).getTime(),
+    );
   });
 });

@@ -376,29 +376,15 @@ describe("Phase 10 — renewal + move-out after room transfer", () => {
     expect(credits.every((c) => c.sourceType !== "deposit")).toBe(true);
   });
 
-  test("legacy securityDepositHeld === null after transfer: move-out falls back to 1x current rate, no guessed write", async () => {
-    const { reservation, actorId } = await seed({ sourceType: "quadruple-sharing", securityDepositHeld: null });
+  test("legacy securityDepositHeld === null: transfer routes to manual review without fabricating held cash", async () => {
+    const { reservation, actorId, roomA } = await seed({ sourceType: "quadruple-sharing", securityDepositHeld: null });
     const roomB = await emptyRoom("private", "402");
-    // A legacy record has no securityDepositHeld — the transfer flow backfills
-    // it from move-in financials only if the initial payment is settled; here
-    // there's no initial_payment Bill so it stays null.
-    await doTransfer(reservation, roomB, actorId, "2026-06-15T00:00:00.000Z");
-    const r1 = await Reservation.findById(reservation._id);
-
-    await moveOutStayWorkflow({
-      reservationId: reservation._id,
-      payload: { confirm: true, moveOutDate: "2026-09-30", finalUtilityReading: 1200, keyReturned: true, forceOverride: true },
-      actorId,
-    });
+    await expect(doTransfer(reservation, roomB, actorId, "2026-06-15T00:00:00.000Z"))
+      .rejects.toMatchObject({ code: "ROOM_TRANSFER_DEPOSIT_HELD_UNVERIFIED", manualReviewRequired: true });
     const reloadedRes = await Reservation.findById(reservation._id);
-    // Fallback basis = 1x the current (Private) rate via resolveSecurityDeposit,
-    // never an invented held figure. It must be > 0 and equal the fallback,
-    // not silently written back onto securityDepositHeld as "collected".
-    expect(reloadedRes.finalSettlementSummary.securityDeposit).toBeGreaterThan(0);
-    // securityDepositHeld is not fabricated by ordinary move-out.
-    if (r1.securityDepositHeld == null) {
-      expect(reloadedRes.securityDepositHeld == null).toBe(true);
-    }
+    expect(reloadedRes.securityDepositHeld == null).toBe(true);
+    expect(String(reloadedRes.roomId)).toBe(String(roomA._id));
+    expect((await Room.findById(roomB._id)).currentOccupancy).toBe(0);
   });
 
   test("A -> B -> C then move out: closes Room C; historical A/B BedHistory + Addenda untouched", async () => {

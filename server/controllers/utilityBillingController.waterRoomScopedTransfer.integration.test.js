@@ -236,7 +236,12 @@ describe("Phase 5 — water follows the tenant's actual room + existing water ru
 
   // Compute a room's water shares exactly as the close path does.
   async function computeRoomWater({ room, periodStart = CYCLE_START, periodEnd = CYCLE_END, total = WATER_TOTAL }) {
-    const reservations = await resolveRoomScopedReservationsForPeriod({ room, periodStart, periodEnd });
+    const reservations = await resolveRoomScopedReservationsForPeriod({
+      room,
+      periodStart,
+      periodEnd,
+      utilityType: "water",
+    });
     const billable = filterBillableReservationsForPeriod({ reservations, cycleStart: periodStart, cycleEnd: periodEnd });
     const result = computeBilling({
       utilityPeriod: { startDate: periodStart, endDate: periodEnd, ratePerUnit: total },
@@ -417,7 +422,12 @@ describe("Phase 5 — water follows the tenant's actual room + existing water ru
     expect(isWaterBillableRoom(roomB)).toBe(false);
 
     // Room C (Double, water-billable): tenant window Aug 21..31 = 10 days
-    const cRes = await resolveRoomScopedReservationsForPeriod({ room: roomC, periodStart: CYCLE_START, periodEnd: CYCLE_END });
+    const cRes = await resolveRoomScopedReservationsForPeriod({
+      room: roomC,
+      periodStart: CYCLE_START,
+      periodEnd: CYCLE_END,
+      utilityType: "water",
+    });
     const cMe = cRes.find((r) => String(r._id) === String(reservation._id));
     expect(cMe).toBeTruthy();
     expect(cMe._roomScopedMoveOutDate).toBeNull(); // current room
@@ -431,6 +441,61 @@ describe("Phase 5 — water follows the tenant's actual room + existing water ru
       periodEnd: new Date("2026-09-30T00:00:00.000Z"),
     });
     expect(shareOf(septA.result, tenant._id)).toBeNull();
+  });
+
+  test("same-day A -> B -> C: middle room has zero water liability and final room owns the cutover day", async () => {
+    const { tenant, room: roomA, reservation, actorId } =
+      await seedTenantInRoom({ roomType: "double-sharing", roomNumber: "301" });
+    const roomB = await emptyRoom("double-sharing", "402");
+    const roomC = await emptyRoom("double-sharing", "503");
+    const stayer = await makeTenant("MiddleRoomStayer");
+    await addStayerInRoom({ room: roomB, tenant: stayer, bedIndex: 2 });
+    const transferDay = "2026-08-15T00:00:00.000Z";
+
+    await runTransfer({ reservation, targetRoom: roomB, actorId, transferDate: transferDay });
+    const currentContract = await Contract.findOne({
+      reservationId: reservation._id,
+      isCurrent: true,
+    });
+    await Contract.updateOne(
+      { _id: currentContract._id },
+      { $set: { status: "active" } },
+    );
+    await runTransfer({ reservation, targetRoom: roomC, actorId, transferDate: transferDay });
+
+    const middleHistory = await BedHistory.findOne({
+      reservationId: reservation._id,
+      roomId: roomB._id,
+      status: "transferred",
+    }).lean();
+    expect(middleHistory).toBeTruthy();
+    expect(new Date(middleHistory.effectiveEndDate).getTime()).toBe(
+      new Date(middleHistory.effectiveStartDate).getTime(),
+    );
+
+    const source = await computeRoomWater({ room: roomA });
+    const middle = await computeRoomWater({ room: roomB });
+    const destination = await computeRoomWater({ room: roomC });
+
+    // Aug 1..15 belongs to A. B's retained zero-length audit row is not a
+    // water participant. Aug 15..31, including the cutover day, belongs to C.
+    expect(daysOf(source.result, tenant._id)).toBe(14);
+    expect(daysOf(middle.result, tenant._id) ?? 0).toBe(0);
+    expect(shareOf(middle.result, tenant._id) ?? 0).toBe(0);
+    expect(daysOf(destination.result, tenant._id)).toBe(16);
+    expect(
+      (daysOf(source.result, tenant._id) ?? 0) +
+      (daysOf(middle.result, tenant._id) ?? 0) +
+      (daysOf(destination.result, tenant._id) ?? 0),
+    ).toBe(30);
+
+    // Removing the zero-length mover does not lose or duplicate any of Room
+    // B's canonical charge: its actual full-cycle resident receives the total.
+    expect(daysOf(middle.result, stayer._id)).toBe(30);
+    expect(shareOf(middle.result, stayer._id)).toBe(WATER_TOTAL);
+    expect(
+      middle.result.tenantSummaries.reduce((sum, item) => sum + item.billAmount, 0),
+    ).toBe(WATER_TOTAL);
   });
 
   // ── 8. Guadalupe (water included in rent) ─────────────────────────────

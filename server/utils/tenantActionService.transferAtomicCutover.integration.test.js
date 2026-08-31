@@ -31,6 +31,7 @@
  * PDF generation is mocked.
  */
 import mongoose from "mongoose";
+import { createServer } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, jest } from "@jest/globals";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
@@ -74,7 +75,8 @@ const { sumBillCharges } = await import("../services/billing/billingPolicy.js");
 const { resolveReservationRentAmount } = await import("../services/billing/rentGenerator.js");
 const { resolveCurrentStayForReservation, CURRENT_STAY_STATUSES } =
   await import("../services/tenantContractSelectionService.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, TenantCredit, UtilityReading } =
+const { initSocket } = await import("./socket.js");
+const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, TenantCredit, UtilityReading, AuditLog, Notification } =
   await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -166,11 +168,25 @@ function transferPayload({ targetRoom, transferDate = TRANSFER_DATE, sourceReadi
 
 describe("Phase 7 — atomic cutover cross-domain consistency", () => {
   let mongo;
+  let httpServer;
+  let socketServer;
+  let socketEvents = [];
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "phase7_atomic" });
+    httpServer = createServer();
+    socketServer = initSocket(httpServer, { allowedOrigins: [], isOriginAllowed: () => true });
+    jest.spyOn(socketServer, "to").mockImplementation((room) => ({
+      emit(event, payload) {
+        socketEvents.push({ room, event, payload });
+        return this;
+      },
+      to() { return this; },
+    }));
   }, 120_000);
   afterAll(async () => {
+    socketServer?.close();
+    httpServer?.close();
     await mongoose.disconnect();
     await mongo?.stop();
   }, 120_000);
@@ -180,7 +196,7 @@ describe("Phase 7 — atomic cutover cross-domain consistency", () => {
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
       Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
-      UtilityReading.deleteMany({}),
+      UtilityReading.deleteMany({}), AuditLog.deleteMany({}), Notification.deleteMany({}),
     ]);
     await BusinessSettings.create({
       key: "global",
@@ -190,6 +206,7 @@ describe("Phase 7 — atomic cutover cross-domain consistency", () => {
     });
     mockValidate.mockClear();
     mockGenerate.mockClear();
+    socketEvents = [];
   });
 
   afterEach(() => { jest.useRealTimers(); });
@@ -204,6 +221,17 @@ describe("Phase 7 — atomic cutover cross-domain consistency", () => {
       payload: transferPayload({ targetRoom: roomB, sourceReading: 1200, targetReading: 5000 }),
       actorId,
     });
+
+    // Post-commit actions are intentionally non-blocking. Wait only until the
+    // persisted audit and tenant-notification callbacks have completed.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const [auditCount, notificationCount] = await Promise.all([
+        AuditLog.countDocuments({ action: /^Room transfer:/ }),
+        Notification.countDocuments({ userId: tenant._id, type: "general", title: "Room Transfer Confirmed" }),
+      ]);
+      if (auditCount === 1 && notificationCount === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
 
     const [
       currentStay, stayCount, reloadedRes, reloadedRoomA, reloadedRoomB,
@@ -283,6 +311,11 @@ describe("Phase 7 — atomic cutover cross-domain consistency", () => {
     expect(String(successor.parentContractId)).toBe(String(reloadedPredecessor._id)); // root lease
 
     expect(result.contractCutover.successorStatus).toBe("generated");
+    expect(await AuditLog.countDocuments({ action: /^Room transfer:/ })).toBe(1);
+    expect(await Notification.countDocuments({ userId: tenant._id, type: "general", title: "Room Transfer Confirmed" })).toBe(1);
+    const contractEvents = socketEvents.filter((entry) => entry.event === "contract:updated");
+    expect(contractEvents.filter((entry) => entry.room === `user:${tenant._id}`)).toHaveLength(1);
+    expect(contractEvents.filter((entry) => entry.room === "admins")).toHaveLength(1);
   });
 
   // ── 2. Destination fills between the guard and the atomic cutover ─────

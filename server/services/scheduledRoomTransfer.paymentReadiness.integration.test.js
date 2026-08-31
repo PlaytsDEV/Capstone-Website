@@ -77,7 +77,7 @@ const { generateContractNumber } = await import("./contractService.js");
 const { getManilaToday } = await import("../utils/dateUtils.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, UtilityReading, ScheduledRoomTransfer, Payment,
+  TenantCredit, UtilityReading, UtilityPeriod, ScheduledRoomTransfer, Payment,
 } = await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -176,6 +176,17 @@ async function view(schedId) {
 // unpaid — no cutover).
 async function scheduleThenComplete({ reservation, dest, actorId, daysAgo = 3 }) {
   const today = new Date(); today.setHours(9, 0, 0, 0);
+  const periodStart = new Date(reservation.moveInDate);
+  await UtilityPeriod.create([
+    {
+      utilityType: "electricity", roomId: reservation.roomId, branch: "gil-puyat",
+      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
+    },
+    {
+      utilityType: "electricity", roomId: dest._id, branch: "gil-puyat",
+      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
+    },
+  ]);
   const destBedId = NEEDS_BED.has(dest.type) ? `r${dest.roomNumber}-b1` : undefined;
   const { scheduledTransfer } = await scheduleRoomTransfer({
     reservationId: reservation._id,
@@ -224,7 +235,7 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
-    UtilityReading.deleteMany({}), ScheduledRoomTransfer.deleteMany({}), Payment.deleteMany({}),
+    UtilityReading.deleteMany({}), UtilityPeriod.deleteMany({}), ScheduledRoomTransfer.deleteMany({}), Payment.deleteMany({}),
   ]);
   await BusinessSettings.create({
     key: "global",

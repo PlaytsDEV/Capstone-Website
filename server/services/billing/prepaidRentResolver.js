@@ -28,15 +28,12 @@
  *        snapshot it is preferred over the Contract field.
  *     3. predecessorContract.approvedMonthlyRate — flat-rate fallback.
  *
- *   resolveApplicablePrepaidRentForTransfer — how much rent value has
- *   actually been funded for the CURRENT rental period, and is therefore
- *   eligible to be reconciled during the transfer. Structured reservations
- *   fund their first period via a one-time advance-rent amount captured on
- *   the immutable pricingSnapshot (never via a regular Bill); every later
- *   period is funded through its own "monthly" Bill, whose charges.rent/
- *   paidAmount is the authoritative amount actually charged/collected for
- *   THAT period — not a re-derived Contract rate and not the original
- *   advance snapshot, which only ever funded period 0.
+ *   resolveApplicablePrepaidRentForTransfer — how much same-cycle rent is
+ *   already represented by canonical billing. A structured first period uses
+ *   verified paid advance rent. Every later period uses its monthly Bill's
+ *   full charges.rent regardless of payment status: unpaid/partial status is
+ *   an outstanding-balance concern, not permission to bill the same rent
+ *   liability again in the transfer settlement.
  *
  * KNOWN CONTRACT-VS-SNAPSHOT MISMATCH (documented, not fixed here): a
  * structured reservation's INITIAL Contract is created with
@@ -64,17 +61,6 @@
 import { Bill } from "../../models/index.js";
 import { roundMoney } from "./billingPolicy.js";
 import { usesStructuredInitialPayment } from "../../config/structuredInitialPayment.js";
-
-// Charge fields other than rent. A partially-paid Bill can only be treated
-// as "fully rent-only paid" for prepaid-rent purposes if none of these are
-// present — otherwise there is no way to know how much of a partial payment
-// applied to rent specifically (the schema has no per-component allocation),
-// so we must not guess (see prepaidRentSource: "current_bill_partial_mixed_unallocated").
-const NON_RENT_CHARGE_FIELDS = ["electricity", "water", "applianceFees", "corkageFees", "penalty", "securityDeposit", "discount"];
-
-function hasOnlyRentCharge(charges = {}) {
-  return NON_RENT_CHARGE_FIELDS.every((field) => !Number(charges?.[field]));
-}
 
 function hasApprovedStructuredSnapshot(reservation) {
   return Boolean(
@@ -143,6 +129,7 @@ export async function resolveApplicablePrepaidRentForTransfer({
       applicablePrepaidRent: roundMoney(sourceEffectiveRate),
       prepaidRentSource: "contract_rate_fallback",
       sourceBillId: null,
+      sourceBillType: null,
     };
   }
 
@@ -159,24 +146,46 @@ export async function resolveApplicablePrepaidRentForTransfer({
   // (see the cycleIndex >= 1 branch below).
   if (cycleIndex === 0) {
     if (hasApprovedStructuredSnapshot(reservation)) {
-      const advanceRentAmount = Number(reservation.pricingSnapshot.advanceRentAmount);
-      if (Number.isFinite(advanceRentAmount)) {
+      const initialBill = reservation.initialPaymentBillId
+        ? await Bill.findById(reservation.initialPaymentBillId).session(session || null)
+        : null;
+      const remaining = Number(initialBill?.remainingAmount);
+      const provenPaid =
+        initialBill?.billType === "initial_payment" &&
+        initialBill?.status === "paid" &&
+        Number.isFinite(remaining) &&
+        roundMoney(remaining) === 0;
+      const advanceRentAmount = Number(
+        initialBill?.initialPaymentBreakdown?.advanceRent ??
+          reservation.pricingSnapshot.advanceRentAmount,
+      );
+      if (provenPaid && Number.isFinite(advanceRentAmount)) {
         return {
           applicablePrepaidRent: roundMoney(advanceRentAmount),
-          prepaidRentSource: "initial_pricing_snapshot",
-          sourceBillId: reservation.initialPaymentBillId || null,
+          prepaidRentSource: "verified_initial_payment_bill",
+          sourceBillId: initialBill._id,
+          sourceBillType: "initial_payment",
         };
       }
+      return {
+        applicablePrepaidRent: 0,
+        prepaidRentSource: "initial_advance_unverified",
+        sourceBillId: reservation.initialPaymentBillId || null,
+        sourceBillType: "initial_payment",
+        requiresManualReview: true,
+        manualReviewReason: "ROOM_TRANSFER_ADVANCE_PAYMENT_UNVERIFIED",
+      };
     }
     return {
       applicablePrepaidRent: roundMoney(sourceEffectiveRate),
       prepaidRentSource: "initial_period_contract_rate",
       sourceBillId: null,
+      sourceBillType: null,
     };
   }
 
-  // Later periods: the authoritative amount is whatever the current period's
-  // own regular rent Bill actually charged/collected — never a re-derived
+  // Later periods: the authoritative represented amount is whatever the
+  // current period's own regular rent Bill charged — never a re-derived
   // Contract rate and never the original initial-period advance snapshot,
   // which only ever funded cycle 0.
   const currentBill = await Bill.findOne({
@@ -197,48 +206,15 @@ export async function resolveApplicablePrepaidRentForTransfer({
       applicablePrepaidRent: 0,
       prepaidRentSource: "no_current_bill_unfunded",
       sourceBillId: null,
+      sourceBillType: null,
     };
   }
 
   const rentCharge = roundMoney(currentBill.charges?.rent);
-  const paidAmount = roundMoney(currentBill.paidAmount);
-  const remainingAmount = Number.isFinite(Number(currentBill.remainingAmount))
-    ? roundMoney(currentBill.remainingAmount)
-    : roundMoney(rentCharge - paidAmount);
-
-  if (remainingAmount <= 0) {
-    return {
-      applicablePrepaidRent: rentCharge,
-      prepaidRentSource: "current_bill",
-      sourceBillId: currentBill._id,
-    };
-  }
-
-  if (paidAmount <= 0) {
-    return {
-      applicablePrepaidRent: 0,
-      prepaidRentSource: "current_bill_unpaid",
-      sourceBillId: currentBill._id,
-    };
-  }
-
-  if (hasOnlyRentCharge(currentBill.charges)) {
-    return {
-      applicablePrepaidRent: roundMoney(Math.min(paidAmount, rentCharge)),
-      prepaidRentSource: "current_bill_partial_rent_only",
-      sourceBillId: currentBill._id,
-    };
-  }
-
-  // Mixed charges (rent + utilities/penalty/fees) with a partial payment:
-  // the schema has no per-component payment allocation, so we cannot know
-  // how much of that partial payment applied to rent specifically. Do not
-  // fabricate an allocation — treat rent as unfunded for transfer-credit
-  // purposes; the tenant's outstanding rent obligation is unaffected and
-  // remains on the existing Bill.
   return {
-    applicablePrepaidRent: 0,
-    prepaidRentSource: "current_bill_partial_mixed_unallocated",
+    applicablePrepaidRent: rentCharge,
+    prepaidRentSource: "current_bill_billed_rent",
     sourceBillId: currentBill._id,
+    sourceBillType: "monthly",
   };
 }

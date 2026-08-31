@@ -7,14 +7,14 @@
  * physical cutover. The cutover is admin-driven — `completeRoomTransfer` in
  * scheduledRoomTransferService.js (meter reading → settlement → settle →
  * `transferStayWorkflow`). An admin runs it from the Tenants workspace once
- * the scheduled date/time is reached.
+ * the scheduled calendar date is reached; the stored time remains guidance.
  *
  * What Job 20 does now (`nudgeDueScheduledRoomTransfers`):
- *   - for each OPEN `scheduled` record whose Manila effective date/time has
+ *   - for each OPEN `scheduled` record whose Manila effective calendar date has
  *     been reached, send a ONE-TIME "ready to complete" reminder to branch
  *     admins (deduped). It changes NO state and NEVER calls
  *     `transferStayWorkflow`. Whether a transfer shows as "Complete transfer
- *     →" in the admin Action Needed column is derived from the date/time, not
+ *     →" in the admin Action Needed column is derived from the date, not
  *     from a status flip.
  *
  * This module also still owns:
@@ -32,6 +32,7 @@ import logger from "../middleware/logger.js";
 import {
   ScheduledRoomTransfer,
   Contract,
+  ContractAcknowledgement,
   Bill,
 } from "../models/index.js";
 import { toManilaStartOfDay, getManilaToday } from "../utils/dateUtils.js";
@@ -80,7 +81,7 @@ export function isScheduledTransferDue(effectiveTransferDate, now = new Date()) 
 
 /**
  * Job 20 (scheduler.js) — one-time "ready to complete" reminder for OPEN
- * scheduled transfers whose Manila effective date/time has been reached.
+ * scheduled transfers whose Manila effective calendar date has been reached.
  * Changes NO state. Never performs the cutover. The admin completes the
  * transfer from the Tenants workspace via `completeRoomTransfer`.
  */
@@ -112,7 +113,7 @@ export async function nudgeDueScheduledRoomTransfers({ now = new Date() } = {}) 
           doc.branch,
           "general",
           "Room Transfer Ready to Complete",
-          `A scheduled room transfer reached its effective date/time and is ready to complete. ` +
+          `A scheduled room transfer reached its effective date and is ready to complete. ` +
             `Open the tenant in the Tenants workspace and run "Complete transfer".`,
           {
             entityType: "reservation",
@@ -180,6 +181,7 @@ export async function retryScheduledRoomTransfer(scheduledTransferId, { actorId 
 export const SCHEDULED_TRANSFER_CANCEL_REASONS = Object.freeze({
   PAYMENT_ALREADY_RECEIVED: "PAYMENT_ALREADY_RECEIVED",
   TRANSFER_ALREADY_COMPLETED: "TRANSFER_ALREADY_COMPLETED",
+  ADDENDUM_ACKNOWLEDGED: "ROOM_TRANSFER_ADDENDUM_ACKNOWLEDGED",
   NOT_CANCELLABLE: "NOT_CANCELLABLE",
 });
 
@@ -189,7 +191,7 @@ export const SCHEDULED_TRANSFER_CANCEL_REASONS = Object.freeze({
  * `releaseScheduledTransferHold` only frees a bed still "reserved" for THIS
  * reservation.
  */
-async function releaseHoldInOwnTxn(sched) {
+async function releaseHoldInOwnTxn(sched, executionToken = null) {
   if (!sched.holdApplied) return;
   const { releaseScheduledTransferHold } = await lazy.schedSvc();
   const session = await mongoose.startSession();
@@ -197,12 +199,14 @@ async function releaseHoldInOwnTxn(sched) {
     await session.withTransaction(async () => {
       await releaseScheduledTransferHold({
         session,
+        scheduledTransferId: sched._id,
+        executionToken,
+        sourceRoomId: sched.sourceRoomId,
         destinationRoomId: sched.destinationRoomId,
         destinationBedId: sched.destinationBedId,
         destinationNeedsBed: sched.destinationNeedsBed,
         reservationId: sched.reservationId,
       });
-      await ScheduledRoomTransfer.updateOne({ _id: sched._id }, { $set: { holdApplied: false } }, { session });
     });
   } finally {
     await session.endSession();
@@ -285,7 +289,7 @@ async function cancelPreparedAddendum(sched, actorId) {
  * @returns {{ outcome: "cancelled"|"action_required"|"skipped", reason?: string }}
  */
 export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId = null, system = false } = {}) {
-  const sched = await ScheduledRoomTransfer.findById(scheduledTransferId);
+  let sched = await ScheduledRoomTransfer.findById(scheduledTransferId).select("+executionToken");
   if (!sched) return { outcome: "skipped", reason: "not_found" };
 
   if (sched.status === "executed") {
@@ -294,26 +298,76 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
   if (sched.status === "cancelled") {
     return { outcome: "skipped", reason: "already_cancelled" };
   }
+  if (sched.executionToken) {
+    return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.NOT_CANCELLABLE };
+  }
   // Defence-in-depth: if the Addendum has somehow already become current, the
   // transfer effectively occurred — do not "cancel" it here.
   if (sched.addendumContractId) {
-    const addendumIsCurrent = await Contract.exists({ _id: sched.addendumContractId, isCurrent: true });
-    if (addendumIsCurrent) {
+    const addendum = await Contract.findById(sched.addendumContractId)
+      .select("isCurrent status tenantSignatureStatus")
+      .lean();
+    if (addendum?.isCurrent) {
       return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.TRANSFER_ALREADY_COMPLETED };
     }
+    const acknowledged = Boolean(await ContractAcknowledgement.exists({
+      contractId: sched.addendumContractId,
+    }));
+    if (
+      acknowledged ||
+      addendum?.tenantSignatureStatus === "completed" ||
+      ["signed", "awaiting_notarization", "notarized", "ready_for_publication", "published", "active"].includes(addendum?.status)
+    ) {
+      return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.ADDENDUM_ACKNOWLEDGED };
+    }
   }
+
+  const cancellationToken = new mongoose.Types.ObjectId().toString();
+  const claimed = await ScheduledRoomTransfer.findOneAndUpdate(
+    {
+      _id: sched._id,
+      status: { $in: ["scheduled", "action_required"] },
+      executionToken: null,
+    },
+    { $set: { executionToken: cancellationToken, executionStartedAt: new Date() } },
+    { new: true },
+  ).select("+executionToken");
+  if (!claimed) {
+    return { outcome: "skipped", reason: SCHEDULED_TRANSFER_CANCEL_REASONS.NOT_CANCELLABLE };
+  }
+  sched = claimed;
 
   const paid = await paidAmountOnBalanceBill(sched);
 
   // ── ANY money received -> manual settlement, NO financial reversal ──────────
   if (paid > 0) {
+    const paidBill = sched.settlementBillId
+      ? await Bill.findById(sched.settlementBillId).select("totalAmount paidAmount userId reservationId").lean()
+      : null;
+    const now = new Date();
     const doc = await ScheduledRoomTransfer.findOneAndUpdate(
-      { _id: sched._id, status: { $ne: "cancelled" } },
+      { _id: sched._id, status: { $ne: "cancelled" }, executionToken: cancellationToken },
       {
         $set: {
           status: "action_required",
           lastError: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED,
-          lastAttemptAt: new Date(),
+          lastAttemptAt: now,
+          executionToken: system ? cancellationToken : null,
+          executionStartedAt: system ? sched.executionStartedAt : null,
+        },
+        $push: {
+          financialAdjustmentHistory: {
+            settlementBillId: paidBill?._id || sched.settlementBillId || null,
+            tenantId: sched.tenantId || paidBill?.userId || null,
+            reservationId: sched.reservationId || paidBill?.reservationId || null,
+            scheduledRoomTransferId: sched._id,
+            amountPaid: paid,
+            previousRequiredAmount: paidBill?.totalAmount ?? null,
+            recomputedRequiredAmount: null,
+            difference: null,
+            reason: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED,
+            recordedAt: now,
+          },
         },
       },
       { new: true },
@@ -324,8 +378,8 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
         "general",
         "Scheduled Room Transfer Requires Review",
         system
-          ? "The tenant departed before a paid scheduled room transfer could occur. Please coordinate with the Administration Office, 2nd Floor for financial settlement. The destination hold has been released."
-          : "This scheduled room transfer has an existing payment and cannot be cancelled automatically. Please coordinate with the Administration Office, 2nd Floor for settlement.",
+          ? "The tenant departed before a paid scheduled room transfer could occur. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing. The destination hold has been released."
+          : "This scheduled room transfer has an existing payment and cannot be cancelled automatically. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
         {
           entityType: "reservation",
           entityId: String(sched.reservationId),
@@ -341,19 +395,32 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
     // explicit admin cancel click we KEEP the hold (the admin may still push
     // the transfer through after settling).
     if (system && sched.holdApplied) {
-      await releaseHoldInOwnTxn(sched).catch((e) =>
+      await releaseHoldInOwnTxn(sched, cancellationToken).catch((e) =>
         logger.error({ err: e, scheduledTransferId: String(sched._id) }, "[cancelScheduledRoomTransfer] departure hold release failed"),
       );
+      await ScheduledRoomTransfer.updateOne(
+        { _id: sched._id, executionToken: cancellationToken },
+        { $set: { executionToken: null, executionStartedAt: null } },
+      );
     }
-    return { outcome: "action_required", reason: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED };
+    return {
+      outcome: "action_required",
+      reason: SCHEDULED_TRANSFER_ACTION_REASONS.PAYMENT_ALREADY_RECEIVED,
+      message:
+        "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.",
+    };
   }
 
   // ── No money -> safe automatic cancellation ───────────────────────────────
   // Release the hold first (its own tiny txn, idempotent — releaseHoldInOwnTxn
   // no-ops when holdApplied is already false, and releaseScheduledTransferHold
   // only frees a bed still "reserved" for THIS reservation).
-  await releaseHoldInOwnTxn(sched).catch((e) => {
+  await releaseHoldInOwnTxn(sched, cancellationToken).catch(async (e) => {
     logger.error({ err: e, scheduledTransferId: String(sched._id) }, "[cancelScheduledRoomTransfer] hold release failed");
+    await ScheduledRoomTransfer.updateOne(
+      { _id: sched._id, executionToken: cancellationToken },
+      { $set: { executionToken: null, executionStartedAt: null } },
+    ).catch(() => {});
     throw e;
   });
 
@@ -361,7 +428,7 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
   const billResult = await voidUnpaidBalanceBill(sched);
 
   const doc = await ScheduledRoomTransfer.findOneAndUpdate(
-    { _id: sched._id, status: { $ne: "cancelled" } },
+    { _id: sched._id, status: { $ne: "cancelled" }, executionToken: cancellationToken },
     {
       $set: {
         status: "cancelled",
@@ -370,6 +437,8 @@ export async function cancelScheduledRoomTransfer(scheduledTransferId, { actorId
         holdApplied: false,
         lastError: null,
         lastAttemptAt: new Date(),
+        executionToken: null,
+        executionStartedAt: null,
       },
     },
     { new: true },

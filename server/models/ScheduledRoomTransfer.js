@@ -36,11 +36,11 @@
  *
  * LIFECYCLE (4 stored states — the UI-facing "Scheduled → Ready for Transfer →
  * Awaiting Settlement → Completed" is DERIVED in scheduledRoomTransferView.js
- * from these + the effective date/time + the settlement Bill; no extra DB
+ * from these + the effective calendar date + the settlement Bill; no extra DB
  * status.)
  *   scheduled       — hold in place, Addendum prepared, waiting for the
- *                     effective date/time. Becomes "Ready for Transfer" (a
- *                     derived state) once the date+time is reached; an admin
+ *                     effective date. Becomes "Ready for Transfer" (a
+ *                     derived state) once the calendar date is reached; an admin
  *                     then runs the Complete Transfer flow.
  *   executed        — the canonical transferStayWorkflow ran and committed
  *                     (via the admin Complete Transfer flow — NOT the cron).
@@ -115,12 +115,9 @@ const scheduledRoomTransferSchema = new mongoose.Schema(
     // server-local (Asia/Manila) start-of-day Date, matching the convention
     // used by billingPolicy / rentGenerator / contractRenewalActivation.
     effectiveTransferDate: { type: Date, required: true, index: true },
-    // The Asia/Manila wall-clock time (minutes from midnight) at which the
-    // admin intends to perform the cutover on `effectiveTransferDate`. Used
-    // for: (a) the same-day office-hours check at scheduling, (b) the
-    // "Complete Transfer becomes available" gate (date AND time reached),
-    // (c) the Action Needed secondary label ("Sep 02 · 2:00 PM"). Default
-    // 09:00 for legacy rows that predate this field.
+    // The Asia/Manila guidance time (minutes from midnight) for display,
+    // reminders, history, and audit. Completion eligibility is date-only.
+    // Default 09:00 for legacy rows that predate this field.
     effectiveTransferTimeMinutes: { type: Number, default: 9 * 60, min: 0, max: 24 * 60 - 1 },
 
     reason: { type: String, default: "Room transfer", trim: true },
@@ -164,6 +161,28 @@ const scheduledRoomTransferSchema = new mongoose.Schema(
     // executor (Phase 2G), null until then.
     executedSettlement: { type: mongoose.Schema.Types.Mixed, default: null },
     settlementBillId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", default: null },
+    // Append-only transfer-specific financial review trail. It preserves the
+    // paid Bill and records why an admin must coordinate a manual adjustment.
+    financialAdjustmentHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            settlementBillId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", default: null },
+            tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+            reservationId: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", default: null },
+            scheduledRoomTransferId: { type: mongoose.Schema.Types.ObjectId, ref: "ScheduledRoomTransfer", default: null },
+            amountPaid: { type: Number, default: null },
+            previousRequiredAmount: { type: Number, default: null },
+            recomputedRequiredAmount: { type: Number, default: null },
+            difference: { type: Number, default: null },
+            reason: { type: String, required: true },
+            recordedAt: { type: Date, default: Date.now },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
 
     // Optional effective-date meter readings an admin may pre-enter so the
     // executor passes them through instead of the latest-DB-reading fallback.
@@ -180,6 +199,12 @@ const scheduledRoomTransferSchema = new mongoose.Schema(
     },
     // Whether the destination-capacity hold is currently in place.
     holdApplied: { type: Boolean, default: false },
+
+    // Short-lived compare-and-set lease used while one admin request owns the
+    // cutover. This stays separate from status so the established lifecycle
+    // and partial-unique index do not change.
+    executionToken: { type: String, default: null, select: false },
+    executionStartedAt: { type: Date, default: null },
 
     scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     scheduledAt: { type: Date, default: Date.now },

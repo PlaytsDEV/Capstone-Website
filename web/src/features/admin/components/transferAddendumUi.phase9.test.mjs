@@ -59,14 +59,16 @@ test("deposit preview shows Required / Held / Balance Due (never one ambiguous f
   assert.match(transferModal, /Unavailable \(legacy record\)/);
 });
 
-test("excess held deposit is labelled as refundable held deposit, NOT a TenantCredit / auto-refund", () => {
-  assert.match(transferModal, /Excess Held Deposit/);
-  assert.match(transferModal, /Not auto-refunded, not a rent credit/i);
+test("excess held deposit remains held and routes any adjustment to the Administration Office", () => {
+  assert.match(transferModal, /Potential Excess Held Deposit/);
+  assert.match(transferModal, /Remains held\. No automatic refund or rent conversion/i);
+  assert.match(transferModal, /Administration Office on the 2nd Floor/i);
 });
 
-test("excess prepaid rent is labelled as a future-rent credit, not a refund", () => {
-  assert.match(transferModal, /Excess Prepaid Rent → Rent Credit/);
-  assert.match(transferModal, /Applied automatically to future rent bills\. Not a refund\./);
+test("excess prepaid rent is manual-review guidance, never an automatic refund or rent credit", () => {
+  assert.match(transferModal, /Potential Prepaid-Rent Adjustment/);
+  assert.match(transferModal, /No automatic refund or rent credit/i);
+  assert.match(transferModal, /Administration Office on the 2nd Floor/i);
 });
 
 test("new monthly rent is the server-authoritative rate and applies to future bills automatically", () => {

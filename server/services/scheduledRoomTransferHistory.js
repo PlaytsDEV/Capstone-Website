@@ -285,7 +285,8 @@ function scheduledToHistoryEntry(s) {
         !["completed", "cancelled"].includes(s.status) &&
         Number(s.transferBalance?.amountPaid || 0) === 0,
       // The admin-driven Complete Transfer flow replaces the old auto-executor
-      // "retry"; it is available once the schedule is due (server `completable`).
+      // "retry"; it is available once the scheduled calendar date is reached
+      // (server `completable`; the stored time is guidance only).
       retry: !!s.completable,
     },
   };

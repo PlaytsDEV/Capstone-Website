@@ -171,6 +171,32 @@ describe("Phase 3 — recurring rent after room transfer", () => {
           }
         : {}),
     });
+    if (structured) {
+      const initialAmount = RATE[sourceType] * 2;
+      const initialBill = await Bill.create({
+        billType: "initial_payment",
+        reservationId: reservation._id,
+        userId: tenant._id,
+        branch: roomA.branch,
+        roomId: roomA._id,
+        billingMonth: moveIn,
+        charges: { rent: 0, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+        initialPaymentBreakdown: {
+          advanceRent: RATE[sourceType],
+          securityDeposit: RATE[sourceType],
+          grossInitialAmount: initialAmount,
+          initialPaymentTotal: initialAmount,
+        },
+        totalAmount: initialAmount,
+        grossAmount: initialAmount,
+        paidAmount: initialAmount,
+        remainingAmount: 0,
+        status: "paid",
+      });
+      reservation.initialPaymentBillId = initialBill._id;
+      reservation.initialPaymentStatus = "paid";
+      await reservation.save({ validateModifiedOnly: true });
+    }
     if (srcBeds.length) { roomA.beds[0].occupiedBy.reservationId = reservation._id; await roomA.save(); }
     const stay = await Stay.create({
       tenantId: tenant._id, reservationId: reservation._id, branch: roomA.branch,

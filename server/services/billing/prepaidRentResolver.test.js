@@ -1,9 +1,10 @@
 import { describe, expect, jest, test } from "@jest/globals";
 
 const billFindOne = jest.fn();
+const billFindById = jest.fn();
 
 await jest.unstable_mockModule("../../models/index.js", () => ({
-  Bill: { findOne: billFindOne },
+  Bill: { findOne: billFindOne, findById: billFindById },
 }));
 
 const { resolveApplicablePrepaidRentForTransfer, resolveSourceEffectiveRentForTransfer } =
@@ -11,6 +12,10 @@ const { resolveApplicablePrepaidRentForTransfer, resolveSourceEffectiveRentForTr
 
 function mockBillResult(bill) {
   billFindOne.mockReturnValue({ session: jest.fn().mockResolvedValue(bill) });
+}
+
+function mockInitialBillResult(bill) {
+  billFindById.mockReturnValue({ session: jest.fn().mockResolvedValue(bill) });
 }
 
 describe("resolveSourceEffectiveRentForTransfer", () => {
@@ -113,6 +118,7 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       applicablePrepaidRent: 6300,
       prepaidRentSource: "initial_period_contract_rate",
       sourceBillId: null,
+      sourceBillType: null,
     });
     expect(billFindOne).not.toHaveBeenCalled();
   });
@@ -124,6 +130,13 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       pricingSnapshot: { approvedAt: new Date(), advanceRentAmount: 5400 },
       initialPaymentBillId: "bill-initial",
     };
+    mockInitialBillResult({
+      _id: "bill-initial",
+      billType: "initial_payment",
+      status: "paid",
+      remainingAmount: 0,
+      initialPaymentBreakdown: { advanceRent: 5400 },
+    });
     const result = await resolveApplicablePrepaidRentForTransfer({
       reservation,
       sourceEffectiveRate: 5400,
@@ -131,8 +144,9 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
     });
     expect(result).toEqual({
       applicablePrepaidRent: 5400,
-      prepaidRentSource: "initial_pricing_snapshot",
+      prepaidRentSource: "verified_initial_payment_bill",
       sourceBillId: "bill-initial",
+      sourceBillType: "initial_payment",
     });
     expect(billFindOne).not.toHaveBeenCalled();
   });
@@ -165,8 +179,9 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
     });
     expect(result).toEqual({
       applicablePrepaidRent: 6300,
-      prepaidRentSource: "current_bill",
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-2",
+      sourceBillType: "monthly",
     });
   });
 
@@ -181,10 +196,11 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       applicablePrepaidRent: 0,
       prepaidRentSource: "no_current_bill_unfunded",
       sourceBillId: null,
+      sourceBillType: null,
     });
   });
 
-  test("later period, unpaid current-period Bill: applicable prepaid rent is zero, no false credit", async () => {
+  test("later period, unpaid current-period Bill: reconciles the rent already billed", async () => {
     mockBillResult({
       _id: "bill-3",
       charges: { rent: 6300, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
@@ -197,13 +213,14 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       currentBillingCycle: { billingCycleStart: new Date("2026-09-01"), cycleIndex: 1 },
     });
     expect(result).toEqual({
-      applicablePrepaidRent: 0,
-      prepaidRentSource: "current_bill_unpaid",
+      applicablePrepaidRent: 6300,
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-3",
+      sourceBillType: "monthly",
     });
   });
 
-  test("later period, partially paid rent-only Bill: caps prepaid rent at the amount actually paid", async () => {
+  test("later period, partially paid rent-only Bill: reconciles the full rent already billed", async () => {
     mockBillResult({
       _id: "bill-4",
       charges: { rent: 6300, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
@@ -216,13 +233,14 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       currentBillingCycle: { billingCycleStart: new Date("2026-09-01"), cycleIndex: 1 },
     });
     expect(result).toEqual({
-      applicablePrepaidRent: 3000,
-      prepaidRentSource: "current_bill_partial_rent_only",
+      applicablePrepaidRent: 6300,
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-4",
+      sourceBillType: "monthly",
     });
   });
 
-  test("later period, partially paid MIXED Bill (rent + utilities): does not guess an allocation, credit stays zero", async () => {
+  test("later period, partially paid mixed Bill: reconciles only its full rent charge", async () => {
     mockBillResult({
       _id: "bill-5",
       charges: { rent: 6300, electricity: 800, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
@@ -235,9 +253,10 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       currentBillingCycle: { billingCycleStart: new Date("2026-09-01"), cycleIndex: 1 },
     });
     expect(result).toEqual({
-      applicablePrepaidRent: 0,
-      prepaidRentSource: "current_bill_partial_mixed_unallocated",
+      applicablePrepaidRent: 6300,
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-5",
+      sourceBillType: "monthly",
     });
   });
 
@@ -255,12 +274,13 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
     });
     expect(result).toEqual({
       applicablePrepaidRent: 6300,
-      prepaidRentSource: "current_bill",
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-6",
+      sourceBillType: "monthly",
     });
   });
 
-  test("penalty-only partial payment on a rent+penalty Bill does not count as rent credit", async () => {
+  test("penalty on a partially paid Bill does not change its represented rent liability", async () => {
     mockBillResult({
       _id: "bill-7",
       charges: { rent: 6300, electricity: 0, water: 0, applianceFees: 0, corkageFees: 0, penalty: 500, discount: 0 },
@@ -273,9 +293,10 @@ describe("resolveApplicablePrepaidRentForTransfer", () => {
       currentBillingCycle: { billingCycleStart: new Date("2026-09-01"), cycleIndex: 1 },
     });
     expect(result).toEqual({
-      applicablePrepaidRent: 0,
-      prepaidRentSource: "current_bill_partial_mixed_unallocated",
+      applicablePrepaidRent: 6300,
+      prepaidRentSource: "current_bill_billed_rent",
       sourceBillId: "bill-7",
+      sourceBillType: "monthly",
     });
   });
 

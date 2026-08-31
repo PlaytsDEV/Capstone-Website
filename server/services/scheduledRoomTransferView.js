@@ -23,7 +23,7 @@
  */
 
 import { Bill, Contract } from "../models/index.js";
-import { composeManilaDateTime, isManilaDateTimeReached } from "../utils/dateUtils.js";
+import { getManilaToday, toManilaStartOfDay } from "../utils/dateUtils.js";
 
 export const SCHEDULED_TRANSFER_USER_STATUSES = Object.freeze([
   "scheduled",
@@ -51,11 +51,13 @@ const ACTION_REQUIRED_MESSAGES = Object.freeze({
   TRANSFER_BALANCE_UNPAID:
     "The Scheduled Room Transfer Balance is not fully settled. The tenant remains in the current room. Settle the balance, then retry.",
   ADDITIONAL_BALANCE_DUE:
-    "The settlement recomputed at the effective date is higher than what was billed. The extra amount was added to the transfer balance Bill. Settle it, then retry.",
+    "The settlement recomputed higher than the amount already paid. Settle the remaining transfer balance, then retry.",
   FINANCIAL_ADJUSTMENT_REQUIRED:
-    "The final transfer amount is lower than what the tenant already paid. No automatic refund is made — please coordinate with the Administration Office, 2nd Floor.",
+    "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.",
   PAYMENT_ALREADY_RECEIVED:
-    "A payment was already received for this transfer. It cannot be cancelled automatically — please coordinate with the Administration Office, 2nd Floor.",
+    "A payment was already received for this transfer. It cannot be cancelled automatically. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
+  PAID_TRANSFER_CANNOT_COMPLETE:
+    "This paid Room Transfer cannot complete until its financial adjustment is resolved. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
   OPERATIONAL_VALIDATION_FAILED:
     "The destination room or bed is no longer valid. Review the destination and retry after correcting it.",
   EXECUTION_FAILED:
@@ -141,26 +143,23 @@ export async function resolveScheduledTransferBalance(scheduledTransfer, { sessi
 
 /**
  * Derive the UI-facing status from the stored status + the effective
- * date/time + the settlement Bill. There is no extra DB status —
+ * calendar date + the settlement Bill. The stored time remains guidance. There is no extra DB status —
  * "Ready for Transfer" / "Awaiting Settlement" are computed:
  *
  *   executed              -> completed
  *   cancelled             -> cancelled
  *   action_required       -> action_required  (unless a Bill is now unpaid,
  *                            in which case awaiting_settlement is clearer)
- *   scheduled + date/time NOT reached          -> scheduled
- *   scheduled + reached + unpaid balance Bill  -> awaiting_settlement
- *   scheduled + reached + no/settled balance   -> ready_for_transfer
+ *   scheduled + calendar date NOT reached       -> scheduled
+ *   scheduled + date reached + unpaid balance   -> awaiting_settlement
+ *   scheduled + date reached + no/settled bill  -> ready_for_transfer
  */
 export function deriveScheduledTransferUserStatus(scheduledTransfer, balance, now = new Date()) {
   if (scheduledTransfer.status === "executed") return "completed";
   if (scheduledTransfer.status === "cancelled") return "cancelled";
 
-  const cutoverAt = composeManilaDateTime(
-    scheduledTransfer.effectiveTransferDate,
-    scheduledTransfer.effectiveTransferTimeMinutes ?? 9 * 60,
-  );
-  const dueReached = isManilaDateTimeReached(cutoverAt, now);
+  const effectiveDay = toManilaStartOfDay(scheduledTransfer.effectiveTransferDate);
+  const dueReached = !!effectiveDay && !effectiveDay.isAfter(getManilaToday(now));
   const balanceUnpaid =
     balance && balance.hasBill && balance.paymentState !== "paid" && balance.paymentState !== "none";
 
@@ -272,8 +271,8 @@ export async function serializeScheduledRoomTransfer(scheduledTransfer, { sessio
     // The stored orchestration status (scheduled | executed | cancelled |
     // action_required) — distinct from the derived UI `status` above.
     recordStatus: doc.status,
-    // Whether the admin Complete Transfer flow is available (date/time reached
-    // and not already executed/cancelled).
+    // Whether the admin Complete Transfer flow is available (calendar date
+    // reached and not already executed/cancelled). The stored time is guidance.
     completable: ["ready_for_transfer", "awaiting_settlement", "action_required"].includes(userStatus),
     actionRequiredReason: doc.status === "action_required" ? (doc.lastError || null) : null,
     actionRequiredMessage:

@@ -151,6 +151,7 @@ describe("transferStayWorkflow — one-step Draft cutover", () => {
       reservationFeeAmount: 2000, preferredRoomType: "double-sharing",
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: 5400,
       selectedBed: { id: "bed-a1" }, moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+      securityDepositHeld: 5400,
     });
     roomA.beds[0].occupiedBy.reservationId = reservation._id;
     await roomA.save();

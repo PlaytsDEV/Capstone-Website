@@ -160,6 +160,7 @@ describe("transferStayWorkflow — cross-room-type transfers", () => {
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: EXPECTED_RATE[sourceType],
       selectedBed: { id: sourceRealBedId },
       moveInDate: MOVE_IN,
+      securityDepositHeld: EXPECTED_RATE[sourceType],
     });
     if (srcBeds.length) {
       roomA.beds[0].occupiedBy.reservationId = reservation._id;

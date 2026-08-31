@@ -76,7 +76,7 @@ const { generateContractNumber } = await import("./contractService.js");
 const { getManilaToday } = await import("../utils/dateUtils.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, UtilityReading, ScheduledRoomTransfer, Payment,
+  TenantCredit, UtilityPeriod, UtilityReading, ScheduledRoomTransfer, Payment,
 } = await import("../models/index.js");
 
 jest.setTimeout(300_000);
@@ -172,6 +172,18 @@ async function makeDueWithSettlementBill(scheduledTransferId, { daysAgo = 3 } = 
   const back = new Date(); back.setDate(back.getDate() - daysAgo); back.setHours(0, 0, 0, 0);
   await ScheduledRoomTransfer.updateOne({ _id: scheduledTransferId }, { $set: { effectiveTransferDate: back } });
   const rec = await ScheduledRoomTransfer.findById(scheduledTransferId).lean();
+  const reservation = await Reservation.findById(rec.reservationId).lean();
+  const periodStart = new Date(reservation.moveInDate);
+  await UtilityPeriod.create([
+    {
+      utilityType: "electricity", roomId: rec.sourceRoomId, branch: "gil-puyat",
+      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
+    },
+    {
+      utilityType: "electricity", roomId: rec.destinationRoomId, branch: "gil-puyat",
+      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
+    },
+  ]);
   const r = await completeRoomTransfer({
     reservationId: String(rec.reservationId),
     // Sub-metered branch (gil-puyat) needs meter readings even to SIZE the Bill.
@@ -209,7 +221,7 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
-    UtilityReading.deleteMany({}), ScheduledRoomTransfer.deleteMany({}), Payment.deleteMany({}),
+    UtilityPeriod.deleteMany({}), UtilityReading.deleteMany({}), ScheduledRoomTransfer.deleteMany({}), Payment.deleteMany({}),
   ]);
   await BusinessSettings.create({
     key: "global",
@@ -223,6 +235,25 @@ beforeEach(async () => {
 
 // ── Safe (unpaid) cancellation ────────────────────────────────────────────
 describe("safe unpaid cancellation", () => {
+  test("an in-flight Complete Transfer lease cannot be cancelled or release its hold", async () => {
+    const { reservation, actorId } = await seed();
+    const dest = await emptyRoom("private", "205");
+    const { scheduledTransfer } = await scheduleRoomTransfer({
+      reservationId: reservation._id,
+      payload: payloadFor({ targetRoom: dest, transferDate: futureStr(12) }),
+      actorId,
+    });
+    await ScheduledRoomTransfer.updateOne(
+      { _id: scheduledTransfer._id },
+      { $set: { executionToken: "active-completion", executionStartedAt: new Date() } },
+    );
+
+    const result = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
+    expect(result).toEqual({ outcome: "skipped", reason: "NOT_CANCELLABLE" });
+    expect((await ScheduledRoomTransfer.findById(scheduledTransfer._id)).holdApplied).toBe(true);
+    expect((await Room.findById(dest._id)).currentOccupancy).toBe(1);
+  });
+
   test("unpaid schedule cancels: hold released once, Addendum cancelled, Bill voided, source untouched", async () => {
     const { reservation, roomA, stay, original, actorId } = await seed({ sourceType: "quadruple-sharing", roomNumber: "301" });
     const dest = await emptyRoom("private", "205");
@@ -356,6 +387,9 @@ describe("paid cancellation -> action_required, no financial reversal", () => {
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("action_required");
     expect(res.reason).toBe("PAYMENT_ALREADY_RECEIVED");
+    expect(res.message).toMatch(/manual processing/i);
+    expect(res.message).toMatch(/Administration Office/i);
+    expect(res.message).toMatch(/2nd Floor/i);
 
     const s = await ScheduledRoomTransfer.findById(scheduledTransfer._id);
     expect(s.status).toBe("action_required");
@@ -372,6 +406,19 @@ describe("paid cancellation -> action_required, no financial reversal", () => {
     expect((await Room.findById(dest._id)).currentOccupancy).toBe(1);
     // Source still current.
     expect(String((await Reservation.findById(reservation._id)).roomId)).toBe(String(roomA._id));
+    expect(await TenantCredit.countDocuments({ userId: reservation.userId })).toBe(0);
+
+    const audit = s.financialAdjustmentHistory.at(-1);
+    expect(audit.reason).toBe("PAYMENT_ALREADY_RECEIVED");
+    expect(String(audit.settlementBillId)).toBe(String(bill._id));
+    expect(String(audit.tenantId)).toBe(String(reservation.userId));
+    expect(String(audit.reservationId)).toBe(String(reservation._id));
+    expect(String(audit.scheduledRoomTransferId)).toBe(String(scheduledTransfer._id));
+    expect(audit.amountPaid).toBeCloseTo(billAfter.paidAmount, 2);
+    expect(audit.previousRequiredAmount).toBeCloseTo(billAfter.totalAmount, 2);
+    expect(audit.recomputedRequiredAmount).toBeNull();
+    expect(audit.difference).toBeNull();
+    expect(audit.recordedAt).toBeTruthy();
   });
 
   test("fully paid (Ready): action_required, no refund, held deposit preserved", async () => {
@@ -387,6 +434,8 @@ describe("paid cancellation -> action_required, no financial reversal", () => {
     const res = await cancelScheduledRoomTransfer(scheduledTransfer._id, { actorId });
     expect(res.outcome).toBe("action_required");
     expect(res.reason).toBe("PAYMENT_ALREADY_RECEIVED");
+    expect(res.message).toMatch(/Administration Office/i);
+    expect(res.message).toMatch(/2nd Floor/i);
 
     const bill = await Bill.findById(billId);
     expect(bill.status).not.toBe("voided");

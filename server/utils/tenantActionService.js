@@ -9,6 +9,7 @@ import {
   ContractAcknowledgement,
   Reservation,
   Room,
+  ScheduledRoomTransfer,
   Stay,
   User,
   UtilityPeriod,
@@ -23,9 +24,10 @@ import {
   CURRENT_RESIDENT_STATUS_QUERY,
   hasReservationStatus,
   readMoveInDate,
+  readMoveOutDate,
   utilityEventTypesForQuery,
 } from "./lifecycleNaming.js";
-import { resolveSecurityDeposit, resolveReservationFinancials } from "./depositUtils.js";
+import { resolveSecurityDeposit } from "./depositUtils.js";
 import {
   activateRoomTransferSuccessor,
   activateRoomTransferSuccessorDraft,
@@ -53,7 +55,6 @@ import {
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
 import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
 import { calculateRoomTransferDepositSettlement } from "../services/billing/roomTransferDepositSettlement.js";
-import { recordRoomTransferRentCredit } from "../services/billing/tenantCreditService.js";
 import {
   resolveApplicablePrepaidRentForTransfer,
   resolveSourceEffectiveRentForTransfer,
@@ -257,6 +258,7 @@ export async function computeRoomTransferPreview({
   // scheduling-time preview).
   asOfCutoverDate = null,
   depositHeldOverride = null,
+  destinationApprovedRateOverride = null,
 }) {
   if (!targetRoomId) return null;
   const [reservation, targetRoom] = await Promise.all([
@@ -279,17 +281,21 @@ export async function computeRoomTransferPreview({
 
   // Destination approved rate — the same authoritative table
   // createReplacementContractForTransfer uses (never the mutable Room price).
-  let destinationApprovedRate = 0;
-  try {
-    const { resolveAuthoritativeLeasePricing } = await import("../services/contractPricingResolver.js");
-    const { getBusinessSettings } = await import("./businessSettings.js");
-    const settings = await getBusinessSettings().catch(() => ({}));
-    const pricing = resolveAuthoritativeLeasePricing({
-      room: targetRoom, roomType: targetRoom.type, branch: targetRoom.branch, leaseDurationMonths, settings,
-    });
-    destinationApprovedRate = roundMoney(Number(pricing.finalMonthlyRate) || 0);
-  } catch {
-    destinationApprovedRate = roundMoney(Number(targetRoom.monthlyPrice ?? targetRoom.price) || 0);
+  let destinationApprovedRate = Number.isFinite(Number(destinationApprovedRateOverride))
+    ? roundMoney(Number(destinationApprovedRateOverride))
+    : 0;
+  if (!(destinationApprovedRate > 0)) {
+    try {
+      const { resolveAuthoritativeLeasePricing } = await import("../services/contractPricingResolver.js");
+      const { getBusinessSettings } = await import("./businessSettings.js");
+      const settings = await getBusinessSettings().catch(() => ({}));
+      const pricing = resolveAuthoritativeLeasePricing({
+        room: targetRoom, roomType: targetRoom.type, branch: targetRoom.branch, leaseDurationMonths, settings,
+      });
+      destinationApprovedRate = roundMoney(Number(pricing.finalMonthlyRate) || 0);
+    } catch {
+      destinationApprovedRate = roundMoney(Number(targetRoom.monthlyPrice ?? targetRoom.price) || 0);
+    }
   }
   if (!(destinationApprovedRate > 0)) return null;
 
@@ -299,9 +305,25 @@ export async function computeRoomTransferPreview({
   const { sourceEffectiveRate, sourceRateSource } = resolveSourceEffectiveRentForTransfer({
     reservation, predecessorContract,
   });
-  const { applicablePrepaidRent, prepaidRentSource } = await resolveApplicablePrepaidRentForTransfer({
+  const prepaidResolution = await resolveApplicablePrepaidRentForTransfer({
     reservation, sourceEffectiveRate, currentBillingCycle,
   });
+  if (prepaidResolution.requiresManualReview) {
+    throw Object.assign(
+      new Error("The first-period advance payment cannot be verified. Review the initial payment before transferring this tenant."),
+      {
+        statusCode: 409,
+        code: prepaidResolution.manualReviewReason || "ROOM_TRANSFER_ADVANCE_PAYMENT_UNVERIFIED",
+        manualReviewRequired: true,
+      },
+    );
+  }
+  const {
+    applicablePrepaidRent,
+    prepaidRentSource,
+    sourceBillId: rentCoverageBillId,
+    sourceBillType: rentCoverageBillType,
+  } = prepaidResolution;
   const settlement = calculateRoomTransferRentSettlement({
     periodStart: currentBillingCycle?.billingCycleStart || transferDate,
     periodEnd: currentBillingCycle?.billingCycleEnd || transferDate,
@@ -332,16 +354,14 @@ export async function computeRoomTransferPreview({
 
   let depositHeldKnown = Number.isFinite(depositHeld);
   if (!depositHeldKnown) {
-    const fin = resolveReservationFinancials(reservation);
-    depositHeld =
-      predecessorContract?.securityDepositAmount != null && Number.isFinite(Number(predecessorContract.securityDepositAmount)) && Number(predecessorContract.securityDepositAmount) > 0
-        ? roundMoney(Number(predecessorContract.securityDepositAmount))
-        : fin.securityDeposit > 0
-          ? roundMoney(Number(fin.securityDeposit))
-          : sourceEffectiveRate > 0
-            ? roundMoney(sourceEffectiveRate)
-            : 0;
-    depositHeldKnown = true;
+    throw Object.assign(
+      new Error("The tenant's actual security deposit held cannot be verified. Review payment/deposit records before transferring."),
+      {
+        statusCode: 409,
+        code: "ROOM_TRANSFER_DEPOSIT_HELD_UNVERIFIED",
+        manualReviewRequired: true,
+      },
+    );
   }
   const depositSettlement = calculateRoomTransferDepositSettlement({
     depositCurrentlyHeld: depositHeldKnown ? depositHeld : 0,
@@ -352,8 +372,14 @@ export async function computeRoomTransferPreview({
   // modal's "Enter Meter Reading" step. `_baselineReading` = the current open
   // period's opening reading (the "previous reading" the admin confirms
   // consumption against); `ratePerUnit` = the configured rate.
-  const sourceRoomId = reservation.roomId?._id || reservation.roomId;
-  const [srcOpenPeriod, dstOpenPeriod, srcLastReading, dstLastReading] = await Promise.all([
+  const sourceRoomId = activeStay?.roomId || reservation.roomId?._id || reservation.roomId;
+  const sourceHistory = await BedHistory.findOne({
+    reservationId: reservation._id,
+    roomId: sourceRoomId,
+    status: "active",
+  }).sort({ moveInDate: -1 }).lean();
+  const sourceScopedEntry = sourceHistory?.effectiveStartDate || sourceHistory?.moveInDate || null;
+  const [srcOpenPeriod, dstOpenPeriod, srcLastReading, dstLastReading, sourceMoveInReading] = await Promise.all([
     UtilityPeriod.findOne({ roomId: sourceRoomId, utilityType: "electricity", status: "open" })
       .sort({ startDate: -1 }).select("ratePerUnit startReading startDate").lean(),
     UtilityPeriod.findOne({ roomId: targetRoom._id, utilityType: "electricity", status: "open" })
@@ -364,11 +390,32 @@ export async function computeRoomTransferPreview({
     UtilityReading.findOne({
       roomId: targetRoom._id, utilityType: "electricity", isArchived: false, date: { $lte: transferDate },
     }).sort({ date: -1, createdAt: -1 }).select("reading date").lean(),
+    UtilityReading.findOne({
+      roomId: sourceRoomId,
+      utilityType: "electricity",
+      tenantId: reservation.userId?._id || reservation.userId,
+      eventType: "moveIn",
+      isArchived: false,
+      date: { $lte: transferDate },
+    }).sort({ date: -1, createdAt: -1 }).select("reading date").lean(),
   ]);
 
   const sourceBranch = reservation.roomId?.branch || "";
   const sourceSubMetered = branchSupportsSeparateUtilityBillingSafe(sourceBranch, "electricity");
   const destSubMetered = branchSupportsSeparateUtilityBillingSafe(targetRoom.branch, "electricity");
+  const enteredDuringOpenPeriod = Boolean(
+    sourceScopedEntry &&
+    srcOpenPeriod?.startDate &&
+    new Date(sourceScopedEntry) > new Date(srcOpenPeriod.startDate),
+  );
+  const hasMatchingScopedOpening = Boolean(
+    sourceMoveInReading?.date &&
+    sourceScopedEntry &&
+    dayjs(sourceMoveInReading.date).isSame(dayjs(sourceScopedEntry), "day"),
+  );
+  const tenantOpeningReading = enteredDuringOpenPeriod
+    ? (hasMatchingScopedOpening ? Number(sourceMoveInReading.reading) : null)
+    : (srcOpenPeriod?.startReading != null ? Number(srcOpenPeriod.startReading) : null);
 
   const rentAdjustmentDue = roundMoney(settlement.additionalAmountDue);
   const excessRentCredit = roundMoney(settlement.excessCredit);
@@ -401,10 +448,18 @@ export async function computeRoomTransferPreview({
       destinationApprovedRate,
       applicablePrepaidRent: roundMoney(applicablePrepaidRent),
       prepaidRentSource,
+      coverageBillId: rentCoverageBillId ? String(rentCoverageBillId) : null,
+      coverageBillType: rentCoverageBillType || null,
+      rentLiabilityForPeriod: roundMoney(settlement.rentLiabilityForPeriod),
       destinationProratedValue: roundMoney(settlement.destinationProratedValue),
       unusedPrepaidCredit: roundMoney(settlement.unusedPrepaidCredit),
       adjustmentDue: rentAdjustmentDue,            // charges.rent on the settlement Bill
-      excessCredit: excessRentCredit,              // -> a rent-only TenantCredit
+      // Backward-compatible amount field; this is now disclosure-only and is
+      // never converted into TenantCredit automatically.
+      excessCredit: excessRentCredit,
+      potentialAdjustment: excessRentCredit,
+      adjustmentHandling:
+        excessRentCredit > 0 ? "administration_office_2nd_floor" : null,
       sourceDays: settlement.sourceDays,
       destinationDays: settlement.destinationDays,
       totalCoverageDays: settlement.totalCoverageDays,
@@ -414,7 +469,11 @@ export async function computeRoomTransferPreview({
       held: depositHeldKnown ? roundMoney(depositHeld) : null,  // null = legacy, unknown — UI shows "Unavailable"
       heldKnown: depositHeldKnown,
       balanceDue: additionalDepositDue,            // charges.securityDeposit on the settlement Bill
-      excessHeld: roundMoney(depositSettlement.excessDepositHeld),  // stays refundable, NOT a credit
+      excessHeld: roundMoney(depositSettlement.excessDepositHeld),
+      excessHandling:
+        depositSettlement.excessDepositHeld > 0
+          ? "administration_office_2nd_floor"
+          : null,
     },
     electricity: {
       // SOURCE room — the transferee's accrued liability is FINALIZED on the
@@ -427,9 +486,10 @@ export async function computeRoomTransferPreview({
       openPeriodId: srcOpenPeriod?._id ? String(srcOpenPeriod._id) : null,
       // The "previous reading" the admin confirms consumption against.
       previousReading:
-        srcOpenPeriod?.startReading != null
-          ? Number(srcOpenPeriod.startReading)
-          : (srcLastReading?.reading ?? null),
+        tenantOpeningReading ?? (srcLastReading?.reading ?? null),
+      tenantOpeningReading,
+      tenantOpeningReadingMissing: sourceSubMetered && enteredDuringOpenPeriod && !hasMatchingScopedOpening,
+      roomScopedEntryDate: sourceScopedEntry,
       lastRecordedReading: srcLastReading?.reading ?? null,
       lastRecordedReadingDate: srcLastReading?.date ?? null,
       note: sourceSubMetered
@@ -492,10 +552,9 @@ export async function computeRoomTransferPreview({
  * `[transferDate, transfereeEnd)`. `transfereeEnd` is the canonical lease
  * boundary the transfer carries forward — `activeStay.leaseEndDate` ->
  * `predecessorContract.leaseEndDate` -> `computeLeaseEndDate(reservation)` — or
- * open-ended (+infinity) when none is known. A reservation that BEGINS after
- * `transfereeEnd` does not block. `moveIn` occupants are always current
- * occupants (already in `currentOccupancy`); only future `reserved` /
- * `approved_for_payment` move-ins get the interval test.
+ * open-ended (+infinity) when none is known. Another reservation ending on or
+ * before `transferDate`, or beginning on/after `transfereeEnd`, does not block.
+ * An unknown other-reservation end is treated conservatively as +infinity.
  *
  * @param {Object} args
  * @param {Object} args.reservation      lean reservation (roomId populated)
@@ -517,11 +576,20 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
     null;
   const transfereeEnd = transfereeEndRaw ? normalizeDate(transfereeEndRaw) : null;
 
-  // Does an "other" reservation whose occupancy starts at `otherStart` overlap
-  // `[transferDate, transfereeEnd)`? Their stay is `[otherStart, +inf)`.
-  const overlapsTransfereeInterval = (otherStart) => {
-    const start = otherStart ? normalizeDate(otherStart) : transferDate;
-    // No overlap if the other stay begins on/after the transferee's known end.
+  const overlapsTransfereeInterval = (otherReservation) => {
+    const otherStartRaw =
+      otherReservation.leaseStartDate ||
+      otherReservation.expectedMoveInDate ||
+      otherReservation.moveInDate ||
+      null;
+    const otherEndRaw =
+      readMoveOutDate(otherReservation) ||
+      computeLeaseEndDate(otherReservation) ||
+      null;
+    const start = otherStartRaw ? normalizeDate(otherStartRaw) : transferDate;
+    const end = otherEndRaw ? normalizeDate(otherEndRaw) : null;
+    // Half-open intervals: [otherStart, otherEnd) vs [transferDate, transfereeEnd).
+    if (end && end.getTime() <= transferDate.getTime()) return false;
     if (transfereeEnd && start && start.getTime() >= transfereeEnd.getTime()) return false;
     return true;
   };
@@ -539,7 +607,7 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
       isArchived: { $ne: true },
     })
       .populate("roomId", "branch")
-      .select("roomId selectedBed status moveInDate expectedMoveInDate leaseStartDate")
+      .select("roomId selectedBed status moveInDate expectedMoveInDate leaseStartDate moveOutDate leaseDuration")
       .lean(),
   ]);
 
@@ -550,13 +618,7 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
     const rid = String(r.roomId?._id || r.roomId || "");
     if (!rid) continue;
 
-    // `moveIn` = already a current occupant (counted in currentOccupancy).
-    // Future reservations only conflict if their window overlaps the
-    // transferee's expected destination-occupancy interval.
-    if (r.status !== "moveIn") {
-      const otherStart = r.leaseStartDate || r.expectedMoveInDate || r.moveInDate || null;
-      if (!overlapsTransfereeInterval(otherStart)) continue;
-    }
+    if (!overlapsTransfereeInterval(r)) continue;
 
     conflictRoomCounts.set(rid, (conflictRoomCounts.get(rid) || 0) + 1);
     const bedId = r.selectedBed?.id;
@@ -1226,13 +1288,6 @@ export async function prepareRoomTransferAddendum({ reservationId, payload = {},
 
   // Was a compatible Draft already prepared for this exact transfer?
   const existing = await resolveRoomTransferSuccessor({ predecessorContractId: predecessorContract._id }).catch(() => null);
-  const reused = Boolean(
-    existing &&
-    String(existing.roomId) === String(targetRoom._id) &&
-    ["generated", "awaiting_signatures", "partially_signed", "signed",
-     "awaiting_notarization", "notarized", "ready_for_publication", "published"].includes(existing.status),
-  );
-
   const addendum = await prepareRoomTransferDraft({
     reservation,
     predecessorContract,
@@ -1244,7 +1299,7 @@ export async function prepareRoomTransferAddendum({ reservationId, payload = {},
   });
 
   return {
-    reused,
+    reused: Boolean(existing && String(existing._id) === String(addendum._id)),
     addendum: {
       contractId: String(addendum._id),
       contractNumber: addendum.contractNumber || null,
@@ -1376,7 +1431,17 @@ const DISCARDABLE_ADDENDUM_STATUSES = new Set([
   "awaiting_signatures", "partially_signed",
 ]);
 
-async function prepareRoomTransferDraft({ reservation, predecessorContract, activeStay, targetRoom, targetBed, effectiveTransferDate, actorId }) {
+async function prepareRoomTransferDraft({
+  reservation,
+  predecessorContract,
+  activeStay,
+  targetRoom,
+  targetBed,
+  effectiveTransferDate,
+  actorId,
+  scheduledTransferId = null,
+  scheduledExecutionToken = null,
+}) {
   const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
     stayId: activeStay?._id || predecessorContract.stayId,
@@ -1391,6 +1456,39 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
 
   let successor = await buildDraft();
 
+  const { resolveAuthoritativeLeasePricing } = await import("../services/contractPricingResolver.js");
+  const { getBusinessSettings } = await import("./businessSettings.js");
+  const transferPricing = resolveAuthoritativeLeasePricing({
+    room: targetRoom,
+    roomType: targetRoom.type,
+    branch: targetRoom.branch,
+    leaseDurationMonths:
+      predecessorContract.leaseDurationMonths ||
+      activeStay?.leaseDurationMonths ||
+      reservation.leaseDuration ||
+      reservation.leaseDurationMonths,
+    settings: await getBusinessSettings().catch(() => ({})),
+  });
+  const expectedTerms = {
+    roomId: String(targetRoom._id),
+    bedId: targetBed ? String(targetBed.id || targetBed._id || "") : "",
+    effectiveDate: dayjs(effectiveTransferDate).startOf("day"),
+    approvedRate: roundMoney(transferPricing.finalMonthlyRate),
+  };
+  const mismatchedTermsFor = (contract) => {
+    const mismatches = [];
+    if (String(contract.roomId) !== expectedTerms.roomId) mismatches.push("room");
+    if (String(contract.bedId || "") !== expectedTerms.bedId) mismatches.push("bed");
+    if (!dayjs(contract.amendmentEffectiveDate).startOf("day").isSame(expectedTerms.effectiveDate, "day")) {
+      mismatches.push("effectiveDate");
+    }
+    if (Math.abs(roundMoney(contract.approvedMonthlyRate) - expectedTerms.approvedRate) > 0.01) {
+      mismatches.push("approvedRate");
+    }
+    return mismatches;
+  };
+  let mismatchedTerms = mismatchedTermsFor(successor);
+
   // The idempotency guard in createReplacementContractForTransfer reuses ANY
   // non-abandoned successor of the predecessor Contract. If that reused
   // successor targets a DIFFERENT room than the one the admin is now
@@ -1404,25 +1502,44 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
   // Otherwise keep hard-blocking — a wet-signed successor, an already-current
   // one, or a live scheduled transfer genuinely needs explicit admin action
   // (Cancel Scheduled Transfer / discard-addendum).
-  if (String(successor.roomId) !== String(targetRoom._id)) {
+  if (mismatchedTerms.length > 0) {
     const { ScheduledRoomTransfer } = await import("../models/index.js");
     const { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } = await import("../models/ScheduledRoomTransfer.js");
-    const openScheduled = await ScheduledRoomTransfer.exists({
+    const openScheduled = await ScheduledRoomTransfer.findOne({
       reservationId: reservation._id,
       status: { $in: [...OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES] },
       isArchived: { $ne: true },
-    });
+    }).select("addendumContractId +executionToken").lean();
+    const isOwnedExecutionDateAlignment = Boolean(
+      openScheduled &&
+      scheduledTransferId &&
+      scheduledExecutionToken &&
+      String(openScheduled._id) === String(scheduledTransferId) &&
+      String(openScheduled.addendumContractId || "") === String(successor._id) &&
+      openScheduled.executionToken === scheduledExecutionToken &&
+      mismatchedTerms.length === 1 &&
+      mismatchedTerms[0] === "effectiveDate",
+    );
     const isDiscardableDraft =
       successor.isCurrent !== true && DISCARDABLE_ADDENDUM_STATUSES.has(successor.status);
+    const hasAcknowledgement = Boolean(await ContractAcknowledgement.exists({ contractId: successor._id }));
 
-    if (openScheduled || !isDiscardableDraft) {
+    if ((!isOwnedExecutionDateAlignment && openScheduled) || !isDiscardableDraft || hasAcknowledgement) {
       throw Object.assign(
         new Error(
           openScheduled
-            ? "This tenant already has a scheduled room transfer to a different room. Cancel it before scheduling a new one."
-            : "An existing room-transfer replacement Contract for this tenant targets a different room and cannot be auto-resolved. Resolve it in the Contracts workspace before transferring.",
+            ? "This tenant already has a scheduled room transfer with different Addendum terms. Cancel it before scheduling a replacement."
+            : hasAcknowledgement
+              ? "The existing Room Transfer Addendum was already acknowledged and cannot be changed. Cancel it through an approved reversal process before preparing different terms."
+              : "An existing Room Transfer Addendum has different room, bed, date, or rate terms and cannot be auto-resolved.",
         ),
-        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+        {
+          statusCode: 409,
+          code: hasAcknowledgement
+            ? "ROOM_TRANSFER_ADDENDUM_ACKNOWLEDGED"
+            : "ROOM_TRANSFER_ADDENDUM_TERMS_MISMATCH",
+          details: { mismatchedTerms },
+        },
       );
     }
 
@@ -1436,13 +1553,14 @@ async function prepareRoomTransferDraft({ reservation, predecessorContract, acti
       `Stale Room Transfer Addendum superseded — re-targeted from room ${successor.roomNumber || successor.roomId} to ${targetRoom.roomNumber || targetRoom.name || targetRoom._id}`,
     );
     successor = await buildDraft();
+    mismatchedTerms = mismatchedTermsFor(successor);
 
-    if (String(successor.roomId) !== String(targetRoom._id)) {
+    if (mismatchedTerms.length > 0) {
       // The rebuilt Draft still points elsewhere — a second stale successor, or
       // a data-integrity problem. Do not loop; surface it for admin repair.
       throw Object.assign(
-        new Error("An existing room-transfer replacement Contract for this tenant targets a different room. Resolve it in the Contracts workspace before transferring."),
-        { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+        new Error("The rebuilt Room Transfer Addendum still does not match the approved room, bed, effective date, or rate."),
+        { statusCode: 409, code: "ROOM_TRANSFER_ADDENDUM_TERMS_MISMATCH", details: { mismatchedTerms } },
       );
     }
   }
@@ -1540,6 +1658,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
     targetBed: prepTargetBed,
     effectiveTransferDate: prepEffectiveDate,
     actorId,
+    scheduledTransferId: payload.__scheduledTransferId || null,
+    scheduledExecutionToken: payload.__scheduledExecutionToken || null,
   });
 
   // ── Stage B — physical transfer + Contract cutover (atomic) ──────────────
@@ -1559,6 +1679,30 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       }
       if (!payload?.confirm) {
         throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
+      }
+
+      const consumesScheduledHold = Boolean(
+        payload.__scheduledTransferId &&
+        payload.__scheduledExecutionToken &&
+        payload.__consumeScheduledHold,
+      );
+      const scheduledExecution = consumesScheduledHold
+        ? await ScheduledRoomTransfer.findOne({
+            _id: payload.__scheduledTransferId,
+            reservationId: reservation._id,
+            destinationRoomId: payload.targetRoomId,
+            status: { $in: ["scheduled", "action_required"] },
+            holdApplied: true,
+            executionToken: payload.__scheduledExecutionToken,
+          })
+            .select("+executionToken")
+            .session(session)
+        : null;
+      if (consumesScheduledHold && !scheduledExecution) {
+        throw Object.assign(new Error("This Complete Transfer request no longer owns the scheduled hold."), {
+          statusCode: 409,
+          code: "SCHEDULED_TRANSFER_EXECUTION_CLAIM_LOST",
+        });
       }
 
       // ── AUTHORITATIVE physical cutover timestamp ─────────────────────────
@@ -1695,7 +1839,14 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       if (destinationNeedsBed && !targetBed) {
         throw Object.assign(new Error("Target bed not found in the destination room."), { statusCode: 404, code: "TARGET_BED_NOT_FOUND" });
       }
-      if (destinationNeedsBed && targetBed.status !== "available") {
+      const targetBedIsOwnedHold = Boolean(
+        scheduledExecution &&
+        targetBed &&
+        targetBed.status === "reserved" &&
+        String(targetBed.occupiedBy?.reservationId || "") === String(reservation._id) &&
+        !targetBed.occupiedBy?.occupiedSince,
+      );
+      if (destinationNeedsBed && targetBed.status !== "available" && !targetBedIsOwnedHold) {
         throw Object.assign(new Error("Selected target bed is not available."), { statusCode: 409, code: "BED_NOT_AVAILABLE" });
       }
       // Destination room capacity guard — only when actually changing rooms
@@ -1704,7 +1855,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const changingRooms = String(activeStay.roomId) !== String(targetRoom._id);
       if (
         changingRooms &&
-        Number(targetRoom.currentOccupancy || 0) >= Number(targetRoom.capacity || 0)
+        (scheduledExecution
+          ? Number(targetRoom.currentOccupancy || 0) > Number(targetRoom.capacity || 0)
+          : Number(targetRoom.currentOccupancy || 0) >= Number(targetRoom.capacity || 0))
       ) {
         throw Object.assign(new Error("The destination room is full."), { statusCode: 409, code: "DESTINATION_ROOM_FULL" });
       }
@@ -1781,15 +1934,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         // means the room filled between the guard above and here (concurrent
         // transfer / move-in claiming the last slot) — fail the whole
         // transfer safely; the transaction rolls back the source decrement.
-        const incremented = await Room.atomicIncreaseOccupancy(targetRoom._id, session);
-        if (!incremented) {
-          throw Object.assign(
-            new Error("The destination room filled up before the transfer could complete."),
-            { statusCode: 409, code: "DESTINATION_ROOM_FULL" },
-          );
+        if (!scheduledExecution) {
+          const incremented = await Room.atomicIncreaseOccupancy(targetRoom._id, session);
+          if (!incremented) {
+            throw Object.assign(
+              new Error("The destination room filled up before the transfer could complete."),
+              { statusCode: 409, code: "DESTINATION_ROOM_FULL" },
+            );
+          }
+          targetRoom.currentOccupancy = incremented.currentOccupancy;
+          targetRoom.available = incremented.available;
         }
-        targetRoom.currentOccupancy = incremented.currentOccupancy;
-        targetRoom.available = incremented.available;
         // Occupy the bed only if the DESTINATION room type has per-bed
         // assignment. A private destination has no bed to occupy. targetBed
         // is null unless destinationNeedsBed, so a stale bed id sent for a
@@ -1802,6 +1957,30 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 
       const sourceMeterReading = payload.sourceRoomMeterReading ?? payload.meterReading;
       const targetMeterReading = payload.targetRoomMeterReading ?? payload.newRoomMeterReading;
+      const sourceMetered = branchSupportsSeparateUtilityBillingSafe(currentRoom.branch, "electricity");
+      const targetMetered = branchSupportsSeparateUtilityBillingSafe(targetRoom.branch, "electricity");
+      // The current Admin Room Transfer flow always supplies its scheduled
+      // transfer id. Legacy direct transfer callers retain their established
+      // boundary-writing behavior and are intentionally outside this scoped
+      // hardening phase.
+      const enforceTransferMeterBoundary = Boolean(payload.__scheduledTransferId);
+      if (enforceTransferMeterBoundary && sourceMetered && (sourceMeterReading == null || Number.isNaN(Number(sourceMeterReading)))) {
+        throw Object.assign(new Error("A fresh source-room closing electricity reading is required."), {
+          statusCode: 409,
+          code: "ROOM_TRANSFER_SOURCE_READING_REQUIRED",
+        });
+      }
+      if (enforceTransferMeterBoundary && targetMetered) {
+        const { validateTransferDestinationOpeningReading } = await import(
+          "../services/billing/transferUtilityFinalization.js"
+        );
+        await validateTransferDestinationOpeningReading({
+          destinationRoom: targetRoom,
+          cutoverDate: cutoverAt,
+          freshDestinationOpeningReading: targetMeterReading,
+          session,
+        });
+      }
 
       // -----------------------------------------------------------------------
       // Billing Continuity Safety Net
@@ -1932,13 +2111,50 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         reservation,
         predecessorContract,
       });
-      const { applicablePrepaidRent, prepaidRentSource } =
-        await resolveApplicablePrepaidRentForTransfer({
+      const prepaidResolution = await resolveApplicablePrepaidRentForTransfer({
           reservation,
           sourceEffectiveRate,
           currentBillingCycle,
           session,
         });
+      if (prepaidResolution.requiresManualReview) {
+        throw Object.assign(
+          new Error("The first-period advance payment cannot be verified. Review the initial payment before transferring this tenant."),
+          {
+            statusCode: 409,
+            code: prepaidResolution.manualReviewReason || "ROOM_TRANSFER_ADVANCE_PAYMENT_UNVERIFIED",
+            manualReviewRequired: true,
+          },
+        );
+      }
+      const expectedContractBedId = destinationNeedsBed
+        ? String(targetBed?.id || targetBed?._id || "")
+        : "";
+      if (String(successorContract.bedId || "") !== expectedContractBedId) {
+        throw Object.assign(
+          new Error("The prepared Room Transfer Addendum does not match the selected destination bed."),
+          {
+            statusCode: 409,
+            code: "ROOM_TRANSFER_CONTRACT_BED_MISMATCH",
+            details: {
+              addendumBedId: successorContract.bedId || null,
+              destinationBedId: expectedContractBedId || null,
+            },
+          },
+        );
+      }
+      if (!(Number(successorContract.approvedMonthlyRate) > 0)) {
+        throw Object.assign(
+          new Error("The prepared Room Transfer Addendum has no valid approved destination rate."),
+          { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_RATE_INVALID" },
+        );
+      }
+      const {
+        applicablePrepaidRent,
+        prepaidRentSource,
+        sourceBillId: rentCoverageBillId,
+        sourceBillType: rentCoverageBillType,
+      } = prepaidResolution;
       const settlement = calculateRoomTransferRentSettlement({
         periodStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
         periodEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
@@ -1987,16 +2203,14 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             : null;
       let heldWasBackfilled = false;
       if (!Number.isFinite(depositCurrentlyHeld)) {
-        const moveInFinancials = resolveReservationFinancials(reservation);
-        depositCurrentlyHeld =
-          predecessorContract?.securityDepositAmount != null && Number.isFinite(Number(predecessorContract.securityDepositAmount)) && Number(predecessorContract.securityDepositAmount) > 0
-            ? roundMoney(Number(predecessorContract.securityDepositAmount))
-            : moveInFinancials.securityDeposit > 0
-              ? roundMoney(Number(moveInFinancials.securityDeposit))
-              : sourceEffectiveRate > 0
-                ? roundMoney(sourceEffectiveRate)
-                : 0;
-        heldWasBackfilled = true;
+        throw Object.assign(
+          new Error("The tenant's actual security deposit held cannot be verified. Review payment/deposit records before transferring."),
+          {
+            statusCode: 409,
+            code: "ROOM_TRANSFER_DEPOSIT_HELD_UNVERIFIED",
+            manualReviewRequired: true,
+          },
+        );
       }
       const depositSettlement = calculateRoomTransferDepositSettlement({
         depositCurrentlyHeld,
@@ -2029,9 +2243,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       let finalizedSourceElectricity = null;
       let estimatedElectricityKwh = null;
       let estimatedElectricityCharge = 0;
+      const hasSourceElectricityPeriod = sourceMeterReading != null
+        ? await UtilityPeriod.exists({
+            roomId: currentRoom._id,
+            utilityType: "electricity",
+            status: "open",
+            isArchived: false,
+          }).session(session)
+        : null;
       if (
         sourceMeterReading != null &&
-        !Number.isNaN(Number(sourceMeterReading))
+        !Number.isNaN(Number(sourceMeterReading)) &&
+        (payload.__scheduledTransferId || hasSourceElectricityPeriod)
       ) {
         const { computeTransfereeSourceElectricityLiability } = await import(
           "../services/billing/transferUtilityFinalization.js"
@@ -2053,8 +2276,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 
       // ── Transfer Settlement Bill ───────────────────────────────────────────
       // ONE Bill, categorized charge lines that are never flattened:
-      //   charges.rent            = additional RENT due (destination prorated
-      //                             remainder − unused prepaid rent, floored 0)
+      //   charges.rent            = additional same-cycle RENT liability after
+      //                             applying the rent already represented by
+      //                             monthly/advance coverage
       //   charges.securityDeposit = additional DEPOSIT due (destination
       //                             required − currently held, floored 0)
       //   charges.electricity     = the transferee's FINALIZED source-room
@@ -2084,13 +2308,21 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         `rent due ₱${rentComponentDue.toFixed(2)}`,
         `deposit due ₱${depositComponentDue.toFixed(2)}`,
       ];
-      if (excessRentCredit > 0) noteParts.push(`excess prepaid rent ₱${excessRentCredit.toFixed(2)} kept as rent credit`);
-      if (excessDepositHeld > 0) noteParts.push(`excess deposit held ₱${excessDepositHeld.toFixed(2)} (stays refundable)`);
+      if (excessRentCredit > 0) {
+        noteParts.push(
+          `potential excess prepaid rent ₱${excessRentCredit.toFixed(2)} requires Administration Office review on the 2nd Floor`,
+        );
+      }
+      if (excessDepositHeld > 0) {
+        noteParts.push(
+          `potential excess deposit ₱${excessDepositHeld.toFixed(2)} remains held and requires Administration Office review on the 2nd Floor`,
+        );
+      }
 
       // ── Scheduled Room Transfer: RE-USE the pre-created (and possibly
       //    already-paid) Scheduled Transfer Balance Bill instead of creating a
-      //    SECOND transfer_settlement Bill. The executor
-      //    (scheduledRoomTransferExecutor.js) has already gated: it only calls
+      //    SECOND transfer_settlement Bill. completeRoomTransfer has already
+      //    gated: it only calls
       //    this workflow when the linked Bill's rent + securityDeposit
       //    components equal the freshly-recomputed canonical settlement, and
       //    only when that Bill is fully settled (or zero). So here we just
@@ -2131,8 +2363,12 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         // Refresh execution-time metadata; never touch paidAmount / payment history.
         transferBill.roomId = currentRoom._id;
         transferBill.billingMonth = effectiveTransferDate;
-        transferBill.billingCycleStart = currentBillingCycle?.billingCycleStart || effectiveTransferDate;
-        transferBill.billingCycleEnd = currentBillingCycle?.billingCycleEnd || effectiveTransferDate;
+        transferBill.billingCycleStart = rentCoverageBillType === "monthly"
+          ? null
+          : (currentBillingCycle?.billingCycleStart || effectiveTransferDate);
+        transferBill.billingCycleEnd = rentCoverageBillType === "monthly"
+          ? null
+          : (currentBillingCycle?.billingCycleEnd || effectiveTransferDate);
         transferBill.proRataDays = proRataDays || null;
         transferBill.notes = noteParts.join("; ");
         transferBill.transferSnapshot = {
@@ -2151,6 +2387,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           sourceRateSource,
           applicablePrepaidRent,
           prepaidRentSource,
+          rentCoverageBillId,
+          rentCoverageBillType,
+          rentLiabilityForPeriod: settlement.rentLiabilityForPeriod,
           totalCoverageDays: settlement.totalCoverageDays,
           destinationDays: settlement.destinationDays,
           destinationProratedValue: settlement.destinationProratedValue,
@@ -2202,8 +2441,12 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             branch: currentRoom.branch,
             roomId: currentRoom._id,
             billingMonth: effectiveTransferDate,
-            billingCycleStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
-            billingCycleEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
+            billingCycleStart: rentCoverageBillType === "monthly"
+              ? null
+              : (currentBillingCycle?.billingCycleStart || effectiveTransferDate),
+            billingCycleEnd: rentCoverageBillType === "monthly"
+              ? null
+              : (currentBillingCycle?.billingCycleEnd || effectiveTransferDate),
             proRataDays: proRataDays || null,
             charges: transferCharges,
             totalAmount: transferSettlementTotal,
@@ -2239,6 +2482,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               sourceRateSource,
               applicablePrepaidRent,
               prepaidRentSource,
+              rentCoverageBillId,
+              rentCoverageBillType,
+              rentLiabilityForPeriod: settlement.rentLiabilityForPeriod,
               totalCoverageDays: settlement.totalCoverageDays,
               destinationDays: settlement.destinationDays,
               destinationProratedValue: settlement.destinationProratedValue,
@@ -2318,24 +2564,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         );
       }
 
-      // ── Excess prepaid RENT -> reusable TenantCredit (never a deposit,
-      //    never a refund here). Idempotency key is bound to the transfer
-      //    event (predecessor Contract id): a retried transfer resolves the
-      //    same credit instead of creating a second one.
-      if (excessRentCredit > 0) {
-        await recordRoomTransferRentCredit({
-          userId: reservation.userId?._id || reservation.userId,
-          reservationId: reservation._id,
-          branch: currentRoom.branch,
-          amount: excessRentCredit,
-          transferReference: predecessorContract._id,
-          sourceBillId: transferBill._id,
-          idempotencyKey: `room_transfer_rent_credit:${String(predecessorContract._id)}`,
-          reason: `Excess prepaid rent on transfer ${currentRoom.roomNumber} -> ${targetRoom.roomNumber}`,
-          createdBy: actorId,
-          session,
-        });
-      }
+      // Excess prepaid rent is recorded in the transfer snapshot only. It is
+      // never converted into TenantCredit or refunded automatically; the
+      // Administration Office on the 2nd Floor coordinates any adjustment.
 
       // ── Security deposit HELD ledger ───────────────────────────────────────
       // Held CASH does NOT change at transfer time:
@@ -2356,8 +2587,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const depositLedgerKey = `room_transfer_adjustment_due:${String(predecessorContract._id)}`;
       if (!reservation.securityDepositLedger.some((e) => e.idempotencyKey === depositLedgerKey)) {
         reservation.securityDepositLedger.push({
-          kind: heldWasBackfilled ? "backfill" : "transfer_adjustment_due",
-          previousHeld: heldWasBackfilled ? null : heldBefore,
+          kind: "transfer_adjustment_due",
+          previousHeld: heldBefore,
           adjustmentAmount: 0, // held cash unchanged at this point
           resultingHeld: heldBefore,
           sourceRef: { kind: "bill", id: transferBill._id },
@@ -2368,7 +2599,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             `Room transfer ${currentRoom.roomNumber} -> ${targetRoom.roomNumber}: ` +
             `required deposit ₱${destinationRequiredDeposit.toFixed(2)}, held ₱${heldBefore.toFixed(2)}` +
             (additionalDepositDue > 0 ? `, additional ₱${additionalDepositDue.toFixed(2)} due on Bill` : "") +
-            (excessDepositHeld > 0 ? `, excess ₱${excessDepositHeld.toFixed(2)} held (refundable)` : ""),
+            (excessDepositHeld > 0
+              ? `, potential excess ₱${excessDepositHeld.toFixed(2)} remains held for Administration Office review on the 2nd Floor`
+              : ""),
           createdBy: actorId,
         });
       }
@@ -2625,6 +2858,38 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         session,
       });
 
+      if (scheduledExecution) {
+        const consumed = await ScheduledRoomTransfer.updateOne(
+          {
+            _id: scheduledExecution._id,
+            executionToken: payload.__scheduledExecutionToken,
+            holdApplied: true,
+            status: { $in: ["scheduled", "action_required"] },
+          },
+          {
+            $set: {
+              status: "executed",
+              executedAt: cutoverAt,
+              settlementBillId: transferBill?._id || null,
+              sourceRoomMeterReading: sourceMeterReading != null ? Number(sourceMeterReading) : null,
+              targetRoomMeterReading: targetMeterReading != null ? Number(targetMeterReading) : null,
+              holdApplied: false,
+              executionToken: null,
+              executionStartedAt: null,
+              lastError: null,
+              lastAttemptAt: new Date(),
+            },
+          },
+          { session },
+        );
+        if (consumed.modifiedCount !== 1) {
+          throw Object.assign(new Error("The scheduled destination hold could not be consumed atomically."), {
+            statusCode: 409,
+            code: "SCHEDULED_TRANSFER_HOLD_CONSUME_FAILED",
+          });
+        }
+      }
+
       result = {
         contractCutover: {
           predecessorContractId: String(predecessorContract._id),
@@ -2693,20 +2958,24 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         },
       };
     });
-    return result;
   } finally {
     await session.endSession();
   }
 
   // ── Post-transaction: AuditLog + Tenant Notification ──────────────────────
-  // Both are fire-and-forget. Errors here must never fail the transfer response.
+  // Both are best-effort and awaited so each committed transfer attempts them
+  // exactly once before returning. Errors here must never fail the transfer.
   if (result) {
-    AuditLog.log({
+    const postCommitTasks = [AuditLog.log({
       type: "data_modification",
       action: `Room transfer: ${result.fromRoomName} → ${result.toRoomName}`,
       severity: "high",
-      user: { id: actorId },
-      details: {
+      user: actorId ? String(actorId) : "system",
+      userId: actorId || null,
+      entityType: "reservation",
+      entityId: String(reservationId),
+      details: `Room transfer completed for reservation ${reservationId}.`,
+      metadata: {
         reservationId,
         fromRoomId: result.fromRoomDetails?.roomId,
         fromRoomName: result.fromRoomDetails?.name,
@@ -2717,15 +2986,15 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         sourceMeterReading: payload.sourceRoomMeterReading ?? null,
         targetMeterReading: payload.targetRoomMeterReading ?? null,
       },
-    }).catch(() => {});
+    })];
 
     const tenantId = result.reservation?.userId?._id || result.reservation?.userId;
     if (tenantId) {
       const fromName = result.fromRoomName || "previous room";
       const toName = result.toRoomName || "new room";
-      createNotification(
+      postCommitTasks.push(createNotification(
         tenantId,
-        "room_transfer",
+        "general",
         "Room Transfer Confirmed",
         `Your room has been transferred from ${fromName} to ${toName}. A settlement statement has been generated for your previous room.`,
         {
@@ -2733,8 +3002,10 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           entityId: reservationId,
           emitRealtime: true,
         },
-      ).catch(() => {});
+      ));
     }
+
+    await Promise.allSettled(postCommitTasks);
 
     // Contract lineage: the replacement Contract Draft was generated in
     // Stage A and made the tenant's current Contract by the cutover inside

@@ -32,7 +32,9 @@ const REVIEW_GUIDANCE = {
   ADDITIONAL_BALANCE_DUE:
     "An additional balance is required. Settle the updated Bill, then complete the transfer.",
   FINANCIAL_ADJUSTMENT_REQUIRED:
-    "The amount paid exceeds the recomputed settlement. Please coordinate with the Administration Office, 2nd Floor.",
+    "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.",
+  PAID_TRANSFER_CANNOT_COMPLETE:
+    "This paid transfer requires manual financial resolution. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing.",
   DESTINATION_UNAVAILABLE:
     "The destination room/bed is no longer available for this tenant's stay. Reschedule or pick another room.",
   ADDENDUM_EFFECTIVE_DATE_LOCKED:
@@ -40,7 +42,7 @@ const REVIEW_GUIDANCE = {
   METER_READING_REQUIRED: "Enter the source room's closing electricity reading to continue.",
   DEST_METER_READING_REQUIRED:
     "Enter the destination room's current electricity reading to continue.",
-  TRANSFER_NOT_YET_DUE: "The scheduled transfer date/time has not been reached yet.",
+  TRANSFER_NOT_YET_DUE: "The scheduled transfer date has not been reached yet. Reschedule it to complete earlier.",
 };
 
 const Row = ({ label, value }) => (
@@ -119,7 +121,7 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
         );
       } else {
         showNotification(
-          "A payment has already been received. Please coordinate with the Administration Office, 2nd Floor for settlement.",
+          "Payment adjustment or refund requires manual processing. Please coordinate with the Administration Office on the 2nd Floor.",
           "warning",
         );
       }
@@ -268,7 +270,7 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
         title="Cancel this scheduled room transfer?"
         message={
           hasPayment
-            ? "A payment has already been received for this transfer. It cannot be cancelled automatically — you will be directed to coordinate settlement with the Administration Office, 2nd Floor."
+            ? "A payment has already been received for this transfer. It cannot be cancelled automatically. Please coordinate with the Administration Office on the 2nd Floor for payment adjustment or refund processing."
             : "The tenant will remain in the current room and the reserved destination will be released."
         }
         confirmText="Cancel Transfer"

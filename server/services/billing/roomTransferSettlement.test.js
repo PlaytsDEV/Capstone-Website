@@ -185,6 +185,10 @@ describe("calculateRoomTransferRentSettlement", () => {
     // The shortfall is not folded into this settlement's additionalAmountDue —
     // it remains a separate, pre-existing rent obligation on the source-room
     // period, untouched by room-transfer settlement.
-    expect(result.additionalAmountDue).toBeCloseTo(result.destinationProratedValue, 2);
+    expect(result.rentLiabilityForPeriod).toBeCloseTo(
+      result.sourceConsumedValue + result.destinationProratedValue,
+      2,
+    );
+    expect(result.additionalAmountDue).toBeCloseTo(result.rentLiabilityForPeriod, 2);
   });
 });

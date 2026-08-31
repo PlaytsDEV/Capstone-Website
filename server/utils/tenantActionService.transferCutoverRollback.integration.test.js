@@ -109,6 +109,7 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
       selectedBed: { id: needsBed(sourceType) ? sourceBed : "" },
       moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+      securityDepositHeld: 6300,
     });
     if (needsBed(sourceType)) {
       roomA.beds[0].occupiedBy.reservationId = reservation._id;
@@ -141,13 +142,26 @@ describe("transferStayWorkflow rolls back physical mutations when the Contract c
       createdBy: actorId, updatedBy: actorId,
     });
     const numberB = await generateContractNumber(roomB.branch, new Date());
+    const { resolveAuthoritativeLeasePricing } = await import("../services/contractPricingResolver.js");
+    const { getBusinessSettings } = await import("./businessSettings.js");
+    const destinationPricing = resolveAuthoritativeLeasePricing({
+      room: roomB,
+      roomType: destType,
+      branch: roomB.branch,
+      leaseDurationMonths: 6,
+      settings: await getBusinessSettings(),
+    });
     const successor = await Contract.create({
       ...numberB, contractPurpose: "amendment", replacesContractId: predecessor._id,
       parentContractId: predecessor._id, tenantId: tenant._id, applicationId: reservation._id,
       reservationId: reservation._id, stayId: stay._id, roomId: roomB._id, branch: roomB.branch,
       propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: roomB.roomNumber,
-      roomType: destType, leaseType: "long_term", approvedMonthlyRate: 14400,
+      roomType: destType, leaseType: "long_term",
+      regularMonthlyRate: destinationPricing.regularMonthlyRate,
+      discountPercentage: destinationPricing.discountPercentage,
+      approvedMonthlyRate: destinationPricing.finalMonthlyRate,
       bedId: needsBed(destType) ? destBed : "",
+      amendmentEffectiveDate: new Date("2026-08-15T00:00:00.000Z"),
       leaseStartDate: new Date("2026-08-15T00:00:00.000Z"),
       leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), leaseDurationMonths: 6,
       status: "generated", isCurrent: false, tenantVisible: true,

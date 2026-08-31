@@ -109,7 +109,7 @@ async function seed({ transfereeLeaseEnd }) {
 }
 
 /** Another tenant with an APPROVED reservation for roomB bed b1, starting on `start`. */
-async function otherReservationForBedB1(roomB, start) {
+async function otherReservationForBedB1(roomB, { start, end = null }) {
   const o = await tenant("Other");
   return Reservation.create({
     userId: o._id, roomId: roomB._id, status: "approved_for_payment",
@@ -118,7 +118,7 @@ async function otherReservationForBedB1(roomB, start) {
     agreedToTerms: true, agreedToHouseRules: true,
     agreedToPrivacy: true, agreedToCertification: true,
     totalPrice: RATE["double-sharing"], selectedBed: { id: "b-b1" },
-    leaseStartDate: start, moveInDate: start,
+    leaseStartDate: start, moveInDate: start, moveOutDate: end,
   });
 }
 
@@ -128,13 +128,33 @@ const bedStatus = (cands, roomId, bedId) => {
 };
 
 describe("buildTransferCandidates — reservation-conflict WINDOW", () => {
-  test("A. bed free on the transfer day but reserved DURING the transferee's remaining stay -> unavailable", async () => {
+  test("A. reservation ending before the transfer date does NOT block", async () => {
+    const { res, roomB, stayLike } = await seed({
+      transfereeLeaseEnd: new Date("2026-12-31T00:00:00.000Z"),
+    });
+    await otherReservationForBedB1(roomB, {
+      start: new Date("2025-10-01T00:00:00.000Z"),
+      end: new Date("2026-02-28T00:00:00.000Z"),
+    });
+
+    const cands = await buildTransferCandidates({
+      reservation: res,
+      stayLike,
+      effectiveTransferDate: new Date("2026-03-01T00:00:00.000Z"),
+    });
+    expect(bedStatus(cands, roomB._id, "b-b1").selectable).toBe(true);
+  });
+
+  test("B. bed free on the transfer day but reserved DURING the transferee's remaining stay -> unavailable", async () => {
     // Transferee's lease runs to 2026-12-31. Another reservation takes bed b1
     // from 2026-06-01 (well inside that interval).
     const { res, roomB, stayLike } = await seed({
       transfereeLeaseEnd: new Date("2026-12-31T00:00:00.000Z"),
     });
-    await otherReservationForBedB1(roomB, new Date("2026-06-01T00:00:00.000Z"));
+    await otherReservationForBedB1(roomB, {
+      start: new Date("2026-06-01T00:00:00.000Z"),
+      end: new Date("2027-01-31T00:00:00.000Z"),
+    });
 
     const cands = await buildTransferCandidates({
       reservation: res,
@@ -150,13 +170,16 @@ describe("buildTransferCandidates — reservation-conflict WINDOW", () => {
     expect(b2.selectable).toBe(true);
   });
 
-  test("B. reservation begins AFTER the transferee's known lease end -> does NOT block", async () => {
+  test("C. reservation begins AFTER the transferee's known lease end -> does NOT block", async () => {
     // Transferee's lease ends 2026-06-30. Another reservation starts 2026-09-01
     // — strictly after — so it must NOT flag bed b1.
     const { res, roomB, stayLike } = await seed({
       transfereeLeaseEnd: new Date("2026-06-30T00:00:00.000Z"),
     });
-    await otherReservationForBedB1(roomB, new Date("2026-09-01T00:00:00.000Z"));
+    await otherReservationForBedB1(roomB, {
+      start: new Date("2026-09-01T00:00:00.000Z"),
+      end: new Date("2027-02-28T00:00:00.000Z"),
+    });
 
     const cands = await buildTransferCandidates({
       reservation: res,
@@ -186,18 +209,19 @@ describe("buildTransferCandidates — reservation-conflict WINDOW", () => {
     expect(bedStatus(cands, roomB._id, "b-b2").selectable).toBe(true);
   });
 
-  test("B'. open-ended transferee stay (no known lease end) -> a later reservation DOES overlap (+infinity)", async () => {
+  test("D. another reservation with unknown end is conservatively treated as overlapping", async () => {
     const { res, roomB, stayLike } = await seed({
       transfereeLeaseEnd: new Date("2026-12-31T00:00:00.000Z"),
     });
-    await otherReservationForBedB1(roomB, new Date("2027-01-01T00:00:00.000Z"));
+    await otherReservationForBedB1(roomB, {
+      start: new Date("2026-06-01T00:00:00.000Z"),
+    });
     // Simulate "no resolvable end" — the candidate builder falls back to
     // computeLeaseEndDate(reservation), which is also null for this fixture,
     // so the interval is [transferDate, +inf).
-    const openEndedStayLike = { ...stayLike, leaseEndDate: null };
     const cands = await buildTransferCandidates({
       reservation: res,
-      stayLike: openEndedStayLike,
+      stayLike,
       effectiveTransferDate: new Date("2026-03-01T00:00:00.000Z"),
     });
     expect(bedStatus(cands, roomB._id, "b-b1").selectable).toBe(false);

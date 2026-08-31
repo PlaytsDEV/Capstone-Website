@@ -1215,9 +1215,9 @@ export function TransferTenantModal({
                     {preview.rent.excessCredit > 0 && (
                       <div className="twm-settlement-row twm-settlement-row--success">
                         <span className="twm-settlement-row__label">
-                          Excess Prepaid Rent → Rent Credit
+                          Potential Prepaid-Rent Adjustment
                           <span className="twm-settlement-row__hint">
-                            Applied automatically to future rent bills. Not a refund.
+                            No automatic refund or rent credit. Coordinate with the Administration Office on the 2nd Floor.
                           </span>
                         </span>
                         <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
@@ -1271,9 +1271,9 @@ export function TransferTenantModal({
                     {preview.deposit.excessHeld > 0 && (
                       <div className="twm-settlement-row twm-settlement-row--success">
                         <span className="twm-settlement-row__label">
-                          Excess Held Deposit
+                          Potential Excess Held Deposit
                           <span className="twm-settlement-row__hint">
-                            Stays as refundable held deposit. Not auto-refunded, not a rent credit.
+                            Remains held. No automatic refund or rent conversion; coordinate with the Administration Office on the 2nd Floor.
                           </span>
                         </span>
                         <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
@@ -1414,7 +1414,7 @@ export function TransferTenantModal({
                     {preview.deposit.balanceDue > 0
                       ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
                       : preview.deposit.excessHeld > 0
-                        ? ` (${fmtMoney(preview.deposit.excessHeld)} excess stays held)`
+                        ? ` (${fmtMoney(preview.deposit.excessHeld)} potential excess remains held; Administration Office, 2nd Floor)`
                         : ""}
                   </span>
                 </div>

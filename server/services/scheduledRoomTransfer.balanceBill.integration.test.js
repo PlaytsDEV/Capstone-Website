@@ -69,7 +69,7 @@ const { generateContractNumber } = await import("./contractService.js");
 const { getManilaToday, toManilaStartOfDay } = await import("../utils/dateUtils.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
-  TenantCredit, ScheduledRoomTransfer,
+  TenantCredit, UtilityPeriod, ScheduledRoomTransfer,
 } = await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -107,6 +107,10 @@ async function seed({
   const roomA = await Room.create({
     name: `Room ${roomNumber}`, roomNumber, branch: "gil-puyat",
     type: sourceType, capacity: CAP[sourceType], currentOccupancy: 1, price: RATE[sourceType], beds: srcBeds,
+  });
+  await UtilityPeriod.create({
+    utilityType: "electricity", roomId: roomA._id, branch: "gil-puyat",
+    startDate: moveIn, startReading: 0, ratePerUnit: 1, status: "open",
   });
   const srcBedId = NEEDS_BED.has(sourceType) ? `r${roomNumber}-b1` : "";
   const reservation = await Reservation.create({
@@ -152,10 +156,15 @@ async function seed({
 }
 
 async function emptyRoom(type, roomNumber) {
-  return Room.create({
+  const room = await Room.create({
     name: `Room ${roomNumber}`, roomNumber, branch: "gil-puyat",
     type, capacity: CAP[type], currentOccupancy: 0, price: RATE[type], beds: bedsFor(type, `r${roomNumber}`),
   });
+  await UtilityPeriod.create({
+    utilityType: "electricity", roomId: room._id, branch: "gil-puyat",
+    startDate: MOVE_IN, startReading: 0, ratePerUnit: 1, status: "open",
+  });
+  return room;
 }
 function payloadFor({ targetRoom, transferDate }) {
   const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
@@ -181,7 +190,7 @@ beforeEach(async () => {
     Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
     Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
     Bill.deleteMany({}), BusinessSettings.deleteMany({}), TenantCredit.deleteMany({}),
-    ScheduledRoomTransfer.deleteMany({}),
+    UtilityPeriod.deleteMany({}), ScheduledRoomTransfer.deleteMany({}),
   ]);
   await BusinessSettings.create({
     key: "global",
@@ -338,7 +347,7 @@ describe("cheaper destination (Private -> Quad)", () => {
   const recentMoveIn = getManilaToday().subtract(5, "day").toDate();
   const farLeaseEnd = getManilaToday().add(300, "day").toDate();
 
-  test("no TenantCredit at scheduling; excess held deposit is informational; Complete Transfer creates the credit at cutover", async () => {
+  test("no TenantCredit at scheduling; excess rent/deposit stay informational for manual review", async () => {
     const { reservation, actorId } = await seed({
       sourceType: "private", roomNumber: "101",
       moveIn: recentMoveIn, leaseEnd: farLeaseEnd,
