@@ -819,8 +819,9 @@ const reservationSchema = new mongoose.Schema(
     //   - A room transfer to a HIGHER-deposit room increases this ONLY when
     //     the deposit component of the transfer Bill is confirmed paid
     //     (never on Bill creation / checkout creation).
-    //   - null = not yet populated (legacy record). Consumers fall back to
-    //     the canonical 1x-monthly-rate rule; see moveOutClearanceService.
+    //   - null = not yet populated (legacy record). Room Transfer must verify
+    //     cash evidence and must never treat a required deposit as cash held.
+    //     Move-out's separate legacy behavior remains in moveOutClearanceService.
     securityDepositHeld: {
       type: Number,
       default: null,
@@ -845,6 +846,7 @@ const reservationSchema = new mongoose.Schema(
               id: { type: mongoose.Schema.Types.ObjectId, default: null },
             },
             transferReference: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
+            scheduledRoomTransferId: { type: mongoose.Schema.Types.ObjectId, ref: "ScheduledRoomTransfer", default: null },
             billId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", default: null },
             paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
             // Unique per logical event so a duplicate webhook / retry does

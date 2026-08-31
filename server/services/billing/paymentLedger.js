@@ -56,13 +56,25 @@ async function reconcileTransferDepositHeld({ bill, paymentId, session, now }) {
   const existing = reservation.securityDepositLedger.find((e) => e.idempotencyKey === key);
 
   // Baseline held = whatever was held BEFORE this Bill's deposit settlement.
-  // Prefer the value captured on the first settlement entry; else current.
+  // Prefer the first settlement entry, then the canonical field. For a legacy
+  // null, use the verified baseline frozen on the Room Transfer Bill instead
+  // of treating UNKNOWN as zero or backfilling it merely to prepare payment.
+  const canonicalHeld = reservation.securityDepositHeld;
+  const canonicalHeldKnown =
+    canonicalHeld !== null &&
+    canonicalHeld !== undefined &&
+    canonicalHeld !== "" &&
+    Number.isFinite(Number(canonicalHeld)) &&
+    Number(canonicalHeld) >= 0;
+  const snapshotHeld = Number(bill?.transferSnapshot?.depositPreviouslyHeld);
   const heldBefore = existing
     ? roundMoney(Number(existing.previousHeld ?? reservation.securityDepositHeld ?? 0))
     : roundMoney(
-        Number.isFinite(Number(reservation.securityDepositHeld))
-          ? Number(reservation.securityDepositHeld)
-          : 0,
+        canonicalHeldKnown
+          ? Number(canonicalHeld)
+          : Number.isFinite(snapshotHeld) && snapshotHeld >= 0
+            ? snapshotHeld
+            : 0,
       );
   const resultingHeld = roundMoney(heldBefore + depositFunded);
 

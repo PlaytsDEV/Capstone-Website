@@ -61,6 +61,7 @@ import {
 } from "../services/billing/prepaidRentResolver.js";
 import { createNotification } from "../services/notifications/notificationService.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
+import { resolveVerifiedSecurityDepositHeld } from "../services/billing/securityDepositEvidenceService.js";
 
 // Tolerant wrapper — an unknown branch resolves to `false` (no separate
 // billing) rather than throwing, so a preview never fails on a bad branch.
@@ -259,6 +260,7 @@ export async function computeRoomTransferPreview({
   asOfCutoverDate = null,
   depositHeldOverride = null,
   destinationApprovedRateOverride = null,
+  requireVerifiedDeposit = false,
 }) {
   if (!targetRoomId) return null;
   const [reservation, targetRoom] = await Promise.all([
@@ -303,8 +305,18 @@ export async function computeRoomTransferPreview({
     ? resolveCurrentBillingCycle(moveInDate, transferDate)
     : null;
   const { sourceEffectiveRate, sourceRateSource } = resolveSourceEffectiveRentForTransfer({
-    reservation, predecessorContract,
+    reservation, predecessorContract, activeStay,
   });
+  if (!(sourceEffectiveRate > 0)) {
+    throw Object.assign(
+      new Error("The tenant's current approved rent cannot be verified. Review the active Stay, current Contract, and Reservation pricing before transferring."),
+      {
+        statusCode: 409,
+        code: "ROOM_TRANSFER_CURRENT_RENT_UNVERIFIED",
+        manualReviewRequired: true,
+      },
+    );
+  }
   const prepaidResolution = await resolveApplicablePrepaidRentForTransfer({
     reservation, sourceEffectiveRate, currentBillingCycle,
   });
@@ -339,23 +351,23 @@ export async function computeRoomTransferPreview({
   // pre-paid Scheduled Transfer Balance Bill funded it — so a paid deposit
   // component is not mistaken for "requirement dropped" (see Phase 2G #13).
   const destinationRequiredDeposit = roundMoney(destinationApprovedRate);
-  const rawDepositHeld = reservation.securityDepositHeld;
-  const isExplicitDeposit =
+  const explicitOverride =
     depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
-      ? true
-      : rawDepositHeld !== null && rawDepositHeld !== undefined && Number.isFinite(Number(rawDepositHeld));
-
-  let depositHeld =
-    depositHeldOverride != null && Number.isFinite(Number(depositHeldOverride))
-      ? Number(depositHeldOverride)
-      : isExplicitDeposit
-        ? Number(rawDepositHeld)
-        : null;
-
-  let depositHeldKnown = Number.isFinite(depositHeld);
-  if (!depositHeldKnown) {
+      ? roundMoney(Number(depositHeldOverride))
+      : null;
+  const depositEvidence = explicitOverride !== null
+    ? {
+        classification: "VERIFIED",
+        heldKnown: true,
+        amount: explicitOverride,
+        source: "verified_completion_override",
+      }
+    : await resolveVerifiedSecurityDepositHeld({ reservation });
+  const depositHeld = depositEvidence.heldKnown ? depositEvidence.amount : null;
+  const depositHeldKnown = depositEvidence.heldKnown === true && Number.isFinite(depositHeld);
+  if (!depositHeldKnown && requireVerifiedDeposit) {
     throw Object.assign(
-      new Error("The tenant's actual security deposit held cannot be verified. Review payment/deposit records before transferring."),
+      new Error("Verify the tenant's recorded security deposit through payment/deposit records before completing the transfer."),
       {
         statusCode: 409,
         code: "ROOM_TRANSFER_DEPOSIT_HELD_UNVERIFIED",
@@ -363,10 +375,12 @@ export async function computeRoomTransferPreview({
       },
     );
   }
-  const depositSettlement = calculateRoomTransferDepositSettlement({
-    depositCurrentlyHeld: depositHeldKnown ? depositHeld : 0,
-    destinationRequiredDeposit,
-  });
+  const depositSettlement = depositHeldKnown
+    ? calculateRoomTransferDepositSettlement({
+        depositCurrentlyHeld: depositHeld,
+        destinationRequiredDeposit,
+      })
+    : null;
 
   // Source + destination electricity meter state, for the Complete Transfer
   // modal's "Enter Meter Reading" step. `_baselineReading` = the current open
@@ -419,12 +433,16 @@ export async function computeRoomTransferPreview({
 
   const rentAdjustmentDue = roundMoney(settlement.additionalAmountDue);
   const excessRentCredit = roundMoney(settlement.excessCredit);
-  const additionalDepositDue = roundMoney(depositSettlement.additionalDepositDue);
+  const additionalDepositDue = depositSettlement
+    ? roundMoney(depositSettlement.additionalDepositDue)
+    : null;
   // The immediate figure the admin acts on at scheduling time: rent adjustment
   // + additional deposit. The FINALIZED source-room electricity is added to the
   // required-to-settle amount on the transfer day (Complete Transfer), not
   // here — the fresh closing reading is not known at preview/scheduling time.
-  const totalImmediateDue = roundMoney(rentAdjustmentDue + additionalDepositDue);
+  const totalImmediateDue = depositHeldKnown
+    ? roundMoney(rentAdjustmentDue + additionalDepositDue)
+    : null;
 
   return {
     fromRoom: { id: String(sourceRoomId), name: reservation.roomId?.name || reservation.roomId?.roomNumber || "", type: reservation.roomId?.type || "" },
@@ -468,10 +486,12 @@ export async function computeRoomTransferPreview({
       required: destinationRequiredDeposit,
       held: depositHeldKnown ? roundMoney(depositHeld) : null,  // null = legacy, unknown — UI shows "Unavailable"
       heldKnown: depositHeldKnown,
+      heldSource: depositEvidence.source || null,
+      evidenceClassification: depositEvidence.classification || "UNKNOWN",
       balanceDue: additionalDepositDue,            // charges.securityDeposit on the settlement Bill
-      excessHeld: roundMoney(depositSettlement.excessDepositHeld),
+      excessHeld: depositSettlement ? roundMoney(depositSettlement.excessDepositHeld) : null,
       excessHandling:
-        depositSettlement.excessDepositHeld > 0
+        depositSettlement?.excessDepositHeld > 0
           ? "administration_office_2nd_floor"
           : null,
     },
@@ -1313,6 +1333,7 @@ export async function prepareRoomTransferAddendum({ reservationId, payload = {},
       roomNumber: addendum.roomNumber || targetRoom.roomNumber || null,
       roomType: addendum.roomType || targetRoom.type || null,
       bedId: addendum.bedId || null,
+      previousApprovedMonthlyRate: addendum.previousApprovedMonthlyRate ?? null,
       approvedMonthlyRate: addendum.approvedMonthlyRate ?? null,
       securityDepositAmount: addendum.securityDepositAmount ?? null,
       preparedDocument: addendum.preparedDocument
@@ -1442,6 +1463,21 @@ async function prepareRoomTransferDraft({
   scheduledTransferId = null,
   scheduledExecutionToken = null,
 }) {
+  const { sourceEffectiveRate } = resolveSourceEffectiveRentForTransfer({
+    reservation,
+    predecessorContract,
+    activeStay,
+  });
+  if (!(sourceEffectiveRate > 0)) {
+    throw Object.assign(
+      new Error("The tenant's current approved rent cannot be verified. Review the active Stay, current Contract, and Reservation pricing before preparing the Addendum."),
+      {
+        statusCode: 409,
+        code: "ROOM_TRANSFER_CURRENT_RENT_UNVERIFIED",
+        manualReviewRequired: true,
+      },
+    );
+  }
   const buildDraft = () => createReplacementContractForTransfer({
     reservationId: reservation._id,
     stayId: activeStay?._id || predecessorContract.stayId,
@@ -1451,6 +1487,7 @@ async function prepareRoomTransferDraft({
       ? { id: targetBed.id || String(targetBed._id), label: targetBed.position || "" }
       : {},
     effectiveTransferDate,
+    sourceApprovedMonthlyRate: sourceEffectiveRate,
     actorId,
   });
 
@@ -1474,6 +1511,7 @@ async function prepareRoomTransferDraft({
     bedId: targetBed ? String(targetBed.id || targetBed._id || "") : "",
     effectiveDate: dayjs(effectiveTransferDate).startOf("day"),
     approvedRate: roundMoney(transferPricing.finalMonthlyRate),
+    previousApprovedRate: roundMoney(sourceEffectiveRate),
   };
   const mismatchedTermsFor = (contract) => {
     const mismatches = [];
@@ -1484,6 +1522,9 @@ async function prepareRoomTransferDraft({
     }
     if (Math.abs(roundMoney(contract.approvedMonthlyRate) - expectedTerms.approvedRate) > 0.01) {
       mismatches.push("approvedRate");
+    }
+    if (Math.abs(roundMoney(contract.previousApprovedMonthlyRate) - expectedTerms.previousApprovedRate) > 0.01) {
+      mismatches.push("previousApprovedRate");
     }
     return mismatches;
   };
@@ -2110,7 +2151,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const { sourceEffectiveRate, sourceRateSource } = resolveSourceEffectiveRentForTransfer({
         reservation,
         predecessorContract,
+        activeStay,
       });
+      if (!(sourceEffectiveRate > 0)) {
+        throw Object.assign(
+          new Error("The tenant's current approved rent cannot be verified. Review the active Stay, current Contract, and Reservation pricing before transferring."),
+          {
+            statusCode: 409,
+            code: "ROOM_TRANSFER_CURRENT_RENT_UNVERIFIED",
+            manualReviewRequired: true,
+          },
+        );
+      }
       const prepaidResolution = await resolveApplicablePrepaidRentForTransfer({
           reservation,
           sourceEffectiveRate,
@@ -2170,10 +2222,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // Canonical required deposit = 1x the destination room's approved monthly
       // rate (successorContract.approvedMonthlyRate — the same rule move-in
       // uses via structuredInitialPaymentPolicy / depositUtils). "Held" is the
-      // ACTUAL deposit cash: reservation.securityDepositHeld, initialised here
-      // from the tenant's move-in financials when it has never been populated
-      // (legacy records) — deterministically, from the same resolver move-in
-      // used, NOT fabricated from "the Contract said a deposit was required".
+      // ACTUAL deposit cash: reservation.securityDepositHeld or independently
+      // verified payment/deposit evidence. Evidence may drive settlement, but
+      // Completion never writes it back as an implicit legacy-data backfill.
       const destinationRequiredDeposit = roundMoney(Number(successorContract.approvedMonthlyRate) || 0);
       // Scheduled transfer: if the pre-paid Scheduled Transfer Balance Bill
       // already funded securityDepositHeld (Phase 2F), the ADDITIONAL deposit
@@ -2191,17 +2242,20 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           : null;
       const rawHeld = reservation.securityDepositHeld;
       const isExplicitHeld =
-        scheduledDepositHeldOverride != null
-          ? true
-          : rawHeld !== null && rawHeld !== undefined && Number.isFinite(Number(rawHeld));
+        rawHeld !== null && rawHeld !== undefined && Number.isFinite(Number(rawHeld));
+      const verifiedDepositEvidence =
+        scheduledDepositHeldOverride == null && !isExplicitHeld
+          ? await resolveVerifiedSecurityDepositHeld({ reservation, session })
+          : null;
 
       let depositCurrentlyHeld =
         scheduledDepositHeldOverride != null
           ? scheduledDepositHeldOverride
           : isExplicitHeld
             ? Number(rawHeld)
-            : null;
-      let heldWasBackfilled = false;
+            : verifiedDepositEvidence?.heldKnown
+              ? Number(verifiedDepositEvidence.amount)
+              : null;
       if (!Number.isFinite(depositCurrentlyHeld)) {
         throw Object.assign(
           new Error("The tenant's actual security deposit held cannot be verified. Review payment/deposit records before transferring."),
@@ -2421,7 +2475,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           additionalDepositDue: depositSettlement.additionalDepositDue,
           excessDepositHeld: depositSettlement.excessDepositHeld,
           depositHeldAfterTransferBeforePayment: depositSettlement.depositHeldAfterTransferBeforePayment,
-          depositHeldWasBackfilled: heldWasBackfilled,
+          depositHeldWasBackfilled: false,
           rentComponentDue,
           depositComponentDue,
           totalImmediateDue: transferSettlementTotal,
@@ -2517,7 +2571,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               additionalDepositDue: depositSettlement.additionalDepositDue,
               excessDepositHeld: depositSettlement.excessDepositHeld,
               depositHeldAfterTransferBeforePayment: depositSettlement.depositHeldAfterTransferBeforePayment,
-              depositHeldWasBackfilled: heldWasBackfilled,
+              depositHeldWasBackfilled: false,
               // ── FINAL settlement components ─────────────────────────────
               rentComponentDue,
               depositComponentDue,
@@ -2582,7 +2636,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const heldBefore = hasResHeld
         ? roundMoney(Number(rawResHeld))
         : roundMoney(depositCurrentlyHeld);
-      reservation.securityDepositHeld = heldBefore;
+      // Completion may use verified financial evidence, but it must not turn
+      // that read into an implicit legacy-data backfill. An explicit Admin
+      // verification has already populated the canonical field before this
+      // workflow, so only an existing canonical value is preserved here.
+      if (hasResHeld) reservation.securityDepositHeld = heldBefore;
       reservation.securityDepositLedger = reservation.securityDepositLedger || [];
       const depositLedgerKey = `room_transfer_adjustment_due:${String(predecessorContract._id)}`;
       if (!reservation.securityDepositLedger.some((e) => e.idempotencyKey === depositLedgerKey)) {

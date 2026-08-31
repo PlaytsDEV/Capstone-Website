@@ -30,6 +30,7 @@ import {
   deriveAdvanceCoverageDates,
   deriveContractLeaseDates,
 } from "./contractLeaseDateService.js";
+import { roundMoney } from "./billing/billingPolicy.js";
 
 export const CONTRACT_TRANSITIONS = Object.freeze({
   draft: ["incomplete", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
@@ -574,6 +575,7 @@ export const createReplacementContractForTransfer = async ({
   targetRoom,
   targetBed = {},
   effectiveTransferDate = new Date(),
+  sourceApprovedMonthlyRate = null,
   actorId,
   session = null,
 }) => {
@@ -719,14 +721,29 @@ export const createReplacementContractForTransfer = async ({
   // the room itself didn't change.
   const transferType = String(oldContract.roomId) === String(targetRoom._id) ? "bed_only" : "room_change";
 
-  const amendmentReason =
+  const provenSourceRate = Number(
+    sourceApprovedMonthlyRate ?? stay?.monthlyRent ?? oldContract.approvedMonthlyRate,
+  );
+  if (!(Number.isFinite(provenSourceRate) && provenSourceRate > 0)) {
+    throw serviceError(
+      "The current approved tenancy rate must be verified before preparing a Room Transfer Addendum.",
+      "ROOM_TRANSFER_CURRENT_RENT_UNVERIFIED",
+      409,
+    );
+  }
+
+  const amendmentNarrative =
     `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || "—"}) ` +
     `-> ${targetRoom.roomNumber} (${bedName || "—"}), effective ${dayjs(amendmentEffectiveDate).format("YYYY-MM-DD")}. ` +
     `The room and rental terms listed in this addendum change on the effective date; ` +
-    `all other terms of the original lease (${dayjs(leaseStartDate).format("YYYY-MM-DD")} - ${dayjs(leaseEndDate).format("YYYY-MM-DD")}) remain in effect.`;
+      `all other terms of the original lease (${dayjs(leaseStartDate).format("YYYY-MM-DD")} - ${dayjs(leaseEndDate).format("YYYY-MM-DD")}) remain in effect.`;
+  const amendmentReason =
+    `${amendmentNarrative} Approved monthly rent changes from PHP ${roundMoney(provenSourceRate).toFixed(2)} ` +
+    `to PHP ${roundMoney(pricing.approvedMonthlyRate).toFixed(2)}.`;
   const amendmentFields = [
     "roomId", "roomNumber", "roomType", "bedId", "bedLabel",
     "approvedMonthlyRate", "regularMonthlyRate", "securityDepositAmount",
+    "previousApprovedMonthlyRate",
   ];
 
   const createdDocs = await Contract.create(
@@ -746,6 +763,7 @@ export const createReplacementContractForTransfer = async ({
         replacesContractId: oldContract._id,
         amendmentReason,
         amendmentFields,
+        previousApprovedMonthlyRate: roundMoney(provenSourceRate),
         amendmentEffectiveDate,
         replacementReason: amendmentReason,
         initialContractKey: null,

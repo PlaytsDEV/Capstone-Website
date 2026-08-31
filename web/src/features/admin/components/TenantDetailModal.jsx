@@ -817,6 +817,7 @@ export default function TenantDetailModal({
     const warns = tenant?.warnings || [];
 
     const rentWarn = warns.find((w) => w.category === "rent" || w.code?.includes("rent"));
+    const transferWarn = warns.find((w) => w.billType === "transfer_settlement" || w.category === "transfer_settlement");
     const elecWarn = !isGuadalupe ? warns.find((w) => w.category === "electricity" || w.code?.includes("electricity")) : null;
     const waterWarn = !isGuadalupe ? warns.find((w) => w.category === "water" || w.code?.includes("water")) : null;
     const penaltyWarn = warns.find((w) => w.category === "penalty" || w.code?.includes("penalty"));
@@ -847,6 +848,25 @@ export default function TenantDetailModal({
         ? "Fixed all-inclusive monthly rate covering dormitory room occupancy and utility consumption without submetering."
         : "Contracted monthly room rent under active lease agreement. Billed per recurring cycle.",
     });
+
+    if (transferWarn) {
+      const transferRemaining = Number(transferWarn.amount || 0);
+      const isTransferOverdue = transferWarn.code?.startsWith("overdue_") || transferWarn.severity === "error";
+      items.push({
+        id: transferWarn.id || "ledger-transfer-settlement",
+        title: "Room Transfer Settlement",
+        subtitle: "Rent adjustment, security deposit top-up, and finalized transfer charges",
+        category: "transfer_settlement",
+        dueDate: transferWarn.dueDate || calculatedDueDate || "Due at transfer",
+        overdueDays: transferWarn.overdueDays || null,
+        billed: Number(transferWarn.totalAmount || transferRemaining),
+        paid: Math.max(0, Number(transferWarn.totalAmount || transferRemaining) - transferRemaining),
+        balance: transferRemaining,
+        status: isTransferOverdue ? "overdue" : "pending",
+        rawItem: transferWarn,
+        details: "This is a Room Transfer settlement balance, not recurring monthly room rent.",
+      });
+    }
 
     // 2. Submetered Electricity Line Item (if supported)
     if (!isGuadalupe && elecWarn) {
