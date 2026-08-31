@@ -140,3 +140,39 @@ test("InquiryForm enforces WCAG AA contrast for prefix, counter, and explicit ar
     "Form inputs must specify explicit string true/false for aria-invalid"
   );
 });
+
+test("ThemeToggleButton enforces WCAG AA contrast, neutral ghost borders, and dynamic switch aria-label", () => {
+  const rawCode = fs.readFileSync(
+    path.join(__dirname, "ThemeToggleButton.jsx"),
+    "utf8"
+  );
+
+  // Light mode icon must use accessible high-contrast Deep Navy (#0A1628) token
+  assert.match(
+    rawCode,
+    /var\(--lp-navy,\s*#0A1628\)/,
+    "ThemeToggleButton must use high-contrast --lp-navy (#0A1628) in light mode"
+  );
+
+  // Must not have low-contrast yellow borders on light mode button container
+  assert.doesNotMatch(
+    rawCode,
+    /border:\s*isLight\s*\?\s*["']1\.5px solid var\(--lp-accent\)["']/,
+    "ThemeToggleButton must not use low-contrast yellow borders at rest"
+  );
+
+  // Dynamic accessible label reflecting action
+  assert.match(
+    rawCode,
+    /accessibleLabel\s*=\s*isDark\s*\?\s*"Switch to light mode"\s*:\s*"Switch to dark mode"/,
+    "ThemeToggleButton must provide dynamic accessible action labels"
+  );
+
+  // Dynamic aria-label and title applied
+  assert.match(
+    rawCode,
+    /aria-label=\{accessibleLabel\}/,
+    "ThemeToggleButton must bind dynamic aria-label"
+  );
+});
+

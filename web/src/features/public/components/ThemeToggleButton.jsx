@@ -23,6 +23,8 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     toggleTheme();
   }, [toggleTheme]);
 
+  const accessibleLabel = isDark ? "Switch to light mode" : "Switch to dark mode";
+
   /* ── Mobile variant: full-width row with label ── */
   if (variant === "mobile") {
     return (
@@ -30,7 +32,8 @@ export default function ThemeToggleButton({ variant = "hero" }) {
         onClick={handleClick}
         onAnimationEnd={() => setIsGlowing(false)}
         className={`theme-toggle-btn theme-toggle-mobile ${isGlowing ? "theme-toggle--glow" : ""}`}
-        aria-label="Toggle theme"
+        aria-label={accessibleLabel}
+        title={accessibleLabel}
         style={{
           display: "flex",
           alignItems: "center",
@@ -49,11 +52,13 @@ export default function ThemeToggleButton({ variant = "hero" }) {
         <span className="theme-toggle-icon-wrapper" style={{ width: 22, height: 22 }}>
           <Sun
             className={`theme-toggle-icon ${isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
-            style={{ width: 18, height: 18 }}
+            style={{ width: 18, height: 18, color: "var(--lp-accent, #D4AF37)" }}
+            strokeWidth={2}
           />
           <Moon
             className={`theme-toggle-icon ${!isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
-            style={{ width: 18, height: 18 }}
+            style={{ width: 18, height: 18, color: "var(--lp-navy, #0A1628)" }}
+            strokeWidth={2}
           />
         </span>
         <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
@@ -62,8 +67,24 @@ export default function ThemeToggleButton({ variant = "hero" }) {
   }
 
   /* ── Desktop variants: hero & scrolled ── */
-  const isHero = variant === "hero";
-  const isLight = !isDark;
+  const isScrolled = variant === "scrolled";
+
+  // Neutral ghost borders matching Sign In / profile buttons in Navbar
+  const borderRest = isScrolled
+    ? (isDark ? "1px solid rgba(255, 255, 255, 0.20)" : "1px solid rgba(15, 23, 42, 0.18)")
+    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.30)" : "1.5px solid rgba(10, 22, 40, 0.22)");
+
+  const borderHover = isScrolled
+    ? (isDark ? "1px solid rgba(255, 255, 255, 0.65)" : "1px solid var(--lp-navy)")
+    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.75)" : "1.5px solid var(--lp-navy)");
+
+  // Deep Navy (#0A1628) in light mode matches Sign In typography (14:1+ AAA contrast), crisp white in dark mode
+  const iconColorRest = isDark ? "#ffffff" : "var(--lp-navy, #0A1628)";
+  const iconColorHover = isDark ? "#ffffff" : "var(--lp-navy, #0A1628)";
+
+  const shadowHover = isDark
+    ? "0 3px 10px rgba(0, 0, 0, 0.35)"
+    : "0 2px 8px rgba(10, 22, 40, 0.08)";
 
   const btnStyles = {
     position: "relative",
@@ -72,20 +93,17 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     minWidth: "38px",
     minHeight: "38px",
     borderRadius: "50%",
-    backgroundColor: isHero
-      ? (isLight ? "rgba(212, 175, 55, 0.12)" : "rgba(255,255,255,0.1)")
-      : (isLight ? "rgba(212, 175, 55, 0.12)" : "var(--lp-icon-bg)"),
-    border: isLight
-      ? "1.5px solid var(--lp-accent)"
-      : (isHero ? "1.5px solid rgba(255,255,255,0.2)" : "1px solid var(--lp-border)"),
-    color: isLight ? "var(--lp-accent)" : (isHero ? "white" : "var(--lp-text)"),
+    backgroundColor: "transparent",
+    border: borderRest,
+    color: iconColorRest,
     cursor: "pointer",
     padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    /* transition for hover, not for the glow (that's keyframed) */
-    transition: "background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease",
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "none",
+    transform: "translateY(0)",
   };
 
   return (
@@ -93,39 +111,40 @@ export default function ThemeToggleButton({ variant = "hero" }) {
       onClick={handleClick}
       onAnimationEnd={() => setIsGlowing(false)}
       className={`theme-toggle-btn hidden lg:flex items-center justify-center ${isGlowing ? "theme-toggle--glow" : ""}`}
-      aria-label="Toggle theme"
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
       style={btnStyles}
       onMouseEnter={(e) => {
-        if (isLight) {
-          e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.18)";
-          e.currentTarget.style.borderColor = "var(--lp-accent)";
-        } else if (isHero) {
-          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.2)";
-          e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)";
-        } else {
-          e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.15)";
-          e.currentTarget.style.borderColor = "var(--lp-accent)";
-        }
+        e.currentTarget.style.backgroundColor = "transparent";
+        e.currentTarget.style.border = borderHover;
+        e.currentTarget.style.color = iconColorHover;
+        e.currentTarget.style.transform = "translateY(-1px)";
+        e.currentTarget.style.boxShadow = shadowHover;
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = isHero
-          ? (isLight ? "rgba(212, 175, 55, 0.12)" : "rgba(255,255,255,0.1)")
-          : (isLight ? "rgba(212, 175, 55, 0.12)" : "var(--lp-icon-bg)");
-        e.currentTarget.style.borderColor = isLight
-          ? "var(--lp-accent)"
-          : (isHero ? "rgba(255,255,255,0.2)" : "var(--lp-border)");
+        e.currentTarget.style.backgroundColor = "transparent";
+        e.currentTarget.style.border = borderRest;
+        e.currentTarget.style.color = iconColorRest;
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "none";
       }}
     >
-      <span className="theme-toggle-icon-wrapper">
+      <span className="theme-toggle-icon-wrapper" style={{ width: 18, height: 18 }}>
         {/* Sun — visible when dark (switch to light) */}
         <Sun
           className={`theme-toggle-icon ${isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
-          style={{ width: 16, height: 16 }}
+          style={{ width: 18, height: 18 }}
+          strokeWidth={2}
         />
         {/* Moon — visible when light (switch to dark) */}
         <Moon
           className={`theme-toggle-icon ${!isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
-          style={{ width: 16, height: 16 }}
+          style={{ width: 18, height: 18 }}
+          strokeWidth={2}
         />
       </span>
     </button>
