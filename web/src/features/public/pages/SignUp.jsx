@@ -741,7 +741,7 @@ function SignUp() {
           socialAuthRef.current = false;
           sessionStorage.removeItem("socialAuthInProgress");
           setSocialLoading(false);
-          showNotification("Sign-up was cancelled.", "info");
+          showNotification("Sign-up was cancelled.", "info", 3000);
         },
       });
 
@@ -762,7 +762,7 @@ function SignUp() {
         socialAuthRef.current = false;
         sessionStorage.removeItem("socialAuthInProgress");
         setSocialLoading(false);
-        showNotification("Sign-up was cancelled.", "info");
+        showNotification("Sign-up was cancelled.", "info", 3000);
         return;
       }
       await recoverFromAuthFailure(auth, error);

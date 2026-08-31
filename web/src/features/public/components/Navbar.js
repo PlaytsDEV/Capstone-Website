@@ -158,231 +158,226 @@ export function Navigation({ type } = {}) {
     <>
       <nav
         className="fixed top-0 left-0 right-0 z-50"
-      style={{
-        backgroundColor: isScrolled
-          ? "var(--lp-bg)"
-          : "transparent",
-        backdropFilter: isScrolled ? "blur(20px) saturate(1.2)" : "none",
-        boxShadow: isScrolled
-          ? "var(--lp-nav-shadow)"
-          : "none",
-        borderBottom: isScrolled
-          ? "1px solid var(--lp-border)"
-          : "1px solid transparent",
-        transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}
-    >
-      <div
-        className="max-w-screen-2xl mx-auto px-4 sm:px-8 lg:px-12"
         style={{
-          paddingTop: isScrolled ? "18px" : "24px",
-          paddingBottom: isScrolled ? "18px" : "24px",
-          transition: "padding 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+          backgroundColor: isScrolled
+            ? "var(--lp-bg)"
+            : "transparent",
+          backdropFilter: isScrolled ? "blur(20px) saturate(1.2)" : "none",
+          boxShadow: isScrolled
+            ? "var(--lp-nav-shadow)"
+            : "none",
+          borderBottom: isScrolled
+            ? "1px solid var(--lp-border)"
+            : "1px solid transparent",
+          transition: "background-color 0.3s ease, backdrop-filter 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease",
         }}
       >
-        <div className="relative flex items-center">
-          {/* Logo + Theme Toggle (left side) */}
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              onClick={handleLogoClick}
-              className="font-semibold tracking-wide no-underline inline-flex items-center gap-2 cursor-pointer"
-              style={{
-                color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                fontSize: isScrolled ? "18px" : "22px",
-                transition: "all 0.4s ease",
-                letterSpacing: "0.5px",
-              }}
-            >
-              <img
-                src={logo}
-                alt="Lilycrest logo"
+        <div
+          className="max-w-screen-2xl mx-auto px-4 sm:px-8 lg:px-12"
+          style={{
+            paddingTop: "16px",
+            paddingBottom: "16px",
+          }}
+        >
+          <div className="flex items-center justify-between lg:grid lg:grid-cols-[1fr_auto_1fr]">
+            {/* 1. Left Column: Brand Logo */}
+            <div className="flex items-center justify-start">
+              <Link
+                to="/"
+                onClick={handleLogoClick}
+                className="font-semibold tracking-wide no-underline inline-flex items-center gap-2.5 cursor-pointer"
                 style={{
-                  width: isScrolled ? "24px" : "28px",
-                  height: isScrolled ? "24px" : "28px",
-                  transition: "all 0.4s ease",
+                  color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                  fontSize: "20px",
+                  letterSpacing: "0.5px",
+                  transition: "color 0.2s ease",
                 }}
-              />
-              Lilycrest
-            </Link>
-            {/* Theme Toggle — desktop only */}
-            {type === "landing" && (
-              <div className="hidden lg:flex items-center">
-                <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
-              </div>
-            )}
-          </div>
-
-          {/* Desktop Nav Links — absolutely centered on lg/xl with responsive gap */}
-          <div
-            className="hidden lg:flex items-center gap-1 xl:gap-2"
-            style={{
-              position: "absolute",
-              left: "50%",
-              transform: "translateX(-50%)",
-            }}
-          >
-            {navLinks.map((link) => {
-              const isActive = activeSection === link.id;
-              const isHovered = hoveredSection === link.id;
-              const isHighlighted = isActive || isHovered;
-
-              return (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  onClick={(e) => handleNavClick(e, link.id)}
-                  className="no-underline cursor-pointer"
-                  aria-current={isActive ? "page" : undefined}
+              >
+                <img
+                  src={logo}
+                  alt="Lilycrest logo"
                   style={{
-                    color: isScrolled
-                      ? "var(--lp-text)"
-                      : (isDark ? "white" : "var(--lp-navy)"),
-                    fontSize: "15px",
-                    fontWeight: isHighlighted ? "500" : "400",
-                    padding: "8px 16px",
-                    borderRadius: "6px",
-                    position: "relative",
-                    backgroundColor: "transparent",
-                    transition: "color 0.2s ease, font-weight 0.2s ease",
+                    width: "26px",
+                    height: "26px",
                   }}
-                  onMouseEnter={() => setHoveredSection(link.id)}
-                  onMouseLeave={() => setHoveredSection(null)}
-                >
-                  {link.label}
-                  {/* Active & Hover indicator underline */}
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      bottom: "2px",
-                      left: "50%",
-                      transform: `translateX(-50%) scaleX(${isHighlighted ? 1 : 0})`,
-                      width: "24px",
-                      height: "2px",
-                      backgroundColor: "var(--lp-accent)",
-                      borderRadius: "2px",
-                      transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease",
-                      transformOrigin: "center",
-                      opacity: isHighlighted ? 1 : 0,
-                    }}
-                  />
-                </a>
-              );
-            })}
-          </div>
+                />
+                Lilycrest
+              </Link>
+            </div>
 
-          {/* Right Side: Sign In + Book Now + Mobile/Tablet hamburger */}
-          <div className="flex items-center gap-3 ml-auto">
-            {!loading && (
-              <>
-                {isAuthenticated ? (
-                  <Link
-                    to={profileUrl}
-                    className="flex items-center justify-center no-underline cursor-pointer"
-                    aria-label={`Open profile for ${displayName}`}
+            {/* 2. Center Column: Desktop Navigation Links */}
+            <div className="hidden lg:flex items-center justify-center gap-1 xl:gap-2">
+              {navLinks.map((link) => {
+                const isActive = activeSection === link.id;
+                const isHovered = hoveredSection === link.id;
+                const isHighlighted = isActive || isHovered;
+
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    onClick={(e) => handleNavClick(e, link.id)}
+                    className="no-underline cursor-pointer"
+                    aria-current={isActive ? "page" : undefined}
                     style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "50%",
+                      color: isScrolled
+                        ? "var(--lp-text)"
+                        : (isDark ? "white" : "var(--lp-navy)"),
+                      fontSize: "15px",
+                      fontWeight: isHighlighted ? "500" : "400",
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      position: "relative",
                       backgroundColor: "transparent",
-                      border: ghostBorderRest,
-                      color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      letterSpacing: "0.3px",
-                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                      boxShadow: "none",
-                      transform: "translateY(0)",
+                      transition: "color 0.2s ease, font-weight 0.2s ease",
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = ghostBgHover;
-                      e.currentTarget.style.border = ghostBorderHover;
-                      e.currentTarget.style.color = ghostTextHover;
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = ghostShadowHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.border = ghostBorderRest;
-                      e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
+                    onMouseEnter={() => setHoveredSection(link.id)}
+                    onMouseLeave={() => setHoveredSection(null)}
                   >
-                    {displayName.charAt(0).toUpperCase()}
-                  </Link>
-                ) : (
-                  /* Not logged in: ghost-button Sign In visible on mobile & desktop */
-                  <Link
-                    to="/signin"
-                    className="inline-flex items-center justify-center no-underline cursor-pointer text-xs sm:text-sm px-3.5 py-1.5 sm:px-4 sm:py-2 lg:px-5 lg:py-2"
-                    style={ghostBtnStyle}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = ghostBgHover;
-                      e.currentTarget.style.border = ghostBorderHover;
-                      e.currentTarget.style.color = ghostTextHover;
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = ghostShadowHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.border = ghostBorderRest;
-                      e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                    onMouseDown={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  >
-                    Sign In
-                  </Link>
-                )}
-              </>
-            )}
-            <Link
-              to="/applicant/check-availability"
-              className="hidden lg:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
-              style={{
-                color: "white",
-                backgroundColor: "var(--lp-accent)",
-                fontSize: "15px",
-                fontWeight: "500",
-                padding: isScrolled ? "10px 28px" : "12px 34px",
-                transition:
-                  "all 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, transform 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow =
-                  "0 4px 16px rgba(212, 175, 55, 0.35)";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              Book Now
-            </Link>
-            <button
-              className="lg:hidden bg-transparent border-none cursor-pointer min-w-[48px] min-h-[48px] flex items-center justify-center p-2 rounded-lg"
-              style={{
-                color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                minWidth: "48px",
-                minHeight: "48px",
-              }}
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              aria-expanded={isMenuOpen}
-              aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-            >
-              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+                    {link.label}
+                    {/* Active & Hover indicator underline */}
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        bottom: "2px",
+                        left: "50%",
+                        transform: `translateX(-50%) scaleX(${isHighlighted ? 1 : 0})`,
+                        width: "24px",
+                        height: "2px",
+                        backgroundColor: "var(--lp-accent)",
+                        borderRadius: "2px",
+                        transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease",
+                        transformOrigin: "center",
+                        opacity: isHighlighted ? 1 : 0,
+                      }}
+                    />
+                  </a>
+                );
+              })}
+            </div>
+
+            {/* 3. Right Column: Controls & Actions (Theme Toggle + Sign In / Profile + Book Now + Mobile Hamburger) */}
+            <div className="flex items-center justify-end gap-2.5 sm:gap-3">
+              {/* Theme Toggle — desktop only */}
+              {type === "landing" && (
+                <div className="hidden lg:flex items-center">
+                  <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
+                </div>
+              )}
+
+              {!loading && (
+                <>
+                  {isAuthenticated ? (
+                    <Link
+                      to={profileUrl}
+                      className="flex items-center justify-center no-underline cursor-pointer"
+                      aria-label={`Open profile for ${displayName}`}
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "50%",
+                        backgroundColor: "transparent",
+                        border: ghostBorderRest,
+                        color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                        fontSize: "14px",
+                        fontWeight: "500",
+                        letterSpacing: "0.3px",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                        boxShadow: "none",
+                        transform: "translateY(0)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = ghostBgHover;
+                        e.currentTarget.style.border = ghostBorderHover;
+                        e.currentTarget.style.color = ghostTextHover;
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                        e.currentTarget.style.boxShadow = ghostShadowHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.border = ghostBorderRest;
+                        e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    >
+                      {displayName.charAt(0).toUpperCase()}
+                    </Link>
+                  ) : (
+                    /* Not logged in: ghost-button Sign In visible on mobile & desktop */
+                    <Link
+                      to="/signin"
+                      className="inline-flex items-center justify-center no-underline cursor-pointer text-xs sm:text-sm px-3.5 py-1.5 sm:px-4 sm:py-2 lg:px-5 lg:py-2"
+                      style={ghostBtnStyle}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = ghostBgHover;
+                        e.currentTarget.style.border = ghostBorderHover;
+                        e.currentTarget.style.color = ghostTextHover;
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                        e.currentTarget.style.boxShadow = ghostShadowHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.border = ghostBorderRest;
+                        e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                      onMouseDown={(e) => {
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    >
+                      Sign In
+                    </Link>
+                  )}
+                </>
+              )}
+
+              <Link
+                to="/applicant/check-availability"
+                className="hidden lg:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
+                style={{
+                  color: "white",
+                  backgroundColor: "var(--lp-accent)",
+                  fontSize: "15px",
+                  fontWeight: "500",
+                  padding: "10px 26px",
+                  transition:
+                    "box-shadow 0.2s ease, transform 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 16px rgba(212, 175, 55, 0.35)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
+              >
+                Book Now
+              </Link>
+
+              {/* Mobile hamburger toggle */}
+              <button
+                className="lg:hidden bg-transparent border-none cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-lg"
+                style={{
+                  color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                  minWidth: "44px",
+                  minHeight: "44px",
+                }}
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                aria-expanded={isMenuOpen}
+                aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+              >
+                {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </nav>
+      </nav>
 
       {/* Mobile / Tablet Backdrop & Right Slide-Over Sheet via Portal directly on document.body */}
       {typeof document !== "undefined" &&

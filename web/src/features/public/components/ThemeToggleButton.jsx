@@ -67,10 +67,10 @@ export default function ThemeToggleButton({ variant = "hero" }) {
 
   const btnStyles = {
     position: "relative",
-    width: "44px",
-    height: "44px",
-    minWidth: "44px",
-    minHeight: "44px",
+    width: "38px",
+    height: "38px",
+    minWidth: "38px",
+    minHeight: "38px",
     borderRadius: "50%",
     backgroundColor: isHero
       ? (isLight ? "rgba(212, 175, 55, 0.12)" : "rgba(255,255,255,0.1)")
@@ -85,7 +85,7 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     alignItems: "center",
     justifyContent: "center",
     /* transition for hover, not for the glow (that's keyframed) */
-    transition: "background-color 0.3s ease, border-color 0.3s ease",
+    transition: "background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease",
   };
 
   return (

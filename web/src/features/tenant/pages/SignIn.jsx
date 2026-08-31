@@ -702,7 +702,6 @@ function SignIn() {
 
   const handleSocialLogin = async (provider) => {
     setSocialLoading(true);
-    setGlobalLoading(true);
     sessionStorage.setItem("socialAuthInProgress", "1");
 
     if (!socialSessionRef.current) {
@@ -715,9 +714,8 @@ function SignIn() {
         provider,
         signInFn: (a, p) => signInWithPopup(a, p),
         onCancel: () => {
-          setGlobalLoading(false);
           setSocialLoading(false);
-          showNotification("Sign-in was cancelled.", "info");
+          showNotification("Sign-in was cancelled.", "info", 3000);
         },
       });
 
@@ -735,9 +733,8 @@ function SignIn() {
         }
       }
       if (isPopupCancellationError(error)) {
-        setGlobalLoading(false);
         setSocialLoading(false);
-        showNotification("Sign-in was cancelled.", "info");
+        showNotification("Sign-in was cancelled.", "info", 3000);
         return;
       }
       if (

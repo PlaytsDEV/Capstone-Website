@@ -58,6 +58,7 @@ export async function executeSocialAuth({
   let timeoutId = null;
   let isCompleted = false;
   let onAbortHandler = null;
+  let onWindowFocus = null;
 
   const cleanup = () => {
     isCompleted = true;
@@ -69,9 +70,20 @@ export async function executeSocialAuth({
       abortSignal.removeEventListener("abort", onAbortHandler);
       onAbortHandler = null;
     }
+    if (typeof window !== "undefined" && onWindowFocus) {
+      window.removeEventListener("focus", onWindowFocus);
+      onWindowFocus = null;
+    }
   };
 
   try {
+    if (typeof window !== "undefined") {
+      onWindowFocus = () => {
+        // Window focus returned
+      };
+      window.addEventListener("focus", onWindowFocus, { passive: true });
+    }
+
     const authPromise = Promise.resolve(signInFn(auth, provider));
 
     const timeoutPromise = new Promise((_, reject) => {
