@@ -751,14 +751,17 @@ function CheckAvailabilityPage() {
             </>
           )}
           {!user && !isChangeRoomMode && (
-            <span className="ca-signin-prompt">
-              <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
-              or{" "}
-              <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>
-                create an account
-              </button>{" "}
-              to reserve a room
-            </span>
+            <>
+              {!roomsLoading && <span className="ca-meta-divider">•</span>}
+              <span className="ca-signin-prompt">
+                <button type="button" onClick={() => navigate("/signin")}>Sign in</button>{" "}
+                or{" "}
+                <button type="button" onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>
+                  create an account
+                </button>{" "}
+                to reserve a room
+              </span>
+            </>
           )}
         </div>
       </div>

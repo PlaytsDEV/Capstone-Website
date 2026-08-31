@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { ArrowUp } from "lucide-react";
+import { useFooterOffset } from "../hooks/useFooterOffset";
 
 /**
  * ScrollToTopButton — Secondary floating utility button.
- * Stacks vertically above the primary PublicChatbotLauncher (bottom: 92px, right: 32px)
- * to maintain clean visual hierarchy without overlapping.
+ * Stacks vertically above the primary PublicChatbotLauncher
+ * to maintain clean visual hierarchy without overlapping footer content.
  */
 export default function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
+  const bottomOffset = useFooterOffset(24, 20);
 
   useEffect(() => {
     let ticking = false;
@@ -70,10 +72,11 @@ export default function ScrollToTopButton() {
         title="Back to top"
         className="fixed z-[980] flex items-center justify-center rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2 group scroll-to-top-btn"
         style={{
-          bottom: "calc(88px + env(safe-area-inset-bottom, 0px))",
-          right: "24px",
+          bottom: `calc(${bottomOffset + 60}px + env(safe-area-inset-bottom, 0px))`,
+          right: "28px",
           width: "40px",
           height: "40px",
+          transition: "bottom 0.15s ease-out, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease",
           animation: "scrollToTopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         }}
       >
@@ -82,3 +85,4 @@ export default function ScrollToTopButton() {
     </>
   );
 }
+

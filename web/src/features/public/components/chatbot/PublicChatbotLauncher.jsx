@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
 import { X, Bot } from "lucide-react";
 import { motion } from "framer-motion";
 import PublicChatbotModal from "./PublicChatbotModal";
+import { useFooterOffset } from "../../../../shared/hooks/useFooterOffset";
 
 /**
  * PublicChatbotLauncher
  *
  * Floating bottom-right circular launcher button that toggles the AI receptionist modal.
- * Dynamically computes footer intersection on scroll/resize so the bot gracefully
- * stops and floats above the footer without overlapping footer content.
+ * Dynamically computes footer intersection on scroll/resize using IntersectionObserver (via useFooterOffset)
+ * so the bot gracefully stops and floats above the footer without overlapping footer content.
  * Uses hardware-accelerated Framer Motion for buttery-smooth 60fps floating
  * with zero layout repaints and optimal battery/CPU efficiency.
  */
 export function PublicChatbotLauncher() {
-  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [externalPrompt, setExternalPrompt] = useState("");
-  const [bottomOffset, setBottomOffset] = useState(24);
+  const bottomOffset = useFooterOffset(24, 20);
 
   // Dismiss unread badge upon opening and clear pending prompt on close
   const handleToggle = () => {
@@ -39,30 +38,6 @@ export function PublicChatbotLauncher() {
   const handleClearInitialPrompt = () => {
     setExternalPrompt("");
   };
-
-  // Dynamic footer collision avoidance via IntersectionObserver (zero forced reflow during scrolling)
-  useEffect(() => {
-    const footer = document.querySelector("footer");
-    if (!footer || typeof IntersectionObserver === "undefined") {
-      setBottomOffset(24);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry && entry.isIntersecting) {
-          setBottomOffset(24);
-        } else {
-          setBottomOffset(24);
-        }
-      },
-      { threshold: [0, 0.5, 1.0] }
-    );
-
-    observer.observe(footer);
-    return () => observer.disconnect();
-  }, [location.pathname]);
 
   // Listen for custom event from other public sections (e.g., FAQ accordion)
   useEffect(() => {
@@ -179,7 +154,11 @@ export function PublicChatbotLauncher() {
       {/* Floating Launcher Container */}
       <div
         className="fixed z-[990] flex items-center gap-3 select-none pointer-events-none"
-        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, right: "24px" }}
+        style={{
+          bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
+          right: "24px",
+          transition: "bottom 0.15s ease-out",
+        }}
       >
         {/* Floating Attention Pill / Tooltip (pure fade on hover, perfectly centered) */}
         {!isOpen && (

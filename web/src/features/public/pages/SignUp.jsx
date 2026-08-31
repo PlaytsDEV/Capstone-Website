@@ -58,6 +58,10 @@ import "../../../shared/styles/notification.css";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import hero1 from "../../../assets/images/hero1.jpg";
 import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
+import {
+  createSocialAuthSession,
+  isPopupCancellationError,
+} from "../../../shared/utils/socialAuthManager";
 
 const SIGNUP_IMAGE = hero1;
 const FIELD_LIMITS = {
@@ -94,18 +98,34 @@ function SignUp() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
   const [capsLockActive, setCapsLockActive] = useState(false);
   const debounceTimersRef = useRef({});
+  const socialSessionRef = useRef(null);
 
-  // Cleanup pending debounce timers on unmount
+  const handleCancelSocialAuth = () => {
+    if (socialSessionRef.current) {
+      socialSessionRef.current.cancel();
+    }
+    socialAuthRef.current = false;
+    sessionStorage.removeItem("socialAuthInProgress");
+    setSocialLoading(false);
+  };
+
+
+  // Cleanup pending debounce timers and active social session on unmount
   useEffect(() => {
     return () => {
       Object.values(debounceTimersRef.current).forEach((timer) => clearTimeout(timer));
+      if (socialSessionRef.current) {
+        socialSessionRef.current.cancel();
+      }
     };
   }, []);
+
 
   const handlePasswordKey = (e) => {
     if (e.getModifierState) {
@@ -565,7 +585,7 @@ function SignUp() {
         "We could not get your email address from Google. Please try again or use a different sign-in method.",
         "error",
       );
-      setLoading(false);
+      setSocialLoading(false);
       return;
     }
     try {
@@ -580,7 +600,7 @@ function SignUp() {
         },
         replace: true,
       });
-      setLoading(false);
+      setSocialLoading(false);
       return;
     } catch (loginError) {
       if (loginError.response?.status === 404) {
@@ -645,14 +665,14 @@ function SignUp() {
               },
               replace: true,
             });
-            setLoading(false);
+            setSocialLoading(false);
             return;
           }
 
           // Preserve the Firebase identity; onboarding can be retried safely.
           await recoverFromAuthFailure(auth, regError);
           showNotification(getRegistrationErrorMessage(regError, "signup"), "error");
-          setLoading(false);
+          setSocialLoading(false);
         }
       } else {
         await recoverFromAuthFailure(auth, loginError);
@@ -668,7 +688,7 @@ function SignUp() {
           "An error occurred while checking your account. Please try again.",
           "error",
         );
-        setLoading(false);
+        setSocialLoading(false);
       }
     }
   };
@@ -679,7 +699,7 @@ function SignUp() {
       try {
         const result = await getRedirectResult(auth);
         if (result?.user && isMounted) {
-          setLoading(true);
+          setSocialLoading(true);
           socialAuthRef.current = true;
           sessionStorage.setItem("socialAuthInProgress", "1");
           await processSocialSignupUser(result.user);
@@ -693,7 +713,7 @@ function SignUp() {
         if (isMounted) {
           socialAuthRef.current = false;
           sessionStorage.removeItem("socialAuthInProgress");
-          setLoading(false);
+          setSocialLoading(false);
         }
       }
     };
@@ -704,16 +724,32 @@ function SignUp() {
   }, []);
 
   const handleSocialSignup = async (provider, providerName = "Google") => {
-    setLoading(true);
+    setSocialLoading(true);
     socialAuthRef.current = true;
     sessionStorage.setItem("socialAuthInProgress", "1"); // tell RequireNonAdmin to skip redirect
+
+    if (!socialSessionRef.current) {
+      socialSessionRef.current = createSocialAuthSession();
+    }
+
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await socialSessionRef.current.start({
+        auth,
+        provider,
+        signInFn: (a, p) => signInWithPopup(a, p),
+        onCancel: () => {
+          socialAuthRef.current = false;
+          sessionStorage.removeItem("socialAuthInProgress");
+          setSocialLoading(false);
+          showNotification("Sign-up was cancelled.", "info");
+        },
+      });
+
       if (result?.user) {
         await processSocialSignupUser(result.user);
       }
     } catch (error) {
-      if (error.code === "auth/popup-blocked" || error.code === "auth/cancelled-popup-request") {
+      if (error.code === "auth/popup-blocked") {
         try {
           await signInWithRedirect(auth, provider);
           return;
@@ -722,18 +758,26 @@ function SignUp() {
           showNotification(getRegistrationErrorMessage(redirectError, "signup"), "error");
         }
       }
+      if (isPopupCancellationError(error)) {
+        socialAuthRef.current = false;
+        sessionStorage.removeItem("socialAuthInProgress");
+        setSocialLoading(false);
+        showNotification("Sign-up was cancelled.", "info");
+        return;
+      }
       await recoverFromAuthFailure(auth, error);
-      if (error.code !== "auth/cancelled-popup-request")
-        showNotification(
-          getRegistrationErrorMessage(error, "signup"),
-          error.code === "auth/popup-closed-by-user" ? "info" : "error",
-        );
+      showNotification(
+        getRegistrationErrorMessage(error, "signup"),
+        "error",
+      );
     } finally {
       socialAuthRef.current = false;
       sessionStorage.removeItem("socialAuthInProgress");
-      setLoading(false);
+      setSocialLoading(false);
     }
   };
+
+
 
   const handleGoogleSignup = () => {
     const provider = new GoogleAuthProvider();
@@ -1060,9 +1104,13 @@ function SignUp() {
 
               <SocialAuthButtons
                 onGoogle={handleGoogleSignup}
-                loading={loading}
+                loading={socialLoading}
+                onCancel={handleCancelSocialAuth}
+                cancelText="Cancel sign-up"
                 dividerText="Or register with"
               />
+
+
             </form>
           </div>
         </div>

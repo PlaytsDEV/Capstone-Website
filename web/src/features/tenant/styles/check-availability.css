@@ -943,6 +943,9 @@ html[data-theme="dark"] .ca-highlight {
   color: var(--border-strong, #cbd5e1);
   font-size: 11px;
   user-select: none;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
 }
 
 .ca-change-room-hint {
@@ -1482,7 +1485,12 @@ html[data-theme="dark"] .ca-price-sub-amount {
 .ca-signin-prompt {
   font-size: 13px;
   color: var(--text-muted);
-  margin-top: 6px;
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  line-height: 1.4;
 }
 
 .ca-signin-prompt button {
@@ -1492,7 +1500,12 @@ html[data-theme="dark"] .ca-price-sub-amount {
   font-weight: 600;
   cursor: pointer;
   padding: 0;
+  margin: 0;
   font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+  display: inline;
 }
 
 .ca-signin-prompt button:hover {

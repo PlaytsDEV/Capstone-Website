@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Ban, Users, Sparkles, HeartHandshake, ShieldCheck, ReceiptText, AlertCircle, ChevronDown } from 'lucide-react';
+import { Ban, Users, Sparkles, HeartHandshake, ShieldCheck, ReceiptText, AlertCircle } from 'lucide-react';
 
 const rules = [
   {
@@ -35,15 +34,9 @@ const rules = [
 ];
 
 export function RulesSection() {
-  const [expandedIndex, setExpandedIndex] = useState(0);
-
-  const toggleRule = (index) => {
-    setExpandedIndex(expandedIndex === index ? null : index);
-  };
-
   return (
     <section className="py-20 lg:py-24" style={{ backgroundColor: 'var(--lp-bg)' }}>
-      <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
+      <div className="max-w-screen-2xl mx-auto px-6 sm:px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-12">
           <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
@@ -52,76 +45,42 @@ export function RulesSection() {
           <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
             Rules & Policies
           </h2>
-          <p className="max-w-2xl mx-auto font-normal leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
+          <p className="max-w-2xl mx-auto font-normal leading-relaxed text-sm sm:text-base" style={{ color: 'var(--lp-text-secondary)' }}>
             Clear expectations for a safe, respectful, and well-managed living environment for everyone.
           </p>
         </div>
 
-        {/* Rules Accordion Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Rules Feature Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">
           {rules.map((rule, index) => {
             const Icon = rule.icon;
-            const isExpanded = expandedIndex === index;
             return (
               <div
                 key={index}
-                className="rounded-2xl transition-[box-shadow,transform] duration-300 overflow-hidden"
+                className="rounded-2xl p-6 sm:p-7 flex flex-col items-start transition-all duration-300 hover:-translate-y-0.5 h-full select-none"
                 style={{
                   backgroundColor: 'var(--lp-bg-card)',
                   border: '1px solid var(--lp-border)',
                   boxShadow: 'var(--lp-card-shadow)',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--lp-card-shadow-hover)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--lp-card-shadow)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
               >
-                <h3 className="m-0 p-0 text-base font-normal">
-                  <button
-                    id={`rule-btn-${index}`}
-                    type="button"
-                    onClick={() => toggleRule(index)}
-                    aria-expanded={isExpanded}
-                    aria-controls={`rule-desc-${index}`}
-                    className="text-left w-full p-6 cursor-pointer focus:outline-none flex items-center gap-4 bg-transparent border-none"
-                  >
-                    <div
-                      className="w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--lp-icon-bg)' }}
-                    >
-                      <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
-                    </div>
-                    <span className="text-base font-medium tracking-tight flex-1" style={{ color: 'var(--lp-text)' }}>
-                      {rule.title}
-                    </span>
-                    <ChevronDown
-                      className="w-4 h-4 flex-shrink-0 transition-transform duration-300"
-                      style={{
-                        color: 'var(--lp-text-muted)',
-                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                      }}
-                    />
-                  </button>
-                </h3>
+                {/* Top-aligned Icon Badge */}
                 <div
-                  id={`rule-desc-${index}`}
-                  role="region"
-                  aria-labelledby={`rule-btn-${index}`}
-                  className="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out px-6"
-                  style={{
-                    maxHeight: isExpanded ? '140px' : '0px',
-                    opacity: isExpanded ? 1 : 0,
-                    marginBottom: isExpanded ? '20px' : '0px',
-                  }}
+                  className="w-11 h-11 flex-shrink-0 rounded-xl flex items-center justify-center mb-4"
+                  style={{ backgroundColor: 'var(--lp-icon-bg)' }}
                 >
-                  <p className="text-sm leading-relaxed pl-14" style={{ color: 'var(--lp-text-secondary)' }}>
-                    {rule.description}
-                  </p>
+                  <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
                 </div>
+
+                {/* Title */}
+                <h3 className="text-base sm:text-lg font-medium tracking-tight mb-2" style={{ color: 'var(--lp-text)' }}>
+                  {rule.title}
+                </h3>
+
+                {/* Description */}
+                <p className="text-sm font-normal leading-relaxed flex-1 m-0" style={{ color: 'var(--lp-text-secondary)' }}>
+                  {rule.description}
+                </p>
               </div>
             );
           })}
@@ -136,7 +95,7 @@ export function RulesSection() {
           }}
         >
           <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--lp-accent-text)' }} />
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
+          <p className="text-sm leading-relaxed m-0" style={{ color: 'var(--lp-text-secondary)' }}>
             <span className="font-semibold" style={{ color: 'var(--lp-text)' }}>Important: </span>
             Violation of house rules may result in warnings, fines, or termination of contract. We maintain these policies to ensure a safe and comfortable environment for all tenants.
           </p>
@@ -146,4 +105,4 @@ export function RulesSection() {
   );
 }
 
-export default RulesSection;
+export default RulesSection;

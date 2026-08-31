@@ -7,25 +7,24 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../../../..");
 const read = (relative) => fs.readFileSync(path.join(webRoot, relative), "utf8");
-const signIn = read("src/features/tenant/pages/SignIn.jsx");
+const signUp = read("src/features/public/pages/SignUp.jsx");
 
-test("SignIn handleSocialLogin auto-onboards unregistered Google accounts seamlessly", () => {
+test("SignUp handleSocialSignup auto-onboards and handles instant cancellation", () => {
   // 1. Must check for 404 / unregistered backend status
-  assert.match(signIn, /status === 404/);
+  assert.match(signUp, /status === 404/);
 
   // 2. Must automatically register user in backend
-  assert.match(signIn, /registerUserInBackend/);
+  assert.match(signUp, /registerUserInBackend/);
 
   // 3. Must safely recover on conflict/failure
-  assert.match(signIn, /await recoverFromAuthFailure\(auth/);
+  assert.match(signUp, /await recoverFromAuthFailure\(auth/);
 
   // 4. Must support redirect auth fallback
-  assert.match(signIn, /signInWithRedirect/);
-  assert.match(signIn, /getRedirectResult/);
+  assert.match(signUp, /signInWithRedirect/);
+  assert.match(signUp, /getRedirectResult/);
 
   // 5. Must integrate socialAuthManager for instant cancellation & timeout protection
-  assert.match(signIn, /createSocialAuthSession/);
-  assert.match(signIn, /isPopupCancellationError/);
+  assert.match(signUp, /createSocialAuthSession/);
+  assert.match(signUp, /isPopupCancellationError/);
 });
-
 

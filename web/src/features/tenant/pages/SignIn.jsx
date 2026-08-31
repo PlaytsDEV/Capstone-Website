@@ -71,9 +71,14 @@ import {
   subscribeToAuthStorage,
 } from "../../../shared/utils/authLockout";
 import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
+import {
+  createSocialAuthSession,
+  isPopupCancellationError,
+} from "../../../shared/utils/socialAuthManager";
 
 const SIGNIN_IMAGE = hero3;
 const RESEND_COOLDOWN_KEY = "unverified_email_resend";
+
 
 function SignIn() {
   const navigate = useNavigate();
@@ -103,13 +108,28 @@ function SignIn() {
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
   const debounceTimersRef = useRef({});
+  const socialSessionRef = useRef(null);
 
-  // Cleanup pending debounce timers on unmount
+  const handleCancelSocialAuth = () => {
+    if (socialSessionRef.current) {
+      socialSessionRef.current.cancel();
+    }
+    setSocialLoading(false);
+    setGlobalLoading(false);
+    sessionStorage.removeItem("socialAuthInProgress");
+  };
+
+
+  // Cleanup pending debounce timers and active social session on unmount
   useEffect(() => {
     return () => {
       Object.values(debounceTimersRef.current).forEach((timer) => clearTimeout(timer));
+      if (socialSessionRef.current) {
+        socialSessionRef.current.cancel();
+      }
     };
   }, []);
+
 
   const handlePasswordKey = (e) => {
     if (e.getModifierState) {
@@ -684,8 +704,23 @@ function SignIn() {
     setSocialLoading(true);
     setGlobalLoading(true);
     sessionStorage.setItem("socialAuthInProgress", "1");
+
+    if (!socialSessionRef.current) {
+      socialSessionRef.current = createSocialAuthSession();
+    }
+
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await socialSessionRef.current.start({
+        auth,
+        provider,
+        signInFn: (a, p) => signInWithPopup(a, p),
+        onCancel: () => {
+          setGlobalLoading(false);
+          setSocialLoading(false);
+          showNotification("Sign-in was cancelled.", "info");
+        },
+      });
+
       if (result?.user) {
         await processSocialUser(result.user);
       }
@@ -699,11 +734,9 @@ function SignIn() {
           showNotification(getFirebaseErrorMessage(redirectError, "login"), "error");
         }
       }
-      if (
-        error.code === "auth/popup-closed-by-user" ||
-        error.code === "auth/cancelled-popup-request"
-      ) {
+      if (isPopupCancellationError(error)) {
         setGlobalLoading(false);
+        setSocialLoading(false);
         showNotification("Sign-in was cancelled.", "info");
         return;
       }
@@ -727,6 +760,7 @@ function SignIn() {
       setGlobalLoading(false);
     }
   };
+
 
   const handleGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
@@ -980,11 +1014,12 @@ function SignIn() {
  )}
  </button>
 
- <SocialAuthButtons
- onGoogle={handleGoogleLogin}
- loading={socialLoading}
- dividerText="Or continue with"
- />
+     <SocialAuthButtons
+       onGoogle={handleGoogleLogin}
+       loading={socialLoading}
+       onCancel={handleCancelSocialAuth}
+       dividerText="Or continue with"
+     />
  </form>
  </div>
  </div>

@@ -279,7 +279,8 @@ export function Navigation({ type } = {}) {
                 {isAuthenticated ? (
                   <Link
                     to={profileUrl}
-                    className="hidden lg:flex items-center justify-center no-underline cursor-pointer"
+                    className="flex items-center justify-center no-underline cursor-pointer"
+                    aria-label={`Open profile for ${displayName}`}
                     style={{
                       width: "36px",
                       height: "36px",
@@ -312,10 +313,10 @@ export function Navigation({ type } = {}) {
                     {displayName.charAt(0).toUpperCase()}
                   </Link>
                 ) : (
-                  /* Not logged in: ghost-button Sign In */
+                  /* Not logged in: ghost-button Sign In visible on mobile & desktop */
                   <Link
                     to="/signin"
-                    className="hidden lg:inline-flex items-center justify-center no-underline cursor-pointer"
+                    className="inline-flex items-center justify-center no-underline cursor-pointer text-xs sm:text-sm px-3.5 py-1.5 sm:px-4 sm:py-2 lg:px-5 lg:py-2"
                     style={ghostBtnStyle}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = ghostBgHover;
