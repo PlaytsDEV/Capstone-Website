@@ -60,6 +60,8 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findById: billFindById,
     findByIdAndDelete: billFindByIdAndDelete,
   },
+  AuditLog: {},
+  UtilityHistoricalGap: {},
   BedHistory: {},
   // utilityBillingController now imports UtilityFinalization (round-3 transfer
   // finalization reconciliation). The aiReview endpoints never touch it — an
@@ -126,6 +128,10 @@ await jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
+  CANONICAL_UTILITY_EVENT_TYPES: [
+    "moveIn", "moveOut", "regularBilling", "periodStart", "periodEnd",
+    "manualAdjustment", "meterReplacement", "meterRollover",
+  ],
   buildMoveInBeforeQuery: jest.fn(() => ({})),
   buildMoveOutAfterOrMissingQuery: jest.fn(() => ({})),
   BILLABLE_RESERVATION_STATUS_QUERY: ["active", "moveIn", "moveOut"],

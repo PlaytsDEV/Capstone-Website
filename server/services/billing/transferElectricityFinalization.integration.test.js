@@ -75,6 +75,7 @@ await jest.unstable_mockModule("../contractService.js", () => ({
 
 const { transferStayWorkflow } = await import("../../utils/tenantActionService.js");
 const { generateContractNumber } = await import("../contractService.js");
+const { getManilaDayjs } = await import("../../utils/dateUtils.js");
 const {
   computeTransfereeSourceElectricityLiability,
   validateTransferDestinationOpeningReading,
@@ -329,6 +330,118 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
     });
   });
 
+  test("destination lifecycle blockers are typed for missing, closed-only, review, and outside-cutover states", async () => {
+    const { roomB } = await seedQuadRoom();
+    const cutoverDate = new Date("2026-08-16T14:00:00.000Z");
+    const destinationPeriod = await UtilityPeriod.findOne({ roomId: roomB._id, utilityType: "electricity" });
+
+    await destinationPeriod.deleteOne();
+    await expect(validateTransferDestinationOpeningReading({
+      destinationRoom: roomB, cutoverDate, freshDestinationOpeningReading: 500,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_MISSING" });
+
+    destinationPeriod._id = new mongoose.Types.ObjectId();
+    destinationPeriod.isNew = true;
+    destinationPeriod.status = "closed";
+    destinationPeriod.endDate = new Date("2026-08-10T00:00:00.000+08:00");
+    destinationPeriod.endReading = 500;
+    await destinationPeriod.save();
+    await expect(validateTransferDestinationOpeningReading({
+      destinationRoom: roomB, cutoverDate, freshDestinationOpeningReading: 500,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_CLOSED_ONLY" });
+
+    destinationPeriod.status = "manual_review_required";
+    destinationPeriod.endDate = null;
+    destinationPeriod.endReading = null;
+    destinationPeriod.manualReviewReason = "test";
+    await destinationPeriod.save();
+    await expect(validateTransferDestinationOpeningReading({
+      destinationRoom: roomB, cutoverDate, freshDestinationOpeningReading: 500,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_REVIEW_REQUIRED" });
+
+    destinationPeriod.status = "open";
+    destinationPeriod.startDate = new Date("2026-09-01T00:00:00.000+08:00");
+    await destinationPeriod.save();
+    await expect(validateTransferDestinationOpeningReading({
+      destinationRoom: roomB, cutoverDate, freshDestinationOpeningReading: 500,
+    })).rejects.toMatchObject({ code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_OUTSIDE_CUTOVER" });
+  });
+
+  test("a billing-period 409 is mutation-free and the transfer succeeds after the destination period is fixed", async () => {
+    const { roomA, roomB, reservations, stays, contracts, actorId } = await seedQuadRoom();
+    await UtilityPeriod.deleteMany({ roomId: roomB._id, utilityType: "electricity" });
+    const before = {
+      sourceOccupancy: roomA.currentOccupancy,
+      destinationOccupancy: roomB.currentOccupancy,
+      readingCount: await UtilityReading.countDocuments(),
+      historyCount: await BedHistory.countDocuments(),
+      finalizationCount: await UtilityFinalization.countDocuments(),
+      billCount: await Bill.countDocuments(),
+    };
+    const payload = {
+      confirm: true, targetRoomId: roomB._id, targetBedId: "dst-b1",
+      effectiveTransferDate: "2026-08-16T00:00:00.000Z",
+      sourceRoomMeterReading: 1080, targetRoomMeterReading: 500, reason: "retry test",
+      __scheduledTransferId: new mongoose.Types.ObjectId(),
+    };
+
+    await expect(transferStayWorkflow({ reservationId: reservations.D._id, payload, actorId }))
+      .rejects.toMatchObject({ statusCode: 409, code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_MISSING" });
+
+    const [reservationAfterFailure, stayAfterFailure, contractAfterFailure, sourceAfterFailure, destinationAfterFailure] = await Promise.all([
+      Reservation.findById(reservations.D._id).lean(),
+      Stay.findById(stays.D._id).lean(),
+      Contract.findById(contracts.D._id).lean(),
+      Room.findById(roomA._id).lean(),
+      Room.findById(roomB._id).lean(),
+    ]);
+    expect(String(reservationAfterFailure.roomId)).toBe(String(roomA._id));
+    expect(String(stayAfterFailure.roomId)).toBe(String(roomA._id));
+    expect(String(contractAfterFailure.roomId)).toBe(String(roomA._id));
+    expect(sourceAfterFailure.currentOccupancy).toBe(before.sourceOccupancy);
+    expect(destinationAfterFailure.currentOccupancy).toBe(before.destinationOccupancy);
+    expect(await UtilityReading.countDocuments()).toBe(before.readingCount);
+    expect(await BedHistory.countDocuments()).toBe(before.historyCount);
+    expect(await UtilityFinalization.countDocuments()).toBe(before.finalizationCount);
+    expect(await Bill.countDocuments()).toBe(before.billCount);
+
+    await UtilityPeriod.create({
+      utilityType: "electricity", roomId: roomB._id, branch: roomB.branch,
+      startDate: MOVE_IN, startReading: 500, ratePerUnit: RATE_PER_KWH, status: "open",
+    });
+    const result = await transferStayWorkflow({ reservationId: reservations.D._id, payload, actorId });
+    expect(result.cutoverAt).toBeInstanceOf(Date);
+    expect(String((await Reservation.findById(reservations.D._id).lean()).roomId)).toBe(String(roomB._id));
+  });
+
+  test("direct negative transfer readings fail before physical-domain mutation", async () => {
+    const { roomA, roomB, reservations, actorId } = await seedQuadRoom();
+    const before = {
+      reservationRoomId: String(reservations.D.roomId),
+      sourceOccupancy: roomA.currentOccupancy,
+      destinationOccupancy: roomB.currentOccupancy,
+      readingCount: await UtilityReading.countDocuments(),
+      historyCount: await BedHistory.countDocuments(),
+    };
+    await expect(transferStayWorkflow({
+      reservationId: reservations.D._id,
+      payload: {
+        confirm: true, targetRoomId: roomB._id, targetBedId: "dst-b1",
+        effectiveTransferDate: "2026-08-16T00:00:00.000Z",
+        sourceRoomMeterReading: 1080, targetRoomMeterReading: -6,
+      },
+      actorId,
+    })).rejects.toMatchObject({ statusCode: 400, code: "INVALID_PHYSICAL_METER_READING" });
+    const [reservation, source, destination] = await Promise.all([
+      Reservation.findById(reservations.D._id).lean(), Room.findById(roomA._id).lean(), Room.findById(roomB._id).lean(),
+    ]);
+    expect(String(reservation.roomId)).toBe(before.reservationRoomId);
+    expect(source.currentOccupancy).toBe(before.sourceOccupancy);
+    expect(destination.currentOccupancy).toBe(before.destinationOccupancy);
+    expect(await UtilityReading.countDocuments()).toBe(before.readingCount);
+    expect(await BedHistory.countDocuments()).toBe(before.historyCount);
+  });
+
   test("cutover: transfer_settlement.charges.electricity is finalized; water stays 0; UtilityFinalization written; cutoverAt is a real timestamp", async () => {
     const { roomA, roomB, reservations, actorId } = await seedQuadRoom();
 
@@ -391,7 +504,7 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
   test("period close: D stays in canonical allocation; NO duplicate Bill; RECONCILIATION INVARIANT holds", async () => {
     const { roomA, roomB, reservations, actorId } = await seedQuadRoom();
 
-    await transferStayWorkflow({
+    const transferResult = await transferStayWorkflow({
       reservationId: reservations.D._id,
       payload: {
         confirm: true, targetRoomId: roomB._id, targetBedId: "dst-b1",
@@ -415,7 +528,13 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
     });
     const req = {
       params: { utilityType: "electricity", id: String(period._id) },
-      body: { endReading: 1200, endDate: "2026-09-01T00:00:00.000Z" },
+      // Periods are half-open Manila calendar intervals. The real cutover is a
+      // timestamp during its Manila day, so close at the following boundary;
+      // closing at that day's 00:00 would correctly exclude the later cutover.
+      body: {
+        endReading: 1200,
+        endDate: getManilaDayjs(transferResult.cutoverAt).add(1, "day").format("YYYY-MM-DD"),
+      },
       user: { uid: admin.firebaseUid },
     };
     let closeResult;
@@ -470,6 +589,35 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
     expect(Math.abs(closedPeriod.transferFinalizationReconciliation.variance)).toBeLessThanOrEqual(1);
 
     void controller; void express; void closeResult;
+  });
+
+  test("failed period close rolls back periodEnd, bills, allocations, and status together", async () => {
+    const { roomA, reservations, users } = await seedQuadRoom();
+    const period = await UtilityPeriod.findOne({ roomId: roomA._id, utilityType: "electricity", status: "open" });
+    await BedHistory.updateOne(
+      { reservationId: reservations.D._id, roomId: roomA._id },
+      { $set: { moveInDate: new Date("2026-08-10T09:00:00.000Z"), effectiveStartDate: new Date("2026-08-10T09:00:00.000Z") } },
+    );
+    const admin = await User.create({
+      firebaseUid: `fb-${new mongoose.Types.ObjectId()}`, email: `rollback-${Date.now()}@ex.test`,
+      username: `rb_${Date.now()}`, firstName: "Roll", lastName: "Back", role: "branch_admin", branch: "gil-puyat",
+    });
+    const controller = await import("../../controllers/utilityBillingController.js");
+    let forwardedError;
+    await controller.closeUtilityPeriod({
+      params: { utilityType: "electricity", id: String(period._id) },
+      body: { endReading: 1200, endDate: "2026-09-01" },
+      user: { uid: admin.firebaseUid },
+    }, { json: () => { throw new Error("close unexpectedly succeeded"); } }, (error) => { forwardedError = error; });
+
+    expect(forwardedError).toBeTruthy();
+    expect(forwardedError.message).toMatch(/move-in.*reading|reading.*move-in/i);
+    const stored = await UtilityPeriod.findById(period._id).lean();
+    expect(stored).toMatchObject({ status: "open", endDate: null, endReading: null, closedAt: null });
+    expect(await UtilityReading.countDocuments({ utilityPeriodId: period._id, eventType: "periodEnd" })).toBe(0);
+    expect(await Bill.countDocuments({ "charges.electricity": { $gt: 0 } })).toBe(0);
+    expect((stored.tenantSummaries || [])).toHaveLength(0);
+    expect(users.D).toBeTruthy();
   });
 
   test("guadalupe (fixed-rate): no electricity finalization; charges.electricity stays 0; no UtilityFinalization", async () => {
