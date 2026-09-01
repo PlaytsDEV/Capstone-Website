@@ -63,6 +63,7 @@
 
 import mongoose from "mongoose";
 import { ROOM_BRANCHES } from "../config/branches.js";
+import { isValidOptionalPhysicalMeterReading } from "../utils/physicalMeterReading.js";
 
 export const SCHEDULED_ROOM_TRANSFER_STATUSES = Object.freeze([
   "scheduled",
@@ -186,8 +187,16 @@ const scheduledRoomTransferSchema = new mongoose.Schema(
 
     // Optional effective-date meter readings an admin may pre-enter so the
     // executor passes them through instead of the latest-DB-reading fallback.
-    sourceRoomMeterReading: { type: Number, default: null },
-    targetRoomMeterReading: { type: Number, default: null },
+    sourceRoomMeterReading: {
+      type: Number,
+      default: null,
+      validate: { validator: isValidOptionalPhysicalMeterReading, message: "Source meter reading must be finite and non-negative." },
+    },
+    targetRoomMeterReading: {
+      type: Number,
+      default: null,
+      validate: { validator: isValidOptionalPhysicalMeterReading, message: "Destination meter reading must be finite and non-negative." },
+    },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     status: {

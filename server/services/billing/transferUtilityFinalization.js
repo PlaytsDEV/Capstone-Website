@@ -25,7 +25,7 @@
  * ============================================================================
  */
 
-import { UtilityPeriod, UtilityReading } from "../../models/index.js";
+import { UtilityReading } from "../../models/index.js";
 import { computeBilling, sortReadings } from "./billingEngine.js";
 import { branchSupportsSeparateUtilityBilling } from "../../config/branches.js";
 import {
@@ -35,6 +35,13 @@ import {
   isWaterBillableRoom,
 } from "../../utils/utilityFlowRules.js";
 import { resolveRoomScopedReservationsForUtilityPeriod } from "./roomScopedUtilityParticipants.js";
+import {
+  resolveUtilityPeriodState,
+  utilityPeriodStateError,
+  UTILITY_PERIOD_STATE,
+} from "./utilityPeriodLifecycleService.js";
+import { parsePhysicalMeterReading } from "../../utils/physicalMeterReading.js";
+import { getRoomLabel } from "../../utils/roomLabel.js";
 
 const round = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -83,47 +90,60 @@ export async function computeTransfereeSourceElectricityLiability({
     // Guadalupe / fixed-rate — no separate electricity billing at all.
     return { applicable: false, reason: "branch_not_submetered", waterNote };
   }
-  if (
-    freshSourceClosingReading == null ||
-    Number.isNaN(Number(freshSourceClosingReading))
-  ) {
+  if (freshSourceClosingReading == null) {
     return { applicable: false, reason: "no_fresh_closing_reading", waterNote };
   }
 
-  let periodQuery = UtilityPeriod.find({
+  const resolution = await resolveUtilityPeriodState({
     utilityType: "electricity",
     roomId: sourceRoom._id,
-    status: "open",
-    isArchived: false,
-  }).sort({ startDate: -1 });
-  if (session) periodQuery = periodQuery.session(session);
-  const openPeriods = await periodQuery.lean();
-  if (openPeriods.length !== 1) {
-    throw reviewError(
-      openPeriods.length === 0
-        ? "The source room has no open electricity period. Review utility data before completing the transfer."
-        : "The source room has multiple open electricity periods. Resolve them before completing the transfer.",
-      openPeriods.length === 0
-        ? "ROOM_TRANSFER_SOURCE_ELECTRICITY_PERIOD_MISSING"
-        : "ROOM_TRANSFER_SOURCE_ELECTRICITY_PERIOD_AMBIGUOUS",
-      { openPeriodCount: openPeriods.length },
-    );
+    cutoverAt: cutoverDate,
+    session,
+  });
+  if (resolution.state !== UTILITY_PERIOD_STATE.OPEN) {
+    throw utilityPeriodStateError({
+      resolution,
+      roomLabel: getRoomLabel(sourceRoom),
+      role: "source",
+    });
   }
-  const period = openPeriods[0];
+  const period = resolution.period;
 
-  const closing = Number(freshSourceClosingReading);
-  const baseline = Number(period.startReading);
-  if (!Number.isFinite(baseline)) {
+  const closing = parsePhysicalMeterReading(freshSourceClosingReading, {
+    fieldLabel: "Source room closing electricity reading",
+    maximum: 999999.99,
+  });
+  let baseline;
+  try {
+    baseline = parsePhysicalMeterReading(period.startReading, {
+      fieldLabel: "Source period opening electricity reading",
+      maximum: 999999.99,
+    });
+  } catch {
     throw reviewError(
       "The source room electricity period has no valid opening reading.",
       "ROOM_TRANSFER_SOURCE_OPENING_READING_INVALID",
     );
   }
-  if (closing < baseline) {
+  let latestQuery = UtilityReading.findOne({
+    roomId: sourceRoom._id,
+    utilityType: "electricity",
+    isArchived: false,
+    date: { $lte: cutoverDate ? new Date(cutoverDate) : new Date() },
+  }).sort({ date: -1, createdAt: -1 });
+  if (session) latestQuery = latestQuery.session(session);
+  const latestBeforeCutover = await latestQuery.lean();
+  const minimum = Math.max(
+    baseline,
+    Number.isFinite(Number(latestBeforeCutover?.reading))
+      ? Number(latestBeforeCutover.reading)
+      : baseline,
+  );
+  if (closing < minimum) {
     // A meter reading below the period baseline is a data error — surface it,
     // do not silently produce a negative/zero charge.
     const err = new Error(
-      `The closing meter reading (${closing} kWh) is below the current billing period's opening reading (${baseline} kWh). Verify the reading.`,
+      `The closing meter reading (${closing} kWh) is below the latest applicable source-room reading (${minimum} kWh). Verify the reading.`,
     );
     err.statusCode = 400;
     err.code = "CLOSING_READING_BELOW_BASELINE";
@@ -277,31 +297,35 @@ export async function validateTransferDestinationOpeningReading({
   if (!branchSupportsSeparateUtilityBilling(destinationRoom?.branch, "electricity")) {
     return { applicable: false, reason: "branch_not_submetered" };
   }
-  const opening = Number(freshDestinationOpeningReading);
-  if (!Number.isFinite(opening)) {
-    throw reviewError(
-      "A valid destination-room opening electricity reading is required.",
-      "ROOM_TRANSFER_DESTINATION_READING_REQUIRED",
-    );
-  }
+  const opening = parsePhysicalMeterReading(freshDestinationOpeningReading, {
+    fieldLabel: "Destination room current electricity reading",
+    maximum: 999999.99,
+  });
 
-  let periodQuery = UtilityPeriod.find({
+  const resolution = await resolveUtilityPeriodState({
     utilityType: "electricity",
     roomId: destinationRoom._id,
-    status: "open",
-    isArchived: false,
-  }).sort({ startDate: -1 });
-  if (session) periodQuery = periodQuery.session(session);
-  const periods = await periodQuery.lean();
-  if (periods.length !== 1 || !Number.isFinite(Number(periods[0]?.startReading))) {
+    cutoverAt: cutoverDate,
+    session,
+  });
+  if (resolution.state !== UTILITY_PERIOD_STATE.OPEN) {
+    throw utilityPeriodStateError({
+      resolution,
+      roomLabel: getRoomLabel(destinationRoom),
+      role: "destination",
+    });
+  }
+  const period = resolution.period;
+  let baseline;
+  try {
+    baseline = parsePhysicalMeterReading(period.startReading, {
+      fieldLabel: "Destination period opening electricity reading",
+      maximum: 999999.99,
+    });
+  } catch {
     throw reviewError(
-      periods.length === 0
-        ? "The destination room has no open electricity period."
-        : "The destination room electricity period is missing or ambiguous.",
-      periods.length === 0
-        ? "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_MISSING"
-        : "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_INVALID",
-      { openPeriodCount: periods.length },
+      "The destination room electricity period has no valid opening reading.",
+      "ROOM_TRANSFER_DESTINATION_OPENING_READING_INVALID",
     );
   }
 
@@ -314,7 +338,7 @@ export async function validateTransferDestinationOpeningReading({
   if (session) latestQuery = latestQuery.session(session);
   const latest = await latestQuery.lean();
   const minimum = Math.max(
-    Number(periods[0].startReading),
+    baseline,
     Number.isFinite(Number(latest?.reading)) ? Number(latest.reading) : -Infinity,
   );
   if (opening < minimum) {
@@ -326,7 +350,7 @@ export async function validateTransferDestinationOpeningReading({
   }
   return {
     applicable: true,
-    utilityPeriodId: String(periods[0]._id),
+    utilityPeriodId: String(period._id),
     openingReading: opening,
   };
 }

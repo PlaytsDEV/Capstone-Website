@@ -4,6 +4,7 @@ import {
   CANONICAL_UTILITY_EVENT_TYPES,
   normalizeUtilityEventType,
 } from "../utils/lifecycleNaming.js";
+import { isValidPhysicalMeterReading } from "../utils/physicalMeterReading.js";
 
 const utilityReadingSchema = new mongoose.Schema(
   {
@@ -29,6 +30,10 @@ const utilityReadingSchema = new mongoose.Schema(
     reading: {
       type: Number,
       required: true,
+      validate: {
+        validator: isValidPhysicalMeterReading,
+        message: "Physical meter reading must be finite and non-negative.",
+      },
     },
     date: {
       type: Date,

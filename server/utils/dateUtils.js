@@ -30,7 +30,10 @@ export function getManilaDayjs(dateLike) {
  */
 export function toManilaStartOfDay(dateLike) {
   if (!dateLike) return null;
-  const d = getManilaDayjs(dateLike);
+  const d =
+    typeof dateLike === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateLike.trim())
+      ? dayjs.tz(dateLike.trim(), APP_TIMEZONE)
+      : getManilaDayjs(dateLike);
   return d.isValid() ? d.startOf("day") : null;
 }
 

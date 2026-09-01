@@ -56,6 +56,7 @@ import LeaseRenewal from "./LeaseRenewal.js";
 import UtilityPeriod from "./UtilityPeriod.js";
 import UtilityReading from "./UtilityReading.js";
 import UtilityFinalization from "./UtilityFinalization.js";
+import UtilityHistoricalGap from "./UtilityHistoricalGap.js";
 import Bill from "./Bill.js";
 import Payment from "./Payment.js";
 import TenantCredit from "./TenantCredit.js";
@@ -145,6 +146,7 @@ export {
   UtilityPeriod,
   UtilityReading,
   UtilityFinalization,
+  UtilityHistoricalGap,
   BedHistory,
   Stay,
   Contract,
@@ -267,6 +269,7 @@ export default {
   UtilityPeriod,
   UtilityReading,
   UtilityFinalization,
+  UtilityHistoricalGap,
   BedHistory,
   Stay,
   Contract,

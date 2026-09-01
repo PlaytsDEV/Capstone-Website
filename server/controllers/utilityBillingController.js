@@ -10,6 +10,7 @@
  */
 
 import dayjs from "dayjs";
+import mongoose from "mongoose";
 import {
   Room,
   Reservation,
@@ -79,10 +80,45 @@ import {
   assertUtilityStartDate,
 } from "../utils/utilityDateIntegrity.js";
 import { resolveRoomScopedReservationsForUtilityPeriod } from "../services/billing/roomScopedUtilityParticipants.js";
+import {
+  createOpenUtilityPeriodWithBoundary,
+  resolveUtilityPeriodState,
+  UTILITY_PERIOD_START_MODE,
+  UTILITY_PERIOD_STATE,
+} from "../services/billing/utilityPeriodLifecycleService.js";
+import {
+  assertPhysicalMeterContinuity,
+  parsePhysicalMeterReading,
+} from "../utils/physicalMeterReading.js";
+import { toManilaStartOfDay } from "../utils/dateUtils.js";
+import { resolveHistoricalUtilityGap } from "../services/billing/utilityHistoricalGapService.js";
 
 const getAdminInfo = resolveAdminAccessContext;
 
 const UTILITY_EXPORT_TYPES = new Set(["electricity", "water"]);
+
+async function logCommittedUtilityClose({ requestContext, admin, utilityType, result }) {
+  try {
+    const period = await UtilityPeriod.findById(result?.periodId).lean();
+    const room = period ? await Room.findById(period.roomId).lean() : null;
+    await logBillingAudit(requestContext || {}, {
+      admin,
+      action: "utility_period_closed",
+      severity: "high",
+      entityId: period?._id || result?.periodId,
+      branch: period?.branch,
+      details: `Closed ${utilityType} period for room ${getRoomLabel(room || {})}. Math: ${result?.computationResult?.strategy || "canonical"}`,
+      metadata: {
+        utilityType,
+        roomId: period?.roomId || null,
+        tenantCount: result?.computationResult?.tenantSummaries?.length || 0,
+        computedCost: result?.computationResult?.computedTotalCost || 0,
+      },
+    });
+  } catch (error) {
+    logger.warn({ err: error, periodId: result?.periodId }, "Utility period closed but post-commit audit logging failed");
+  }
+}
 
 const formatExportDate = (value) =>
   value ? dayjs(value).format("YYYY-MM-DD") : "";
@@ -350,12 +386,14 @@ export async function resolveRoomScopedReservationsForPeriod({
   periodStart,
   periodEnd,
   utilityType = null,
+  session = null,
 }) {
   return resolveRoomScopedReservationsForUtilityPeriod({
     room,
     periodStart,
     periodEnd,
     utilityType,
+    session,
   });
 }
 // ============================================================================
@@ -370,15 +408,36 @@ async function closePeriodAndGenerateDrafts({
   endDate,
   utilityType,
   requestContext = null,
+  session = null,
+  deferAudit = false,
 }) {
-  const closingDate = dayjs(endDate ? new Date(endDate) : new Date())
-    .startOf("day")
-    .toDate();
+  const normalizedClosingDay = toManilaStartOfDay(endDate || new Date());
+  const closingDate = normalizedClosingDay?.toDate();
+  if (!closingDate) {
+    throw Object.assign(new Error("A valid closing date is required."), {
+      statusCode: 400,
+      code: "INVALID_UTILITY_CLOSING_DATE",
+    });
+  }
 
   assertUtilityClosingDate(period.startDate, closingDate);
 
   if (utilityType === "electricity") {
     assertBoundaryReadings({ startReading: period.startReading, endReading });
+    let latestReadingQuery = UtilityReading.findOne({
+      roomId: room._id,
+      utilityType,
+      isArchived: false,
+      date: { $lte: closingDate },
+    }).sort({ date: -1, createdAt: -1 });
+    if (session) latestReadingQuery = latestReadingQuery.session(session);
+    const latestReading = await latestReadingQuery.lean();
+    assertPhysicalMeterContinuity({
+      reading: endReading,
+      previousReading: latestReading?.reading ?? period.startReading,
+      eventType: "periodEnd",
+      fieldLabel: "Final meter reading",
+    });
   }
 
   assertUtilityRoomEligibility(room, utilityType);
@@ -396,13 +455,17 @@ async function closePeriodAndGenerateDrafts({
       utilityPeriodId: period._id,
       activeTenantIds: [],
     });
-    await endUtilityReading.save();
+    await endUtilityReading.save(session ? { session } : undefined);
   }
 
-  const cycleStart = dayjs(period.startDate).startOf("day").toDate();
+  // Preserve an EXACT_OBSERVATION boundary when a recovered period is later
+  // closed. Widening it back to midnight would pull unknown pre-baseline
+  // readings into the canonical cycle.
+  const cycleStart = new Date(period.startDate);
   const allReadings =
     utilityType === "electricity"
-      ? await UtilityReading.find({
+      ? await (() => {
+          let query = UtilityReading.find({
           roomId: room._id,
           utilityType,
           isArchived: false,
@@ -411,9 +474,10 @@ async function closePeriodAndGenerateDrafts({
             $lte: closingDate,
           },
           $or: [{ utilityPeriodId: period._id }, { utilityPeriodId: null }],
-        })
-          .sort({ date: 1, createdAt: 1 })
-          .lean()
+          }).sort({ date: 1, createdAt: 1 });
+          if (session) query = query.session(session);
+          return query.lean();
+        })()
       : [];
 
   const reservations = await resolveRoomScopedReservationsForPeriod({
@@ -421,6 +485,7 @@ async function closePeriodAndGenerateDrafts({
     periodStart: period.startDate,
     periodEnd: closingDate,
     utilityType,
+    session,
   });
 
   const cyclePeriod = {
@@ -553,6 +618,7 @@ async function closePeriodAndGenerateDrafts({
     room,
     tenantSummaries: period.tenantSummaries,
     utilityType,
+    session,
   });
 
   // ── Transfer-finalization reconciliation invariant ──────────────────────
@@ -570,11 +636,13 @@ async function closePeriodAndGenerateDrafts({
   // the canonical close (e.g. a co-occupant change mid-period). The period
   // still closes for everyone else; flag it for admin review.
   try {
-    const finalized = await UtilityFinalization.find({
+    let finalizationQuery = UtilityFinalization.find({
       utilityPeriodId: period._id,
       utilityType,
       isArchived: { $ne: true },
-    }).lean();
+    });
+    if (session) finalizationQuery = finalizationQuery.session(session);
+    const finalized = await finalizationQuery.lean();
     if (finalized.length > 0) {
       const finalizedTotal = finalized.reduce(
         (sum, f) => sum + Number(f.settledAmount || 0),
@@ -608,9 +676,9 @@ async function closePeriodAndGenerateDrafts({
   period.status = "closed";
   period.closedAt = new Date();
   period.closedBy = admin._id;
-  await period.save();
+  await period.save(session ? { session } : undefined);
 
-  await logBillingAudit(requestContext || {}, {
+  if (!deferAudit) await logBillingAudit(requestContext || {}, {
     admin,
     action: "utility_period_closed",
     severity: "high",
@@ -648,16 +716,20 @@ export const openUtilityPeriod = async (req, res, next) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    if (Number(ratePerUnit) < 0) {
+    const parsedRate = Number(ratePerUnit);
+    if (!Number.isFinite(parsedRate) || parsedRate < 0) {
       return res.status(400).json({ error: "Utility rate cannot be negative." });
     }
     const maxRate = utilityType === "electricity" ? 100 : 100000;
-    if (Number(ratePerUnit) > maxRate) {
+    if (parsedRate > maxRate) {
       return res.status(400).json({ error: `Utility rate cannot exceed ₱${maxRate.toLocaleString()}.` });
     }
-    if (requiresMeterReading && Number(startReading) > 999999.99) {
-      return res.status(400).json({ error: "Opening meter reading cannot exceed 999,999.99 kWh." });
-    }
+    const parsedStartReading = requiresMeterReading
+      ? parsePhysicalMeterReading(startReading, {
+          fieldLabel: "Opening meter reading",
+          maximum: 999999.99,
+        })
+      : 0;
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
@@ -672,18 +744,23 @@ export const openUtilityPeriod = async (req, res, next) => {
 
     assertUtilityRoomEligibility(room, utilityType);
 
-    const openExists = await UtilityPeriod.findOne({
+    const activeResolution = await resolveUtilityPeriodState({
       utilityType,
       roomId: room._id,
-      status: "open",
-      isArchived: false,
     });
-    if (openExists)
+    if (
+      activeResolution.state !== UTILITY_PERIOD_STATE.MISSING &&
+      activeResolution.state !== UTILITY_PERIOD_STATE.CLOSED_ONLY
+    )
       return res
         .status(409)
-        .json({ error: "Room already has an open period." });
+        .json({
+          error: "Room already has a lifecycle-active utility period.",
+          code: "UTILITY_PERIOD_ALREADY_ACTIVE",
+          periodState: activeResolution.state,
+        });
 
-    const parsedStartDate = dayjs(startDate).startOf("day").toDate();
+    const parsedStartDate = toManilaStartOfDay(startDate)?.toDate();
     assertUtilityStartDate(parsedStartDate);
     const overlappingPeriod = await UtilityPeriod.findOne({
       utilityType,
@@ -699,33 +776,15 @@ export const openUtilityPeriod = async (req, res, next) => {
       });
     }
 
-    const period = new UtilityPeriod({
+    const period = await createOpenUtilityPeriodWithBoundary({
       utilityType,
-      roomId: room._id,
-      branch: room.branch,
+      room,
       startDate: parsedStartDate,
-      startReading: utilityType === "water" ? 0 : Number(startReading),
-      ratePerUnit: Number(ratePerUnit),
-      status: "open",
+      startReading: parsedStartReading,
+      ratePerUnit: parsedRate,
+      actorId: admin._id,
+      startMode: UTILITY_PERIOD_START_MODE.BUSINESS_DATE,
     });
-    await period.save();
-
-    if (utilityType === "electricity") {
-      // Create the start baseline reading tied to this period
-      const startBaselineReading = new UtilityReading({
-        utilityType,
-        roomId: room._id,
-        branch: room.branch,
-        reading: Number(startReading),
-        date: dayjs(startDate).startOf("day").toDate(),
-        eventType: "periodStart",
-        readingStatus: "locked",
-        recordedBy: admin._id,
-        utilityPeriodId: period._id,
-        activeTenantIds: [],
-      });
-      await startBaselineReading.save();
-    }
 
     res
       .status(201)
@@ -760,27 +819,55 @@ export const recordUtilityReading = async (req, res, next) => {
     }
     assertUtilityRoomEligibility(room, utilityType);
 
-    const openPeriod = await UtilityPeriod.findOne({
+    const periodResolution = await resolveUtilityPeriodState({
       roomId: room._id,
       utilityType,
-      status: "open",
-      isArchived: false,
     });
+    if (periodResolution.state === UTILITY_PERIOD_STATE.AMBIGUOUS) {
+      return res.status(409).json({
+        error: "Multiple lifecycle-active utility periods exist for this room. Resolve the conflict before recording readings.",
+        code: "UTILITY_PERIOD_AMBIGUOUS",
+      });
+    }
+    const activePeriod = periodResolution.period || null;
+    if (!activePeriod) {
+      return res.status(409).json({
+        error: "Open the current utility period before recording a meter reading.",
+        code: periodResolution.state === UTILITY_PERIOD_STATE.CLOSED_ONLY
+          ? "UTILITY_PERIOD_CLOSED_ONLY"
+          : "UTILITY_PERIOD_MISSING",
+      });
+    }
 
     const normalizedReadingDate = assertUtilityReadingDate(date, {
-      periodStart: openPeriod?.startDate || null,
+      periodStart: activePeriod.startDate,
+    });
+    const parsedReading = parsePhysicalMeterReading(reading, {
+      fieldLabel: "Meter reading",
+      maximum: 999999.99,
+    });
+    const previousReading = await UtilityReading.findOne({
+      roomId: room._id,
+      utilityType,
+      isArchived: false,
+      date: { $lte: normalizedReadingDate },
+    }).sort({ date: -1, createdAt: -1 }).lean();
+    assertPhysicalMeterContinuity({
+      reading: parsedReading,
+      previousReading: previousReading?.reading,
+      eventType: normalizeUtilityEventType(eventType),
     });
 
     const newReading = new UtilityReading({
       utilityType,
       roomId: room._id,
       branch: room.branch,
-      reading: Number(reading),
+      reading: parsedReading,
       date: normalizedReadingDate,
       eventType,
       tenantId: tenantId || null,
       recordedBy: admin._id,
-      utilityPeriodId: openPeriod?._id || null,
+      utilityPeriodId: activePeriod._id,
     });
     await newReading.save();
 
@@ -794,44 +881,178 @@ export const recordUtilityReading = async (req, res, next) => {
 };
 
 export const closeUtilityPeriod = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
     const admin = await getAdminInfo(req);
     const utilityType = req.params.utilityType;
     const { id } = req.params;
     const { endReading, endDate } = req.body;
 
-    const period = await UtilityPeriod.findById(id);
-    if (!period || period.status !== "open")
-      return res
-        .status(400)
-        .json({ error: "Invalid or already closed period" });
+    const parsedEndReading = utilityType === "electricity"
+      ? parsePhysicalMeterReading(endReading, {
+          fieldLabel: "Final meter reading",
+          maximum: 999999.99,
+        })
+      : 0;
 
-    if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
-      return res.status(422).json({
-        error:
-          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
-        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+    let result;
+    await session.withTransaction(async () => {
+      const period = await UtilityPeriod.findById(id).session(session);
+      if (!period || period.status !== "open") {
+        throw Object.assign(new Error("Invalid or already closed period"), {
+          statusCode: 400,
+          code: "UTILITY_PERIOD_NOT_OPEN",
+        });
+      }
+      if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+        throw Object.assign(new Error("Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch."), {
+          statusCode: 422,
+          code: "BRANCH_UTILITY_NOT_SUPPORTED",
+        });
+      }
+      const room = await Room.findById(period.roomId).session(session);
+      result = await closePeriodAndGenerateDrafts({
+        admin,
+        period,
+        room,
+        endReading: parsedEndReading,
+        endDate,
+        utilityType,
+        requestContext: req,
+        session,
+        deferAudit: true,
       });
-    }
-
-    if (utilityType === "electricity" && Number(endReading) > 999999.99) {
-      return res.status(400).json({ error: "Final meter reading cannot exceed 999,999.99 kWh." });
-    }
-
-    const room = await Room.findById(period.roomId);
-    const result = await closePeriodAndGenerateDrafts({
-      admin,
-      period,
-      room,
-      endReading,
-      endDate,
-      utilityType,
-      requestContext: req,
     });
+    await logCommittedUtilityClose({ requestContext: req, admin, utilityType, result });
 
     res.json({ success: true, result });
   } catch (err) {
     next(err);
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const resolveUtilityHistoricalGap = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const period = await UtilityPeriod.findById(req.params.id).select("branch utilityType").lean();
+    if (!period) return res.status(404).json({ error: "Utility period not found" });
+    if (period.utilityType !== req.params.utilityType) return res.status(409).json({ error: "Utility type does not match period." });
+    if (!admin.isOwner && period.branch !== admin.branch) return res.status(403).json({ error: "Access denied" });
+    const result = await resolveHistoricalUtilityGap({
+      reviewRecordId: req.body.reviewRecordId,
+      expectedPeriodId: req.params.id,
+      actorId: admin._id,
+      actorName: admin.displayName,
+      actorRole: admin.role,
+      branch: period.branch,
+      outcome: req.body.outcome,
+      explanation: req.body.explanation,
+      evidenceReferences: req.body.evidenceReferences,
+      approvalReference: req.body.approvalReference,
+      financialDispositionType: req.body.financialDispositionType,
+      financialAmount: req.body.financialAmount,
+      verifiedOpeningReading: req.body.verifiedOpeningReading,
+    });
+    return res.json({ success: true, period: serializeUtilityPeriod(result.period), review: result.gap });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const generateHistoricalUtilityPeriod = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    const admin = await getAdminInfo(req);
+    const utilityType = req.params.utilityType;
+    const { roomId, startDate, startReading, ratePerUnit, endDate, endReading } = req.body;
+    if (!roomId || !startDate || !endDate || ratePerUnit === null || ratePerUnit === undefined || ratePerUnit === "") {
+      return res.status(400).json({ error: "Room, dates, and rate are required." });
+    }
+    const room = await Room.findById(roomId);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!admin.isOwner && room.branch !== admin.branch) return res.status(403).json({ error: "Access denied" });
+    if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) {
+      return res.status(422).json({ error: "This branch does not use separate utility periods.", code: "BRANCH_UTILITY_NOT_SUPPORTED" });
+    }
+    assertUtilityRoomEligibility(room, utilityType);
+
+    const start = toManilaStartOfDay(startDate)?.toDate();
+    const end = toManilaStartOfDay(endDate)?.toDate();
+    assertUtilityStartDate(start);
+    assertUtilityClosingDate(start, end);
+    const opening = utilityType === "electricity"
+      ? parsePhysicalMeterReading(startReading, { fieldLabel: "Opening meter reading", maximum: 999999.99 })
+      : 0;
+    const closing = utilityType === "electricity"
+      ? parsePhysicalMeterReading(endReading, { fieldLabel: "Final meter reading", maximum: 999999.99 })
+      : 0;
+    assertPhysicalMeterContinuity({
+      reading: closing,
+      previousReading: opening,
+      eventType: "periodEnd",
+      fieldLabel: "Final meter reading",
+    });
+    const rate = Number(ratePerUnit);
+    const maxRate = utilityType === "electricity" ? 100 : 100000;
+    if (!Number.isFinite(rate) || rate < 0 || rate > maxRate) {
+      return res.status(400).json({ error: `Rate must be between 0 and ${maxRate.toLocaleString()}.` });
+    }
+
+    let result;
+    let createdPeriodId;
+    await session.withTransaction(async () => {
+      const conflict = await resolveUtilityPeriodState({ utilityType, roomId: room._id, session });
+      if (conflict.state !== UTILITY_PERIOD_STATE.MISSING && conflict.state !== UTILITY_PERIOD_STATE.CLOSED_ONLY) {
+        throw Object.assign(new Error("An active utility period already exists. Historical generation cannot replace or delete it."), {
+          statusCode: 409,
+          code: "UTILITY_PERIOD_ALREADY_ACTIVE",
+          details: { periodState: conflict.state },
+        });
+      }
+      const overlapping = await UtilityPeriod.findOne({
+        roomId: room._id,
+        utilityType,
+        isArchived: false,
+        startDate: { $lt: end },
+        $or: [{ endDate: null }, { endDate: { $gt: start } }],
+      }).session(session);
+      if (overlapping) {
+        throw Object.assign(new Error("The historical cycle overlaps an existing utility period."), {
+          statusCode: 409,
+          code: "UTILITY_PERIOD_DATE_OVERLAP",
+        });
+      }
+      const period = await createOpenUtilityPeriodWithBoundary({
+        utilityType,
+        room,
+        startDate: start,
+        startReading: opening,
+        ratePerUnit: rate,
+        actorId: admin._id,
+        session,
+      });
+      createdPeriodId = period._id;
+      result = await closePeriodAndGenerateDrafts({
+        admin,
+        period,
+        room,
+        endReading: closing,
+        endDate: end,
+        utilityType,
+        requestContext: req,
+        session,
+        deferAudit: true,
+      });
+    });
+    const period = await UtilityPeriod.findById(createdPeriodId).lean();
+    await logCommittedUtilityClose({ requestContext: req, admin, utilityType, result });
+    res.status(201).json({ success: true, period: serializeUtilityPeriod(period), result });
+  } catch (err) {
+    next(err);
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -844,37 +1065,45 @@ export const batchCloseUtilityPeriods = async (req, res, next) => {
       failed = [];
 
     for (const item of closures) {
+      const session = await mongoose.startSession();
       try {
-        const period = await UtilityPeriod.findById(item.periodId);
-        if (!period) {
-          failed.push({ periodId: item.periodId, error: "Period not found" });
-          continue;
-        }
-        if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
-          failed.push({
-            periodId: item.periodId,
-            error:
-              "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        const parsedEndReading = utilityType === "electricity"
+          ? parsePhysicalMeterReading(item.endReading, { fieldLabel: "Final meter reading", maximum: 999999.99 })
+          : 0;
+        let closedPeriod;
+        let room;
+        let closeResult;
+        await session.withTransaction(async () => {
+          closedPeriod = await UtilityPeriod.findById(item.periodId).session(session);
+          if (!closedPeriod || closedPeriod.status !== "open") {
+            throw Object.assign(new Error("Period not found or is not open"), { statusCode: 400, code: "UTILITY_PERIOD_NOT_OPEN" });
+          }
+          if (!branchSupportsSeparateUtilityBilling(closedPeriod.branch, utilityType)) {
+            throw Object.assign(new Error("This branch does not use separate utility periods."), { statusCode: 422, code: "BRANCH_UTILITY_NOT_SUPPORTED" });
+          }
+          room = await Room.findById(closedPeriod.roomId).session(session);
+          closeResult = await closePeriodAndGenerateDrafts({
+            admin,
+            period: closedPeriod,
+            room,
+            endReading: parsedEndReading,
+            endDate: item.endDate || endDate,
+            utilityType,
+            requestContext: req,
+            session,
+            deferAudit: true,
           });
-          continue;
-        }
-        const room = await Room.findById(period.roomId);
-        const result = await closePeriodAndGenerateDrafts({
-          admin,
-          period,
-          room,
-          endReading: item.endReading,
-          endDate: item.endDate || endDate,
-          utilityType,
-          requestContext: req,
         });
+        await logCommittedUtilityClose({ requestContext: req, admin, utilityType, result: closeResult });
         closed.push({
-          periodId: period._id,
+          periodId: closedPeriod._id,
           roomName: room.name,
           success: true,
         });
       } catch (err) {
         failed.push({ periodId: item.periodId, error: err.message });
+      } finally {
+        await session.endSession();
       }
     }
 
@@ -1068,31 +1297,32 @@ export const updateUtilityPeriod = async (req, res, next) => {
     assertUtilityRoomEligibility(room, utilityType);
 
     if (startDate !== undefined) {
-      period.startDate = dayjs(startDate).startOf("day").toDate();
+      period.startDate = toManilaStartOfDay(startDate)?.toDate();
     }
     if (endDate !== undefined) {
-      period.endDate = endDate ? dayjs(endDate).startOf("day").toDate() : null;
+      period.endDate = endDate ? toManilaStartOfDay(endDate)?.toDate() : null;
     }
     if (startReading !== undefined) {
-      if (Number(startReading) > 999999.99) {
-        return res.status(400).json({ error: "Opening meter reading cannot exceed 999,999.99 kWh." });
-      }
-      period.startReading = Number(startReading);
+      period.startReading = utilityType === "electricity"
+        ? parsePhysicalMeterReading(startReading, { fieldLabel: "Opening meter reading", maximum: 999999.99 })
+        : 0;
     }
     if (endReading !== undefined) {
-      if (endReading !== null && endReading !== "" && Number(endReading) > 999999.99) {
-        return res.status(400).json({ error: "Final meter reading cannot exceed 999,999.99 kWh." });
-      }
       period.endReading =
-        endReading === null || endReading === "" ? null : Number(endReading);
+        endReading === null || endReading === ""
+          ? null
+          : utilityType === "electricity"
+            ? parsePhysicalMeterReading(endReading, { fieldLabel: "Final meter reading", maximum: 999999.99 })
+            : 0;
     }
 
     if (ratePerUnit !== undefined) {
       const maxRate = utilityType === "electricity" ? 100 : 100000;
-      if (Number(ratePerUnit) < 0 || Number(ratePerUnit) > maxRate) {
+      const parsedRate = Number(ratePerUnit);
+      if (!Number.isFinite(parsedRate) || parsedRate < 0 || parsedRate > maxRate) {
         return res.status(400).json({ error: `Rate must be between ₱0.00 and ₱${maxRate.toLocaleString()}.` });
       }
-      period.ratePerUnit = Number(ratePerUnit);
+      period.ratePerUnit = parsedRate;
     }
 
     assertUtilityStartDate(period.startDate);
@@ -1132,6 +1362,12 @@ export const updateUtilityPeriod = async (req, res, next) => {
       assertBoundaryReadings({
         startReading: period.startReading,
         endReading: period.endReading,
+      });
+      assertPhysicalMeterContinuity({
+        reading: period.endReading,
+        previousReading: period.startReading,
+        eventType: "periodEnd",
+        fieldLabel: "Final meter reading",
       });
     }
 
@@ -1329,7 +1565,28 @@ export const updateUtilityReading = async (req, res, next) => {
       if (linkedPeriod) await assertUtilityPeriodNotSent(linkedPeriod, utilityType);
     }
 
-    if (reading !== undefined) readingDoc.reading = Number(reading);
+    if (reading !== undefined) {
+      const parsedReading = parsePhysicalMeterReading(reading, {
+        fieldLabel: "Meter reading",
+        maximum: 999999.99,
+      });
+      const effectiveDate = date !== undefined
+        ? assertUtilityReadingDate(date, { periodStart: linkedPeriod?.startDate || null })
+        : readingDoc.date;
+      const previousReading = await UtilityReading.findOne({
+        _id: { $ne: readingDoc._id },
+        roomId: readingDoc.roomId,
+        utilityType,
+        isArchived: false,
+        date: { $lte: effectiveDate },
+      }).sort({ date: -1, createdAt: -1 }).lean();
+      assertPhysicalMeterContinuity({
+        reading: parsedReading,
+        previousReading: previousReading?.reading,
+        eventType: normalizeUtilityEventType(eventType ?? readingDoc.eventType),
+      });
+      readingDoc.reading = parsedReading;
+    }
     if (date !== undefined) {
       readingDoc.date = assertUtilityReadingDate(date, {
         periodStart: linkedPeriod?.startDate || null,

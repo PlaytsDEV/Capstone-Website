@@ -142,6 +142,7 @@ export async function upsertDraftBillsForUtility({
   room,
   tenantSummaries,
   utilityType,
+  session = null,
 }) {
   const chargeField = getUtilityChargeField(utilityType);
   const updatedSummaries = [];
@@ -156,13 +157,15 @@ export async function upsertDraftBillsForUtility({
   // share on the transfer_settlement Bill — they still participated fully in
   // the canonical allocation above (their moveOut reading bounds their
   // segments), we just must NOT create a second draft Bill for them here.
-  const finalizations = periodId
-    ? await UtilityFinalization.find({
+  let finalizationQuery = periodId
+    ? UtilityFinalization.find({
         utilityPeriodId: periodId,
         utilityType,
         isArchived: { $ne: true },
-      }).lean()
-    : [];
+      })
+    : null;
+  if (finalizationQuery && session) finalizationQuery = finalizationQuery.session(session);
+  const finalizations = finalizationQuery ? await finalizationQuery.lean() : [];
   const finalizationByReservation = new Map(
     finalizations.map((f) => [String(f.reservationId), f]),
   );
@@ -188,7 +191,7 @@ export async function upsertDraftBillsForUtility({
       // Record the reconciliation outcome on the finalization row; if it is
       // out of tolerance, flag the period for manual review (the period still
       // closes for co-occupants).
-      await UtilityFinalization.updateOne(
+      const finalizationUpdate = UtilityFinalization.updateOne(
         { _id: finalization._id },
         {
           $set: {
@@ -199,6 +202,8 @@ export async function upsertDraftBillsForUtility({
           },
         },
       );
+      if (session) finalizationUpdate.session(session);
+      await finalizationUpdate;
       updatedSummaries.push({
         ...summary,
         billId: finalization.settlementBillId || null,
@@ -211,12 +216,14 @@ export async function upsertDraftBillsForUtility({
       continue;
     }
 
-    let bill = await Bill.findOne({
+    let billQuery = Bill.findOne({
       userId: summary.tenantId,
       reservationId,
       billingMonth,
       isArchived: false,
     });
+    if (session) billQuery = billQuery.session(session);
+    let bill = await billQuery;
 
     if (bill && getUtilityDispatchEntry(bill, utilityType).state === "sent") {
       const error = new Error(
@@ -274,7 +281,7 @@ export async function upsertDraftBillsForUtility({
     bill.utilityCycleEnd = utilityCycle.utilityCycleEnd;
     bill.utilityReadingDate = utilityCycle.utilityReadingDate;
     syncBillAmounts(bill, { preserveStatus: true });
-    await bill.save();
+    await bill.save(session ? { session } : undefined);
 
     updatedSummaries.push({
       ...summary,

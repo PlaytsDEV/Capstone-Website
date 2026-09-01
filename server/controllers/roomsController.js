@@ -1449,7 +1449,7 @@ export const deleteRoom = async (req, res, next) => {
       UtilityPeriod.countDocuments({
         roomId,
         isArchived: false,
-        status: "open",
+        status: { $in: ["open", "manual_review_required"] },
       }),
       MaintenanceRequest.countDocuments({
         roomId,

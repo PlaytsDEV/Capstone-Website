@@ -4,6 +4,10 @@ import {
   CANONICAL_UTILITY_EVENT_TYPES,
   normalizeUtilityEventType,
 } from "../utils/lifecycleNaming.js";
+import {
+  isValidOptionalPhysicalMeterReading,
+  isValidPhysicalMeterReading,
+} from "../utils/physicalMeterReading.js";
 
 const segmentSchema = new mongoose.Schema(
   {
@@ -45,6 +49,42 @@ const overheadSegmentSchema = new mongoose.Schema(
     kwhConsumed: { type: Number },
     cost: { type: Number },
     reason: { type: String, default: "ZERO_OCCUPANCY_WITH_CONSUMPTION" },
+  },
+  { _id: false },
+);
+
+export const UTILITY_REVIEW_OUTCOMES = Object.freeze([
+  "RECONSTRUCTED_FROM_VERIFIED_READING",
+  "ACCOUNTING_ADJUSTMENT",
+  "APPROVED_NON_CHARGE",
+  "OTHER_REVIEWED_DISPOSITION",
+]);
+
+const manualReviewSchema = new mongoose.Schema(
+  {
+    reviewType: { type: String, required: true },
+    reason: { type: String, required: true },
+    openedAt: { type: Date, required: true },
+    openedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    reviewedAt: { type: Date, default: null },
+    observationAt: { type: Date, required: true },
+    affectedIntervalStart: { type: Date, required: true },
+    affectedIntervalEnd: { type: Date, required: true },
+    evidenceReferences: [{ type: String }],
+    reviewOwner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    reviewReference: { type: String, required: true },
+    historicalGapId: { type: mongoose.Schema.Types.ObjectId, ref: "UtilityHistoricalGap", required: true },
+    resolution: {
+      outcome: { type: String, enum: UTILITY_REVIEW_OUTCOMES, default: null },
+      explanation: { type: String, default: null },
+      evidenceReferences: [{ type: String }],
+      approvalReference: { type: String, default: null },
+      financialDispositionType: { type: String, default: null },
+      financialAmount: { type: Number, default: null },
+      resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      resolvedAt: { type: Date, default: null },
+      auditLogId: { type: String, default: null },
+    },
   },
   { _id: false },
 );
@@ -119,10 +159,18 @@ const utilityPeriodSchema = new mongoose.Schema(
     startReading: {
       type: Number,
       required: true,
+      validate: {
+        validator: isValidPhysicalMeterReading,
+        message: "Opening meter reading must be finite and non-negative.",
+      },
     },
     endReading: {
       type: Number,
       default: null,
+      validate: {
+        validator: isValidOptionalPhysicalMeterReading,
+        message: "Closing meter reading must be finite and non-negative.",
+      },
     },
 
     ratePerUnit: {
@@ -178,6 +226,7 @@ const utilityPeriodSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    manualReview: { type: manualReviewSchema, default: null },
 
     closedAt: {
       type: Date,
@@ -221,7 +270,12 @@ const utilityPeriodSchema = new mongoose.Schema(
       index: true,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    // The lifecycle-active unique index is deployed only by the controlled
+    // migration after its duplicate scan, never implicitly at app startup.
+    autoIndex: false,
+  },
 );
 
 utilityPeriodSchema.pre("validate", function (next) {
@@ -236,10 +290,24 @@ utilityPeriodSchema.pre("validate", function (next) {
   next();
 });
 
-// Prevent duplicate open periods for the same room & utility type
+// Prevent duplicate periods for the same room, utility type and start boundary.
 utilityPeriodSchema.index(
   { utilityType: 1, roomId: 1, startDate: 1 },
   { unique: true, partialFilterExpression: { isArchived: false } },
+);
+// At most one lifecycle-active cycle may exist for a room/utility. Historical
+// closed/revised periods remain unrestricted. Deploy only after the read-only
+// lifecycle audit confirms there are no pre-existing conflicts.
+utilityPeriodSchema.index(
+  { utilityType: 1, roomId: 1 },
+  {
+    unique: true,
+    name: "unique_lifecycle_active_utility_period",
+    partialFilterExpression: {
+      isArchived: false,
+      status: { $in: ["open", "manual_review_required"] },
+    },
+  },
 );
 utilityPeriodSchema.index({ branch: 1, status: 1 });
 

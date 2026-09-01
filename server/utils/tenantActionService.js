@@ -62,6 +62,10 @@ import {
 import { createNotification } from "../services/notifications/notificationService.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 import { resolveVerifiedSecurityDepositHeld } from "../services/billing/securityDepositEvidenceService.js";
+import {
+  assertPhysicalMeterContinuity,
+  parsePhysicalMeterReading,
+} from "./physicalMeterReading.js";
 
 // Tolerant wrapper — an unknown branch resolves to `false` (no separate
 // billing) rather than throwing, so a preview never fails on a bad branch.
@@ -1240,7 +1244,10 @@ export async function resolveValidatedRoomTransferIntent({
         );
       }
     } else {
-      const moveInDate = readMoveInDate(reservation) || predecessorContract?.leaseStartDate || null;
+      // A virtual preflight Stay is derived from the moved-in Reservation only.
+      // Do not let a historical Contract date mask an incomplete Reservation:
+      // the transactional ensureActiveStay path uses the same canonical anchor.
+      const moveInDate = readMoveInDate(reservation) || null;
       const leaseEndDate = predecessorContract?.leaseEndDate || computeLeaseEndDate(reservation);
       if (!moveInDate || !leaseEndDate) {
         throw Object.assign(
@@ -1665,6 +1672,24 @@ async function prepareRoomTransferDraft({
  * executor (not as an "Admin immediate transfer" path).
  */
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {
+  if (payload?.sourceRoomMeterReading !== null && payload?.sourceRoomMeterReading !== undefined) {
+    payload = {
+      ...payload,
+      sourceRoomMeterReading: parsePhysicalMeterReading(payload.sourceRoomMeterReading, {
+        fieldLabel: "Source room closing electricity reading",
+        maximum: 999999.99,
+      }),
+    };
+  }
+  if (payload?.targetRoomMeterReading !== null && payload?.targetRoomMeterReading !== undefined) {
+    payload = {
+      ...payload,
+      targetRoomMeterReading: parsePhysicalMeterReading(payload.targetRoomMeterReading, {
+        fieldLabel: "Destination room current electricity reading",
+        maximum: 999999.99,
+      }),
+    };
+  }
   // ── Stage A — pre-transaction preparation ────────────────────────────────
   // Cheap validation (no transaction session) + prepare the Room Transfer
   // Addendum Draft BEFORE opening the physical-transfer transaction (Contract
@@ -1687,7 +1712,7 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
     // moved-in resident never had one created (the transaction's
     // ensureActiveStay would do it a moment later anyway). Keeps Stage A and
     // Stage B seeing the same Stay.
-    materializeStay: true,
+    materializeStay: false,
     actorId,
   });
 
@@ -3093,6 +3118,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
 }
 
 export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
+  const validatedFinalUtilityReading = parsePhysicalMeterReading(payload?.finalUtilityReading, {
+    fieldLabel: "Final utility meter reading",
+    maximum: 999999.99,
+  });
+  payload = { ...payload, finalUtilityReading: validatedFinalUtilityReading };
   const session = await mongoose.startSession();
   let result;
   try {
@@ -3127,9 +3157,18 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       if (readMoveInDate(reservation) && moveOutAt < new Date(readMoveInDate(reservation))) {
         throw Object.assign(new Error("Move-out date cannot be earlier than move-in date."), { statusCode: 400, code: "MOVEOUT_BEFORE_MOVEIN" });
       }
-      if (payload.finalUtilityReading == null || Number.isNaN(Number(payload.finalUtilityReading))) {
-        throw Object.assign(new Error("A final utility reading is required for move-out."), { statusCode: 400, code: "FINAL_READING_REQUIRED" });
-      }
+      const previousReading = await UtilityReading.findOne({
+        utilityType: "electricity",
+        roomId: activeStay.roomId,
+        isArchived: false,
+        date: { $lte: moveOutAt },
+      }).sort({ date: -1, createdAt: -1 }).session(session).lean();
+      assertPhysicalMeterContinuity({
+        reading: validatedFinalUtilityReading,
+        previousReading: previousReading?.reading,
+        eventType: "moveOut",
+        fieldLabel: "Final utility meter reading",
+      });
 
       const bills = await Bill.find({
         reservationId: reservation._id,
@@ -3324,7 +3363,7 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       reservation.finalSettlementSummary = {
         securityDeposit: securityDepositAmount,
         outstandingBalance: outstandingBal,
-        finalUtilityCharge: Number(payload.finalUtilityReading || 0),
+        finalUtilityCharge: validatedFinalUtilityReading,
         damageDeductions,
         keyDeduction,
         netAmount: netSettlement,
@@ -3349,7 +3388,7 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
             utilityType: "electricity",
             roomId: reservation.roomId?._id || reservation.roomId,
             branch: reservation.roomId?.branch || "",
-            reading: Number(payload.finalUtilityReading),
+            reading: validatedFinalUtilityReading,
             date: moveOutAt,
             eventType: "moveOut",
             tenantId: reservation.userId?._id || reservation.userId,

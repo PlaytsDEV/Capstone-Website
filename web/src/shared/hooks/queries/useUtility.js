@@ -148,6 +148,16 @@ export function useOpenUtilityPeriod(utilityType) {
   });
 }
 
+export function useGenerateHistoricalUtilityPeriod(utilityType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => utilityApi.generateHistoricalPeriod(utilityType, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
+    },
+  });
+}
+
 export function useUpdateUtilityPeriod(utilityType) {
   return useMutation({
     mutationFn: ({ periodId, ...data }) => utilityApi.updatePeriod(utilityType, periodId, data),

@@ -37,6 +37,11 @@ export const utilityApi = {
       authFetch(`/utilities/${utilityType}/periods`, { method: "POST", body: JSON.stringify(data) }),
     ),
 
+  generateHistoricalPeriod: (utilityType, data) =>
+    withLifecycleNormalization(
+      authFetch(`/utilities/${utilityType}/periods/historical`, { method: "POST", body: JSON.stringify(data) }),
+    ),
+
   closePeriod: (utilityType, periodId, data) =>
     withLifecycleNormalization(
       authFetch(`/utilities/${utilityType}/periods/${periodId}/close`, { method: "PATCH", body: JSON.stringify(data) }),

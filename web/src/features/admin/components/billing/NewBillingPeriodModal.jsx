@@ -14,9 +14,7 @@ import {
   Clock3,
 } from "lucide-react";
 import {
-  useOpenUtilityPeriod,
-  useCloseUtilityPeriod,
-  useDeleteUtilityPeriod,
+  useGenerateHistoricalUtilityPeriod,
 } from "../../../../shared/hooks/queries/useUtility";
 import useBillingNotifier from "./shared/useBillingNotifier";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
@@ -30,11 +28,14 @@ const MAX_METER_READING = 999999.99;
 const MAX_ELECTRICITY_RATE = 100.0;
 const MAX_WATER_RATE = 100000.0;
 const MAX_CYCLE_USAGE = 50000.0;
+const isBlankValue = (value) => value === "" || value === null || value === undefined;
 
 /** Sanitize numeric string to respect maximum decimal and whole digit lengths */
 const sanitizeNumericInput = (val, maxDecimals = 2, maxWholeDigits = 6) => {
   if (!val) return "";
-  let clean = String(val).replace(/[^0-9.]/g, "");
+  const raw = String(val);
+  const negative = raw.trim().startsWith("-");
+  let clean = raw.replace(/[^0-9.]/g, "");
   const parts = clean.split(".");
   if (parts.length > 2) {
     clean = parts[0] + "." + parts.slice(1).join("");
@@ -42,9 +43,10 @@ const sanitizeNumericInput = (val, maxDecimals = 2, maxWholeDigits = 6) => {
   const [whole, decimal] = clean.split(".");
   const limitedWhole = whole ? whole.slice(0, maxWholeDigits) : "";
   if (decimal !== undefined) {
-    return `${limitedWhole}.${decimal.slice(0, maxDecimals)}`;
+    const normalized = `${limitedWhole}.${decimal.slice(0, maxDecimals)}`;
+    return negative ? `-${normalized}` : normalized;
   }
-  return limitedWhole;
+  return negative ? `-${limitedWhole}` : limitedWhole;
 };
 
 const addDays = (dateStr, days = 1) => {
@@ -154,9 +156,7 @@ export default function NewBillingPeriodModal({
   const notify = useBillingNotifier();
   const finalReadingInputRef = useRef(null);
 
-  const openPeriod = useOpenUtilityPeriod(utilityType);
-  const closePeriod = useCloseUtilityPeriod(utilityType);
-  const deletePeriod = useDeleteUtilityPeriod(utilityType);
+  const generateHistoricalPeriod = useGenerateHistoricalUtilityPeriod(utilityType);
 
   const [generationBlocker, setGenerationBlocker] = useState(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -295,7 +295,7 @@ export default function NewBillingPeriodModal({
   );
 
   const handleRequestClose = () => {
-    if (isDirty && !openPeriod.isPending && !closePeriod.isPending) {
+    if (isDirty && !generateHistoricalPeriod.isPending) {
       setShowCloseConfirm(true);
     } else {
       onClose();
@@ -335,6 +335,8 @@ export default function NewBillingPeriodModal({
   const hasValidReadings =
     !isNaN(startNum) &&
     !isNaN(endNum) &&
+    startNum >= 0 &&
+    endNum >= 0 &&
     endNum >= startNum &&
     !isStartReadingExceedsMax &&
     !isEndReadingExceedsMax;
@@ -492,7 +494,7 @@ export default function NewBillingPeriodModal({
       !periodForm.startDate ||
       !periodForm.endDate ||
       !periodForm.ratePerUnit ||
-      (isElectricity && (!periodForm.startReading || !periodForm.endReading))
+      (isElectricity && (isBlankValue(periodForm.startReading) || isBlankValue(periodForm.endReading)))
     ) {
       return notify.warn("All fields (dates, readings, and rate) are required.");
     }
@@ -525,66 +527,34 @@ export default function NewBillingPeriodModal({
       return notify.warn("Cycle end date must be after cycle start date.");
     }
 
-    let newlyOpenedPeriodId = null;
     try {
       setGenerationBlocker(null);
-
       if (openPeriodForRoom) {
-        if (selectedPeriodId === openPeriodForRoom.id) {
-          onSuccess(null);
-        }
-        await deletePeriod.mutateAsync(openPeriodForRoom.id);
+        return notify.warn("An active period already exists. Historical generation cannot replace or delete it.");
       }
-
-      const openedData = await openPeriod.mutateAsync({
+      const generatedData = await generateHistoricalPeriod.mutateAsync({
         roomId: selectedRoomId,
         startDate: periodForm.startDate,
         startReading:
           utilityType === "water" ? 0 : Number(periodForm.startReading),
         ratePerUnit: Number(periodForm.ratePerUnit),
+        endReading:
+          utilityType === "water" ? 0 : Number(periodForm.endReading),
+        endDate: periodForm.endDate,
       });
-
       const newPeriodId =
-        openedData?.period?._id || openedData?.period?.id || openedData?.id;
-
-      if (newPeriodId) {
-        newlyOpenedPeriodId = newPeriodId;
-        await closePeriod.mutateAsync({
-          periodId: newPeriodId,
-          endReading:
-            utilityType === "water" ? 0 : Number(periodForm.endReading),
-          endDate: periodForm.endDate,
-        });
-        onSuccess(newPeriodId);
-        notify.success(
-          "Draft billing cycle created successfully. Ready for review."
-        );
-        setGenerationBlocker(null);
-        onClose();
-      } else {
-        notify.success(
-          "Billing period opened, but could not finalize automatically."
-        );
-        onClose();
-      }
+        generatedData?.period?._id || generatedData?.period?.id || generatedData?.id;
+      onSuccess(newPeriodId || null);
+      notify.success("Historical billing cycle generated transactionally. Ready for review.");
+      setGenerationBlocker(null);
+      onClose();
     } catch (err) {
-      if (newlyOpenedPeriodId) {
-        try {
-          await deletePeriod.mutateAsync(newlyOpenedPeriodId);
-          onSuccess(null);
-          notify.warn(
-            "Cycle finalize failed, so the temporary open period was rolled back."
-          );
-        } catch {
-          // Keep primary error context
-        }
-      }
       setGenerationBlocker(buildGenerationBlocker(err));
       notify.error(err, "Unable to generate billing period. Please check the entered readings and try again.");
     }
   };
 
-  const isPending = openPeriod.isPending || closePeriod.isPending;
+  const isPending = generateHistoricalPeriod.isPending;
   const isActionDisabled =
     isPending ||
     isReadingLower ||
@@ -598,7 +568,7 @@ export default function NewBillingPeriodModal({
     !periodForm.startDate ||
     !periodForm.endDate ||
     !periodForm.ratePerUnit ||
-    (isElectricity && (!periodForm.startReading || !periodForm.endReading));
+    (isElectricity && (isBlankValue(periodForm.startReading) || isBlankValue(periodForm.endReading)));
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !isActionDisabled) {
@@ -632,7 +602,7 @@ export default function NewBillingPeriodModal({
             )}
             <div>
               <h2 className="text-base font-semibold text-foreground">
-                New {isElectricity ? "Electricity" : "Water"} Billing Period
+                Generate Historical {isElectricity ? "Electricity" : "Water"} Cycle
               </h2>
               {roomName && (
                 <p className="text-xs text-muted-foreground mt-0.5">

@@ -1,6 +1,7 @@
 import express from "express";
 import {
   openUtilityPeriod,
+  generateHistoricalUtilityPeriod,
   recordUtilityReading,
   closeUtilityPeriod,
   batchCloseUtilityPeriods,
@@ -19,6 +20,7 @@ import {
   getRoomHistory,
   sendUtilityPeriod,
   getUtilityAiReview,
+  resolveUtilityHistoricalGap,
 } from "../controllers/utilityBillingController.js";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
@@ -45,9 +47,11 @@ router.get("/:utilityType/results/:periodId", getUtilityResult);
 router.get("/:utilityType/export", exportUtilityRows);
 router.get("/:utilityType/rooms/:roomId/history", getRoomHistory);
 router.post("/:utilityType/periods/:periodId/ai-review", getUtilityAiReview);
+router.post("/:utilityType/periods/:id/manual-review/resolve", filterByBranch, resolveUtilityHistoricalGap);
 
 // Mutation routes — enforce branch isolation at middleware level
 router.post("/:utilityType/periods", filterByBranch, openUtilityPeriod);
+router.post("/:utilityType/periods/historical", filterByBranch, generateHistoricalUtilityPeriod);
 router.patch("/:utilityType/periods/:id", filterByBranch, updateUtilityPeriod);
 router.delete("/:utilityType/periods/:id", filterByBranch, deleteUtilityPeriod);
 

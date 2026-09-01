@@ -333,4 +333,42 @@ describe("getUtilityDiagnostics", () => {
       }),
     });
   });
+
+  test("diagnostics GET reports missing anchors without mutating an open period", async () => {
+    const save = jest.fn();
+    roomFind.mockReturnValueOnce(mockSelectLeanResult([{
+      _id: "room-read-only",
+      name: "Room Read Only",
+      roomNumber: "RO-1",
+      branch: "gil-puyat",
+      type: "private",
+      capacity: 1,
+    }]));
+    utilityPeriodFind.mockReturnValue(mockSortedLeanResult([{
+      _id: "period-open",
+      utilityType: "electricity",
+      roomId: "room-read-only",
+      status: "open",
+      startDate: "2026-08-01T00:00:00.000Z",
+      startReading: 100,
+      ratePerUnit: 16,
+      save,
+    }]));
+    reservationFind.mockReturnValue({
+      populate: jest.fn().mockReturnValue(mockLeanResult([{
+        _id: "reservation-1",
+        roomId: "room-read-only",
+        userId: { _id: "tenant-1", firstName: "Tenant", lastName: "One" },
+        status: "moveIn",
+        moveInDate: "2026-08-02T00:00:00.000Z",
+      }])),
+    });
+
+    const result = await getUtilityDiagnostics({ branch: "gil-puyat" });
+
+    expect(save).not.toHaveBeenCalled();
+    expect(result.electricityRooms[0].issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ issueCode: "electricity_missing_movein_anchor", status: "manual_review_required" }),
+    ]));
+  });
 });

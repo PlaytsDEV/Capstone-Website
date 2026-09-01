@@ -228,9 +228,8 @@ describe("Transfer — water (no early finalization) + office-hours completion g
   test("two same-day transfers retain the zero-length audit row but exclude it from WATER participants", async () => {
     await seedBusinessSettings();
     const { res, roomB, actorId, tenant } = await seedSimple();
-    // This audit isolates Room Transfer-created occupancy boundaries. With no
-    // open electricity period, neither transfer introduces an unrelated
-    // settlement gate.
+    // This audit isolates Room Transfer-created occupancy boundaries. Remove
+    // electricity periods/readings so electricity does not affect the case.
     await Promise.all([
       UtilityPeriod.deleteMany({}),
       UtilityReading.deleteMany({}),
@@ -255,6 +254,18 @@ describe("Transfer — water (no early finalization) + office-hours completion g
       },
       actorId,
     });
+    // A second physical cutover cannot bypass the canonical transfer-settlement
+    // payment gate. Settle the first transfer's durable bill; this test is about
+    // same-day water occupancy boundaries, not unpaid-settlement behavior.
+    const firstSettlement = await Bill.findOne({
+      reservationId: res._id,
+      billType: "transfer_settlement",
+      status: { $ne: "voided" },
+    });
+    firstSettlement.paidAmount = firstSettlement.totalAmount;
+    firstSettlement.remainingAmount = 0;
+    firstSettlement.status = "paid";
+    await firstSettlement.save();
     await transferStayWorkflow({
       reservationId: res._id,
       payload: {

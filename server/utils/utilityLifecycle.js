@@ -7,6 +7,11 @@ import {
   getUtilityTargetCloseDate,
   resolveUtilityAutoOpenStartDate,
 } from "./billingPolicy.js";
+import {
+  createOpenUtilityPeriodWithBoundary,
+  resolveUtilityPeriodState,
+  UTILITY_PERIOD_STATE,
+} from "../services/billing/utilityPeriodLifecycleService.js";
 
 function resolveUtilityRate(utilityType, previousRate, defaultRate) {
   if (previousRate !== undefined && previousRate !== null) {
@@ -20,20 +25,26 @@ export async function ensureOpenUtilityPeriodForRoom({
   room,
   anchorDate,
   anchorReading,
+  actorId = null,
 }) {
-  const existingOpenPeriod = await UtilityPeriod.findOne({
+  const resolution = await resolveUtilityPeriodState({
     utilityType,
     roomId: room._id,
-    status: "open",
-    isArchived: false,
   });
 
-  if (existingOpenPeriod) {
+  if (resolution.state === UTILITY_PERIOD_STATE.OPEN) {
     return {
-      period: existingOpenPeriod,
+      period: resolution.period,
       created: false,
-      targetCloseDate: getUtilityTargetCloseDate(existingOpenPeriod.startDate),
+      targetCloseDate: getUtilityTargetCloseDate(resolution.period.startDate),
     };
+  }
+  if (resolution.state !== UTILITY_PERIOD_STATE.MISSING && resolution.state !== UTILITY_PERIOD_STATE.CLOSED_ONLY) {
+    throw Object.assign(new Error("The room's utility period requires review before a new period can be opened."), {
+      statusCode: 409,
+      code: "UTILITY_PERIOD_NOT_OPENABLE",
+      details: { periodState: resolution.state },
+    });
   }
 
   const previousPeriod = await UtilityPeriod.findOne({
@@ -62,14 +73,19 @@ export async function ensureOpenUtilityPeriodForRoom({
     previousPeriodEndDate: previousPeriod?.endDate || null,
   });
 
-  const period = await UtilityPeriod.create({
+  if (!actorId) {
+    throw Object.assign(new Error("An actor is required to create the locked period-start reading."), {
+      statusCode: 400,
+      code: "UTILITY_PERIOD_ACTOR_REQUIRED",
+    });
+  }
+  const period = await createOpenUtilityPeriodWithBoundary({
     utilityType,
-    roomId: room._id,
-    branch: room.branch,
+    room,
     startDate: periodStartDate || new Date(anchorDate),
     startReading: utilityType === "water" ? 0 : Number(anchorReading),
     ratePerUnit,
-    status: "open",
+    actorId,
   });
 
   return {
