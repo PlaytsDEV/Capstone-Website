@@ -51,7 +51,7 @@ export function computeLeaseEndDate(reservation) {
   const leaseDuration = Number(reservation?.leaseDuration || 0);
   if (!Number.isFinite(leaseDuration) || leaseDuration <= 0) return null;
 
-  const end = dayjs(moveInDate).add(leaseDuration, "month").subtract(1, "day");
+  const end = dayjs(moveInDate).add(leaseDuration, "month");
   return end.isValid() ? end.toDate() : null;
 }
 
@@ -851,7 +851,14 @@ export function buildTenantWorkspaceEntry({
   roomTransferHistory = [],
   now = new Date(),
 }) {
-  const leaseEndDate = currentStay?.leaseEndDate || computeLeaseEndDate(reservation);
+  const activeContract =
+    contracts.find((c) => c && (c.isCurrent || c.isCanonical)) ||
+    contracts[0] ||
+    null;
+  const leaseEndDate =
+    currentStay?.leaseEndDate ||
+    activeContract?.leaseEndDate ||
+    computeLeaseEndDate(reservation);
   const daysUntilLeaseEnd = computeDaysUntil(leaseEndDate, now);
   const billingSummary = buildBillingSummary(bills, now);
   const stayStatus =

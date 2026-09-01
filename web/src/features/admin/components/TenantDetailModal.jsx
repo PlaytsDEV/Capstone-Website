@@ -54,6 +54,7 @@ import {
   getInitials,
   getOccupancyStatusConfig,
   getPaymentStatusConfig,
+  buildItemFinancialBreakdown,
 } from "./tenants/details";
 
 export default function TenantDetailModal({
@@ -452,6 +453,10 @@ export default function TenantDetailModal({
         item?.severity === "high" ||
         item?.severity === "error";
 
+      const penaltyAmount =
+        item?.financialBreakdown?.penaltyAmount ??
+        (isPenalty ? Number(item?.amount || 0) : 0);
+
       const rentAmount =
         !item || item.category === "rent" || item.code?.includes("rent")
           ? Number(item?.amount || tenant.monthlyRate || 0)
@@ -479,7 +484,7 @@ export default function TenantDetailModal({
           rent: rentAmount,
           electricity: isElec ? Number(item?.amount || 0) : 0,
           water: isWater ? Number(item?.amount || 0) : 0,
-          penalty: isPenalty ? Number(item?.amount || 0) : 0,
+          penalty: Number(penaltyAmount || 0),
           violation: isViolation ? Number(item?.amount || 0) : 0,
         },
         createdAt: item?.date || new Date().toISOString(),
@@ -831,19 +836,30 @@ export default function TenantDetailModal({
     const rentPaid = Math.max(0, rentBilled - rentRemaining);
     const isRentOverdue = rentWarn && (rentWarn.code?.includes("overdue") || rentWarn.severity === "error" || rentWarn.severity === "high");
     const rentStatus = rentRemaining > 0 ? (isRentOverdue ? "overdue" : "pending") : "paid";
+    const rentDueDate = rentWarn?.dueDate || calculatedDueDate || tenant?.moveInDate || "Monthly Cycle";
+    const rentBreakdown = buildItemFinancialBreakdown({
+      category: "rent",
+      billedAmount: rentBilled,
+      balanceAmount: rentRemaining,
+      dueDate: rentWarn?.rawDueDate || rentWarn?.dueDate || calculatedDueDate,
+      persistedPenalty: Number(rentWarn?.penaltyAmount || 0),
+      discountAmount: Number(rentWarn?.discount || 0),
+      creditAmount: Number(rentWarn?.creditApplied || 0),
+    });
 
     items.push({
       id: "ledger-rent",
       title: isGuadalupe ? "All-Inclusive Room Rent & Utilities" : "Monthly Room Rent",
       subtitle: isGuadalupe ? "Fixed rate (rent & utilities all-inclusive)" : "Contracted room rate / month",
       category: "rent",
-      dueDate: rentWarn?.dueDate || calculatedDueDate || tenant?.moveInDate || "Monthly Cycle",
-      overdueDays: rentWarn?.overdueDays || null,
+      dueDate: rentDueDate,
+      overdueDays: rentWarn?.overdueDays || rentBreakdown.penaltyInfo?.daysLate || null,
       billed: rentBilled,
       paid: rentPaid,
       balance: rentRemaining,
       status: rentStatus,
       rawItem: rentWarn || null,
+      financialBreakdown: rentBreakdown,
       details: isGuadalupe
         ? "Fixed all-inclusive monthly rate covering dormitory room occupancy and utility consumption without submetering."
         : "Contracted monthly room rent under active lease agreement. Billed per recurring cycle.",
@@ -874,6 +890,14 @@ export default function TenantDetailModal({
       const elecRemaining = Number(elecWarn.amount || 0);
       const elecBilled = Number(elecWarn.grossAmount || elecWarn.totalAmount || elecRemaining);
       const elecPaid = Math.max(0, elecBilled - elecRemaining);
+      const elecDueDate = elecWarn.dueDate || calculatedDueDate || "Scheduled";
+      const elecBreakdown = buildItemFinancialBreakdown({
+        category: "electricity",
+        billedAmount: elecBilled,
+        balanceAmount: elecRemaining,
+        dueDate: elecWarn.rawDueDate || elecWarn.dueDate || calculatedDueDate,
+        persistedPenalty: Number(elecWarn.penaltyAmount || 0),
+      });
 
       items.push({
         id: elecWarn.id || "ledger-elec",
@@ -881,13 +905,14 @@ export default function TenantDetailModal({
         subtitle: `Room ${tenant?.room || "submeter"} reading`,
         category: "electricity",
         cycle: elecWarn.cycle || null,
-        dueDate: elecWarn.dueDate || calculatedDueDate || "Scheduled",
-        overdueDays: elecWarn.overdueDays || null,
+        dueDate: elecDueDate,
+        overdueDays: elecWarn.overdueDays || elecBreakdown.penaltyInfo?.daysLate || null,
         billed: elecBilled,
         paid: elecPaid,
         balance: elecRemaining,
         status: isElecOverdue ? "overdue" : "pending",
         rawItem: elecWarn,
+        financialBreakdown: elecBreakdown,
         details: "Calculated from room submeter kWh reading and shared equally among verified room occupants.",
       });
     }
@@ -898,6 +923,14 @@ export default function TenantDetailModal({
       const waterRemaining = Number(waterWarn.amount || 0);
       const waterBilled = Number(waterWarn.grossAmount || waterWarn.totalAmount || waterRemaining);
       const waterPaid = Math.max(0, waterBilled - waterRemaining);
+      const waterDueDate = waterWarn.dueDate || calculatedDueDate || "Scheduled";
+      const waterBreakdown = buildItemFinancialBreakdown({
+        category: "water",
+        billedAmount: waterBilled,
+        balanceAmount: waterRemaining,
+        dueDate: waterWarn.rawDueDate || waterWarn.dueDate || calculatedDueDate,
+        persistedPenalty: Number(waterWarn.penaltyAmount || 0),
+      });
 
       items.push({
         id: waterWarn.id || "ledger-water",
@@ -905,13 +938,14 @@ export default function TenantDetailModal({
         subtitle: "Equal room occupant allocation",
         category: "water",
         cycle: waterWarn.cycle || null,
-        dueDate: waterWarn.dueDate || calculatedDueDate || "Scheduled",
-        overdueDays: waterWarn.overdueDays || null,
+        dueDate: waterDueDate,
+        overdueDays: waterWarn.overdueDays || waterBreakdown.penaltyInfo?.daysLate || null,
         billed: waterBilled,
         paid: waterPaid,
         balance: waterRemaining,
         status: isWaterOverdue ? "overdue" : "pending",
         rawItem: waterWarn,
+        financialBreakdown: waterBreakdown,
         details: "Shared room water consumption divided equally among active registered room occupants.",
       });
     }

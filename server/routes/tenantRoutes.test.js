@@ -1,4 +1,4 @@
-﻿import { describe, expect, jest, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 
 const noop = (_req, _res, next) => next?.();
 const verifyToken = jest.fn(noop);
@@ -11,6 +11,7 @@ const requirePermission = jest.fn((permission) => {
 });
 
 const updateTenantAppliances = jest.fn(noop);
+const cancelQueuedTenantAppliances = jest.fn(noop);
 
 await jest.unstable_mockModule("../middleware/auth.js", () => ({
   verifyToken,
@@ -23,6 +24,7 @@ await jest.unstable_mockModule("../middleware/permissions.js", () => ({
 
 await jest.unstable_mockModule("../controllers/tenantController.js", () => ({
   updateTenantAppliances,
+  cancelQueuedTenantAppliances,
 }));
 
 const { default: router, requireAuth } = await import("./tenantRoutes.js");
@@ -36,5 +38,13 @@ describe("tenantRoutes routing and authorization wiring", () => {
     expect(route).toBeDefined();
     expect(requireAuth).toBeDefined();
     expect(requirePermission).toHaveBeenCalledWith("manage_tenants");
+  });
+
+  test("registers DELETE /:id/appliances/queue with manage_tenants permission and auth middleware", () => {
+    const route = router.stack.find(
+      (layer) => layer.route && layer.route.path === "/:id/appliances/queue" && layer.route.methods.delete,
+    );
+
+    expect(route).toBeDefined();
   });
 });

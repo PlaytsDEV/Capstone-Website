@@ -9,7 +9,6 @@ import {
   ImagePlus,
   DollarSign,
   FileText,
-  Sparkles,
   LoaderCircle,
   Trash2,
   X,
@@ -22,7 +21,6 @@ import {
   ShieldCheck,
   AlertCircle,
   CheckCircle2,
-  RotateCcw,
   Layers,
 } from "lucide-react";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
@@ -177,7 +175,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
     branch: room?.branch || user?.branch || "gil-puyat",
   }));
 
-  const [isCustomFloor, setIsCustomFloor] = useState(false);
   const [isRoomNumberCustomized, setIsRoomNumberCustomized] = useState(() => isEdit);
 
   const [initialSnapshot, setInitialSnapshot] = useState(null);
@@ -250,7 +247,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       setForm(populated);
       setInitialSnapshot(JSON.stringify(populated));
       setIsRoomNumberCustomized(true);
-      setIsCustomFloor(false);
     } else {
       const targetBranch = user?.branch || "gil-puyat";
       const availableFloors = getBranchFloors(allRooms, targetBranch);
@@ -267,7 +263,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       setForm(initial);
       setInitialSnapshot(JSON.stringify(initial));
       setIsRoomNumberCustomized(false);
-      setIsCustomFloor(false);
     }
   }, [room, user?.branch]);
 
@@ -313,27 +308,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
       return updated;
     });
   }, [isEdit, isRoomNumberCustomized, form.branch, form.floor, allRooms]);
-
-  // Reset to auto-suggested room number handler
-  const handleResetToSuggested = useCallback(() => {
-    setIsRoomNumberCustomized(false);
-    const suggested = getNextRoomNumberForFloor(allRooms, form.branch, form.floor);
-    setForm((prev) => {
-      const currentName = (prev.name || "").trim();
-      const prevNumber = (prev.roomNumber || "").trim();
-      const isDefaultOrMatchesRoom =
-        !currentName ||
-        currentName.toLowerCase() === "room" ||
-        (prevNumber && currentName.toLowerCase() === `room ${prevNumber}`.toLowerCase());
-
-      return {
-        ...prev,
-        roomNumber: suggested,
-        name: isDefaultOrMatchesRoom ? `Room ${suggested}` : prev.name,
-      };
-    });
-    setErrors((prev) => ({ ...prev, roomNumber: null }));
-  }, [allRooms, form.branch, form.floor]);
 
   // Apply suggested room number in edit mode
   const handleApplySuggestedForFloor = useCallback(() => {
@@ -450,9 +424,6 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     setForm((prev) => {
       const updated = { ...prev, [field]: nextValue };
-      if (field === "branch") {
-        setIsCustomFloor(false);
-      }
       if (field === "roomNumber") {
         // If room name is empty, "Room", or previously auto-named with the old room number, sync with new room number
         const currentName = prev.name.trim();
@@ -881,29 +852,10 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                     {/* Room Number */}
                     <div className={`room-form-group ${(touched.roomNumber && errors.roomNumber) || isDuplicateNumber ? "has-error" : ""}`}>
                       <div className="rfm-field-header">
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <label htmlFor="rfm-number">
-                            Room Number <span className="rfm-required">*</span>
-                          </label>
-                          {!isEdit && !isRoomNumberCustomized && form.roomNumber && (
-                            <span className="rfm-auto-badge" title="Automatically suggested next sequential room number for this floor">
-                              <Sparkles size={11} /> Auto
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {!isEdit && isRoomNumberCustomized && (
-                            <button
-                              type="button"
-                              className="rfm-reset-suggested-btn"
-                              onClick={handleResetToSuggested}
-                              title="Reset to next suggested sequential room number"
-                            >
-                              <RotateCcw size={11} /> Auto-suggest
-                            </button>
-                          )}
-                          <span className="rfm-char-counter">{form.roomNumber.length}/{LIMITS.ROOM_NUMBER_MAX}</span>
-                        </div>
+                        <label htmlFor="rfm-number">
+                          Room Number <span className="rfm-required">*</span>
+                        </label>
+                        <span className="rfm-char-counter">{form.roomNumber.length}/{LIMITS.ROOM_NUMBER_MAX}</span>
                       </div>
                       <input
                         id="rfm-number"
@@ -977,71 +929,32 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                         </span>
                       </div>
 
-                      {!isCustomFloor ? (
-                        <div className="rfm-floor-select-wrap">
-                          <select
-                            id="rfm-floor"
-                            value={String(form.floor)}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === "add-next-floor") {
-                                handleChange("floor", nextFloorOption);
-                                setIsCustomFloor(false);
-                              } else if (val === "custom") {
-                                setIsCustomFloor(true);
-                              } else {
-                                handleChange("floor", val);
-                              }
-                            }}
-                            onBlur={() => handleBlur("floor")}
-                          >
-                            {branchFloors.map((f) => (
-                              <option key={f} value={String(f)}>
-                                Floor {f}
-                              </option>
-                            ))}
-                            {form.floor && !branchFloors.includes(Number(form.floor)) && (
-                              <option value={String(form.floor)}>
-                                Floor {form.floor}
-                              </option>
-                            )}
-                            <option value="add-next-floor">
+                      <div className="rfm-floor-input-wrap">
+                        <input
+                          id="rfm-floor"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          list="rfm-floor-options"
+                          value={form.floor}
+                          onChange={(e) => handleChange("floor", e.target.value)}
+                          onBlur={() => handleBlur("floor")}
+                          placeholder="e.g. 2, 3, or type custom floor"
+                          autoComplete="off"
+                        />
+                        <datalist id="rfm-floor-options">
+                          {branchFloors.map((f) => (
+                            <option key={f} value={String(f)}>
+                              Floor {f}
+                            </option>
+                          ))}
+                          {!branchFloors.includes(nextFloorOption) && (
+                            <option value={String(nextFloorOption)}>
                               + Add Floor (Floor {nextFloorOption})
                             </option>
-                            <option value="custom">
-                              Custom Floor...
-                            </option>
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="rfm-custom-floor-row">
-                          <input
-                            id="rfm-floor"
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={form.floor}
-                            onChange={(e) => handleChange("floor", e.target.value)}
-                            onBlur={() => handleBlur("floor")}
-                            placeholder="Floor (1-100)"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            className="rfm-floor-cancel-btn"
-                            onClick={() => {
-                              setIsCustomFloor(false);
-                              const fallbackFloor = branchFloors.includes(Number(form.floor))
-                                ? form.floor
-                                : branchFloors[0] || 1;
-                              handleChange("floor", fallbackFloor);
-                            }}
-                            title="Cancel custom input and return to floor dropdown"
-                          >
-                            Back to list
-                          </button>
-                        </div>
-                      )}
+                          )}
+                        </datalist>
+                      </div>
 
                       {touched.floor && errors.floor && (
                         <span className="field-error" role="alert">
@@ -1447,7 +1360,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                   {/* Beds auto-generate notice — create mode only */}
                   {!isEdit && (
                     <div className="rfm-beds-notice">
-                      <Sparkles size={15} />
+                      <Layers size={15} />
                       <span>
                         Beds will be auto-generated based on room type and capacity. You can adjust individual bed settings anytime after creation.
                       </span>

@@ -374,7 +374,14 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
               "contract_incomplete",
               "Contract Needs Information Before It Can Be Generated",
               `Move-in contract for ${tenantName} (Room ${contract.roomNumber}) could not be auto-generated: missing ${missingSummary}. Complete it in the Contracts workspace.`,
-              { entityType: "contract", entityId: String(contract._id), actionUrl: "/admin/contracts" },
+              {
+                entityType: "contract",
+                entityId: String(contract._id),
+                reservationId: contract.reservationId ? String(contract.reservationId) : null,
+                actionUrl: contract.reservationId
+                  ? `/admin/tenants?reservationId=${encodeURIComponent(String(contract.reservationId))}`
+                  : "/admin/tenants",
+              },
             );
           } catch (notifErr) {
             logger.warn({ err: notifErr }, "[AutoContract] Incomplete-contract notification error (non-fatal)");
@@ -405,7 +412,14 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
           "contract_prepared",
           "Prepared Contract Ready for Signing",
           `Move-in contract for ${tenantName} (Room ${contract.roomNumber}) was auto-generated and is ready to print.`,
-          { entityType: "contract", entityId: String(contract._id), actionUrl: "/admin/contracts" },
+          {
+            entityType: "contract",
+            entityId: String(contract._id),
+            reservationId: contract.reservationId ? String(contract.reservationId) : null,
+            actionUrl: contract.reservationId
+              ? `/admin/tenants?reservationId=${encodeURIComponent(String(contract.reservationId))}`
+              : "/admin/tenants",
+          },
         );
       } catch (notifErr) {
         logger.warn({ err: notifErr }, "[AutoContract] Post-generation notification error (non-fatal)");
@@ -469,7 +483,12 @@ export async function autoGenerateMoveInContract({ reservationId, actualMoveInDa
         "contract_error",
         "Contract Auto-Generation Alert",
         `Move-in contract auto-generation encountered an issue: ${error.message || "Unknown error"}. Review required in Contracts workspace.`,
-        { entityType: "reservation", entityId: String(reservationId), actionUrl: "/admin/contracts" },
+        {
+          entityType: "reservation",
+          entityId: String(reservationId),
+          reservationId: String(reservationId),
+          actionUrl: `/admin/tenants?reservationId=${encodeURIComponent(String(reservationId))}`,
+        },
       );
     } catch (alertErr) {
       // Non-fatal
@@ -574,7 +593,14 @@ export async function autoGenerateTransferContract({
         "contract_prepared",
         "Room Transfer Contract Ready",
         `Replacement contract for ${tenantName} (Room ${replacementContract.roomNumber}) was auto-generated and is ready for signing.`,
-        { entityType: "contract", entityId: String(replacementContract._id), actionUrl: "/admin/contracts" },
+        {
+          entityType: "contract",
+          entityId: String(replacementContract._id),
+          reservationId: replacementContract.reservationId ? String(replacementContract.reservationId) : null,
+          actionUrl: replacementContract.reservationId
+            ? `/admin/tenants?reservationId=${encodeURIComponent(String(replacementContract.reservationId))}`
+            : "/admin/tenants",
+        },
       );
     } catch (notifErr) {
       logger.warn({ err: notifErr }, "[AutoContract] Post-transfer notification error (non-fatal)");
@@ -614,7 +640,12 @@ export async function autoGenerateTransferContract({
         "contract_error",
         "Transfer Contract Auto-Generation Alert",
         `Room transfer contract auto-generation encountered an issue: ${error.message || "Unknown error"}. Review required in Contracts workspace.`,
-        { entityType: "reservation", entityId: String(reservationId), actionUrl: "/admin/contracts" },
+        {
+          entityType: "reservation",
+          entityId: String(reservationId),
+          reservationId: String(reservationId),
+          actionUrl: `/admin/tenants?reservationId=${encodeURIComponent(String(reservationId))}`,
+        },
       );
     } catch (alertErr) {
       // Non-fatal
@@ -706,7 +737,14 @@ export async function autoGenerateRenewalContract({
         "contract_prepared",
         "Renewal Contract Ready",
         `Renewal contract for ${tenantName} (Room ${successorContract.roomNumber}) was auto-generated and is ready for signing.`,
-        { entityType: "contract", entityId: String(successorContract._id), actionUrl: "/admin/contracts" },
+        {
+          entityType: "contract",
+          entityId: String(successorContract._id),
+          reservationId: successorContract.reservationId ? String(successorContract.reservationId) : null,
+          actionUrl: successorContract.reservationId
+            ? `/admin/tenants?reservationId=${encodeURIComponent(String(successorContract.reservationId))}`
+            : "/admin/tenants",
+        },
       );
     } catch (notifErr) {
       logger.warn({ err: notifErr }, "[AutoContract] Post-renewal notification error (non-fatal)");
@@ -725,7 +763,12 @@ export async function autoGenerateRenewalContract({
         "contract_error",
         "Renewal Contract Auto-Generation Alert",
         `Renewal contract auto-generation encountered an issue: ${error.message || "Unknown error"}. Review required in Contracts workspace.`,
-        { entityType: "reservation", entityId: String(reservationId), actionUrl: "/admin/contracts" },
+        {
+          entityType: "reservation",
+          entityId: String(reservationId),
+          reservationId: String(reservationId),
+          actionUrl: `/admin/tenants?reservationId=${encodeURIComponent(String(reservationId))}`,
+        },
       );
     } catch (alertErr) {
       // Non-fatal

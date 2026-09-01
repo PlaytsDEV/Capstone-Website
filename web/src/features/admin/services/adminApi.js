@@ -68,4 +68,14 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  /**
+   * Cancel queued appliance changes for a tenant
+   * @param {string} tenantId - Tenant user ID
+   * @returns {Promise<any>}
+   */
+  cancelQueuedTenantAppliances: (tenantId) =>
+    authFetch(`/tenants/${tenantId}/appliances/queue`, {
+      method: "DELETE",
+    }),
 };

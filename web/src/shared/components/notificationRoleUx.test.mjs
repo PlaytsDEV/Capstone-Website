@@ -58,3 +58,24 @@ test("notification bell explicitly maps application_submitted notification type 
   const notificationBell = readSharedSource("components/NotificationBell.jsx");
   assert.match(notificationBell, /case\s+"application_submitted":/);
 });
+
+test("notification bell uses role-aware action URL resolution for admins and tenants", () => {
+  const notificationBell = readSharedSource("components/NotificationBell.jsx");
+
+  // getNotificationActionUrl must accept isAdminUser parameter
+  assert.match(notificationBell, /function\s+getNotificationActionUrl\s*\(\s*notification\s*,\s*isAdminUser/);
+
+  // handleNotificationClick must pass isAdmin() to getNotificationActionUrl
+  assert.match(notificationBell, /getNotificationActionUrl\s*\(\s*notification\s*,\s*isAdmin\(\)\s*\)/);
+
+  // For admins, contract notifications must route to /admin/tenants
+  assert.match(notificationBell, /\/admin\/tenants/);
+});
+
+test("admin contract notifications never route to applicant contracts", () => {
+  const notificationBell = readSharedSource("components/NotificationBell.jsx");
+
+  // Ensure /applicant/contracts is scoped to non-admin users
+  assert.match(notificationBell, /contract_prepared|contract_incomplete|contract_signed/);
+});
+

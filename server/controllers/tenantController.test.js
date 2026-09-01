@@ -94,6 +94,9 @@ const { copyApplianceAddOns } = await import("../utils/tenantActionService.js");
 describe("tenantController - updateTenantAppliances", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    applianceModel.find.mockReturnValue({
+      lean: jest.fn().mockResolvedValue([]),
+    });
   });
 
   test("rejects when tenant ID is invalid", async () => {
@@ -330,8 +333,8 @@ describe("tenantController - updateTenantAppliances", () => {
     expect(mockReservation.applianceFees).toBe(600); // 2*200 + 1*200 = 600
     expect(mockReservation.totalPrice).toBe(5100); // 4500 + 600
     expect(mockReservation.selectedAppliances).toEqual([
-      { id: "fan", name: "Electric Fan", quantity: 2 },
-      { id: "laptop", name: "Laptop", quantity: 1 },
+      { id: "fan", name: "Electric Fan", quantity: 2, price: 200 },
+      { id: "laptop", name: "Laptop", quantity: 1, price: 200 },
     ]);
     expect(mockReservation.save).toHaveBeenCalled();
 
@@ -348,16 +351,18 @@ describe("tenantController - updateTenantAppliances", () => {
     );
 
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({
-      success: true,
-      data: {
-        selectedAppliances: [
-          { id: "fan", name: "Electric Fan", quantity: 2 },
-          { id: "laptop", name: "Laptop", quantity: 1 },
-        ],
-        applianceFees: 600,
-      },
-    });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          selectedAppliances: [
+            { id: "fan", name: "Electric Fan", quantity: 2, price: 200 },
+            { id: "laptop", name: "Laptop", quantity: 1, price: 200 },
+          ],
+          applianceFees: 600,
+        }),
+      }),
+    );
   });
 
   test("uses default fee of 200 per appliance when price is not specified", async () => {
@@ -454,19 +459,187 @@ describe("tenantController - updateTenantAppliances", () => {
     expect(mockReservation.applianceFees).toBe(700);
     expect(mockReservation.totalPrice).toBe(4700);
     expect(mockReservation.selectedAppliances).toEqual([
-      { id: "fan", name: "Electric Fan (Catalog)", quantity: 2 },
+      { id: "fan", name: "Electric Fan (Catalog)", quantity: 2, price: 350 },
     ]);
     expect(mockReservation.save).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({
-      success: true,
-      data: {
-        selectedAppliances: [
-          { id: "fan", name: "Electric Fan (Catalog)", quantity: 2 },
-        ],
-        applianceFees: 700,
-      },
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          selectedAppliances: [
+            { id: "fan", name: "Electric Fan (Catalog)", quantity: 2, price: 350 },
+          ],
+          applianceFees: 700,
+        }),
+      }),
+    );
+  });
+
+  test("queues appliance update for next billing cycle when an ongoing rent bill exists", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      email: "tenant@example.com",
     });
+
+    const mockReservation = {
+      _id: "507f1f77bcf86cd799439022",
+      userId: "507f1f77bcf86cd799439011",
+      roomId: { branch: "guadalupe" },
+      monthlyRent: 4500,
+      totalPrice: 4900,
+      selectedAppliances: [{ id: "fan", name: "Electric Fan", quantity: 2 }],
+      applianceFees: 400,
+      queuedAppliances: null,
+      save: jest.fn().mockResolvedValue(true),
+    };
+
+    const mockQuery = {
+      populate: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockResolvedValue(mockReservation),
+    };
+    reservationModel.findOne.mockReturnValue(mockQuery);
+    auditLogModel.log.mockResolvedValue({});
+
+    // Mock an existing ongoing unpaid rent bill
+    billModel.findOne.mockResolvedValue({
+      _id: "bill-ongoing-123",
+      reservationId: mockReservation._id,
+      status: "pending",
+      charges: { rent: 4500, applianceFees: 400 },
+    });
+
+    const req = {
+      params: { id: "507f1f77bcf86cd799439011" },
+      user: { email: "admin@lilycrest.com", role: "branch_admin" },
+      body: {
+        selectedAppliances: [
+          { id: "fan", name: "Electric Fan", quantity: 1, price: 200 },
+          { id: "laptop", name: "Laptop", quantity: 2, price: 200 },
+        ],
+      },
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await updateTenantAppliances(req, res);
+
+    // Active appliances on reservation must NOT be mutated!
+    expect(mockReservation.applianceFees).toBe(400);
+    expect(mockReservation.totalPrice).toBe(4900);
+    expect(mockReservation.selectedAppliances).toEqual([
+      { id: "fan", name: "Electric Fan", quantity: 2 },
+    ]);
+
+    // Queued appliances must be populated
+    expect(mockReservation.queuedAppliances).toEqual(
+      expect.objectContaining({
+        appliances: [
+          { id: "fan", name: "Electric Fan", quantity: 1, price: 200 },
+          { id: "laptop", name: "Laptop", quantity: 2, price: 200 },
+        ],
+        applianceFees: 600,
+      }),
+    );
+    expect(mockReservation.save).toHaveBeenCalled();
+
+    // Verify AuditLog action for queueing
+    expect(auditLogModel.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "data_modification",
+        action: "tenant.appliances_queued_next_cycle",
+        metadata: expect.objectContaining({
+          queuedApplianceFees: 600,
+          activeApplianceFees: 400,
+          tenantId: "507f1f77bcf86cd799439011",
+        }),
+      }),
+    );
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        queued: true,
+        data: expect.objectContaining({
+          queued: true,
+          queuedAppliances: expect.objectContaining({
+            applianceFees: 600,
+          }),
+          selectedAppliances: [{ id: "fan", name: "Electric Fan", quantity: 2 }],
+          applianceFees: 400,
+        }),
+      }),
+    );
+  });
+});
+
+describe("tenantController - cancelQueuedTenantAppliances", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("cancels queued appliances and resets queue to null", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      email: "tenant@example.com",
+    });
+
+    const mockReservation = {
+      _id: "507f1f77bcf86cd799439022",
+      userId: "507f1f77bcf86cd799439011",
+      roomId: { branch: "guadalupe" },
+      monthlyRent: 4500,
+      totalPrice: 4900,
+      selectedAppliances: [{ id: "fan", name: "Electric Fan", quantity: 2 }],
+      applianceFees: 400,
+      queuedAppliances: {
+        appliances: [{ id: "fan", name: "Electric Fan", quantity: 1 }],
+        applianceFees: 200,
+      },
+      save: jest.fn().mockResolvedValue(true),
+    };
+
+    const mockQuery = {
+      populate: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockResolvedValue(mockReservation),
+    };
+    reservationModel.findOne.mockReturnValue(mockQuery);
+    auditLogModel.log.mockResolvedValue({});
+
+    const req = {
+      params: { id: "507f1f77bcf86cd799439011" },
+      user: { email: "admin@lilycrest.com", role: "branch_admin" },
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    const { cancelQueuedTenantAppliances } = await import("./tenantController.js");
+    await cancelQueuedTenantAppliances(req, res);
+
+    expect(mockReservation.queuedAppliances).toBeNull();
+    expect(mockReservation.save).toHaveBeenCalled();
+    expect(auditLogModel.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "data_modification",
+        action: "tenant.appliances_queue_cancelled",
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          selectedAppliances: [{ id: "fan", name: "Electric Fan", quantity: 2 }],
+          applianceFees: 400,
+          queuedAppliances: null,
+        }),
+      }),
+    );
   });
 });
 

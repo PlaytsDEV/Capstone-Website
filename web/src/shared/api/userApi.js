@@ -128,4 +128,12 @@ export const userApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  /**
+   * Cancel queued appliance changes for a tenant
+   */
+  cancelQueuedAppliances: (tenantId) =>
+    authFetch(`/tenants/${tenantId}/appliances/queue`, {
+      method: "DELETE",
+    }),
 };

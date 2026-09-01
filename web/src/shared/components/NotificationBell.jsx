@@ -129,23 +129,87 @@ function timeAgo(dateStr) {
  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function getNotificationActionUrl(notification) {
-  if (
-    notification?.type === "reservation_cancellation_requested" &&
-    notification?.entityId
-  ) {
-    return `/admin/reservations?reservationId=${encodeURIComponent(
-      notification.entityId,
-    )}&focus=cancellation`;
-  }
+function getNotificationActionUrl(notification, isAdminUser = false) {
+  if (isAdminUser) {
+    if (
+      notification?.type === "reservation_cancellation_requested" &&
+      notification?.entityId
+    ) {
+      return `/admin/reservations?reservationId=${encodeURIComponent(
+        notification.entityId,
+      )}&focus=cancellation`;
+    }
 
-  if (
-    (notification?.type === "visit_requested" || notification?.type === "visit_scheduled") &&
-    notification?.entityId
-  ) {
-    return `/admin/reservations?reservationId=${encodeURIComponent(
-      notification.entityId,
-    )}&tab=visits`;
+    if (
+      (notification?.type === "visit_requested" || notification?.type === "visit_scheduled") &&
+      notification?.entityId
+    ) {
+      return `/admin/reservations?reservationId=${encodeURIComponent(
+        notification.entityId,
+      )}&tab=visits`;
+    }
+
+    if (
+      notification?.type === "contract_prepared" ||
+      notification?.type === "contract_incomplete" ||
+      notification?.type === "contract_signed" ||
+      notification?.type === "contract_error" ||
+      notification?.type === "contract_expiring" ||
+      notification?.entityType === "contract"
+    ) {
+      if (notification?.actionUrl && notification.actionUrl.startsWith("/admin/tenants")) {
+        return notification.actionUrl;
+      }
+      if (notification?.reservationId) {
+        return `/admin/tenants?reservationId=${encodeURIComponent(notification.reservationId)}`;
+      }
+      return "/admin/tenants";
+    }
+
+    const rawUrl = notification?.actionUrl;
+    if (rawUrl && rawUrl.startsWith("/admin/")) {
+      return rawUrl === "/admin/contracts" ? "/admin/tenants" : rawUrl;
+    }
+
+    const ADMIN_ACTION_URLS = {
+      sla_breach: "/admin/maintenance?quickFilter=delayed",
+      maintenance_update: "/admin/maintenance",
+      maintenance_new: "/admin/maintenance",
+      chat_unresponded: "/admin/chat",
+      inquiry_new: "/admin/reservations?tab=inquiries",
+      bill_generated: "/admin/billing",
+      bill_due_reminder: "/admin/billing",
+      penalty_applied: "/admin/billing",
+      payment_approved: "/admin/billing",
+      payment_confirmed: "/admin/billing",
+      payment_rejected: "/admin/billing",
+      payment_proof_submitted: "/admin/billing",
+      application_submitted: "/admin/reservations",
+      contract_signed: "/admin/tenants",
+      contract_prepared: "/admin/tenants",
+      contract_incomplete: "/admin/tenants",
+      contract_error: "/admin/tenants",
+      contract_expiring: "/admin/tenants",
+      visit_requested: "/admin/reservations?tab=visits",
+      visit_scheduled: "/admin/reservations?tab=visits",
+      reservation_confirmed: "/admin/reservations",
+      reservation_cancelled: "/admin/reservations",
+      reservation_cancellation_requested: "/admin/reservations",
+      reservation_cancellation_rejected: "/admin/reservations",
+      reservation_expired: "/admin/reservations",
+      reservation_noshow: "/admin/reservations",
+      visit_approved: "/admin/reservations",
+      visit_rejected: "/admin/reservations",
+      grace_period_warning: "/admin/reservations",
+      account_suspended: "/admin/users",
+      account_reactivated: "/admin/users",
+    };
+
+    if (notification?.type && ADMIN_ACTION_URLS[notification.type]) {
+      return ADMIN_ACTION_URLS[notification.type];
+    }
+
+    return "/admin/notifications";
   }
 
   if (
@@ -234,7 +298,7 @@ export default function NotificationBell() {
     }
 
     setIsOpen(false);
-    const resolvedUrl = getNotificationActionUrl(notification);
+    const resolvedUrl = getNotificationActionUrl(notification, isAdmin());
     if (!isAdmin() && notification.type === "announcement") {
       navigate("/applicant/announcements");
     } else if (resolvedUrl) {

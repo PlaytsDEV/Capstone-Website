@@ -1017,6 +1017,7 @@ const reservationSchema = new mongoose.Schema(
             id: { type: String, required: true },
             name: { type: String, required: true },
             quantity: { type: Number, required: true, min: 0 },
+            price: { type: Number, default: 200 },
           },
           { _id: false },
         ),
@@ -1026,6 +1027,26 @@ const reservationSchema = new mongoose.Schema(
     applianceFees: {
       type: Number,
       default: 0,
+    },
+    queuedAppliances: {
+      type: new mongoose.Schema(
+        {
+          appliances: [
+            {
+              id: { type: String },
+              name: { type: String, required: true },
+              quantity: { type: Number, required: true, min: 0 },
+              price: { type: Number, default: 200 },
+            },
+          ],
+          applianceFees: { type: Number, default: 0 },
+          effectiveDate: { type: Date, default: null },
+          requestedAt: { type: Date, default: Date.now },
+          requestedBy: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
     },
 
     // --- Status ---

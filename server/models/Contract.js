@@ -254,9 +254,9 @@ const contractSchema = new mongoose.Schema(
     tenantBirthDate: { type: Date, default: null, immutable: true },
     tenantAgeAtGeneration: { type: Number, default: null, min: 18, immutable: true },
 
-    leaseStartDate: { type: Date, default: null, immutable: true },
-    leaseEndDate: { type: Date, default: null, immutable: true },
-    leaseDurationMonths: { type: Number, default: null, min: 1, immutable: true },
+    leaseStartDate: { type: Date, default: null },
+    leaseEndDate: { type: Date, default: null },
+    leaseDurationMonths: { type: Number, default: null, min: 1 },
 
     regularMonthlyRate: { type: Number, default: null, min: 0 },
     discountPercentage: { type: Number, default: null, min: 0, max: 100 },
@@ -271,8 +271,8 @@ const contractSchema = new mongoose.Schema(
     pricingApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     pricingApprovedAt: { type: Date, default: null },
     pricingApprovalNotes: { type: String, default: "", trim: true },
-    advanceCoverageStart: { type: Date, default: null, immutable: true },
-    advanceCoverageEnd: { type: Date, default: null, immutable: true },
+    advanceCoverageStart: { type: Date, default: null },
+    advanceCoverageEnd: { type: Date, default: null },
     executionDate: { type: Date, default: null },
 
     templateVersion: { type: String, default: null },

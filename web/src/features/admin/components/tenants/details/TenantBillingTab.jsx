@@ -201,59 +201,134 @@ export default function TenantBillingTab({
 
                   {/* Seamless Expanded Breakdown */}
                   {isExpanded && (
-                    <div className="pt-3 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4 text-[11px]">
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
-                          Charge Category
-                        </span>
-                        <span className="font-medium text-foreground capitalize">
-                          {item.category === "rent"
-                            ? "Monthly Contracted Rent"
-                            : item.category === "electricity"
-                            ? "Submetered Electricity"
-                            : item.category === "water"
-                            ? "Shared Room Water"
-                            : item.category === "penalty"
-                            ? "Daily Late Fee (₱50/day)"
-                            : "Disciplinary Fine"}
-                        </span>
+                    <div className="pt-3 border-t border-border/40 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4 text-[11px]">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                            Charge Category
+                          </span>
+                          <span className="font-medium text-foreground capitalize">
+                            {item.category === "rent"
+                              ? "Monthly Contracted Rent"
+                              : item.category === "electricity"
+                              ? "Submetered Electricity"
+                              : item.category === "water"
+                              ? "Shared Room Water"
+                              : item.category === "penalty"
+                              ? "Daily Late Fee (₱50/day)"
+                              : "Disciplinary Fine"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                            Assigned Unit
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {tenant.room || "Room"}
+                            {tenant.bed ? ` (Bed ${tenant.bed})` : ""}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                            Billing Cycle
+                          </span>
+                          <span className="font-medium text-foreground">{cycleDisplay}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                            Settlement Status
+                          </span>
+                          <span
+                            className={`font-medium ${
+                              isPaid
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : isOverdue
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            {isPaid
+                              ? `Paid in Full (${formatMoney(item.paid)})`
+                              : `Balance Open: ${formatMoney(item.balance)}`}
+                          </span>
+                        </div>
+                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                          {item.details}
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
-                          Assigned Unit
-                        </span>
-                        <span className="font-medium text-foreground">
-                          {tenant.room || "Room"}
-                          {tenant.bed ? ` (Bed ${tenant.bed})` : ""}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
-                          Billing Cycle
-                        </span>
-                        <span className="font-medium text-foreground">{cycleDisplay}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
-                          Settlement Status
-                        </span>
-                        <span
-                          className={`font-medium ${
-                            isPaid
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : isOverdue
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-amber-600 dark:text-amber-400"
-                          }`}
-                        >
-                          {isPaid
-                            ? `Paid in Full (${formatMoney(item.paid)})`
-                            : `Balance Open: ${formatMoney(item.balance)}`}
-                        </span>
-                      </div>
-                      <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
-                        {item.details}
-                      </div>
+
+                      {/* Itemized Financial Breakdown Sub-table */}
+                      {item.financialBreakdown && (
+                        <div className="pt-2 border-t border-border/40 space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                            Itemized Financial Breakdown
+                          </span>
+                          <div className="bg-muted/20 border border-border/40 rounded-lg p-3 divide-y divide-border/30 text-xs font-mono">
+                            {/* 1. Base Rate */}
+                            <div className="pb-1.5 flex items-center justify-between">
+                              <span className="font-sans font-medium text-foreground">
+                                Base {item.category === "rent" ? "Monthly Rent" : "Charge"}
+                              </span>
+                              <span className="font-semibold text-foreground">
+                                {formatMoney(item.financialBreakdown.baseAmount)}
+                              </span>
+                            </div>
+
+                            {/* 2. Late Payment Penalty */}
+                            {(item.financialBreakdown.penaltyAmount > 0 || item.financialBreakdown.penaltyInfo?.isWithinGracePeriod) && (
+                              <div className="py-1.5 flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="font-sans font-medium text-rose-600 dark:text-rose-400 block">
+                                    Late Payment Penalty
+                                  </span>
+                                  {item.financialBreakdown.penaltyInfo?.explanation && (
+                                    <span className="font-sans text-[10px] text-muted-foreground block mt-0.5">
+                                      {item.financialBreakdown.penaltyInfo.explanation}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0">
+                                  {item.financialBreakdown.penaltyAmount > 0
+                                    ? `+${formatMoney(item.financialBreakdown.penaltyAmount)}`
+                                    : formatMoney(0)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 3. Deductions / Discounts */}
+                            {item.financialBreakdown.discount > 0 && (
+                              <div className="py-1.5 flex items-center justify-between text-emerald-600 dark:text-emerald-400">
+                                <span className="font-sans font-medium">Applied Discount</span>
+                                <span className="font-semibold">-{formatMoney(item.financialBreakdown.discount)}</span>
+                              </div>
+                            )}
+
+                            {/* 4. Total Assessed */}
+                            <div className="pt-2 flex items-center justify-between font-sans font-semibold text-[11px] text-muted-foreground">
+                              <span>Total Assessed</span>
+                              <span className="font-mono">{formatMoney(item.financialBreakdown.totalAssessed)}</span>
+                            </div>
+
+                            {/* 5. Amount Paid */}
+                            {item.financialBreakdown.amountPaid > 0 && (
+                              <div className="py-1 flex items-center justify-between font-sans text-[11px] text-muted-foreground">
+                                <span>Amount Paid / Settled</span>
+                                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                                  -{formatMoney(item.financialBreakdown.amountPaid)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 6. Net Due Balance */}
+                            <div className="pt-2 flex items-center justify-between font-sans font-bold text-xs text-foreground">
+                              <span>Balance Due Now</span>
+                              <span className="font-mono text-sm text-rose-600 dark:text-rose-400">
+                                {formatMoney(item.financialBreakdown.balanceDue)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

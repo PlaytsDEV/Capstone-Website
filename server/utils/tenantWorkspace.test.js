@@ -13,7 +13,7 @@ describe("tenantWorkspace utilities", () => {
       leaseDuration: 6,
     });
 
-    expect(result?.toISOString()).toBe("2026-07-14T00:00:00.000Z");
+    expect(result?.toISOString()).toBe("2026-07-15T00:00:00.000Z");
   });
 
   test("classifies pending manual verification as next action without changing payment status enum", () => {

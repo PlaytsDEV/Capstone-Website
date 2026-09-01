@@ -327,4 +327,47 @@ describe("ensureCurrentCycleRentBill", () => {
     expect(localYmd(result.bill.billingCycleStart)).toBe("2026-3-5");
     expect(notify.billGenerated).not.toHaveBeenCalled();
   });
+
+  test("automatically promotes queuedAppliances to active appliances when generating the next cycle rent bill", async () => {
+    const reservation = createReservation({
+      selectedAppliances: [{ name: "Electric Fan", quantity: 1, price: 200 }],
+      applianceFees: 200,
+      monthlyRent: 5500,
+      totalPrice: 5700,
+      queuedAppliances: {
+        appliances: [
+          { name: "Electric Fan", quantity: 2, price: 200 },
+          { name: "Laptop", quantity: 1, price: 200 },
+        ],
+        applianceFees: 600,
+        requestedAt: new Date("2026-01-20T00:00:00.000Z"),
+      },
+    });
+
+    billFindOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-02-05T00:00:00.000Z"),
+      dryRun: false,
+      notifyTenant: false,
+      requireGenerationDateMatch: false,
+    });
+
+    expect(result.status).toBe("created");
+    expect(reservation.selectedAppliances).toEqual([
+      { name: "Electric Fan", quantity: 2, price: 200 },
+      { name: "Laptop", quantity: 1, price: 200 },
+    ]);
+    expect(reservation.applianceFees).toBe(600);
+    expect(reservation.totalPrice).toBe(6100);
+    expect(reservation.queuedAppliances).toBeNull();
+    expect(reservation.save).toHaveBeenCalled();
+
+    // Verify the newly generated bill reflects the promoted 600 fee
+    expect(billInstances[0].charges.applianceFees).toBe(600);
+    expect(billInstances[0].grossAmount).toBe(6100);
+  });
 });

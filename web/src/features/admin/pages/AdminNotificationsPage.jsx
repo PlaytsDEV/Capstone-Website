@@ -366,7 +366,10 @@ const ACTION_URLS = {
   payment_rejected: "/admin/billing",
   payment_proof_submitted: "/admin/billing",
   application_submitted: "/admin/reservations",
-  contract_signed: "/admin/contracts",
+  contract_signed: "/admin/tenants",
+  contract_prepared: "/admin/tenants",
+  contract_incomplete: "/admin/tenants",
+  contract_error: "/admin/tenants",
   visit_requested: "/admin/reservations?tab=visits",
   visit_scheduled: "/admin/reservations?tab=visits",
   reservation_confirmed: "/admin/reservations",
@@ -413,6 +416,26 @@ function getActionUrl(notification) {
     return `/admin/reservations?reservationId=${encodeURIComponent(
       notification.entityId
     )}&tab=visits`;
+  }
+  if (
+    notification.type === "contract_prepared" ||
+    notification.type === "contract_incomplete" ||
+    notification.type === "contract_signed" ||
+    notification.type === "contract_error" ||
+    notification.type === "contract_expiring" ||
+    notification.entityType === "contract"
+  ) {
+    if (notification.actionUrl && notification.actionUrl.startsWith("/admin/tenants")) {
+      return notification.actionUrl;
+    }
+    if (notification.reservationId) {
+      return `/admin/tenants?reservationId=${encodeURIComponent(notification.reservationId)}`;
+    }
+    return "/admin/tenants";
+  }
+  const rawUrl = notification.actionUrl;
+  if (rawUrl && rawUrl.startsWith("/admin/")) {
+    return rawUrl === "/admin/contracts" ? "/admin/tenants" : rawUrl;
   }
   return notification.actionUrl || ACTION_URLS[notification.type] || null;
 }

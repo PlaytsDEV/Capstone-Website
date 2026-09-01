@@ -203,11 +203,11 @@ describe("Contract Management foundation", () => {
     for (const path of [
       "tenantLegalName", "tenantAddress", "tenantEmail", "tenantPhone",
       "tenantNationality", "propertyName", "propertyAddress", "roomNumber",
-      "leaseStartDate", "leaseEndDate", "leaseDurationMonths",
     ]) {
       expect(Contract.schema.path(path).options.immutable).toBe(true);
     }
     for (const path of [
+      "leaseStartDate", "leaseEndDate", "leaseDurationMonths",
       "regularMonthlyRate", "discountPercentage", "discountAmount",
       "approvedMonthlyRate", "advanceRentAmount", "securityDepositAmount",
     ]) {

@@ -115,8 +115,14 @@ export const WARNING_DETAILS_MAP = {
 
 export const formatDate = (d) => {
   if (!d || d === "-") return "N/A";
-  const date = new Date(d);
-  return Number.isNaN(date.getTime()) ? "N/A" : date.toISOString().split("T")[0];
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 };
 
 export const formatBillingCycle = (cycle, fallbackDueDate = null) => {
@@ -341,3 +347,137 @@ export const getWarningSeverityConfig = (severity) => {
       };
   }
 };
+
+export const calculateLivePenaltyDetails = ({
+  dueDate,
+  currentDate = new Date(),
+  persistedPenalty = 0,
+  ratePerDay = 50,
+  graceDays = 1,
+} = {}) => {
+  if (!dueDate || dueDate === "N/A" || dueDate === "Pending" || dueDate === "Immediate") {
+    return {
+      daysLate: 0,
+      graceDays,
+      billableDays: 0,
+      isWithinGracePeriod: false,
+      penaltyAmount: Number(persistedPenalty || 0),
+      explanation: "",
+    };
+  }
+
+  const getMidnight = (d) => {
+    if (!d) return null;
+    if (typeof d === "string") {
+      const match = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime();
+      }
+    }
+    const date = d instanceof Date ? d : new Date(d);
+    if (Number.isNaN(date.getTime())) return null;
+    try {
+      const str = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(date);
+      const [y, m, day] = str.split("-").map(Number);
+      return new Date(y, m - 1, day).getTime();
+    } catch {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    }
+  };
+
+  const dueMidnight = getMidnight(dueDate);
+  const nowMidnight = getMidnight(currentDate);
+
+  if (dueMidnight === null || nowMidnight === null) {
+    return {
+      daysLate: 0,
+      graceDays,
+      billableDays: 0,
+      isWithinGracePeriod: false,
+      penaltyAmount: Number(persistedPenalty || 0),
+      explanation: "",
+    };
+  }
+
+  const diffMs = nowMidnight - dueMidnight;
+  const daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (daysLate <= 0) {
+    return {
+      daysLate: 0,
+      graceDays,
+      billableDays: 0,
+      isWithinGracePeriod: false,
+      penaltyAmount: Number(persistedPenalty || 0),
+      explanation: "",
+    };
+  }
+
+  const billableDays = Math.max(0, daysLate - graceDays);
+  const calculatedPenalty = billableDays * ratePerDay;
+  const finalPenalty = Math.max(Number(persistedPenalty || 0), calculatedPenalty);
+  const isWithinGracePeriod = daysLate > 0 && daysLate <= graceDays;
+
+  let explanation = "";
+  if (isWithinGracePeriod) {
+    explanation = `Within ${graceDays}-day grace period (Due ${formatDate(dueDate)})`;
+  } else if (billableDays > 0) {
+    explanation = `${billableDays} billable day${billableDays === 1 ? "" : "s"} (${daysLate} days past due − ${graceDays}-day grace period) @ ₱${ratePerDay}/day`;
+  }
+
+  return {
+    daysLate,
+    graceDays,
+    billableDays,
+    isWithinGracePeriod,
+    penaltyAmount: finalPenalty,
+    explanation,
+  };
+};
+
+export const buildItemFinancialBreakdown = ({
+  category = "rent",
+  billedAmount = 0,
+  balanceAmount = 0,
+  dueDate = null,
+  currentDate = new Date(),
+  persistedPenalty = 0,
+  discountAmount = 0,
+  creditAmount = 0,
+} = {}) => {
+  const penaltyInfo = calculateLivePenaltyDetails({
+    dueDate,
+    currentDate,
+    persistedPenalty,
+  });
+
+  const baseAmount = Number(billedAmount || 0);
+  const penaltyAmount = Number(penaltyInfo.penaltyAmount || 0);
+  const discount = Number(discountAmount || 0);
+  const credit = Number(creditAmount || 0);
+
+  const totalAssessed = Math.max(0, baseAmount + penaltyAmount - discount - credit);
+  const initialBalance = Number(balanceAmount || 0);
+  // initialBalance on overdue rent already includes persistedPenalty; net it out before applying evaluated penalty
+  const baseRemaining = Math.max(0, initialBalance - Number(persistedPenalty || 0));
+  const amountPaid = Math.max(0, baseAmount - baseRemaining);
+  const balanceDue = Math.max(0, baseRemaining + penaltyAmount);
+
+  return {
+    category,
+    baseAmount,
+    penaltyInfo,
+    penaltyAmount,
+    discount,
+    credit,
+    totalAssessed,
+    amountPaid,
+    balanceDue,
+  };
+};
+

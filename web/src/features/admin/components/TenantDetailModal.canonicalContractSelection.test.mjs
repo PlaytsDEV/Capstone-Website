@@ -43,3 +43,8 @@ test("short-circuits the PDF download on ambiguity instead of attempting a guess
   );
   assert.match(downloadFn, /dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS"/);
 });
+
+test("imports buildItemFinancialBreakdown from ./tenants/details to prevent ReferenceError runtime crashes", () => {
+  assert.match(source, /import\s*\{[\s\S]*?\bbuildItemFinancialBreakdown\b[\s\S]*?\}\s*from\s*["']\.\/tenants\/details["']/);
+});
+

@@ -184,6 +184,28 @@ export async function ensureCurrentCycleRentBill({
     };
   }
 
+  // If the reservation has queued appliance updates for the upcoming cycle, promote them now
+  if (reservation.queuedAppliances?.appliances && !dryRun) {
+    reservation.selectedAppliances = reservation.queuedAppliances.appliances;
+    reservation.applianceFees = Number(reservation.queuedAppliances.applianceFees || 0);
+    if (reservation.monthlyRent != null) {
+      reservation.totalPrice = Number(reservation.monthlyRent) + reservation.applianceFees;
+    }
+    reservation.queuedAppliances = null;
+    if (typeof reservation.save === "function") {
+      await reservation.save();
+    }
+    await recordStructuredBillingDecision(
+      reservation,
+      "reservation.queued_appliances_promoted",
+      {
+        promotedAppliances: reservation.selectedAppliances,
+        applianceFees: reservation.applianceFees,
+      },
+      dryRun,
+    );
+  }
+
   const rentPrice = resolveReservationRentAmount(reservation, referenceDate);
   const { applianceFees, additionalCharges } =
     getReservationRecurringFees(reservation);
