@@ -51,6 +51,7 @@ import {
   computeRoomTransferPreview,
   transferStayWorkflow,
 } from "../utils/tenantActionService.js";
+import { parsePhysicalMeterReading } from "../utils/physicalMeterReading.js";
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -972,6 +973,9 @@ async function upsertTransferSettlementBill({ record, reservation, preview, fina
           ratePerUnit: finalizedElectricity.ratePerUnit,
           baselineReading: finalizedElectricity.baselineReading,
           closingReading: finalizedElectricity.closingReading,
+          freshBaselineAmount: finalizedElectricity.freshBaselineAmount ?? electricityDue,
+          historicalDispositionAmount: finalizedElectricity.historicalDispositionAmount ?? 0,
+          historicalGapIds: finalizedElectricity.historicalGapIds || [],
         },
       }
     : {};
@@ -1104,6 +1108,21 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     throw err(`This scheduled room transfer is ${record.status} and cannot be completed.`, 409, "TRANSFER_NOT_COMPLETABLE");
   }
 
+  // Parse physical measurements before any preflight path can materialize or
+  // otherwise repair domain state. Empty strings are not zero.
+  const validatedSourceMeterReading = payload.sourceRoomMeterReading == null
+    ? payload.sourceRoomMeterReading
+    : parsePhysicalMeterReading(payload.sourceRoomMeterReading, {
+        fieldLabel: "Source room closing electricity reading",
+        maximum: 999999.99,
+      });
+  const validatedTargetMeterReading = payload.targetRoomMeterReading == null
+    ? payload.targetRoomMeterReading
+    : parsePhysicalMeterReading(payload.targetRoomMeterReading, {
+        fieldLabel: "Destination room current electricity reading",
+        maximum: 999999.99,
+      });
+
   // 1. The effective Manila calendar date must have been reached. The stored
   //    time is guidance/display only and must not block a same-day cutover.
   const scheduledDay = toManilaStartOfDay(record.effectiveTransferDate);
@@ -1131,7 +1150,7 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
         effectiveTransferDate: record.effectiveTransferDate,
       },
       requireConfirm: true,
-      materializeStay: true,
+      materializeStay: false,
       actorId,
     });
   } catch (e) {
@@ -1238,8 +1257,8 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
   //    closing SOURCE reading AND the opening DESTINATION reading are both
   //    REQUIRED (destination is same-branch as source). Non-sub-metered
   //    (guadalupe) => neither is required, no electricity finalization.
-  const sourceMeterReading = payload.sourceRoomMeterReading;
-  const targetMeterReading = payload.targetRoomMeterReading;
+  const sourceMeterReading = validatedSourceMeterReading;
+  const targetMeterReading = validatedTargetMeterReading;
   const sourceMetered = branchSupportsSeparateUtilityBilling(record.branch, "electricity");
   const destRoomForMeter = await Room.findById(record.destinationRoomId).select("branch").lean();
   const destMetered = branchSupportsSeparateUtilityBilling(destRoomForMeter?.branch || record.branch, "electricity");
@@ -1325,16 +1344,32 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
     const { computeTransfereeSourceElectricityLiability } = await import(
       "./billing/transferUtilityFinalization.js"
     );
+    const sourceRoomForSettlement = intent.activeStay
+      ? await Room.findById(intent.activeStay.roomId).lean()
+      : await Room.findById(record.sourceRoomId).lean();
     finalizedElectricity = await computeTransfereeSourceElectricityLiability({
       reservation,
-      sourceRoom: intent.activeStay
-        ? await Room.findById(intent.activeStay.roomId).lean()
-        : await Room.findById(record.sourceRoomId).lean(),
+      sourceRoom: sourceRoomForSettlement,
       cutoverDate: new Date(), // preview boundary only; the authoritative
       // cutoverAt is captured inside transferStayWorkflow. Electricity is
       // meter-bounded by the READING, not by time, so the amount is identical.
       freshSourceClosingReading: Number(sourceMeterReading),
     });
+    const { getResolvedHistoricalElectricityDisposition } = await import(
+      "./billing/utilityHistoricalGapService.js"
+    );
+    const historical = await getResolvedHistoricalElectricityDisposition({
+      reservationId: reservation._id,
+      roomId: sourceRoomForSettlement._id,
+    });
+    const freshBaselineAmount = roundMoney(Number(finalizedElectricity.amount || 0));
+    finalizedElectricity = {
+      ...finalizedElectricity,
+      freshBaselineAmount,
+      historicalDispositionAmount: historical.amount,
+      historicalGapIds: historical.gapIds,
+      amount: roundMoney(freshBaselineAmount + historical.amount),
+    };
   }
   const finalizedElectricityDue = roundMoney(
     Math.max(0, Number(finalizedElectricity?.applicable ? finalizedElectricity.amount : 0)),

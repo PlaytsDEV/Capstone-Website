@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import NewBillingPeriodModal from "./NewBillingPeriodModal";
+import OpenCurrentPeriodModal from "./OpenCurrentPeriodModal";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
 import {
   useUtilityRooms,
@@ -145,6 +146,7 @@ const UtilityBillingTab = ({
     onConfirm: null,
   });
   const [isNewPeriodModalOpen, setIsNewPeriodModalOpen] = useState(false);
+  const [isOpenCurrentPeriodModalOpen, setIsOpenCurrentPeriodModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isBatchSendModalOpen, setIsBatchSendModalOpen] = useState(false);
   const [historyModalPeriod, setHistoryModalPeriod] = useState(null);
@@ -283,9 +285,10 @@ const UtilityBillingTab = ({
   }, [rooms, selectedRoomId]);
 
   // Active / current and last closed periods
-  const currentPeriod = periodList[0] || null;
   const openPeriodForRoom = periodList.find((p) => p.status === "open");
+  const manualReviewPeriod = periodList.find((p) => p.status === "manual_review_required");
   const lastClosedPeriod = periodList.find((p) => p.status === "closed" || p.status === "revised");
+  const currentPeriod = openPeriodForRoom || null;
 
   // Auto-select latest period for tenant payment monitoring
   useEffect(() => {
@@ -1055,6 +1058,9 @@ const UtilityBillingTab = ({
             onExportPdf={handleExportPdf}
             isExporting={isExporting}
             utilityType={utilityType}
+            manualReviewPeriod={manualReviewPeriod}
+            latestHistoricalPeriod={lastClosedPeriod}
+            onOpenCurrentPeriod={() => setIsOpenCurrentPeriodModalOpen(true)}
             isSendingBatch={isSendingBatch}
           />
 
@@ -1272,6 +1278,20 @@ const UtilityBillingTab = ({
           if (newPeriodId) {
             setSelectedPeriodId(newPeriodId);
           }
+        }}
+      />
+
+      <OpenCurrentPeriodModal
+        isOpen={isOpenCurrentPeriodModalOpen}
+        onClose={() => setIsOpenCurrentPeriodModalOpen(false)}
+        utilityType={utilityType}
+        selectedRoomId={selectedRoomId}
+        roomName={getRoomLabel(selectedRoom) || selectedRoom?.name || selectedRoom?.roomNumber || ""}
+        lastClosedPeriod={lastClosedPeriod}
+        latestReading={latestData?.reading}
+        defaultRatePerUnit={defaultRatePerUnit}
+        onSuccess={(newPeriodId) => {
+          if (newPeriodId) setSelectedPeriodId(newPeriodId);
         }}
       />
 

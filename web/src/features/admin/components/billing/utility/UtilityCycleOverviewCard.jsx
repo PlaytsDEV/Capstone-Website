@@ -17,10 +17,13 @@ import { ExportButtons } from "../../../pages/analyticsTabShared";
 export default function UtilityCycleOverviewCard({
   selectedRoom,
   currentPeriod,
+  manualReviewPeriod,
+  latestHistoricalPeriod,
   currentPeriodUsage,
   currentPeriodCost,
   readyRoomsCount = 0,
   onOpenNewPeriodModal,
+  onOpenCurrentPeriod,
   onBatchSendReady,
   onExportCsv,
   onExportPdf,
@@ -81,14 +84,26 @@ export default function UtilityCycleOverviewCard({
             <span>Send Ready ({readyRoomsCount})</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onOpenNewPeriodModal}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-          >
-            <Plus size={13} />
-            <span>New Billing Period</span>
-          </button>
+          {!currentPeriod && !manualReviewPeriod ? (
+            <>
+              <button
+                type="button"
+                onClick={onOpenCurrentPeriod}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900"
+              >
+                <Plus size={13} />
+                <span>Open Current Period</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenNewPeriodModal}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+              >
+                <Calendar size={13} />
+                <span>Generate Historical Cycle</span>
+              </button>
+            </>
+          ) : null}
 
           <ExportButtons
             onCsv={onExportCsv}
@@ -144,13 +159,20 @@ export default function UtilityCycleOverviewCard({
             </p>
           </div>
         </div>
+      ) : manualReviewPeriod ? (
+        <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-amber-300 bg-amber-50/60 py-6 text-center text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+          <AlertCircle size={24} />
+          <p className="mt-2 font-semibold">Billing Period Requires Review</p>
+          <p className="mt-0.5 text-[11px]">{manualReviewPeriod.manualReviewReason || "Resolve the billing warning before continuing."}</p>
+        </div>
       ) : (
         <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
           <AlertCircle size={24} className="text-amber-500 dark:text-amber-400" />
           <p className="mt-2 font-semibold text-card-foreground">No Active Billing Period</p>
           <p className="mt-0.5 text-[11px]">
-            Click "New Billing Period" above to create an open cycle and record meter readings.
+            Open the current period to begin tracking meter readings.
           </p>
+          {latestHistoricalPeriod ? <p className="mt-1 text-[11px]">Latest historical cycle: {getCycleLabel(latestHistoricalPeriod)} · {latestHistoricalPeriod.billingLabel || latestHistoricalPeriod.status}</p> : null}
         </div>
       )}
     </div>

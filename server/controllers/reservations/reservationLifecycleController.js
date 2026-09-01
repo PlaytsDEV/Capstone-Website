@@ -50,6 +50,10 @@ import {
   sendDocumentsRejectedEmail,
 } from "../../config/email.js";
 import { ensureCurrentCycleRentBill } from "../../utils/rentGenerator.js";
+import {
+  assertPhysicalMeterContinuity,
+  parsePhysicalMeterReading,
+} from "../../utils/physicalMeterReading.js";
 import { settleInitialMoveInOnCheckIn } from "../../services/billing/billSettlement.js";
 import { emitToUser, emitToAdmins } from "../../utils/socket.js";
 import { validateVisitSelection } from "../../utils/visitAvailability.js";
@@ -210,6 +214,13 @@ export const updateReservation = async (req, res, next) => {
     const isMoveInTransition =
       req.body.status === "moveIn" &&
       !hasReservationStatus(existingReservation.status, "moveIn");
+    let validatedMoveInMeterReading = null;
+    if (isMoveInTransition && req.body.meterReading !== null && req.body.meterReading !== undefined) {
+      validatedMoveInMeterReading = parsePhysicalMeterReading(req.body.meterReading, {
+        fieldLabel: "Move-in meter reading",
+        maximum: 999999.99,
+      });
+    }
 
     if (
       req.body.status !== undefined &&
@@ -463,8 +474,7 @@ export const updateReservation = async (req, res, next) => {
 
       if (
         moveInRequiresMeter &&
-        (req.body.meterReading == null ||
-          isNaN(Number(req.body.meterReading)))
+        validatedMoveInMeterReading == null
       ) {
         return res.status(400).json({
           error: "A meter reading (kWh) is required when moving in a tenant.",
@@ -482,17 +492,12 @@ export const updateReservation = async (req, res, next) => {
           .sort({ date: -1, createdAt: -1 })
           .lean();
 
-        if (
-          previousReadingDoc &&
-          Number.isFinite(previousReadingDoc.reading) &&
-          Number(req.body.meterReading) < previousReadingDoc.reading
-        ) {
-          return res.status(400).json({
-            error: `Initial meter reading (${req.body.meterReading} kWh) cannot be lower than the room's previous reading (${previousReadingDoc.reading} kWh).`,
-            code: "METER_READING_CONTINUITY_ERROR",
-            previousReading: previousReadingDoc.reading,
-          });
-        }
+        assertPhysicalMeterContinuity({
+          reading: validatedMoveInMeterReading,
+          previousReading: previousReadingDoc?.reading,
+          eventType: "moveIn",
+          fieldLabel: "Move-in meter reading",
+        });
       }
 
       if (
@@ -773,15 +778,14 @@ export const updateReservation = async (req, res, next) => {
     if (
       req.body.status === "moveIn" &&
       !hasReservationStatus(oldData.status, "moveIn") &&
-      req.body.meterReading != null &&
-      !isNaN(Number(req.body.meterReading))
+      validatedMoveInMeterReading != null
     ) {
       try {
         const roomId =
           updatedReservation.roomId?._id || updatedReservation.roomId;
         const roomDoc = await Room.findById(roomId).lean();
         const recordedBy = actorId;
-        const meterValue = Number(req.body.meterReading);
+        const meterValue = validatedMoveInMeterReading;
         const moveInDate = new Date(
           readMoveInDate(updatedReservation) || new Date(),
         );

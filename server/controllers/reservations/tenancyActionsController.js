@@ -63,6 +63,7 @@ import {
 } from "../../services/scheduledRoomTransferExecutor.js";
 import { ScheduledRoomTransfer } from "../../models/index.js";
 import { OPEN_SCHEDULED_ROOM_TRANSFER_STATUSES } from "../../models/ScheduledRoomTransfer.js";
+import { parsePhysicalMeterReading } from "../../utils/physicalMeterReading.js";
 import {
   claimTenantTransferRequestForScheduling,
   linkScheduledTransferToRequest,
@@ -836,12 +837,10 @@ export const moveOutReservation = async (req, res, next) => {
       });
     }
 
-    if (resolvedReading == null || isNaN(Number(resolvedReading))) {
-      return res.status(400).json({
-        error: "A meter reading (kWh) is required when moving out a tenant.",
-        code: "METER_READING_REQUIRED",
-      });
-    }
+    const parsedFinalReading = parsePhysicalMeterReading(resolvedReading, {
+      fieldLabel: "Move-out meter reading",
+      maximum: 999999.99,
+    });
 
     const denied = checkBranchAccess(
       res,
@@ -854,7 +853,7 @@ export const moveOutReservation = async (req, res, next) => {
     const oldData = reservation.toObject();
     const result = await moveOutStayWorkflow({
       reservationId,
-      payload: { ...req.body, finalUtilityReading: Number(resolvedReading) },
+      payload: { ...req.body, finalUtilityReading: parsedFinalReading },
       actorId: actor?._id || null,
     });
 
@@ -1591,6 +1590,12 @@ export const earlyTerminationAction = async (req, res, next) => {
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
     const actor = await findDbUser(req.user.uid);
+    const parsedFinalUtilityReading = finalUtilityReading == null
+      ? finalUtilityReading
+      : parsePhysicalMeterReading(finalUtilityReading, {
+          fieldLabel: "Final utility meter reading",
+          maximum: 999999.99,
+        });
     const result = await executeEarlyTerminationWorkflow(
       reservationId,
       {
@@ -1598,7 +1603,7 @@ export const earlyTerminationAction = async (req, res, next) => {
         forfeitureReason,
         moveOutDate,
         actualVacateTime,
-        finalUtilityReading,
+        finalUtilityReading: parsedFinalUtilityReading,
         finalNotes,
         keyReturned,
         damageDeductions,

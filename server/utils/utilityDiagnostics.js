@@ -18,6 +18,10 @@ import {
   readMoveInDate,
 } from "./lifecycleNaming.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
+import {
+  classifyUtilityPeriodDocuments,
+  UTILITY_PERIOD_STATE,
+} from "../services/billing/utilityPeriodLifecycleService.js";
 
 const WATER_BILLABLE_ROOM_TYPES = new Set(["private", "double-sharing"]);
 
@@ -125,7 +129,13 @@ function buildRoomDiagnostic({
 }) {
   const issues = [];
   const orphanReadings = readings.filter((r) => !r.utilityPeriodId);
-  const openPeriod = periods.find((p) => p.status === "open") || null;
+  const periodResolution = classifyUtilityPeriodDocuments(periods);
+  const openPeriod = periodResolution.state === UTILITY_PERIOD_STATE.OPEN
+    ? periodResolution.period
+    : null;
+  const reviewPeriod = periodResolution.state === UTILITY_PERIOD_STATE.MANUAL_REVIEW_REQUIRED
+    ? periodResolution.period
+    : null;
   const latestPeriod = periods[periods.length - 1] || null;
   const latestReading = readings[readings.length - 1] || null;
   const latestReadingValue =
@@ -166,31 +176,22 @@ function buildRoomDiagnostic({
     // status — not a silent approximation. The system must say so rather than produce
     // a confident wrong number from a guess.
     //
-    // We upgrade this from a passive "warning" diagnostic to an active status write.
-    // If the open period is not already flagged, flag it now so it surfaces on the
-    // admin dashboard as blocked rather than indistinguishable from a normal open period.
-    if (openPeriod && openPeriod.status === "open") {
-      openPeriod.status = "manual_review_required";
-      openPeriod.manualReviewReason = "missing_move_in_reading";
-      openPeriod.save().then(() => {
-        logger.warn(
-          { roomId: openPeriod.roomId, utilityType, missingAnchors },
-          "[UtilityDiagnostics] Period flagged as manual_review_required due to missing move-in reading(s). " +
-            "Admin must supply the reading before this period can be closed. " +
-            "Graceful Proration Fallback will NOT be used silently.",
-        );
-      }).catch((flagErr) => {
-        logger.error({ err: flagErr }, "[UtilityDiagnostics] Failed to flag period as manual_review_required");
-      });
-    }
-
     addIssue(
       issues,
       "electricity_missing_movein_anchor",
       "manual_review_required",
-      "Missing move-in reading. This period has been flagged as Manual Review Required. " +
+      "Missing move-in reading. Manual review is required before this period can close. " +
         "Supply the missing reading before closing. The system will NOT approximate this value.",
       { reservations: missingAnchors.map((e) => e.reservationId) },
+    );
+  }
+  if (periodResolution.state === UTILITY_PERIOD_STATE.AMBIGUOUS) {
+    addIssue(
+      issues,
+      `${utilityType}_active_period_ambiguous`,
+      "repair_required",
+      "Resolve multiple lifecycle-active utility periods before billing or transfer operations continue.",
+      { periodIds: periodResolution.candidates.map((period) => period._id) },
     );
   }
 
@@ -203,6 +204,11 @@ function buildRoomDiagnostic({
     latestPeriodDisplayStatus = "open";
     latestPeriodBillingState = "open";
     latestPeriodBillingLabel = "Active";
+  } else if (reviewPeriod) {
+    latestPeriodDisplayStatus = "manual_review_required";
+    latestPeriodBillingState = "manual_review_required";
+    latestPeriodBillingLabel = "Requires Review";
+    billingBlockingReason = reviewPeriod.manualReviewReason || "Billing review is required.";
   } else if (latestPeriod) {
     const summaryBillIds = (latestPeriod.tenantSummaries || [])
       .filter((s) => Number(s.billAmount || 0) > 0)

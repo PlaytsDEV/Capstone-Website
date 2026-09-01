@@ -15,6 +15,7 @@
  */
 
 import mongoose from "mongoose";
+import { isValidOptionalPhysicalMeterReading } from "../utils/physicalMeterReading.js";
 
 const bedHistorySchema = new mongoose.Schema(
   {
@@ -97,10 +98,12 @@ const bedHistorySchema = new mongoose.Schema(
     transferSourceReading: {
       type: Number,
       default: null,
+      validate: { validator: isValidOptionalPhysicalMeterReading, message: "Transfer source reading must be finite and non-negative." },
     },
     transferTargetReading: {
       type: Number,
       default: null,
+      validate: { validator: isValidOptionalPhysicalMeterReading, message: "Transfer destination reading must be finite and non-negative." },
     },
     proratedRentAdjustment: {
       type: Number,

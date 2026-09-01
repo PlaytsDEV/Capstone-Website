@@ -466,15 +466,15 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
   const submit = async () => {
     const body = { notes: notes.trim() || undefined };
     if (sourceSubMetered && sourceReading !== "") {
-      if (Number.isNaN(Number(sourceReading))) {
-        showNotification("The source room reading must be a number.", "warning");
+      if (!Number.isFinite(Number(sourceReading)) || Number(sourceReading) < 0) {
+        showNotification("The source room reading must be a finite, non-negative number.", "warning");
         return;
       }
       body.sourceRoomMeterReading = Number(sourceReading);
     }
     if (destSubMetered && targetReading !== "") {
-      if (Number.isNaN(Number(targetReading))) {
-        showNotification("The destination room reading must be a number.", "warning");
+      if (!Number.isFinite(Number(targetReading)) || Number(targetReading) < 0) {
+        showNotification("The destination room reading must be a finite, non-negative number.", "warning");
         return;
       }
       body.targetRoomMeterReading = Number(targetReading);
@@ -584,6 +584,8 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
             </span>
             <input
               type="number"
+              min="0"
+              step="0.01"
               inputMode="decimal"
               className={fieldCls}
               value={sourceReading}
@@ -600,6 +602,8 @@ function CompleteTransferDialog({ transfer, onClose, onDone }) {
             </span>
             <input
               type="number"
+              min="0"
+              step="0.01"
               inputMode="decimal"
               className={fieldCls}
               value={targetReading}

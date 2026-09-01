@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 import { ROOM_BRANCHES } from "../config/branches.js";
+import {
+  isValidOptionalPhysicalMeterReading,
+  isValidPhysicalMeterReading,
+} from "../utils/physicalMeterReading.js";
 
 /**
  * ============================================================================
@@ -75,7 +79,11 @@ const utilityFinalizationSchema = new mongoose.Schema(
 
     // The meter reading the transferee's source-room liability was settled
     // through — the fresh closing reading entered during Complete Transfer.
-    throughReading: { type: Number, required: true },
+    throughReading: {
+      type: Number,
+      required: true,
+      validate: { validator: isValidPhysicalMeterReading, message: "Finalization reading must be finite and non-negative." },
+    },
     // The ACTUAL physical cutover timestamp (transaction-local `new Date()`
     // from inside transferStayWorkflow — NOT the scheduled date/time).
     throughDate: { type: Date, required: true },
@@ -83,7 +91,11 @@ const utilityFinalizationSchema = new mongoose.Schema(
     // The canonical amount settled on transfer day (the transferee's
     // `tenantSummary.billAmount` from the read-only computeBilling slice).
     settledAmount: { type: Number, required: true },
-    settledKwh: { type: Number, default: null },
+    settledKwh: {
+      type: Number,
+      default: null,
+      validate: { validator: isValidOptionalPhysicalMeterReading, message: "Finalized kWh must be finite and non-negative." },
+    },
 
     // The transfer_settlement Bill that carries this amount.
     settlementBillId: {
