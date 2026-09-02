@@ -8,11 +8,14 @@
  */
 
 import dayjs from "dayjs";
+import mongoose from "mongoose";
 import {
+  BedHistory,
+  Contract,
   Reservation,
   Room,
+  Stay,
   User,
-  UtilityReading,
 } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
@@ -31,7 +34,6 @@ import {
 } from "../../utils/reservationHelpers.js";
 import {
   canTransitionReservationStatus,
-  CURRENT_RESIDENT_STATUS_QUERY,
   hasReservationStatus,
   isApplicationApprovedStatus,
   normalizeReservationPayload,
@@ -39,7 +41,6 @@ import {
   readMoveInDate,
   resolveMoveInConfirmationDate,
   reservationStatusesForQuery,
-  utilityEventTypesForQuery,
 } from "../../utils/lifecycleNaming.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
@@ -50,11 +51,9 @@ import {
   sendDocumentsRejectedEmail,
 } from "../../config/email.js";
 import { ensureCurrentCycleRentBill } from "../../utils/rentGenerator.js";
-import {
-  assertPhysicalMeterContinuity,
-  parsePhysicalMeterReading,
-} from "../../utils/physicalMeterReading.js";
+import { parsePhysicalMeterReading } from "../../utils/physicalMeterReading.js";
 import { settleInitialMoveInOnCheckIn } from "../../services/billing/billSettlement.js";
+import { resolveRoomUtilityBoundaryContext } from "../../services/billing/roomUtilityBoundaryService.js";
 import { emitToUser, emitToAdmins } from "../../utils/socket.js";
 import { validateVisitSelection } from "../../utils/visitAvailability.js";
 import {
@@ -482,24 +481,6 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
-      // Meter reading continuity check against previous room reading
-      // (only applicable on submeter branches where a reading is provided)
-      if (moveInRequiresMeter) {
-        const previousReadingDoc = await UtilityReading.findOne({
-          roomId: existingReservation.roomId?._id || existingReservation.roomId,
-          isArchived: false,
-        })
-          .sort({ date: -1, createdAt: -1 })
-          .lean();
-
-        assertPhysicalMeterContinuity({
-          reading: validatedMoveInMeterReading,
-          previousReading: previousReadingDoc?.reading,
-          eventType: "moveIn",
-          fieldLabel: "Move-in meter reading",
-        });
-      }
-
       if (
         usesStructuredInitialPayment(existingReservation) &&
         !(
@@ -523,24 +504,6 @@ export const updateReservation = async (req, res, next) => {
           error:
             "Invalid move-in date/time. Use a valid date and HH:mm format.",
           code: "INVALID_MOVEIN_DATETIME",
-        });
-      }
-
-      const duplicateMoveIn = await UtilityReading.findOne({
-        utilityType: "electricity",
-        roomId: existingReservation.roomId?._id || existingReservation.roomId,
-        tenantId: existingReservation.userId?._id || existingReservation.userId,
-        eventType: { $in: utilityEventTypesForQuery("moveIn") },
-        date: moveInDate,
-        isArchived: false,
-      })
-        .select("_id")
-        .lean();
-      if (duplicateMoveIn) {
-        return res.status(409).json({
-          error:
-            "A move-in reading already exists for this tenant at the same date/time. Use a different time.",
-          code: "DUPLICATE_LIFECYCLE_READING",
         });
       }
 
@@ -690,9 +653,138 @@ export const updateReservation = async (req, res, next) => {
     // Existing Reservations may contain legacy values on unrelated fields.
     // Application review must validate the fields changed by this action without
     // allowing stale, untouched data to turn a valid approval into an HTTP 500.
-    const updatedReservation = await reservation.save({
-      validateModifiedOnly: true,
-    });
+    let updatedReservation;
+    let moveInUtilityBoundary = null;
+    let moveInOccupancyCommitted = false;
+    const moveInUsesSubmeter =
+      isMoveInTransition && branchHasSubmeter(existingReservation.roomId?.branch);
+    if (moveInUsesSubmeter) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          moveInUtilityBoundary = await resolveRoomUtilityBoundaryContext({
+            room: existingReservation.roomId,
+            utilityType: "electricity",
+            eventAt: reservation.confirmedMoveInDate || reservation.moveInDate,
+            reading: validatedMoveInMeterReading,
+            eventType: "moveIn",
+            reservationId: reservation._id,
+            tenantId: reservation.userId?._id || reservation.userId,
+            actorId,
+            allowInitialize: true,
+            session,
+          });
+          updatedReservation = await reservation.save({
+            validateModifiedOnly: true,
+            session,
+          });
+          const leaseStartDate = new Date(
+            updatedReservation.confirmedMoveInDate || updatedReservation.moveInDate,
+          );
+          const leaseEndDate = dayjs(leaseStartDate)
+            .add(Math.max(1, Number(updatedReservation.leaseDuration || 12)), "month")
+            .toDate();
+          const activeStay = await Stay.findOneAndUpdate(
+            {
+              reservationId: updatedReservation._id,
+              status: { $in: ["active", "ending_soon"] },
+            },
+            {
+              $setOnInsert: {
+                tenantId: updatedReservation.userId?._id || updatedReservation.userId,
+                reservationId: updatedReservation._id,
+                branch: existingReservation.roomId.branch,
+                roomId: existingReservation.roomId._id || existingReservation.roomId,
+                bedId:
+                  updatedReservation.selectedBed?.id ||
+                  `room-${existingReservation.roomId._id || existingReservation.roomId}`,
+                bunkBlock: updatedReservation.selectedBed?.bunkBlock || "A",
+                leaseStartDate,
+                leaseEndDate,
+                monthlyRent: Number(updatedReservation.monthlyRent || 0),
+                status: "active",
+                createdBy: actorId,
+                updatedBy: actorId,
+              },
+            },
+            { upsert: true, new: true, session, runValidators: true },
+          );
+          updatedReservation.currentStayId = activeStay._id;
+          updatedReservation.latestStayStatus = "active";
+          await updatedReservation.save({ validateModifiedOnly: true, session });
+
+          const tenantId = updatedReservation.userId?._id || updatedReservation.userId;
+          const roomId = existingReservation.roomId._id || existingReservation.roomId;
+          const bedId =
+            updatedReservation.selectedBed?.id || `room-${roomId}`;
+          await BedHistory.findOneAndUpdate(
+            {
+              reservationId: updatedReservation._id,
+              tenantId,
+              status: "active",
+            },
+            {
+              $set: { stayId: activeStay._id },
+              $setOnInsert: {
+                bedId,
+                roomId,
+                tenantId,
+                reservationId: updatedReservation._id,
+                branch: existingReservation.roomId.branch,
+                moveInDate: leaseStartDate,
+                effectiveStartDate: leaseStartDate,
+                status: "active",
+              },
+            },
+            { upsert: true, new: true, session, runValidators: true },
+          );
+
+          const currentContract = await Contract.findOne({
+            reservationId: updatedReservation._id,
+            isCurrent: true,
+          }).session(session);
+          if (currentContract) {
+            if (!currentContract.stayId) currentContract.stayId = activeStay._id;
+            if (!currentContract.leaseStartDate) currentContract.leaseStartDate = leaseStartDate;
+            if (!currentContract.leaseEndDate) currentContract.leaseEndDate = leaseEndDate;
+            currentContract.updatedBy = actorId;
+            await currentContract.save({ session, validateModifiedOnly: true });
+          } else {
+            const { createDraftContract } = await import(
+              "../../services/contractService.js"
+            );
+            await createDraftContract({
+              reservationId: updatedReservation._id,
+              stayId: activeStay._id,
+              actorId,
+              allowedBranch: existingReservation.roomId.branch,
+              session,
+            });
+          }
+          await User.updateOne(
+            { _id: updatedReservation.userId?._id || updatedReservation.userId },
+            {
+              $set: {
+                role: "tenant",
+                tenantStatus: "active",
+                branch: existingReservation.roomId.branch,
+              },
+            },
+            { session },
+          );
+          await updateOccupancyOnReservationChange(updatedReservation, oldData, {
+            session,
+          });
+          moveInOccupancyCommitted = true;
+        });
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      updatedReservation = await reservation.save({
+        validateModifiedOnly: true,
+      });
+    }
 
     if (prospectiveWorkflowAssignment) {
       await auditLogger.log?.({
@@ -775,72 +867,16 @@ export const updateReservation = async (req, res, next) => {
       }
     }
 
-    if (
-      req.body.status === "moveIn" &&
-      !hasReservationStatus(oldData.status, "moveIn") &&
-      validatedMoveInMeterReading != null
-    ) {
-      try {
-        const roomId =
-          updatedReservation.roomId?._id || updatedReservation.roomId;
-        const roomDoc = await Room.findById(roomId).lean();
-        const recordedBy = actorId;
-        const meterValue = validatedMoveInMeterReading;
-        const moveInDate = new Date(
-          readMoveInDate(updatedReservation) || new Date(),
-        );
-
-        if (roomDoc && recordedBy) {
-          const tenantUserId =
-            updatedReservation.userId?._id || updatedReservation.userId;
-
-          const checkedInRes = await Reservation.find({
-            roomId: roomId,
-            status: { $in: CURRENT_RESIDENT_STATUS_QUERY },
-            isArchived: { $ne: true },
-          })
-            .select("userId")
-            .lean();
-          const activeTenantIds = checkedInRes
-            .map((r) => r.userId)
-            .filter(Boolean);
-
-          const moveInReading = new UtilityReading({
-            roomId: roomId,
-            branch: roomDoc.branch,
-            utilityType: "electricity",
-            reading: meterValue,
-            previousReading: meterValue,
-            consumption: 0,
-            date: moveInDate,
-            eventType: "move_in",
-            tenantId: tenantUserId,
-            activeTenantIdsAtReading: activeTenantIds,
-            activeTenantCount: activeTenantIds.length || 1,
-            splitRatio: 1,
-            isCalculated: true,
-            isBilled: false,
-            notes: `Initial move-in meter reading for ${updatedReservation.reservationCode || "tenant"}`,
-            recordedBy: recordedBy,
-          });
-
-          await moveInReading.save();
-          logger.info(
-            {
-              readingId: moveInReading._id,
-              roomId: roomId,
-              tenantId: tenantUserId,
-              meterValue,
-            },
-            "Recorded move-in utility reading during status transition to moveIn",
-          );
-        }
-      } catch (readingErr) {
-        logger.error(
-          { err: readingErr, requestId: req.id },
-          "Failed to auto-record move-in utility reading during status update (non-fatal)",
-        );
-      }
+    if (moveInUtilityBoundary?.boundary) {
+      logger.info(
+        {
+          readingId: moveInUtilityBoundary.boundary._id,
+          periodId: moveInUtilityBoundary.period?._id,
+          initialized: moveInUtilityBoundary.initialized,
+          reservationId: updatedReservation._id,
+        },
+        "Committed move-in occupancy boundary with reservation transition",
+      );
     }
 
     if (req.body.status !== undefined && req.body.status !== oldData.status) {
@@ -944,13 +980,15 @@ export const updateReservation = async (req, res, next) => {
       }
     }
 
-    try {
-      await updateOccupancyOnReservationChange(updatedReservation, oldData);
-    } catch (occupancyErr) {
-      logger.warn(
-        { err: occupancyErr, requestId: req.id },
-        "Occupancy update during status update failed",
-      );
+    if (!moveInOccupancyCommitted) {
+      try {
+        await updateOccupancyOnReservationChange(updatedReservation, oldData);
+      } catch (occupancyErr) {
+        logger.warn(
+          { err: occupancyErr, requestId: req.id },
+          "Occupancy update during status update failed",
+        );
+      }
     }
 
     await updatedReservation.populate(...POPULATE_USER);

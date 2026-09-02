@@ -66,6 +66,7 @@ import {
   assertPhysicalMeterContinuity,
   parsePhysicalMeterReading,
 } from "./physicalMeterReading.js";
+import { resolveRoomUtilityBoundaryContext } from "../services/billing/roomUtilityBoundaryService.js";
 
 // Tolerant wrapper — an unknown branch resolves to `false` (no separate
 // billing) rather than throwing, so a preview never fails on a bad branch.
@@ -2025,26 +2026,16 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const targetMeterReading = payload.targetRoomMeterReading ?? payload.newRoomMeterReading;
       const sourceMetered = branchSupportsSeparateUtilityBillingSafe(currentRoom.branch, "electricity");
       const targetMetered = branchSupportsSeparateUtilityBillingSafe(targetRoom.branch, "electricity");
-      // The current Admin Room Transfer flow always supplies its scheduled
-      // transfer id. Legacy direct transfer callers retain their established
-      // boundary-writing behavior and are intentionally outside this scoped
-      // hardening phase.
-      const enforceTransferMeterBoundary = Boolean(payload.__scheduledTransferId);
-      if (enforceTransferMeterBoundary && sourceMetered && (sourceMeterReading == null || Number.isNaN(Number(sourceMeterReading)))) {
+      if (sourceMetered && (sourceMeterReading == null || Number.isNaN(Number(sourceMeterReading)))) {
         throw Object.assign(new Error("A fresh source-room closing electricity reading is required."), {
           statusCode: 409,
           code: "ROOM_TRANSFER_SOURCE_READING_REQUIRED",
         });
       }
-      if (enforceTransferMeterBoundary && targetMetered) {
-        const { validateTransferDestinationOpeningReading } = await import(
-          "../services/billing/transferUtilityFinalization.js"
-        );
-        await validateTransferDestinationOpeningReading({
-          destinationRoom: targetRoom,
-          cutoverDate: cutoverAt,
-          freshDestinationOpeningReading: targetMeterReading,
-          session,
+      if (targetMetered) {
+        parsePhysicalMeterReading(targetMeterReading, {
+          fieldLabel: "Destination room current electricity reading",
+          maximum: 999999.99,
         });
       }
 
@@ -2060,24 +2051,20 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // -----------------------------------------------------------------------
 
       // -- Source room: departing moveOut snapshot --
-      if (sourceMeterReading != null && !Number.isNaN(Number(sourceMeterReading))) {
-        await UtilityReading.create(
-          [
-            {
-              utilityType: "electricity",
-              roomId: currentRoom._id,
-              branch: currentRoom.branch || "",
-              reading: Number(sourceMeterReading),
-              date: cutoverAt,
-              eventType: "moveOut",
-              tenantId: reservation.userId?._id || reservation.userId,
-              recordedBy: actorId,
-              readingStatus: "recorded",
-            },
-          ],
-          { session },
-        );
-      } else {
+      if (sourceMetered && sourceMeterReading != null && !Number.isNaN(Number(sourceMeterReading))) {
+        await resolveRoomUtilityBoundaryContext({
+          room: currentRoom,
+          utilityType: "electricity",
+          eventAt: cutoverAt,
+          reading: Number(sourceMeterReading),
+          eventType: "moveOut",
+          reservationId: reservation._id,
+          tenantId: reservation.userId?._id || reservation.userId,
+          actorId,
+          allowInitialize: false,
+          session,
+        });
+      } else if (sourceMetered) {
         const latestSourceReading = await UtilityReading.findOne({
           roomId: currentRoom._id,
           utilityType: "electricity",
@@ -2088,44 +2075,36 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           .session(session)
           .lean();
         if (latestSourceReading) {
-          await UtilityReading.create(
-            [
-              {
-                utilityType: "electricity",
-                roomId: currentRoom._id,
-                branch: currentRoom.branch || "",
-                reading: latestSourceReading.reading,
-                date: cutoverAt,
-                eventType: "moveOut",
-                tenantId: reservation.userId?._id || reservation.userId,
-                recordedBy: actorId,
-                readingStatus: "recorded",
-              },
-            ],
-            { session },
-          );
+          await resolveRoomUtilityBoundaryContext({
+            room: currentRoom,
+            utilityType: "electricity",
+            eventAt: cutoverAt,
+            reading: latestSourceReading.reading,
+            eventType: "moveOut",
+            reservationId: reservation._id,
+            tenantId: reservation.userId?._id || reservation.userId,
+            actorId,
+            allowInitialize: false,
+            session,
+          });
         }
       }
 
       // -- Target room: arriving moveIn snapshot --
-      if (targetMeterReading != null && !Number.isNaN(Number(targetMeterReading))) {
-        await UtilityReading.create(
-          [
-            {
-              utilityType: "electricity",
-              roomId: targetRoom._id,
-              branch: targetRoom.branch || "",
-              reading: Number(targetMeterReading),
-              date: cutoverAt,
-              eventType: "moveIn",
-              tenantId: reservation.userId?._id || reservation.userId,
-              recordedBy: actorId,
-              readingStatus: "recorded",
-            },
-          ],
-          { session },
-        );
-      } else {
+      if (targetMetered && targetMeterReading != null && !Number.isNaN(Number(targetMeterReading))) {
+        await resolveRoomUtilityBoundaryContext({
+          room: targetRoom,
+          utilityType: "electricity",
+          eventAt: cutoverAt,
+          reading: Number(targetMeterReading),
+          eventType: "moveIn",
+          reservationId: reservation._id,
+          tenantId: reservation.userId?._id || reservation.userId,
+          actorId,
+          allowInitialize: true,
+          session,
+        });
+      } else if (targetMetered) {
         const latestTargetReading = await UtilityReading.findOne({
           roomId: targetRoom._id,
           utilityType: "electricity",
@@ -2136,22 +2115,18 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           .session(session)
           .lean();
         if (latestTargetReading) {
-          await UtilityReading.create(
-            [
-              {
-                utilityType: "electricity",
-                roomId: targetRoom._id,
-                branch: targetRoom.branch || "",
-                reading: latestTargetReading.reading,
-                date: cutoverAt,
-                eventType: "moveIn",
-                tenantId: reservation.userId?._id || reservation.userId,
-                recordedBy: actorId,
-                readingStatus: "recorded",
-              },
-            ],
-            { session },
-          );
+          await resolveRoomUtilityBoundaryContext({
+            room: targetRoom,
+            utilityType: "electricity",
+            eventAt: cutoverAt,
+            reading: latestTargetReading.reading,
+            eventType: "moveIn",
+            reservationId: reservation._id,
+            tenantId: reservation.userId?._id || reservation.userId,
+            actorId,
+            allowInitialize: false,
+            session,
+          });
         }
       }
 
@@ -3157,18 +3132,23 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       if (readMoveInDate(reservation) && moveOutAt < new Date(readMoveInDate(reservation))) {
         throw Object.assign(new Error("Move-out date cannot be earlier than move-in date."), { statusCode: 400, code: "MOVEOUT_BEFORE_MOVEIN" });
       }
-      const previousReading = await UtilityReading.findOne({
-        utilityType: "electricity",
-        roomId: activeStay.roomId,
-        isArchived: false,
-        date: { $lte: moveOutAt },
-      }).sort({ date: -1, createdAt: -1 }).session(session).lean();
-      assertPhysicalMeterContinuity({
-        reading: validatedFinalUtilityReading,
-        previousReading: previousReading?.reading,
-        eventType: "moveOut",
-        fieldLabel: "Final utility meter reading",
-      });
+      const moveOutBoundary = branchSupportsSeparateUtilityBillingSafe(
+        reservation.roomId?.branch || activeStay.roomId?.branch,
+        "electricity",
+      )
+        ? await resolveRoomUtilityBoundaryContext({
+            roomId: activeStay.roomId?._id || activeStay.roomId,
+            utilityType: "electricity",
+            eventAt: moveOutAt,
+            reading: validatedFinalUtilityReading,
+            eventType: "moveOut",
+            reservationId: reservation._id,
+            tenantId: reservation.userId?._id || reservation.userId,
+            actorId,
+            allowInitialize: false,
+            session,
+          })
+        : null;
 
       const bills = await Bill.find({
         reservationId: reservation._id,
@@ -3382,27 +3362,11 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         await tenant.save({ session });
       }
 
-      await UtilityReading.create(
-        [
-          {
-            utilityType: "electricity",
-            roomId: reservation.roomId?._id || reservation.roomId,
-            branch: reservation.roomId?.branch || "",
-            reading: validatedFinalUtilityReading,
-            date: moveOutAt,
-            eventType: "moveOut",
-            tenantId: reservation.userId?._id || reservation.userId,
-            recordedBy: actorId,
-            utilityPeriodId: null,
-            activeTenantIds: [],
-          },
-        ],
-        { session },
-      );
-
       result = {
         reservation,
         stay: activeStay.toObject(),
+        utilityPeriodId: moveOutBoundary?.period?._id || null,
+        utilityReadingId: moveOutBoundary?.boundary?._id || null,
         billingSummary,
         depositSettlement: {
           depositForfeited: reservation.depositForfeited,

@@ -42,6 +42,11 @@ import {
 } from "./utilityPeriodLifecycleService.js";
 import { parsePhysicalMeterReading } from "../../utils/physicalMeterReading.js";
 import { getRoomLabel } from "../../utils/roomLabel.js";
+import {
+  assertUtilityLifecycleActiveIndexReady,
+  inspectClosedOnlyVacantContinuity,
+  inspectUtilityRoomInitializationEvidence,
+} from "./roomUtilityBoundaryService.js";
 
 const round = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -292,6 +297,8 @@ export async function validateTransferDestinationOpeningReading({
   destinationRoom,
   cutoverDate,
   freshDestinationOpeningReading,
+  allowNeverInitialized = false,
+  incomingReservationId = null,
   session = null,
 }) {
   if (!branchSupportsSeparateUtilityBilling(destinationRoom?.branch, "electricity")) {
@@ -308,6 +315,63 @@ export async function validateTransferDestinationOpeningReading({
     cutoverAt: cutoverDate,
     session,
   });
+  if (
+    allowNeverInitialized &&
+    [UTILITY_PERIOD_STATE.MISSING, UTILITY_PERIOD_STATE.CLOSED_ONLY].includes(resolution.state)
+  ) {
+    let vacancyGap = null;
+    if (resolution.state === UTILITY_PERIOD_STATE.MISSING) {
+      const evidence = await inspectUtilityRoomInitializationEvidence({
+        roomId: destinationRoom._id,
+        utilityType: "electricity",
+        session,
+      });
+      if (!evidence.neverInitialized) {
+        throw reviewError(
+          "This destination has prior utility evidence and cannot be initialized automatically.",
+          "ROOM_TRANSFER_DESTINATION_NOT_NEVER_INITIALIZED",
+          { evidence },
+        );
+      }
+    } else {
+      const continuity = await inspectClosedOnlyVacantContinuity({
+        roomId: destinationRoom._id,
+        utilityType: "electricity",
+        eventAt: cutoverDate,
+        incomingReservationId,
+        session,
+      });
+      if (!continuity.eligible) {
+        throw reviewError(
+          "The destination's closed utility history cannot prove a fully vacant gap.",
+          continuity.code || "ROOM_TRANSFER_DESTINATION_CLOSED_GAP_UNSAFE",
+          { continuity },
+        );
+      }
+      if (opening < continuity.closingReading) {
+        throw reviewError(
+          `The destination opening reading (${opening} kWh) is below the last verified closing reading (${continuity.closingReading} kWh).`,
+          "ROOM_TRANSFER_DESTINATION_READING_REGRESSION",
+          { submittedReading: opening, minimumReading: continuity.closingReading },
+        );
+      }
+      vacancyGap = {
+        readingFrom: continuity.closingReading,
+        readingTo: opening,
+        kwhConsumed: Math.round((opening - continuity.closingReading) * 100) / 100,
+        startDate: continuity.intervalStart,
+        endDate: continuity.intervalEnd,
+      };
+    }
+    await assertUtilityLifecycleActiveIndexReady();
+    return {
+      applicable: true,
+      initializationRequired: true,
+      utilityPeriodId: null,
+      openingReading: opening,
+      vacancyGap,
+    };
+  }
   if (resolution.state !== UTILITY_PERIOD_STATE.OPEN) {
     throw utilityPeriodStateError({
       resolution,

@@ -24,6 +24,7 @@ export default function UtilityCycleOverviewCard({
   readyRoomsCount = 0,
   onOpenNewPeriodModal,
   onOpenCurrentPeriod,
+  onCloseCurrentPeriod,
   onBatchSendReady,
   onExportCsv,
   onExportPdf,
@@ -92,7 +93,7 @@ export default function UtilityCycleOverviewCard({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900"
               >
                 <Plus size={13} />
-                <span>Open Current Period</span>
+                <span>Recovery / Manual Initialization</span>
               </button>
               <button
                 type="button"
@@ -103,6 +104,17 @@ export default function UtilityCycleOverviewCard({
                 <span>Generate Historical Cycle</span>
               </button>
             </>
+          ) : null}
+
+          {currentPeriod ? (
+            <button
+              type="button"
+              onClick={onCloseCurrentPeriod}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D]"
+            >
+              <Calendar size={13} />
+              <span>Close Current Period</span>
+            </button>
           ) : null}
 
           <ExportButtons
@@ -167,10 +179,18 @@ export default function UtilityCycleOverviewCard({
         </div>
       ) : (
         <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-          <AlertCircle size={24} className="text-amber-500 dark:text-amber-400" />
-          <p className="mt-2 font-semibold text-card-foreground">No Active Billing Period</p>
+          {Number(selectedRoom?.activeTenantCount || 0) === 0
+            ? <CheckCircle2 size={24} className="text-emerald-600 dark:text-emerald-400" />
+            : <AlertCircle size={24} className="text-amber-500 dark:text-amber-400" />}
+          <p className="mt-2 font-semibold text-card-foreground">
+            {Number(selectedRoom?.activeTenantCount || 0) === 0
+              ? "No Active Period — Room Currently Vacant"
+              : "No Active Billing Period"}
+          </p>
           <p className="mt-0.5 text-[11px]">
-            Open the current period to begin tracking meter readings.
+            {Number(selectedRoom?.activeTenantCount || 0) === 0
+              ? "The next move-in or transfer will initialize the period from the actual meter reading."
+              : "Billing continuity needs review. Use manual initialization only for an approved recovery."}
           </p>
           {latestHistoricalPeriod ? <p className="mt-1 text-[11px]">Latest historical cycle: {getCycleLabel(latestHistoricalPeriod)} · {latestHistoricalPeriod.billingLabel || latestHistoricalPeriod.status}</p> : null}
         </div>

@@ -73,6 +73,7 @@ const { serializeScheduledRoomTransfer, getOpenScheduledRoomTransferForReservati
   await import("./scheduledRoomTransferView.js");
 const { toMobileBill } = await import("./mobileBillingBridge.js");
 const { generateContractNumber } = await import("./contractService.js");
+const { seedCanonicalElectricityRoom } = await import("../tests/canonicalUtilityLifecycleFixture.js");
 const { getManilaToday } = await import("../utils/dateUtils.js");
 const {
   Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings,
@@ -143,6 +144,15 @@ async function seed({ sourceType = "quadruple-sharing", roomNumber = "301" } = {
     statusHistory: [{ status: "active", changedBy: actorId, reason: "seed notarized lease" }],
     createdBy: actorId, updatedBy: actorId,
   });
+  await seedCanonicalElectricityRoom({
+    room: roomA,
+    actorId,
+    eventAt: new Date(),
+    tenantId: tenant._id,
+    reservationId: reservation._id,
+    moveInAt: moveIn,
+    maximumOpeningReading: 0,
+  });
   return { tenant, roomA, reservation, stay, original, actorId };
 }
 const emptyRoom = (type, roomNumber) =>
@@ -174,21 +184,31 @@ async function makeDueWithSettlementBill(scheduledTransferId, { daysAgo = 3 } = 
   const rec = await ScheduledRoomTransfer.findById(scheduledTransferId).lean();
   const reservation = await Reservation.findById(rec.reservationId).lean();
   const periodStart = new Date(reservation.moveInDate);
-  await UtilityPeriod.create([
-    {
-      utilityType: "electricity", roomId: rec.sourceRoomId, branch: "gil-puyat",
-      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
-    },
-    {
-      utilityType: "electricity", roomId: rec.destinationRoomId, branch: "gil-puyat",
-      startDate: periodStart, startReading: 0, ratePerUnit: 1, status: "open",
-    },
+  const fixtureActorId = rec.scheduledBy || new mongoose.Types.ObjectId();
+  const [sourceRoom, destinationRoom] = await Promise.all([
+    Room.findById(rec.sourceRoomId),
+    Room.findById(rec.destinationRoomId),
   ]);
+  await seedCanonicalElectricityRoom({
+    room: sourceRoom,
+    actorId: fixtureActorId,
+    eventAt: back,
+    tenantId: reservation.userId,
+    reservationId: reservation._id,
+    moveInAt: periodStart,
+    maximumOpeningReading: 0,
+  });
+  await seedCanonicalElectricityRoom({
+    room: destinationRoom,
+    actorId: fixtureActorId,
+    eventAt: back,
+    maximumOpeningReading: 0,
+  });
   const r = await completeRoomTransfer({
     reservationId: String(rec.reservationId),
     // Sub-metered branch (gil-puyat) needs meter readings even to SIZE the Bill.
     payload: { sourceRoomMeterReading: 0, targetRoomMeterReading: 0 },
-    actorId: rec.scheduledBy || new mongoose.Types.ObjectId(),
+    actorId: fixtureActorId,
   });
   const linked = (await ScheduledRoomTransfer.findById(scheduledTransferId).lean())?.settlementBillId || null;
   return { outcome: r.outcome, billId: r.bill?._id || linked };
@@ -211,6 +231,7 @@ beforeAll(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongo.getUri(), { dbName: "sched_transfer_2h" });
   await ScheduledRoomTransfer.syncIndexes();
+  await UtilityPeriod.syncIndexes();
 }, 120_000);
 afterAll(async () => {
   await mongoose.disconnect();
@@ -293,7 +314,10 @@ describe("safe unpaid cancellation", () => {
     expect(String(st.roomId)).toBe(String(roomA._id));
     expect(st.status).toBe("active");
     expect(await TenantCredit.countDocuments({})).toBe(0);
-    expect(await UtilityReading.countDocuments({})).toBe(0);
+    const sourceReadings = await UtilityReading.find({ roomId: roomA._id }).sort({ date: 1, createdAt: 1 });
+    expect(sourceReadings.map((reading) => reading.eventType)).toEqual(["periodStart", "moveIn"]);
+    expect(sourceReadings.every((reading) => reading.utilityPeriodId != null)).toBe(true);
+    expect(await UtilityReading.countDocuments({ roomId: dest._id })).toBe(0);
   });
 
   test("shared reserved bed hold released exactly once", async () => {

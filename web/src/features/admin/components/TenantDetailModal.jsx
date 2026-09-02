@@ -742,6 +742,7 @@ export default function TenantDetailModal({
       queryClient.invalidateQueries({ queryKey: ["rooms"] }),
       queryClient.invalidateQueries({ queryKey: ["contracts"] }),
       queryClient.invalidateQueries({ queryKey: ["billing"] }),
+      queryClient.invalidateQueries({ queryKey: ["utilities"] }),
     ]);
 
   const isGuadalupe = useMemo(() => {

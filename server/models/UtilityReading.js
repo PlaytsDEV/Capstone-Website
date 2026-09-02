@@ -76,6 +76,21 @@ const utilityReadingSchema = new mongoose.Schema(
       default: null,
     },
 
+    // For an explicit reset event, `reading` is the new meter opening and this
+    // object records the old meter's final physical value plus its evidence.
+    meterReset: {
+      oldMeterFinalReading: {
+        type: Number,
+        default: null,
+        validate: {
+          validator: (value) =>
+            value == null || isValidPhysicalMeterReading(value),
+          message: "Old meter final reading must be finite and non-negative.",
+        },
+      },
+      evidenceReferences: [{ type: String, trim: true }],
+    },
+
     isArchived: {
       type: Boolean,
       default: false,
@@ -96,6 +111,29 @@ utilityReadingSchema.index({ roomId: 1, utilityType: 1, isArchived: 1, date: -1 
 utilityReadingSchema.pre("validate", function (next) {
   if (this.eventType) {
     this.eventType = normalizeUtilityEventType(this.eventType);
+  }
+
+  if (
+    ["meterReplacement", "meterRollover"].includes(this.eventType) &&
+    !isValidPhysicalMeterReading(this.meterReset?.oldMeterFinalReading)
+  ) {
+    return next(
+      new Error(
+        "Meter replacement/rollover requires the old meter final reading and the new meter opening reading.",
+      ),
+    );
+  }
+  if (
+    ["meterReplacement", "meterRollover"].includes(this.eventType) &&
+    !(this.meterReset?.evidenceReferences || []).some((reference) =>
+      String(reference || "").trim(),
+    )
+  ) {
+    return next(
+      new Error(
+        "Meter replacement/rollover requires at least one evidence reference.",
+      ),
+    );
   }
 
   next();

@@ -139,20 +139,21 @@ export const createDraftContract = async ({
   stayId = null,
   actorId,
   allowedBranch = null,
+  session = null,
 }) => {
   if (!mongoose.isValidObjectId(reservationId)) {
     throw serviceError("A valid reservationId is required.", "INVALID_RESERVATION_ID");
   }
 
-  const reservation = await Reservation.findById(reservationId).lean();
+  const reservation = await Reservation.findById(reservationId).session(session).lean();
   if (!reservation) throw serviceError("Reservation not found.", "RESERVATION_NOT_FOUND", 404);
 
   const [tenant, room, stay] = await Promise.all([
-    User.findById(reservation.userId).lean(),
-    Room.findById(reservation.roomId).lean(),
-    stayId ? Stay.findById(stayId).lean() : reservation.currentStayId
-      ? Stay.findById(reservation.currentStayId).lean()
-      : resolveCurrentStayForReservation(reservation._id).lean(),
+    User.findById(reservation.userId).session(session).lean(),
+    Room.findById(reservation.roomId).session(session).lean(),
+    stayId ? Stay.findById(stayId).session(session).lean() : reservation.currentStayId
+      ? Stay.findById(reservation.currentStayId).session(session).lean()
+      : resolveCurrentStayForReservation(reservation._id).session(session).lean(),
   ]);
   if (!tenant) throw serviceError("Reservation tenant not found.", "TENANT_NOT_FOUND", 404);
   if (!room) throw serviceError("Reservation room not found.", "ROOM_NOT_FOUND", 404);
@@ -195,7 +196,7 @@ export const createDraftContract = async ({
     $or: duplicateConditions,
   }).select(
     "_id contractNumber status tenantLegalName branch roomNumber bedLabel bedId updatedAt",
-  ).lean();
+  ).session(session).lean();
   if (existingContract) {
     throw duplicateContractError(existingContract);
   }
@@ -208,7 +209,7 @@ export const createDraftContract = async ({
     contractPurpose: { $in: ["initial", null] },
     isCurrent: false,
     $or: duplicateConditions,
-  }).sort({ version: -1, createdAt: -1 }).select("_id version").lean();
+  }).sort({ version: -1, createdAt: -1 }).select("_id version").session(session).lean();
 
   const leaseStartDate = stay?.leaseStartDate || readMoveInDate(reservation) || null;
   const leaseDurationMonths = Number(reservation.leaseDuration) || null;
@@ -264,10 +265,10 @@ export const createDraftContract = async ({
   }
   const selectedBed = reservation.selectedBed || {};
   const person = resolveApplicantIdentity({ reservation });
-  const number = await generateContractNumber(branch);
+  const number = await generateContractNumber(branch, new Date(), session);
 
   try {
-    const created = await Contract.create({
+    const [created] = await Contract.create([{
       ...number,
       contractPurpose: "initial",
       initialContractKey: `reservation:${reservation._id}`,
@@ -327,12 +328,13 @@ export const createDraftContract = async ({
       statusHistory: [{ status: "draft", changedBy: actorId, reason: "Contract draft created" }],
       createdBy: actorId,
       updatedBy: actorId,
-    });
+    }], session ? { session } : {});
 
     if (previousContract) {
       await Contract.updateOne(
         { _id: previousContract._id },
         { $set: { supersededByContractId: created._id, supersededBy: created._id } },
+        session ? { session } : {},
       );
     }
 
@@ -350,7 +352,7 @@ export const createDraftContract = async ({
         ],
       }).select(
         "_id contractNumber status tenantLegalName branch roomNumber bedLabel bedId updatedAt",
-      ).lean();
+      ).session(session).lean();
       if (winner) throw duplicateContractError(winner);
       throw serviceError(
         "A contract already exists for this approved reservation or stay.",

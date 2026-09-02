@@ -69,7 +69,12 @@ await jest.unstable_mockModule("../services/contractService.js", () => ({
   validateContractForGeneration: mockValidate,
 }));
 
-const { transferStayWorkflow } = await import("./tenantActionService.js");
+const { transferStayWorkflow: rawTransferStayWorkflow } = await import("./tenantActionService.js");
+const {
+  prepareCanonicalTransferUtilityFixture,
+  transferWithCanonicalUtilityFixture,
+} = await import("../tests/canonicalUtilityLifecycleFixture.js");
+const transferStayWorkflow = (input) => transferWithCanonicalUtilityFixture(rawTransferStayWorkflow, input);
 const { generateContractNumber } = await import("../services/contractService.js");
 const { sumBillCharges } = await import("../services/billing/billingPolicy.js");
 const { resolveReservationRentAmount } = await import("../services/billing/rentGenerator.js");
@@ -394,9 +399,14 @@ describe("Phase 7 — atomic cutover cross-domain consistency", () => {
     const tB = await seedTenant({ sourceType: "double-sharing", roomNumber: "305" });
     const dest = await emptyRoom("private", "900"); // capacity 1
 
+    const inputA = { reservationId: tA.reservation._id, payload: transferPayload({ targetRoom: dest }), actorId: tA.actorId };
+    const inputB = { reservationId: tB.reservation._id, payload: transferPayload({ targetRoom: dest }), actorId: tB.actorId };
+    inputA.payload = (await prepareCanonicalTransferUtilityFixture(inputA)).payload;
+    inputB.payload = (await prepareCanonicalTransferUtilityFixture(inputB)).payload;
+
     const results = await Promise.allSettled([
-      transferStayWorkflow({ reservationId: tA.reservation._id, payload: transferPayload({ targetRoom: dest }), actorId: tA.actorId }),
-      transferStayWorkflow({ reservationId: tB.reservation._id, payload: transferPayload({ targetRoom: dest }), actorId: tB.actorId }),
+      rawTransferStayWorkflow(inputA),
+      rawTransferStayWorkflow(inputB),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");

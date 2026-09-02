@@ -39,7 +39,9 @@ import {
   Stay,
   User,
   UtilityReading,
+  UtilityPeriod,
 } from "../models/index.js";
+import { createOpenUtilityPeriodWithBoundary } from "../services/billing/utilityPeriodLifecycleService.js";
 
 jest.setTimeout(60_000);
 
@@ -49,6 +51,7 @@ describe("moveOutStayWorkflow closes the tenant's current Contract", () => {
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "moveout_contract_sync" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
 
   afterAll(async () => {
@@ -66,6 +69,7 @@ describe("moveOutStayWorkflow closes the tenant's current Contract", () => {
       Stay.deleteMany({}),
       User.deleteMany({}),
       UtilityReading.deleteMany({}),
+      UtilityPeriod.deleteMany({}),
     ]);
   });
 
@@ -99,6 +103,14 @@ describe("moveOutStayWorkflow closes the tenant's current Contract", () => {
       agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
       monthlyRent: 6300, moveInDate: leaseStart,
       selectedBed: { id: "bed-1" },
+    });
+    await createOpenUtilityPeriodWithBoundary({
+      utilityType: "electricity",
+      room,
+      startDate: leaseStart,
+      startReading: 1000,
+      ratePerUnit: 16,
+      actorId: admin._id,
     });
     const stay = await Stay.create({
       tenantId: tenant._id, reservationId: reservation._id, branch: "gil-puyat",
@@ -162,6 +174,14 @@ describe("moveOutStayWorkflow closes the tenant's current Contract", () => {
       status: "expired",
       reason: "normal_completion_move_out",
     });
+    const period = await UtilityPeriod.findOne({ roomId: reservation.roomId }).lean();
+    expect(period.status).toBe("open");
+    const moveOutReading = await UtilityReading.findOne({
+      roomId: reservation.roomId,
+      tenantId: tenant._id,
+      eventType: "moveOut",
+    }).lean();
+    expect(String(moveOutReading.utilityPeriodId)).toBe(String(period._id));
 
     const stillCurrent = await resolveAuthoritativeCurrentContract({
       tenantId: tenant._id,

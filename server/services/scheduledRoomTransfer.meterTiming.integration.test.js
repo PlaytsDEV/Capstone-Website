@@ -121,6 +121,15 @@ async function seed({ sourceType = "quadruple-sharing", roomNumber = "301", move
     });
   }
   const actorId = new mongoose.Types.ObjectId();
+  await UtilityPeriod.create({
+    utilityType: "electricity",
+    roomId: roomA._id,
+    branch: roomA.branch,
+    startDate: moveIn,
+    startReading: 0,
+    ratePerUnit: 16,
+    status: "open",
+  });
   const num = await generateContractNumber("gil-puyat", new Date());
   const original = await Contract.create({
     ...num, contractPurpose: "initial", tenantId: tenant._id, applicationId: reservation._id,
@@ -141,11 +150,22 @@ async function seed({ sourceType = "quadruple-sharing", roomNumber = "301", move
   });
   return { tenant, roomA, reservation, stay, original, actorId };
 }
-const emptyRoom = (type, roomNumber) =>
-  Room.create({
+const emptyRoom = async (type, roomNumber) => {
+  const room = await Room.create({
     name: `Room ${roomNumber}`, roomNumber, branch: "gil-puyat",
     type, capacity: CAP[type], currentOccupancy: 0, price: RATE[type], beds: bedsFor(type, `r${roomNumber}`),
   });
+  await UtilityPeriod.create({
+    utilityType: "electricity",
+    roomId: room._id,
+    branch: room.branch,
+    startDate: getManilaToday().subtract(100, "day").toDate(),
+    startReading: 0,
+    ratePerUnit: 16,
+    status: "open",
+  });
+  return room;
+};
 function payloadFor({ targetRoom, transferDate, extra = {} }) {
   const destBedId = NEEDS_BED.has(targetRoom.type) ? `r${targetRoom.roomNumber}-b1` : undefined;
   return {
@@ -172,6 +192,7 @@ beforeAll(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongo.getUri(), { dbName: "sched_transfer_meter_timing" });
   await ScheduledRoomTransfer.syncIndexes();
+  await UtilityPeriod.syncIndexes();
 }, 120_000);
 afterAll(async () => {
   await mongoose.disconnect();
@@ -246,48 +267,28 @@ describe("admin-supplied readings are used verbatim, dated at the actual cutover
   });
 });
 
-describe("date-bound fallback when the admin leaves a reading blank", () => {
-  test("no reading supplied: the latest reading ON OR BEFORE the cutover is carried forward; a LATER reading is NEVER selected", async () => {
+describe("transfer completion requires fresh physical readings", () => {
+  test("stored readings never substitute for a missing fresh source reading", async () => {
     const { roomA, reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
-    await seedReading(roomA._id, 90, relNow(-6));   // before cutover — eligible
-    await seedReading(roomA._id, 100, relNow(20));  // after cutover — must be ignored
+    await seedReading(roomA._id, 90, relNow(-6));
+    await seedReading(roomA._id, 100, relNow(20));
 
-    const result = await runCutover({ reservation, dest, actorId }); // no readings
-
-    const mo = await sourceMoveOut(roomA._id);
-    expect(mo).toBeTruthy();
-    expect(mo.reading).toBe(90);
-    expect(mo.reading).not.toBe(100);
-    expect(new Date(mo.date).getTime()).toBe(result.cutoverAt.getTime());
+    await expect(runCutover({ reservation, dest, actorId })).rejects.toMatchObject({
+      code: "ROOM_TRANSFER_SOURCE_READING_REQUIRED",
+    });
+    expect(await sourceMoveOut(roomA._id)).toBeNull();
   });
 
-  test("only a post-cutover reading exists: no fallback snapshot is fabricated", async () => {
+  test("a fresh source reading does not substitute for a missing destination reading", async () => {
     const { roomA, reservation, actorId } = await seed();
     const dest = await emptyRoom("private", "205");
-    await seedReading(roomA._id, 100, relNow(20)); // the ONLY reading, after cutover
 
-    await runCutover({ reservation, dest, actorId });
-
-    const mo = await sourceMoveOut(roomA._id);
-    expect(mo).toBeNull();
-    // The post-cutover reading is untouched.
-    expect(await UtilityReading.countDocuments({ roomId: roomA._id, reading: 100 })).toBe(1);
-  });
-
-  test("destination fallback: a destination reading dated after the cutover is NEVER used as the moveIn baseline", async () => {
-    const { reservation, actorId } = await seed();
-    const dest = await emptyRoom("private", "205");
-    await seedReading(dest._id, 40, relNow(-6));   // valid pre-cutover opening
-    await seedReading(dest._id, 55, relNow(20));   // post-cutover — must be ignored
-
-    const result = await runCutover({ reservation, dest, actorId });
-
-    const mi = await destMoveIn(dest._id);
-    expect(mi).toBeTruthy();
-    expect(mi.reading).toBe(40);
-    expect(mi.reading).not.toBe(55);
-    expect(new Date(mi.date).getTime()).toBe(result.cutoverAt.getTime());
+    await expect(runCutover({ reservation, dest, actorId, source: 130 })).rejects.toMatchObject({
+      code: "INVALID_PHYSICAL_METER_READING",
+    });
+    expect(await sourceMoveOut(roomA._id)).toBeNull();
+    expect(await destMoveIn(dest._id)).toBeNull();
   });
 });
 
