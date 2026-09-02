@@ -107,6 +107,7 @@ export default function ScheduledRoomTransferCard({ transfer, onOpenDigitalContr
     queryClient.invalidateQueries({ queryKey: ["tenant-workspace-detail"] });
     queryClient.invalidateQueries({ queryKey: ["billing"] });
     queryClient.invalidateQueries({ queryKey: ["rooms"] });
+    queryClient.invalidateQueries({ queryKey: ["utilities"] });
   };
 
   const runCancel = async () => {

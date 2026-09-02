@@ -190,6 +190,7 @@ export default function useSocketClient() {
           qc.refetchQueries({ queryKey: ["contracts", "myCurrentContract"], type: "active" });
           qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
           qc.invalidateQueries({ queryKey: ["rooms"] });
+          qc.invalidateQueries({ queryKey: ["utilities"] });
           qc.invalidateQueries({ queryKey: ["users"] });
           qc.invalidateQueries({ queryKey: ["auth"] });
         }
@@ -202,6 +203,7 @@ export default function useSocketClient() {
           qc.invalidateQueries({ queryKey: ["financial"] });
           qc.invalidateQueries({ queryKey: ["electricity"] });
           qc.invalidateQueries({ queryKey: ["water"] });
+          qc.invalidateQueries({ queryKey: ["utilities"] });
           qc.invalidateQueries({ queryKey: ["reservations"] });
           qc.invalidateQueries({ queryKey: ["contracts"] });
           qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });

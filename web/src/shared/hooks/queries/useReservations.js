@@ -21,6 +21,8 @@ const invalidateReservationSideEffects = (qc, reservationId = null) =>
     // Room occupancy changes on bed assignment/release
     qc.invalidateQueries({ queryKey: ["rooms", "branchOccupancy"] }),
     qc.invalidateQueries({ queryKey: ["rooms", "occupancy"] }),
+    // A real move-in can create a room-owned utility period atomically.
+    qc.invalidateQueries({ queryKey: ["utilities"] }),
     // Current user's own reservation/profile state
     qc.invalidateQueries({ queryKey: ["users", "currentUser"] }),
     // Visit scheduling capacity changes whenever active visit reservations move.

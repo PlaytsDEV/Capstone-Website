@@ -69,8 +69,8 @@ export default function OpenCurrentPeriodModal({
       <form className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground"><Zap size={17} /> Open Current Period</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{roomName || "Selected room"} · creates an active cycle without a closing reading.</p>
+            <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground"><Zap size={17} /> Recovery / Manual Initialization</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{roomName || "Selected room"} · use only after reviewing this room&apos;s meter continuity.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
@@ -88,7 +88,7 @@ export default function OpenCurrentPeriodModal({
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={onClose}>Cancel</button>
           <button type="submit" disabled={openPeriod.isPending} className="inline-flex items-center gap-2 rounded-lg bg-[#0A1628] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {openPeriod.isPending ? <LoaderCircle size={15} className="animate-spin" /> : null} Open Current Period
+            {openPeriod.isPending ? <LoaderCircle size={15} className="animate-spin" /> : null} Initialize Manually
           </button>
         </div>
       </form>

@@ -13,6 +13,7 @@ import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import NewBillingPeriodModal from "./NewBillingPeriodModal";
 import OpenCurrentPeriodModal from "./OpenCurrentPeriodModal";
+import CloseCurrentPeriodModal from "./CloseCurrentPeriodModal";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
 import {
   useUtilityRooms,
@@ -147,6 +148,7 @@ const UtilityBillingTab = ({
   });
   const [isNewPeriodModalOpen, setIsNewPeriodModalOpen] = useState(false);
   const [isOpenCurrentPeriodModalOpen, setIsOpenCurrentPeriodModalOpen] = useState(false);
+  const [isCloseCurrentPeriodModalOpen, setIsCloseCurrentPeriodModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isBatchSendModalOpen, setIsBatchSendModalOpen] = useState(false);
   const [historyModalPeriod, setHistoryModalPeriod] = useState(null);
@@ -1061,6 +1063,7 @@ const UtilityBillingTab = ({
             manualReviewPeriod={manualReviewPeriod}
             latestHistoricalPeriod={lastClosedPeriod}
             onOpenCurrentPeriod={() => setIsOpenCurrentPeriodModalOpen(true)}
+            onCloseCurrentPeriod={() => setIsCloseCurrentPeriodModalOpen(true)}
             isSendingBatch={isSendingBatch}
           />
 
@@ -1292,6 +1295,18 @@ const UtilityBillingTab = ({
         defaultRatePerUnit={defaultRatePerUnit}
         onSuccess={(newPeriodId) => {
           if (newPeriodId) setSelectedPeriodId(newPeriodId);
+        }}
+      />
+
+      <CloseCurrentPeriodModal
+        isOpen={isCloseCurrentPeriodModalOpen}
+        onClose={() => setIsCloseCurrentPeriodModalOpen(false)}
+        utilityType={utilityType}
+        period={currentPeriod}
+        roomName={getRoomLabel(selectedRoom) || selectedRoom?.name || selectedRoom?.roomNumber || ""}
+        latestReading={latestData?.reading}
+        onSuccess={(nextPeriodId) => {
+          if (nextPeriodId) setSelectedPeriodId(nextPeriodId);
         }}
       />
 
