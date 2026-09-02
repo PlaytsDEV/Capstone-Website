@@ -78,6 +78,7 @@ import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
 import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
 import mobileChatRoutes from "./routes/mobileChatRoutes.js";
 import mobileTenantTransferRequestRoutes from "./routes/mobileTenantTransferRequestRoutes.js";
+import mobileMaintenanceRoutes from "./routes/mobileMaintenanceRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
 import searchRoutes from "./routes/adminSearchRoutes.js";
 import { initSocket } from "./utils/socket.js";
@@ -355,6 +356,7 @@ app.use("/api/m", mobileUploadRoutes);
 // become a second lifecycle/authorization/notification authority.
 app.use("/api/m", mobileChatRoutes);
 app.use("/api/m", mobileTenantTransferRequestRoutes);
+app.use("/api/m", mobileMaintenanceRoutes);
 app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);

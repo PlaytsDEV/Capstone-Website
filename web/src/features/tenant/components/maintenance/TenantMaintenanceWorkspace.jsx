@@ -87,6 +87,11 @@ const EMPTY_FORM_DATA = Object.freeze({
 const RESOLVED_STATUS_SET = new Set(["resolved", "completed", "closed"]);
 const REJECTED_STATUS_SET = new Set(["rejected", "cancelled", "canceled"]);
 
+const getTenantMaintenanceCapability = (request, capability, fallback = false) => {
+  const actions = request?.tenantActions || request?.tenant_actions;
+  return typeof actions?.[capability] === "boolean" ? actions[capability] : fallback;
+};
+
 const STATUS_FILTERS = [
   { key: "active", label: "Active Requests" },
   { key: "resolved", label: "Completed / History" },
@@ -109,10 +114,22 @@ const CANONICAL_STEPS = [
 
 const URGENCY_OPTIONS = [
   {
+    key: "low",
+    label: "Low Priority",
+    eta: "3–5 business days",
+    description: "Non-disruptive concern that can wait a few days.",
+  },
+  {
     key: "normal",
     label: "Normal Priority",
     eta: "24–48 hrs",
     description: "Standard repair timeline for non-disruptive facility items.",
+  },
+  {
+    key: "high",
+    label: "High Priority",
+    eta: "Within 24 hrs",
+    description: "Important repair that should be addressed within a day.",
   },
   {
     key: "urgent",
@@ -441,8 +458,11 @@ function MaintenanceStageCardWindow({
       {/* Stage Actions - Rendered when no active reschedule status banner is shown */}
       {inspectedKey === "in_progress" &&
       isInspectingCurrent &&
-      !request.rescheduleRequest?.status &&
-      !["resolved", "completed", "closed", "cancelled"].includes(request.status) &&
+      getTenantMaintenanceCapability(
+        request,
+        "canRequestReschedule",
+        !["resolved", "completed", "closed", "cancelled"].includes(request.status),
+      ) &&
       !hideActions ? (
         <div className="stage-actions-bar">
           <button
@@ -2119,8 +2139,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 const statusMeta = getMaintenanceStatusMeta(request.status);
                 const TypeIcon = typeMeta.icon;
                 const StatusIcon = getStatusIcon(request.status);
-                const isPending = ["pending", "pending_review", "reviewed"].includes(request.status);
-                const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
+                const isReopenable = getTenantMaintenanceCapability(
+                  request,
+                  "canReopen",
+                  REOPENABLE_MAINTENANCE_STATUSES.includes(request.status),
+                );
                 const isConfirmed = Boolean(
                   request.resolutionConfirmation?.confirmedAt &&
                     request.resolutionConfirmation?.action !== "rejected_back_to_in_progress" &&
@@ -2820,6 +2843,21 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               const urgencyMeta = getMaintenanceUrgencyMeta(selectedRequest.urgency);
               const statusMeta = getMaintenanceStatusMeta(selectedRequest.status);
               const StatusIcon = getStatusIcon(selectedRequest.status);
+              const canEditRequest = getTenantMaintenanceCapability(
+                selectedRequest,
+                "canEdit",
+                ["pending", "pending_review", "viewed", "reviewed"].includes(selectedRequest.status),
+              );
+              const canCancelRequest = getTenantMaintenanceCapability(
+                selectedRequest,
+                "canCancel",
+                ["pending", "pending_review", "viewed", "reviewed"].includes(selectedRequest.status),
+              );
+              const canReopenRequest = getTenantMaintenanceCapability(
+                selectedRequest,
+                "canReopen",
+                REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status),
+              );
 
               return (
                 <>
@@ -2878,7 +2916,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     {DETAIL_TABS.filter(
                       (tab) =>
                         tab.key !== "reopen" ||
-                        REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status),
+                        canReopenRequest,
                     ).map((tab) => {
                       const isConversation = tab.key === "conversation";
                       const unreadCount = isConversation
@@ -3145,7 +3183,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
                       {/* 4. Action Buttons Footer */}
                       <div className="form-actions maintenance-detail-actions" style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                        {["pending", "pending_review", "reviewed"].includes(selectedRequest.status) ? (
+                        {canEditRequest ? (
                           <button
                             type="button"
                             className="btn btn-secondary maintenance-action-btn"
@@ -3157,7 +3195,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           </button>
                         ) : null}
 
-                        {["pending", "pending_review", "reviewed"].includes(selectedRequest.status) ? (
+                        {canCancelRequest ? (
                           <button
                             type="button"
                             className="btn btn-secondary maintenance-danger-button maintenance-action-btn"

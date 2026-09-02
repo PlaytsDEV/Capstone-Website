@@ -1013,6 +1013,7 @@ const maintenanceRequestSchema = new mongoose.Schema(
   },
   {
     collection: "maintenance_requests",
+    optimisticConcurrency: true,
     timestamps: {
       createdAt: "created_at",
       updatedAt: "updated_at",
