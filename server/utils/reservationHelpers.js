@@ -54,6 +54,24 @@ export const handleReservationError = (res, error, action = "process") => {
         code: "INVALID_ID_FORMAT",
       });
   }
+  const httpStatus =
+    Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode < 600
+      ? error.statusCode
+      : Number.isInteger(error.status) && error.status >= 400 && error.status < 600
+        ? error.status
+        : 500;
+
+  if (httpStatus < 500) {
+    return res.status(httpStatus).json({
+      error: error.message || `Failed to ${action} reservation`,
+      code: error.code || `${action.toUpperCase().replace(/ /g, "_")}_ERROR`,
+      details: error.details ?? error.message ?? null,
+      ...(error.missing || error.details?.missing
+        ? { missing: error.missing || error.details?.missing }
+        : {}),
+    });
+  }
+
   return res
     .status(500)
     .json({

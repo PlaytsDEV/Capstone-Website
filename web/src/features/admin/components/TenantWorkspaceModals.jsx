@@ -15,7 +15,8 @@ import {
   minScheduleDateStr,
 } from "../utils/transferScheduleDate";
 import { destinationRoomNeedsBed } from "../utils/transferDestinationBed";
-import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
+import { resolveTenantCurrentRent } from "../../tenant/utils/pricingDisplayHelpers";
+import { Clock, History, ChevronLeft, ChevronRight, ChevronDown, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight, Calculator } from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -43,7 +44,7 @@ const triggerPicker = (event) => {
   }
 };
 
-function TenantModalShell({ open, title, children, footer, onClose }) {
+function TenantModalShell({ open, title, children, footer, onClose, className = "" }) {
   useBodyScrollLock(open);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ function TenantModalShell({ open, title, children, footer, onClose }) {
   return createPortal(
     <div className="tenant-workspace-modal__overlay" onClick={onClose}>
       <div
-        className="tenant-workspace-modal"
+        className={`tenant-workspace-modal ${className}`.trim()}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="tenant-workspace-modal__header">
@@ -537,11 +538,12 @@ function WizardStepper({ steps, currentStep }) {
       {steps.map((label, i) => {
         const num = i + 1;
         const state = num < currentStep ? "done" : num === currentStep ? "active" : "idle";
+        const isLast = i === steps.length - 1;
         return (
-          <div key={num} className={`twm-step twm-step--${state}`}>
+          <div key={num} className={`twm-step twm-step--${state} ${isLast ? "twm-step--last" : ""}`.trim()}>
             <div className="twm-step__num">{state === "done" ? "✓" : num}</div>
             <span className="twm-step__label">{label}</span>
-            {i < steps.length - 1 && <div className="twm-step__line" />}
+            {!isLast && <div className="twm-step__line" />}
           </div>
         );
       })}
@@ -579,6 +581,7 @@ export function TransferTenantModal({
   // ── Wizard step state ─────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [attemptedStep1, setAttemptedStep1] = useState(false);
+  const [showCalculationDetails, setShowCalculationDetails] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [roomId, setRoomId] = useState("");
@@ -598,6 +601,7 @@ export function TransferTenantModal({
     if (!open) return;
     setStep(1);
     setAttemptedStep1(false);
+    setShowCalculationDetails(false);
     setRoomId("");
     setBedId("");
     setReason(transferRequest?.reason || "Room transfer");
@@ -648,7 +652,7 @@ export function TransferTenantModal({
   const isCrossTypeTransfer =
     !!selectedRoomType && !!currentRoomType && selectedRoomType !== currentRoomType;
   const prettyRoomType = (t) => String(t || "").replace(/-/g, " ") || "—";
-  const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
+  const currentPrice = resolveTenantCurrentRent(tenant, detail, preview);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
@@ -719,7 +723,7 @@ export function TransferTenantModal({
     }
     if (selectedCandidate && !selectedCandidate.selectable) {
       showNotification(
-        selectedCandidate.unavailableReason || "That room is not available for this date.",
+        selectedCandidate.unavailableReason || "This room is not available for the selected transfer date. Please choose another room or adjust the transfer date.",
         "warning",
       );
       return;
@@ -901,11 +905,12 @@ export function TransferTenantModal({
       title={`Transfer Tenant${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
       onClose={onClose}
       footer={renderFooter()}
+      className="tenant-workspace-modal--transfer"
     >
       <WizardStepper steps={wizardSteps} currentStep={step} />
 
       {transferRequest ? (
-        <div className="twm-callout twm-callout--info">
+        <div className="twm-callout twm-callout--info" style={{ margin: "0 0 10px 0" }}>
           Tenant preference: {prettyRoomType(transferRequest.preferredRoomType)}
           {transferRequest.preferredRoom?.name ? ` · ${transferRequest.preferredRoom.name}` : ""}
           {transferRequest.preferredTransferDate
@@ -917,16 +922,16 @@ export function TransferTenantModal({
       {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
       {step === 1 && (
         <>
-          <div className="twm-callout twm-callout--info">
+          <div className="twm-callout twm-callout--info" style={{ margin: 0 }}>
             Transfer to any available room in the same branch{currentRoomType ? ` (currently ${prettyRoomType(currentRoomType)})` : ""}. The
             room type may change &mdash; a shared destination requires a bed, a private one does not, and the monthly rate follows the
             destination room type.
           </div>
 
           {hasOutstanding && (
-            <div className="twm-callout twm-callout--info">
+            <div className="twm-callout twm-callout--info" style={{ margin: 0 }}>
               <strong>Note: Outstanding balance {fmtMoney(outstandingBalance)}</strong>
-              <p style={{ margin: "4px 0 0", fontSize: 13 }}>
+              <p style={{ margin: "3px 0 0", fontSize: 12.5 }}>
                 Scheduling a transfer does not require the current balance to be
                 cleared. The transfer&apos;s own settlement (rent, deposit, and
                 finalized electricity) is calculated and must be paid at the
@@ -969,22 +974,46 @@ export function TransferTenantModal({
                 isInvalid={attemptedStep1 && !roomId}
               />
               {selectedCandidate && (
-                <span
-                  className="twm-meter-hint"
+                <div
+                  className="twm-candidate-availability"
                   style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    marginTop: "5px",
+                    fontSize: "12px",
+                    lineHeight: "1.35",
+                    textTransform: "none",
+                    letterSpacing: "normal",
+                    fontWeight: 500,
                     color: selectedCandidate.selectable ? "#15803d" : "#b91c1c",
                   }}
                 >
-                  <span aria-hidden style={{ flexShrink: 0, marginTop: 2 }}>
-                    {selectedCandidate.selectable ? "●" : "▲"}
-                  </span>
-                  <span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: "7px",
+                      height: "7px",
+                      borderRadius: "50%",
+                      backgroundColor: selectedCandidate.selectable ? "#16a34a" : "#dc2626",
+                      display: "inline-block",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      textTransform: "none",
+                      letterSpacing: "normal",
+                      color: "inherit",
+                      fontSize: "12px",
+                    }}
+                  >
                     {selectedCandidate.selectable
-                      ? "Available for this date."
+                      ? "Available for the selected date"
                       : selectedCandidate.unavailableReason ||
-                        "Not available for this date."}
+                        "This room is not available for the selected transfer date. Please choose another room or adjust the transfer date."}
                   </span>
-                </span>
+                </div>
               )}
             </div>
 
@@ -1024,7 +1053,7 @@ export function TransferTenantModal({
           </div>
 
           {roomId && (
-            <div className="twm-callout twm-callout--info">
+            <div className="twm-callout twm-callout--info" style={{ margin: 0, padding: "8px 12px", fontSize: 12.5 }}>
               Destination:{" "}
               <strong>{selectedRoom?.name || selectedRoom?.roomNumber || "—"}</strong>
               {" · "}
@@ -1038,17 +1067,12 @@ export function TransferTenantModal({
           )}
 
           {roomId && priceDiff !== 0 && (
-            <div className="twm-callout twm-callout--price">
+            <div className="twm-callout twm-callout--price" style={{ margin: 0, padding: "8px 12px", fontSize: 12.5 }}>
               Estimated Monthly Rent Change:{" "}
               <strong>
                 {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
               </strong>{" "}
               (Now: {fmtMoney(currentPrice)}/mo → New room: ~{fmtMoney(newPrice)}/mo)
-              <span style={{ display: "block", marginTop: 4, fontSize: 12 }}>
-                Exact new rent is confirmed on the next step from the destination room type &amp; lease term,
-                and then applies to every future bill automatically.
-                {isCrossTypeTransfer ? " This transfer also changes the room type." : ""}
-              </span>
             </div>
           )}
 
@@ -1085,7 +1109,7 @@ export function TransferTenantModal({
           <label className={`tenant-modal-field ${attemptedStep1 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
             <textarea
-              rows={3}
+              rows={2}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Required — describe the reason for this transfer"
@@ -1096,99 +1120,80 @@ export function TransferTenantModal({
 
       {/* ── STEP 2: Review & Scheduled Transfer Balance ─────────────────── */}
       {isReviewStep && (
-        <>
-          {/* ── Transfer Route Journey Card ── */}
-          <div className="twm-transfer-journey">
-            <div className="twm-transfer-journey__side">
-              <span className="twm-transfer-journey__tag">Current Assignment</span>
-              <span className="twm-transfer-journey__room">{tenant?.room || "—"}</span>
-              <span className="twm-transfer-journey__bed">{formatBedPosition(tenant?.bed) || "No bed"}</span>
-            </div>
-            <div className="twm-transfer-journey__arrow-wrap">
-              <div className="twm-transfer-journey__arrow-circle">
-                <ArrowRight size={15} />
+        <div className="twm-review-flow">
+          {/* ── 1. Unified Transfer Route & Specification Summary Card ── */}
+          <div className="twm-review-summary-card">
+            {/* Route Journey */}
+            <div className="twm-transfer-journey">
+              <div className="twm-transfer-journey__side">
+                <span className="twm-transfer-journey__tag">Current Assignment</span>
+                <span className="twm-transfer-journey__room">{tenant?.room || "—"}</span>
+                <span className="twm-transfer-journey__bed">{formatBedPosition(tenant?.bed) || "No bed"}</span>
+              </div>
+              <div className="twm-transfer-journey__arrow-wrap">
+                <div className="twm-transfer-journey__arrow-circle">
+                  <ArrowRight size={15} />
+                </div>
+              </div>
+              <div className="twm-transfer-journey__side twm-transfer-journey__side--target">
+                <span className="twm-transfer-journey__tag">New Assignment</span>
+                <span className="twm-transfer-journey__room">{selectedRoom?.name || selectedRoom?.roomNumber || "—"}</span>
+                <span className="twm-transfer-journey__bed">
+                  {destinationNeedsBed ? selectedBedLabel : "Private room (no bed)"}
+                </span>
               </div>
             </div>
-            <div className="twm-transfer-journey__side twm-transfer-journey__side--target">
-              <span className="twm-transfer-journey__tag">New Assignment</span>
-              <span className="twm-transfer-journey__room">{selectedRoom?.name || selectedRoom?.roomNumber || "—"}</span>
-              <span className="twm-transfer-journey__bed">
-                {destinationNeedsBed ? selectedBedLabel : "Private room (no bed)"}
-              </span>
-            </div>
-          </div>
 
-          {/* ── Balanced Details Grid ── */}
-          <div className="twm-review-grid">
-            <div className="twm-review-card">
-              <span className="twm-review-card__label">Room Type</span>
-              <span className="twm-review-card__value">
-                {prettyRoomType(selectedRoomType)}
-                {isCrossTypeTransfer && (
-                  <span className="twm-review-card__subtext">
-                    (Changed from {prettyRoomType(currentRoomType)})
+            {/* Specifications Details Grid */}
+            <div className="twm-review-summary-specs">
+              <div className="twm-review-spec-row">
+                <div className="twm-review-spec-item">
+                  <span className="twm-review-spec-label">Room Type</span>
+                  <span className="twm-review-spec-value">
+                    {prettyRoomType(selectedRoomType)}
+                    {isCrossTypeTransfer && (
+                      <span className="twm-review-card__subtext">
+                        {" "}(Changed from {prettyRoomType(currentRoomType)})
+                      </span>
+                    )}
                   </span>
-                )}
-              </span>
-            </div>
+                </div>
 
-            <div className="twm-review-card">
-              <span className="twm-review-card__label">Effective Date &amp; Time</span>
-              <span className="twm-review-card__value">
-                {fmtDate(effectiveTransferDate)}
-                {effectiveTransferTime ? ` · ${effectiveTransferTime}` : ""}
-              </span>
-            </div>
-            <div className="twm-review-field">
-              <span className="twm-review-field__label">Meter readings</span>
-              <span className="twm-review-field__value">
-                Entered by the admin at the Complete Transfer step, on the
-                real cutover.
-              </span>
-            </div>
-            <div className="twm-review-field">
-              <span className="twm-review-field__label">New Monthly Rent</span>
-              <span className="twm-review-field__value">
-                {/* Authoritative destination rate from the server preview when
-                    available (room-type + lease-term table), else the room
-                    master price as a rough hint. */}
-                {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
-                {(() => {
-                  const shownNew = Number(preview?.rent?.destinationApprovedRate ?? newPrice);
-                  const diff = shownNew - currentPrice;
-                  if (!diff) return null;
-                  return (
-                    <span className="twm-review-card__rent-badge">
-                      {diff > 0 ? `+${fmtMoney(diff)}` : `-${fmtMoney(Math.abs(diff))}`} from {fmtMoney(currentPrice)}/mo
-                    </span>
-                  );
-                })()}
-              </span>
-              <span className="twm-review-card__subtext">
-                Applies to every future rent bill automatically — no manual change needed. The original lease term is unchanged.
-              </span>
+                <div className="twm-review-spec-item" style={{ textAlign: "right" }}>
+                  <span className="twm-review-spec-label">Effective Date &amp; Time</span>
+                  <span className="twm-review-spec-value">
+                    {fmtDate(effectiveTransferDate)}
+                    {effectiveTransferTime ? ` · ${effectiveTransferTime}` : ""}
+                  </span>
+                </div>
+              </div>
+
+              <div className="twm-review-card twm-review-card--wide" style={{ margin: 0 }}>
+                <span className="twm-review-card__label">New Monthly Rent</span>
+                <div className="twm-review-card__rent-row">
+                  <span className="twm-review-card__rent-main">
+                    {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
+                  </span>
+                  {(() => {
+                    const shownSource = Number(preview?.rent?.sourceEffectiveRate || currentPrice);
+                    const shownNew = Number(preview?.rent?.destinationApprovedRate || newPrice);
+                    if (!shownSource || !shownNew || shownSource === shownNew) return null;
+                    const diff = shownNew - shownSource;
+                    return (
+                      <span className="twm-review-card__rent-badge">
+                        {diff > 0 ? `+${fmtMoney(diff)}` : `-${fmtMoney(Math.abs(diff))}`} from {fmtMoney(shownSource)}/mo
+                      </span>
+                    );
+                  })()}
+                </div>
+                <span className="twm-review-card__subtext">
+                  Applies to every future rent bill automatically. Original lease term is unchanged.
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* ── Transfer Reason Card ── */}
-          {reason && (
-            <div className="twm-remarks-card">
-              <span className="twm-remarks-card__label">Reason for Transfer</span>
-              <p className="twm-remarks-card__text">{reason}</p>
-            </div>
-          )}
-
-          <div className="twm-callout twm-callout--info">
-            <strong>Utilities</strong>
-            <p style={{ margin: "4px 0 0", fontSize: 13 }}>
-              Meter readings are entered at the Complete Transfer step, on the
-              real cutover. Electricity is finalized then; water follows the
-              normal end-of-cycle billing process. Neither is part of this
-              scheduled balance.
-            </p>
-          </div>
-
-          {/* ── Transfer Financial Summary Card ── */}
+          {/* ── 2. Scheduled Room Transfer Balance Card ── */}
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
               <p className="twm-settlement-card__title">Scheduled Room Transfer Balance</p>
@@ -1219,129 +1224,17 @@ export function TransferTenantModal({
             ) : preview ? (
               <>
                 <div className="twm-settlement-card__body">
-                  {/* ── RENT ADJUSTMENT GROUP ── */}
-                  <div className="twm-financial-group">
-                    <div className="twm-financial-group__header">
-                      <span>Rent Adjustment</span>
-                    </div>
-                    <div className="twm-settlement-row">
-                      <span className="twm-settlement-row__label">
-                        Prorated Rent Balance
-                        <span className="twm-settlement-row__hint">
-                          {preview.rent.destinationDays}d new-room prorated ({fmtMoney(preview.rent.destinationProratedValue)}) − unused prepaid ({fmtMoney(preview.rent.unusedPrepaidCredit)})
-                        </span>
-                      </span>
-                      <span className="twm-settlement-row__value">{fmtMoney(preview.rent.adjustmentDue)}</span>
-                    </div>
-                    {preview.rent.excessCredit > 0 && (
-                      <div className="twm-settlement-row twm-settlement-row--success">
-                        <span className="twm-settlement-row__label">
-                          Potential Prepaid-Rent Adjustment
-                          <span className="twm-settlement-row__hint">
-                            No automatic refund or rent credit. Coordinate with the Administration Office on the 2nd Floor.
-                          </span>
-                        </span>
-                        <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
-                      </div>
-                    )}
+                  {/* ── Executive Summary Rows ── */}
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Prorated Rent Balance</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.rent.adjustmentDue)}</span>
                   </div>
 
-                  {/* ── ELECTRICITY — informational only, NOT in the Scheduled Transfer Balance ── */}
-                  <div className="twm-settlement-row twm-settlement-row--muted">
-                    <span className="twm-settlement-row__label">
-                      Source-room electricity
-                      <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
-                        {`Meter readings are entered by the admin at the Complete Transfer step; the final charge follows the normal utility period close.`}
-                      </span>
-                    </span>
-                    <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
-                      billed at period close
-                    </span>
+                  <div className="twm-settlement-row">
+                    <span className="twm-settlement-row__label">Security Deposit Balance Due</span>
+                    <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
                   </div>
 
-                  {/* ── SECURITY DEPOSIT GROUP ── */}
-                  <div className="twm-financial-group">
-                    <div className="twm-financial-group__header">
-                      <span>Security Deposit</span>
-                    </div>
-                    <div className="twm-settlement-row twm-settlement-row--muted">
-                      <span className="twm-settlement-row__label">
-                        Deposit Preservation Policy
-                        <span className="twm-settlement-row__hint">
-                          Security deposits are carried over intact and never deducted during a room transfer. Deductions only apply during final move-out clearance.
-                        </span>
-                      </span>
-                      <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>100% Preserved</span>
-                    </div>
-                    <div className="twm-settlement-row">
-                      <span className="twm-settlement-row__label">Security Deposit — Required (new room)</span>
-                      <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.required)}</span>
-                    </div>
-                    <div className="twm-settlement-row">
-                      <span className="twm-settlement-row__label">Security Deposit — Currently Held</span>
-                      <span className="twm-settlement-row__value">
-                        {preview.deposit.heldKnown ? fmtMoney(preview.deposit.held) : "Unavailable (legacy record)"}
-                      </span>
-                    </div>
-                    {!preview.deposit.heldKnown && (
-                      <div className="twm-callout twm-callout--info">
-                        Security deposit held has not been verified. You may schedule this transfer, but deposit verification is required before Complete Transfer.
-                      </div>
-                    )}
-                    {preview.deposit.balanceDue > 0 && (
-                      <div className="twm-settlement-row">
-                        <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
-                        <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
-                      </div>
-                    )}
-                    {preview.deposit.excessHeld > 0 && (
-                      <div className="twm-settlement-row twm-settlement-row--success">
-                        <span className="twm-settlement-row__label">
-                          Potential Excess Held Deposit
-                          <span className="twm-settlement-row__hint">
-                            Remains held. No automatic refund or rent conversion; coordinate with the Administration Office on the 2nd Floor.
-                          </span>
-                        </span>
-                        <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── UTILITIES GROUP (Informational / Period Close) ── */}
-                  <div className="twm-financial-group twm-financial-group--info">
-                    <div className="twm-financial-group__header">
-                      <span>Utilities Notice (Period-Close Settlement)</span>
-                    </div>
-                    <div className="twm-settlement-row twm-settlement-row--muted">
-                      <span className="twm-settlement-row__label">
-                        Source-room electricity
-                        <span className="twm-settlement-row__hint">
-                          {`Meter readings are entered by the admin at the Complete Transfer step; the final charge follows the normal utility period close.`}
-                        </span>
-                      </span>
-                      <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
-                        billed at period close
-                      </span>
-                    </div>
-                    <div className="twm-settlement-row twm-settlement-row--muted">
-                      <span className="twm-settlement-row__label">
-                        Water
-                        <span className="twm-settlement-row__hint">
-                          Follows the current room/branch policy; settled at its normal period close (or not billed separately where included in rent).
-                        </span>
-                      </span>
-                      <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>—</span>
-                    </div>
-                  </div>
-
-                  {outstandingBalance > 0 && (
-                    <div className="twm-settlement-row twm-settlement-row--danger">
-                      <span className="twm-settlement-row__label">Prior Outstanding Balance (existing, unrelated)</span>
-                      <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
-                    </div>
-                  )}
-
-                  {/* ── THE ONE BALANCE FIGURE: rent adjustment + additional deposit only ── */}
                   <div className="twm-settlement-row twm-settlement-row--total">
                     <span className="twm-settlement-row__label">Scheduled Room Transfer Balance</span>
                     <span className="twm-settlement-row__value">
@@ -1350,32 +1243,159 @@ export function TransferTenantModal({
                         : "Calculated after deposit verification at Complete Transfer"}
                     </span>
                   </div>
+
+                  {/* ── Collapsible Calculation Trigger ── */}
+                  <button
+                    type="button"
+                    className={`twm-accordion-trigger ${showCalculationDetails ? "twm-accordion-trigger--open" : ""}`}
+                    onClick={() => setShowCalculationDetails((v) => !v)}
+                    aria-expanded={showCalculationDetails}
+                    aria-label={showCalculationDetails ? "Hide Itemized Calculation & Policies" : "View Itemized Calculation & Policies"}
+                  >
+                    <div className="twm-accordion-trigger__left">
+                      <Calculator size={13} className="twm-accordion-trigger__icon" />
+                      <span>{showCalculationDetails ? "Hide Itemized Calculation & Policies" : "View Itemized Calculation & Policies"}</span>
+                    </div>
+                    <ChevronDown size={14} className="twm-accordion-trigger__chevron" />
+                  </button>
+
+                  {/* ── Collapsible Body (Recessed Inset Container) ── */}
+                  {showCalculationDetails && (
+                    <div className="twm-accordion-body">
+                      {/* ── RENT ADJUSTMENT GROUP ── */}
+                      <div className="twm-financial-group">
+                        <div className="twm-financial-group__header">
+                          <span>Rent Adjustment</span>
+                        </div>
+                        <div className="twm-settlement-row">
+                          <span className="twm-settlement-row__label">
+                            Prorated Rent Balance
+                            <span className="twm-settlement-row__hint">
+                              {preview.rent.destinationDays}d new-room prorated ({fmtMoney(preview.rent.destinationProratedValue)}) − unused prepaid ({fmtMoney(preview.rent.unusedPrepaidCredit)})
+                            </span>
+                          </span>
+                          <span className="twm-settlement-row__value">{fmtMoney(preview.rent.adjustmentDue)}</span>
+                        </div>
+                        {preview.rent.excessCredit > 0 && (
+                          <div className="twm-settlement-row twm-settlement-row--success">
+                            <span className="twm-settlement-row__label">
+                              Potential Prepaid-Rent Adjustment
+                              <span className="twm-settlement-row__hint">
+                                No automatic refund or rent credit. Coordinate with the Administration Office on the 2nd Floor.
+                              </span>
+                            </span>
+                            <span className="twm-settlement-row__value">−{fmtMoney(preview.rent.excessCredit)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── SECURITY DEPOSIT GROUP ── */}
+                      <div className="twm-financial-group">
+                        <div className="twm-financial-group__header">
+                          <span>Security Deposit</span>
+                        </div>
+                        <div className="twm-settlement-row twm-settlement-row--muted">
+                          <span className="twm-settlement-row__label">
+                            Deposit Preservation Policy
+                            <span className="twm-settlement-row__hint">
+                              Security deposits are carried over intact and never deducted during a room transfer. Deductions only apply during final move-out clearance.
+                            </span>
+                          </span>
+                          <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>100% Preserved</span>
+                        </div>
+                        <div className="twm-settlement-row">
+                          <span className="twm-settlement-row__label">Security Deposit — Required (new room)</span>
+                          <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.required)}</span>
+                        </div>
+                        <div className="twm-settlement-row">
+                          <span className="twm-settlement-row__label">Security Deposit — Currently Held</span>
+                          <span className="twm-settlement-row__value">
+                            {preview.deposit.heldKnown ? fmtMoney(preview.deposit.held) : "Unavailable (legacy record)"}
+                          </span>
+                        </div>
+                        {!preview.deposit.heldKnown && (
+                          <div className="twm-callout twm-callout--info" style={{ margin: "4px 0", fontSize: 12 }}>
+                            Security deposit held has not been verified. You may schedule this transfer, but deposit verification is required before Complete Transfer.
+                          </div>
+                        )}
+                        {preview.deposit.balanceDue > 0 && (
+                          <div className="twm-settlement-row">
+                            <span className="twm-settlement-row__label">Additional Security Deposit Due</span>
+                            <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.balanceDue)}</span>
+                          </div>
+                        )}
+                        {preview.deposit.excessHeld > 0 && (
+                          <div className="twm-settlement-row twm-settlement-row--success">
+                            <span className="twm-settlement-row__label">
+                              Potential Excess Held Deposit
+                              <span className="twm-settlement-row__hint">
+                                Remains held. No automatic refund or rent conversion; coordinate with the Administration Office on the 2nd Floor.
+                              </span>
+                            </span>
+                            <span className="twm-settlement-row__value">{fmtMoney(preview.deposit.excessHeld)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── UTILITIES NOTICE (Informational only) ── */}
+                      <div className="twm-settlement-row twm-settlement-row--muted">
+                        <span className="twm-settlement-row__label">
+                          Source-room electricity
+                          <span className="twm-settlement-row__hint">
+                            Entered by the admin at the Complete Transfer step; the final charge follows the normal utility period close.
+                          </span>
+                        </span>
+                        <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>
+                          billed at period close
+                        </span>
+                      </div>
+                      <div className="twm-settlement-row twm-settlement-row--muted">
+                        <span className="twm-settlement-row__label">
+                          Water
+                          <span className="twm-settlement-row__hint">
+                            Settled at its normal period close.
+                          </span>
+                        </span>
+                        <span className="twm-settlement-row__value" style={{ color: "var(--text-muted)" }}>—</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="twm-settlement-card__note">
-                  Scheduled Room Transfer Balance = Rent Adjustment + Additional Security Deposit, due on or before
-                  the effective transfer date. Electricity and water are billed once, during their normal utility
-                  period close, following the new room's billing setup. No manual rent/meter changes are needed
-                  after this transfer.
-                </p>
+                <div className="twm-settlement-card__note">
+                  Meter readings are entered at the Complete Transfer step, on the real cutover. Electricity and water are finalized and billed at period close following normal utility period close. Neither is part of this scheduled balance.
+                </div>
               </>
             ) : (
               <div className="twm-settlement-card__body">
                 <p className="twm-settlement-card__note">
-                  Settlement preview unavailable — the exact figures will be computed server-side when the
-                  transfer is confirmed. Rent and deposit adjustments are billed separately; electricity and
-                  water follow the new room at their normal period close.
+                  Settlement preview unavailable — figures will be computed server-side when the transfer is confirmed.
                 </p>
               </div>
             )}
           </div>
 
-          {/* ── Room Transfer Addendum — preview BEFORE confirming (R2) ── */}
-          <div className="twm-settlement-card">
-            <div className="twm-settlement-card__header">
-              <p className="twm-settlement-card__title">Room Transfer Addendum</p>
+          {/* ── 3. Room Transfer Addendum Action Box ── */}
+          <div className="twm-addendum-action-card">
+            <div className="twm-addendum-action-card__header">
+              <div className="twm-addendum-action-card__info">
+                <div className="twm-addendum-action-card__title-row">
+                  <span className="twm-addendum-action-card__title">Room Transfer Addendum</span>
+                  <span className={`twm-addendum-action-card__badge ${preparedAddendum ? "twm-addendum-action-card__badge--ready" : ""}`}>
+                    <span className="twm-addendum-action-card__dot" />
+                    {preparedAddendum ? `Draft #${preparedAddendum.contractNumber || "Ready"}` : "Draft Ready"}
+                  </span>
+                </div>
+                <span className="twm-addendum-action-card__desc">
+                  Amends room &amp; rent for the existing lease. Original lease dates ({(() => {
+                    const origStart = preparedAddendum?.leaseStartDate || preview?.leaseStartDate || detail?.basicInfo?.leaseStartDate || tenant?.leaseStartDate;
+                    const origEnd = preparedAddendum?.leaseEndDate || preview?.leaseEndDate || detail?.basicInfo?.leaseEndDate || tenant?.leaseEndDate;
+                    return origStart || origEnd ? `${fmtDate(origStart)} → ${fmtDate(origEnd)}` : "active term";
+                  })()}) remain unchanged &mdash; does not start a new lease or reset the term. Old room → New room ({tenant?.room || "—"} → {selectedRoom?.name || selectedRoom?.roomNumber || "—"}), Old rent → New rent ({fmtMoney(preview?.rent?.sourceEffectiveRate ?? currentPrice)}/mo → {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo).
+                </span>
+              </div>
               <button
                 type="button"
-                className="twm-settlement-card__download-btn"
+                className="twm-addendum-action-card__btn"
                 disabled={addendumLoading || !roomId || (destinationNeedsBed && !bedId)}
                 onClick={handlePreviewAddendum}
                 title="Prepare and open the Room Transfer Addendum draft (no changes are made to the tenant yet)"
@@ -1384,100 +1404,26 @@ export function TransferTenantModal({
                 <span>{addendumLoading ? "Preparing…" : "Preview / Download Addendum"}</span>
               </button>
             </div>
-            <div className="twm-settlement-card__body">
-              {(() => {
-                const originalLeaseStartDate =
-                  preparedAddendum?.leaseStartDate ||
-                  preview?.leaseStartDate ||
-                  detail?.basicInfo?.leaseStartDate ||
-                  detail?.basicInfo?.moveInDate ||
-                  detail?.basicInfo?.actualMoveInDate ||
-                  detail?.basicInfo?.checkInDate ||
-                  tenant?.leaseStartDate ||
-                  tenant?.moveInDate ||
-                  tenant?.actualMoveInDate ||
-                  tenant?.checkInDate ||
-                  null;
-
-                const originalLeaseEndDate =
-                  preparedAddendum?.leaseEndDate ||
-                  preview?.leaseEndDate ||
-                  detail?.basicInfo?.leaseEndDate ||
-                  tenant?.leaseEndDate ||
-                  null;
-
-                return (
-                  <div className="twm-settlement-row">
-                    <span className="twm-settlement-row__label">Original lease dates</span>
-                    <span className="twm-settlement-row__value">
-                      {originalLeaseStartDate || originalLeaseEndDate
-                        ? `${fmtDate(originalLeaseStartDate)} → ${fmtDate(originalLeaseEndDate)}`
-                        : "—"}
-                      <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
-                        Unchanged — a room transfer does not start a new lease or reset the term.
-                      </span>
-                    </span>
-                  </div>
-                );
-              })()}
-              <div className="twm-settlement-row">
-                <span className="twm-settlement-row__label">Old room → New room</span>
-                <span className="twm-settlement-row__value">
-                  {tenant?.room || "—"} → {selectedRoom?.name || selectedRoom?.roomNumber || "—"}
-                </span>
-              </div>
-              <div className="twm-settlement-row">
-                <span className="twm-settlement-row__label">Old rent → New rent</span>
-                <span className="twm-settlement-row__value">
-                  {fmtMoney(preview?.rent?.sourceEffectiveRate ?? currentPrice)}/mo → {fmtMoney(preview?.rent?.destinationApprovedRate ?? newPrice)}/mo
-                </span>
-              </div>
-              <div className="twm-settlement-row">
-                <span className="twm-settlement-row__label">Effective transfer date</span>
-                <span className="twm-settlement-row__value">{fmtDate(effectiveTransferDate)}</span>
-              </div>
-              {preview?.deposit && (
-                <div className="twm-settlement-row">
-                  <span className="twm-settlement-row__label">Security deposit requirement</span>
-                  <span className="twm-settlement-row__value">
-                    {fmtMoney(preview.deposit.required)}
-                    {!preview.deposit.heldKnown
-                      ? " (held amount must be verified before completion)"
-                      : preview.deposit.balanceDue > 0
-                      ? ` (additional ${fmtMoney(preview.deposit.balanceDue)} due)`
-                      : preview.deposit.excessHeld > 0
-                        ? ` (${fmtMoney(preview.deposit.excessHeld)} potential excess remains held; Administration Office, 2nd Floor)`
-                        : ""}
-                  </span>
-                </div>
-              )}
-              {preparedAddendum && (
-                <div className="twm-settlement-row twm-settlement-row--success">
-                  <span className="twm-settlement-row__label">
-                    Addendum draft {preparedAddendum.contractNumber ? `#${preparedAddendum.contractNumber}` : "ready"}
-                  </span>
-                  <span className="twm-settlement-row__value" style={{ fontSize: 11, fontWeight: 400 }}>
-                    Prepared — this exact draft is used when you Confirm.
-                  </span>
-                </div>
-              )}
-            </div>
-            <p className="twm-settlement-card__note">
-              This is a <strong>Room Transfer Addendum</strong>, not a replacement lease. The original lease
-              continues unchanged except for the amended room and rate. It is prepared here for your review;
-              nothing is changed for the tenant until you press <strong>Confirm Schedule</strong>, and the
-              transfer itself takes effect on the effective transfer date. Wet-signing / notarization is not
-              required before the transfer — the tenant acknowledges the Addendum afterward.
+            <p className="twm-addendum-action-card__footnote">
+              This is a Room Transfer Addendum, not a replacement lease. Nothing is changed for the tenant until you press <strong>Confirm Schedule</strong>.
             </p>
           </div>
 
+          {/* ── 4. Remarks & Callouts ── */}
+          {reason && (
+            <div className="twm-remarks-card" style={{ margin: 0 }}>
+              <span className="twm-remarks-card__label">Reason for Transfer</span>
+              <p className="twm-remarks-card__text">{reason}</p>
+            </div>
+          )}
+
           {hasOutstanding && (
-            <div className="twm-callout twm-callout--info">
+            <div className="twm-callout twm-callout--info" style={{ margin: 0, fontSize: 12.5 }}>
               The tenant&apos;s current balance of {fmtMoney(outstandingBalance)} is
               tracked separately and is not affected by scheduling this transfer.
             </div>
           )}
-        </>
+        </div>
       )}
     </TenantModalShell>
   );

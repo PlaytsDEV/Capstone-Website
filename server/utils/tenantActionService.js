@@ -671,23 +671,23 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
 
     if (roomId === currentRoomId) {
       availabilityStatus = "current_room";
-      unavailableReason = "This is the tenant's current room.";
+      unavailableReason = "This is the tenant's current room. Please select a different destination room.";
       selectable = false;
     } else if (roomUnderMaintenance) {
       availabilityStatus = "maintenance";
-      unavailableReason = "Under maintenance / blocked.";
+      unavailableReason = "This room is currently under maintenance. Please select another room.";
       selectable = false;
     } else if (roomBlocked) {
       availabilityStatus = "blocked";
-      unavailableReason = "Room is blocked / unavailable.";
+      unavailableReason = "This room is currently blocked from new assignments. Please select another room.";
       selectable = false;
     } else if (capacity > 0 && effectiveOcc >= capacity) {
       availabilityStatus = "fully_occupied";
-      unavailableReason = `Fully occupied (${effectiveOcc}/${capacity}).`;
+      unavailableReason = `This room is fully occupied (${effectiveOcc}/${capacity} occupants). Please choose another room.`;
       selectable = false;
     } else if ((conflictRoomCounts.get(roomId) || 0) + effectiveOcc >= capacity && capacity > 0) {
       availabilityStatus = "reservation_conflict";
-      unavailableReason = "A reservation or pending move-in covers this date.";
+      unavailableReason = "This room is already reserved for the selected date. Please select another room or adjust the transfer date.";
       selectable = false;
     } else if (requiresBedSelection) {
       const beds = (room.beds || []).map((b, i) => {
@@ -696,12 +696,12 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
         let bedStatus = b.status || "available";
         let bedSelectable = bedStatus === "available";
         let bedReason = null;
-        if (bedStatus === "maintenance") bedReason = "Under maintenance.";
-        else if (bedStatus === "reserved") bedReason = "Reserved / held.";
+        if (bedStatus === "maintenance") bedReason = "This bed is currently under maintenance. Please choose another bed.";
+        else if (bedStatus === "reserved") bedReason = "This bed is currently reserved or on hold. Please choose another bed.";
         else if (conflictBedKeys.has(key)) {
           bedStatus = "reserved";
           bedSelectable = false;
-          bedReason = "A reservation covers this bed for the selected date.";
+          bedReason = "A reservation covers this bed for the selected date. Please choose another bed or adjust the transfer date.";
         }
         return {
           bedId,
@@ -714,7 +714,9 @@ export async function buildTransferCandidates({ reservation, stayLike = null, ef
       const anyBed = beds.some((b) => b.selectable);
       if (!anyBed) {
         availabilityStatus = beds.every((b) => b.status === "reserved") ? "fully_reserved" : "no_available_bed";
-        unavailableReason = availabilityStatus === "fully_reserved" ? "All beds reserved / held." : "No available bed.";
+        unavailableReason = availabilityStatus === "fully_reserved"
+          ? "All beds in this room are currently reserved. Please choose another room or adjust the transfer date."
+          : "No available beds in this room. Please choose another room.";
         selectable = false;
       }
       candidates.push({

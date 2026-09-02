@@ -26,6 +26,7 @@ import {
   Calendar,
   Clock,
   Download,
+  RefreshCw,
 } from "lucide-react";
 
 // Components
@@ -157,9 +158,12 @@ function RoomAvailabilityPage() {
   // and rely entirely on client-side filtering for the branch selection.
   const defaultBranch =
     user?.branch && user.role !== "owner" ? user.branch : "all";
-  const { data: roomsData, isLoading: loading } = useRooms(
-    defaultBranch === "all" ? {} : { branch: defaultBranch },
-  );
+  const {
+    data: roomsData,
+    isLoading: loading,
+    refetch: refetchRooms,
+    isFetching: isRefetchingRooms,
+  } = useRooms(defaultBranch === "all" ? {} : { branch: defaultBranch });
   const rooms = Array.isArray(roomsData) ? roomsData : (roomsData?.items ?? []);
 
   // Compute upcoming vacancies list for the quick-view modal/space
@@ -929,17 +933,33 @@ function RoomAvailabilityPage() {
                   })}
                 </div>
 
-                {/* Clear All Filters Button */}
-                {activeFilterCount > 0 && (
+                {/* Refresh and Clear Filter Buttons */}
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={handleResetFilters}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
+                    onClick={() => {
+                      queryClient.invalidateQueries({ queryKey: ["rooms"] });
+                      refetchRooms();
+                    }}
+                    disabled={isRefetchingRooms}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline cursor-pointer disabled:opacity-50"
+                    title="Refresh live room inventory and occupancy"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Clear Filters ({activeFilterCount})</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefetchingRooms ? "animate-spin text-primary" : ""}`} />
+                    <span>{isRefetchingRooms ? "Refreshing..." : "Refresh"}</span>
                   </button>
-                )}
+
+                  {activeFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Clear Filters ({activeFilterCount})</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Search Bar & Dropdown Select Controls */}

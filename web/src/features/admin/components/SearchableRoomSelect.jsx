@@ -103,7 +103,7 @@ export default function SearchableRoomSelect({
     if (!room) return;
     if (!roomHasAvail(room)) {
       showNotification(
-        `Room ${room.name || room.roomNumber} has no available beds.`,
+        `Room ${room.name || room.roomNumber} has no available beds. Please select another room.`,
         "warning",
       );
       return;

@@ -218,14 +218,22 @@ export default function RoomConfigModal({
 
   useEffect(() => {
     if (!freshRoom) return;
-    setDraftRoom((prev) => ({
-      ...freshRoom,
-      ...prev,
-      images: freshRoom.images || prev?.images,
-    }));
+    setDraftRoom((prev) => {
+      if (isEditing) {
+        return {
+          ...freshRoom,
+          ...prev,
+          images: prev?.images || freshRoom.images,
+        };
+      }
+      return {
+        ...freshRoom,
+        images: freshRoom.images || prev?.images,
+      };
+    });
     const imgs = getInitialImages(freshRoom);
     setImagesState(imgs.map(buildImageState));
-  }, [freshRoom]);
+  }, [freshRoom, isEditing]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -913,6 +921,7 @@ export default function RoomConfigModal({
                           const occupant = bed.occupiedBy || {};
                           const occupantName =
                             occupant.name ||
+                            occupant.tenantName ||
                             occupant.userName ||
                             bed.userName ||
                             bed.tenantName ||
@@ -928,6 +937,9 @@ export default function RoomConfigModal({
                             Boolean(occupant.reservationId);
 
                           const isUpper = bed.position === "upper";
+                          const isLower = bed.position === "lower" || !isUpper;
+                          const isNearBottom = index >= Math.max(0, (draftRoom.beds?.length || 0) - 2);
+                          const shouldOpenUpward = isLower || isNearBottom;
                           const isBedActiveMenu = activeMenuBedIndex === index;
 
                           return (
@@ -1062,7 +1074,7 @@ export default function RoomConfigModal({
                                 </button>
 
                                 {isBedActiveMenu && (
-                                  <div className="bed-menu-dropdown">
+                                  <div className={`bed-menu-dropdown ${shouldOpenUpward ? "bed-menu-dropdown--up" : ""}`}>
                                     <button
                                       type="button"
                                       className="bed-menu-item"
@@ -1159,8 +1171,13 @@ export default function RoomConfigModal({
 
       {selectedOccupantBed && (
         <BedOccupantDetailModal
-          bed={selectedOccupantBed}
-          room={draftRoom}
+          bed={(() => {
+            const liveBed = (freshRoom?.beds || draftRoom?.beds || []).find(
+              (b) => b.id === selectedOccupantBed.id || String(b._id) === String(selectedOccupantBed._id)
+            );
+            return liveBed || selectedOccupantBed;
+          })()}
+          room={freshRoom || draftRoom}
           onClose={() => setSelectedOccupantBed(null)}
           onNavigateToTenants={handleNavigateToTenants}
           onReleaseBed={async (bed) => {

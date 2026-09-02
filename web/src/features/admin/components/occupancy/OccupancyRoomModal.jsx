@@ -32,15 +32,23 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  const formatBedLabel = (bed, index = 0) => {
    return getBedDisplayLabel(bed, index);
  };
- const formatOccupantName = (bed) =>
- bed.occupiedBy?.userName ||
- bed.occupant?.name ||
- "Unknown";
+  const formatOccupantName = (bed) =>
+    bed.occupiedBy?.name ||
+    bed.occupiedBy?.tenantName ||
+    bed.occupiedBy?.userName ||
+    (bed.occupiedBy?.firstName || bed.occupiedBy?.lastName
+      ? `${bed.occupiedBy?.firstName || ""} ${bed.occupiedBy?.lastName || ""}`.trim()
+      : null) ||
+    bed.userName ||
+    bed.tenantName ||
+    bed.occupant?.name ||
+    "Unassigned Tenant";
 
- const formatOccupantEmail = (bed) =>
- bed.occupiedBy?.email ||
- bed.occupant?.email ||
- null;
+  const formatOccupantEmail = (bed) =>
+    bed.occupiedBy?.email ||
+    bed.occupant?.email ||
+    bed.userEmail ||
+    null;
 
  const formatOccupiedSince = (bed) =>
  bed.occupiedBy?.occupiedSince ||
@@ -346,7 +354,12 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </div>
  {selectedOccupantBed && (
     <BedOccupantDetailModal
-      bed={selectedOccupantBed}
+      bed={(() => {
+        const liveBed = (roomInfo?.beds || []).find(
+          (b) => b.id === selectedOccupantBed.id || String(b._id) === String(selectedOccupantBed._id)
+        );
+        return liveBed || selectedOccupantBed;
+      })()}
       room={roomInfo}
       onClose={() => setSelectedOccupantBed(null)}
       onNavigateToTenants={handleNavigateToTenants}

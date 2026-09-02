@@ -154,7 +154,7 @@ function matchesDateRange(value, from, to) {
 export default function TenantsWorkspacePage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isOwner = user?.role === "owner";
   const [searchTerm, setSearchTerm] = useState(
@@ -191,13 +191,23 @@ export default function TenantsWorkspacePage() {
     setSelectedReservationId(reservationId);
   }, []);
 
+  const handleCloseTenantDetail = useCallback(() => {
+    setSelectedReservationId(null);
+    setModalInitialTab("overview");
+    if (searchParams.get("reservationId")) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("reservationId");
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
     const urlSearch = searchParams.get("search");
     if (urlSearch !== null && urlSearch !== searchTerm) {
       setSearchTerm(urlSearch);
     }
     const urlResId = searchParams.get("reservationId");
-    if (urlResId !== null && urlResId !== selectedReservationId) {
+    if (urlResId && urlResId !== selectedReservationId) {
       handleOpenTenantDetail(urlResId, "overview");
     }
   }, [searchParams, selectedReservationId, handleOpenTenantDetail]);
@@ -1227,10 +1237,7 @@ export default function TenantsWorkspacePage() {
         <TenantDetailModal
           tenant={selectedTenantForModal}
           initialTab={modalInitialTab}
-          onClose={() => {
-            setSelectedReservationId(null);
-            setModalInitialTab("overview");
-          }}
+          onClose={handleCloseTenantDetail}
         />
 
         {actionState.type === "renew" ? (

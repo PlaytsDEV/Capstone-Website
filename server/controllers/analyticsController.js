@@ -3569,9 +3569,20 @@ export const getRoomBedHistory = async (req, res, next) => {
     const { default: Reservation } = await import("../models/Reservation.js");
     const { default: Stay } = await import("../models/Stay.js");
 
-    const room = await Room.findById(roomId).lean();
-    if (!room || room.isArchived) {
+    const rawRoom = await Room.findById(roomId).lean();
+    if (!rawRoom || rawRoom.isArchived) {
       throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+    }
+
+    let room = rawRoom;
+    try {
+      const { syncRealtimeBedStatuses } = await import("./roomsController.js");
+      if (typeof syncRealtimeBedStatuses === "function") {
+        const [synced] = await syncRealtimeBedStatuses([rawRoom]);
+        if (synced) room = synced;
+      }
+    } catch (syncErr) {
+      console.warn("Could not run syncRealtimeBedStatuses in getRoomBedHistory:", syncErr);
     }
 
     const scope = await resolveAnalyticsScope(req);
@@ -3617,8 +3628,8 @@ export const getRoomBedHistory = async (req, res, next) => {
         bedId: key,
         position: pos,
         bunkBlock: bunkLetter,
-        currentStatus: bed.status || "available",
-        occupiedBy: bed.occupiedBy || null,
+        currentStatus: "available",
+        occupiedBy: null,
         history: [],
       });
     });
@@ -3658,25 +3669,27 @@ export const getRoomBedHistory = async (req, res, next) => {
         ? Math.max(1, dayjs().diff(dayjs(moveIn), "day"))
         : null;
 
+      const tenantObj = rec.tenantId
+        ? {
+            id: rec.tenantId._id,
+            name: `${rec.tenantId.firstName || ""} ${rec.tenantId.lastName || ""}`.trim() || rec.tenantId.name || "Tenant",
+            email: rec.tenantId.email,
+            phone: rec.tenantId.phone,
+            gender: rec.tenantId.gender,
+            occupation: rec.tenantId.occupation,
+            school: rec.tenantId.school,
+            profileImage: rec.tenantId.profileImage,
+            tenantType: rec.tenantId.school || (rec.tenantId.occupation && /student/i.test(rec.tenantId.occupation))
+              ? "Student"
+              : rec.tenantId.occupation
+              ? "Working Professional"
+              : "Tenant",
+          }
+        : null;
+
       targetBed.history.push({
         id: rec._id,
-        tenant: rec.tenantId
-          ? {
-              id: rec.tenantId._id,
-              name: `${rec.tenantId.firstName || ""} ${rec.tenantId.lastName || ""}`.trim(),
-              email: rec.tenantId.email,
-              phone: rec.tenantId.phone,
-              gender: rec.tenantId.gender,
-              occupation: rec.tenantId.occupation,
-              school: rec.tenantId.school,
-              profileImage: rec.tenantId.profileImage,
-              tenantType: rec.tenantId.school || (rec.tenantId.occupation && /student/i.test(rec.tenantId.occupation))
-                ? "Student"
-                : rec.tenantId.occupation
-                ? "Working Professional"
-                : "Tenant",
-            }
-          : null,
+        tenant: tenantObj,
         moveInDate: moveIn,
         moveOutDate: moveOut,
         status: rec.status,
@@ -3685,6 +3698,16 @@ export const getRoomBedHistory = async (req, res, next) => {
         notes: rec.notes || "",
         monthlyRent: rec.stayId?.monthlyRent || null,
       });
+
+      if (rec.status === "active" && !moveOut && tenantObj) {
+        targetBed.currentStatus = "occupied";
+        targetBed.occupiedBy = {
+          userId: tenantObj.id,
+          name: tenantObj.name,
+          email: tenantObj.email,
+          phone: tenantObj.phone,
+        };
+      }
     });
 
     // Merge live active reservations & stays onto their respective beds if not already in BedHistory
@@ -3716,6 +3739,11 @@ export const getRoomBedHistory = async (req, res, next) => {
           (h) => h.status === "active" || (h.tenant && String(h.tenant.id) === tenantIdStr && !h.moveOutDate)
         );
 
+        const tenantName =
+          `${activeTenant.firstName || ""} ${activeTenant.lastName || ""}`.trim() ||
+          activeTenant.name ||
+          "Active Tenant";
+
         if (!hasActiveInHistory) {
           const moveIn = activeStay?.moveInDate || activeRes?.moveInDate || activeRes?.checkInDate || activeRes?.createdAt || new Date();
           const stayDurationDays = Math.max(1, dayjs().diff(dayjs(moveIn), "day"));
@@ -3724,7 +3752,7 @@ export const getRoomBedHistory = async (req, res, next) => {
             id: String(activeStay?._id || activeRes?._id),
             tenant: {
               id: activeTenant._id,
-              name: `${activeTenant.firstName || ""} ${activeTenant.lastName || ""}`.trim() || "Active Tenant",
+              name: tenantName,
               email: activeTenant.email,
               phone: activeTenant.phone,
               gender: activeTenant.gender,
@@ -3735,7 +3763,7 @@ export const getRoomBedHistory = async (req, res, next) => {
                 ? "Student"
                 : activeTenant.occupation
                 ? "Working Professional"
-                : "Resident",
+                : "Tenant",
             },
             moveInDate: moveIn,
             moveOutDate: null,
@@ -3750,15 +3778,16 @@ export const getRoomBedHistory = async (req, res, next) => {
         targetBed.currentStatus = "occupied";
         targetBed.occupiedBy = {
           userId: activeTenant._id,
-          name: `${activeTenant.firstName || ""} ${activeTenant.lastName || ""}`.trim(),
+          name: tenantName,
           email: activeTenant.email,
+          phone: activeTenant.phone,
         };
       }
     }
 
     const bedList = Array.from(bedsMap.values());
     const activeStaysCount = bedList.filter((b) =>
-      b.history.some((h) => h.status === "active") || b.currentStatus === "occupied"
+      b.history.some((h) => h.status === "active") || (b.currentStatus === "occupied" && b.occupiedBy?.name)
     ).length;
     const totalStays = bedList.reduce((sum, b) => sum + b.history.length, 0);
 

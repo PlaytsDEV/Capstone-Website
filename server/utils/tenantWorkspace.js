@@ -964,6 +964,7 @@ export function buildTenantWorkspaceEntry({
     leaseEndDate,
     daysUntilLeaseEnd,
     monthlyRate: financialSummary.monthlyRate,
+    monthlyRent: financialSummary.monthlyRate,
     advanceRent: financialSummary.advanceRent,
     // REQUIRED deposit for the current room (1x the current approved rate).
     securityDeposit: financialSummary.securityDeposit,

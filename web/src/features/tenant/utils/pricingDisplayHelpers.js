@@ -97,3 +97,32 @@ export const getEffectiveMonthlyStayRate = (reservationData, overrides = {}) => 
     formattedMonthlyRate: hasResolvedRate ? `₱${estimatedMonthlyTotal.toLocaleString()} / mo` : "Upon Review",
   };
 };
+
+/**
+ * Canonical helper for resolving a tenant's current monthly rent rate from
+ * diverse backend payloads (workspace record, detail drawer payload, transfer
+ * preview, or fallback room specs).
+ *
+ * @param {object} [tenant] - Tenant record from Tenants Workspace or table
+ * @param {object} [detail] - Detailed tenant workspace profile payload
+ * @param {object} [preview] - Server-computed Room Transfer financial preview
+ * @returns {number} The resolved positive monthly rate, or 0 if unverified.
+ */
+export const resolveTenantCurrentRent = (tenant = null, detail = null, preview = null) => {
+  const candidate =
+    preview?.rent?.sourceEffectiveRate ??
+    tenant?.monthlyRate ??
+    tenant?.monthlyRent ??
+    tenant?.paymentInfo?.monthlyRent ??
+    tenant?.financialSummary?.monthlyRate ??
+    tenant?.rent ??
+    detail?.basicInfo?.monthlyRent ??
+    detail?.paymentInfo?.monthlyRent ??
+    detail?.monthlyRate ??
+    tenant?.room?.monthlyPrice ??
+    tenant?.room?.price ??
+    0;
+  const num = Number(candidate);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+};
+

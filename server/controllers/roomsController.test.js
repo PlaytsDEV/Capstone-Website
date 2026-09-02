@@ -6,14 +6,37 @@ const roomFindOne = jest.fn();
 const roomFind = jest.fn();
 const reservationCountDocuments = jest.fn();
 const stayCountDocuments = jest.fn();
+const stayFind = jest.fn(() => ({
+  select: () => ({
+    populate: () => ({
+      lean: () => Promise.resolve([]),
+    }),
+  }),
+}));
 const billingPeriodCountDocuments = jest.fn();
 const utilityPeriodCountDocuments = jest.fn();
 const maintenanceCountDocuments = jest.fn();
-const reservationFind = jest.fn();
+const reservationFind = jest.fn(() => ({
+  select: () => ({
+    populate: () => ({
+      lean: () => Promise.resolve([]),
+    }),
+  }),
+}));
+const userFind = jest.fn(() => ({
+  select: () => ({
+    lean: () => Promise.resolve([]),
+  }),
+}));
 const sendSuccess = jest.fn();
 const logModification = jest.fn();
 const logError = jest.fn();
-const deriveRoomOccupancyState = jest.fn();
+const deriveRoomOccupancyState = jest.fn((room) => {
+  const beds = room?.beds || [];
+  const occupiedBeds = beds.filter((b) => b.status === "occupied" || b.status === "reserved").length;
+  const availableBeds = beds.filter((b) => b.status === "available" || b.available === true).length;
+  return { occupiedBeds, availableBeds, totalBeds: beds.length };
+});
 const recalculateRoomOccupancy = jest.fn();
 const getBusinessSettings = jest.fn();
 const getBranchSettings = jest.fn(() => ({}));
@@ -27,6 +50,7 @@ const Room = jest.fn(function Room(data) {
 
 Room.findOne = roomFindOne;
 Room.find = roomFind;
+Room.updateOne = jest.fn().mockResolvedValue({});
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   Room,
@@ -34,7 +58,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     countDocuments: reservationCountDocuments,
     find: reservationFind,
   },
-  Stay: { countDocuments: stayCountDocuments },
+  Stay: {
+    countDocuments: stayCountDocuments,
+    find: stayFind,
+  },
   BedHistory: {
     recordMaintenanceStart: jest.fn(),
     recordMaintenanceEnd: jest.fn(),
@@ -42,7 +69,11 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   BillingPeriod: { countDocuments: billingPeriodCountDocuments },
   UtilityPeriod: { countDocuments: utilityPeriodCountDocuments },
   MaintenanceRequest: { countDocuments: maintenanceCountDocuments },
-  User: { find: jest.fn() },
+  Bill: { find: jest.fn(), countDocuments: jest.fn() },
+  Payment: { find: jest.fn(), countDocuments: jest.fn() },
+  Contract: { find: jest.fn(), countDocuments: jest.fn() },
+  ContractCounter: { findOneAndUpdate: jest.fn() },
+  User: { find: userFind },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
 }));
 
@@ -78,6 +109,7 @@ const {
   deleteRoom,
   addBed,
   getMaxBedsForRoomType,
+  syncRealtimeBedStatuses,
 } = await import("./roomsController.js");
 
 const createResponse = () => ({
@@ -110,6 +142,12 @@ describe("roomsController", () => {
     logModification.mockReset();
     logError.mockReset();
     deriveRoomOccupancyState.mockReset();
+    deriveRoomOccupancyState.mockImplementation((room) => {
+      const beds = room?.beds || [];
+      const occupiedBeds = beds.filter((b) => b.status === "occupied" || b.status === "reserved").length;
+      const availableBeds = beds.filter((b) => b.status === "available" || b.available === true).length;
+      return { occupiedBeds, availableBeds, totalBeds: beds.length };
+    });
     getBusinessSettings.mockReset();
   });
 
@@ -357,4 +395,58 @@ describe("roomsController", () => {
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
   });
+
+  test("syncRealtimeBedStatuses correctly assigns Lower Deck stay to Lower Bed and keeps Upper Bed available", async () => {
+    const mockRoom = {
+      _id: "507f1f77bcf86cd799439702",
+      name: "GP-702",
+      type: "double-sharing",
+      branch: "gil-puyat",
+      capacity: 2,
+      beds: [
+        { id: "bed-1", position: "upper", status: "occupied", occupiedBy: { userId: "user-old-stale" } },
+        { id: "bed-2", position: "lower", status: "available" },
+      ],
+    };
+
+    const mockStays = [
+      {
+        _id: "stay-123",
+        roomId: "507f1f77bcf86cd799439702",
+        bedId: "lower",
+        status: "active",
+        tenantId: { _id: "user-saoirse", name: "Saoirse Marie", email: "saoirse@example.com" },
+        leaseEndDate: new Date("2027-09-02"),
+      },
+    ];
+
+    stayFind.mockReturnValueOnce({
+      select: () => ({
+        populate: () => ({
+          lean: () => Promise.resolve(mockStays),
+        }),
+      }),
+    });
+    reservationFind.mockReturnValueOnce({
+      select: () => ({
+        populate: () => ({
+          lean: () => Promise.resolve([]),
+        }),
+      }),
+    });
+
+    const [syncedRoom] = await syncRealtimeBedStatuses([mockRoom]);
+
+    expect(syncedRoom.beds[0].id).toBe("bed-1");
+    expect(syncedRoom.beds[0].position).toBe("upper");
+    expect(syncedRoom.beds[0].status).toBe("available");
+    expect(syncedRoom.beds[0].available).toBe(true);
+
+    expect(syncedRoom.beds[1].id).toBe("bed-2");
+    expect(syncedRoom.beds[1].position).toBe("lower");
+    expect(syncedRoom.beds[1].status).toBe("occupied");
+    expect(syncedRoom.beds[1].occupiedBy.name).toBe("Saoirse Marie");
+    expect(syncedRoom.currentOccupancy).toBe(1);
+  });
 });
+

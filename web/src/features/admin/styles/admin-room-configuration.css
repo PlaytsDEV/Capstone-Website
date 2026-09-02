@@ -848,8 +848,19 @@ body.modal-open {
   animation: bedMenuFadeIn 120ms var(--ease-out, ease-out);
 }
 
+.bed-menu-dropdown--up {
+  top: auto;
+  bottom: calc(100% + 4px);
+  animation: bedMenuFadeInUp 120ms var(--ease-out, ease-out);
+}
+
 @keyframes bedMenuFadeIn {
   from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes bedMenuFadeInUp {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -2897,8 +2908,12 @@ body.modal-open {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
-.rcm-deck-row--active-menu {
+.rcm-bunk-card:has(.rcm-deck-row--active-menu) {
   z-index: 50;
+}
+
+.rcm-deck-row--active-menu {
+  z-index: 60;
 }
 
 /* Left/Main info strip */
