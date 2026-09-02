@@ -108,6 +108,102 @@ export const toOptionalText = (value) => {
 
 export const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
 
+const toSafeLocationScalar = (value) => {
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (value instanceof mongoose.Types.ObjectId) return value.toString();
+  return null;
+};
+
+const firstSafeLocationScalar = (...values) => {
+  for (const value of values) {
+    const scalar = toSafeLocationScalar(value);
+    if (scalar) return scalar;
+  }
+  return null;
+};
+
+export const getMaintenanceRoomId = (room) => {
+  const scalar = toSafeLocationScalar(room);
+  if (scalar) return scalar;
+  if (!room || typeof room !== "object" || Array.isArray(room)) return null;
+  return firstSafeLocationScalar(
+    room._id,
+    room.id,
+    room.roomId,
+    room.room_id,
+  );
+};
+
+const getMaintenanceBranchLabel = (branch) => {
+  const scalar = toSafeLocationScalar(branch);
+  if (scalar) return scalar;
+  if (!branch || typeof branch !== "object" || Array.isArray(branch)) return null;
+  return firstSafeLocationScalar(
+    branch.branchName,
+    branch.branch_name,
+    branch.name,
+    branch.label,
+    branch.code,
+    branch.slug,
+    branch._id,
+    branch.id,
+  );
+};
+
+const getMaintenanceFloorLabel = (floor) => {
+  const scalar = toSafeLocationScalar(floor);
+  if (scalar) return scalar;
+  if (!floor || typeof floor !== "object" || Array.isArray(floor)) return null;
+  return firstSafeLocationScalar(
+    floor.floorNumber,
+    floor.floor_number,
+    floor.number,
+    floor.name,
+    floor.label,
+    floor._id,
+    floor.id,
+  );
+};
+
+/**
+ * Tenant DTOs expose a populated room only through the `room` field. The
+ * parallel `roomId` field is always scalar so mobile/web selectors and React
+ * children cannot accidentally receive a Mongoose document.
+ */
+export const serializeMaintenanceRoom = (room) => {
+  if (!room || typeof room !== "object" || Array.isArray(room)) return null;
+  if (room instanceof mongoose.Types.ObjectId) return null;
+
+  const id = getMaintenanceRoomId(room);
+  const name = firstSafeLocationScalar(room.name);
+  const roomNumber = firstSafeLocationScalar(
+    room.roomNumber,
+    room.room_number,
+    room.unitNumber,
+    room.unit_number,
+  );
+  const floor = getMaintenanceFloorLabel(room.floor);
+  const branch = getMaintenanceBranchLabel(room.branch);
+  const hasRoomDetails = Boolean(id || name || roomNumber || floor || branch);
+  if (!hasRoomDetails) return null;
+
+  return {
+    _id: id,
+    id,
+    name,
+    roomNumber,
+    floor,
+    branch,
+    isFull: typeof room.isFull === "boolean" ? room.isFull : null,
+    availableSlots: room.availableSlots !== null
+      && room.availableSlots !== undefined
+      && Number.isFinite(Number(room.availableSlots))
+      ? Number(room.availableSlots)
+      : null,
+  };
+};
+
 export const parseOptionalAmount = (value, field) => {
   if (value === undefined || value === null || value === "") return null;
   const amount = Number(value);
@@ -955,6 +1051,13 @@ export const serializeMaintenanceRequest = (
 
   const tenantActiveRes = tenant?.activeReservation || null;
   const tenantActiveRoom = tenant?.activeRoom || null;
+  const requestRoomId = getMaintenanceRoomId(request.roomId);
+  const activeRoomId = getMaintenanceRoomId(tenantActiveRoom);
+  const requestRoom = serializeMaintenanceRoom(request.roomId);
+  const activeRoom = (!requestRoomId || requestRoomId === activeRoomId)
+    ? serializeMaintenanceRoom(tenantActiveRoom)
+    : null;
+  const tenantRoom = requestRoom || activeRoom;
 
   const occupancyContext = {
     unitNumber:
@@ -1276,12 +1379,9 @@ export const serializeMaintenanceRequest = (
       billId: request.costBreakdown?.billId ? String(request.costBreakdown.billId) : null,
     },
     tenant,
-    branch: request.branch || null,
-    room:
-      request.roomId && typeof request.roomId === "object"
-        ? request.roomId
-        : tenantActiveRoom || null,
-    roomId: request.roomId || tenantActiveRoom?._id || null,
+    branch: getMaintenanceBranchLabel(request.branch || tenantRoom?.branch),
+    room: tenantRoom,
+    roomId: requestRoomId || activeRoomId || null,
     reservationId: request.reservationId || tenantActiveRes?._id || null,
     isArchived: Boolean(request.isArchived),
     archivedAt: request.archivedAt ?? null,

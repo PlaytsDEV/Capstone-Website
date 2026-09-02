@@ -1316,6 +1316,47 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("getMyRequests keeps roomId scalar when the room is populated", async () => {
+    const storedRequest = buildRequestDoc({
+      roomId: {
+        _id: "room_object_id",
+        id: "room_object_id",
+        name: "Room 101",
+        roomNumber: "101",
+        floor: { number: 1 },
+        branch: { name: "Gil Puyat" },
+        isFull: false,
+        availableSlots: 2,
+      },
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    mockTenantOwner();
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.roomId).toBe("room_object_id");
+    expect(request.room).toEqual({
+      _id: "room_object_id",
+      id: "room_object_id",
+      name: "Room 101",
+      roomNumber: "101",
+      floor: "1",
+      branch: "Gil Puyat",
+      isFull: false,
+      availableSlots: 2,
+    });
+    expect(typeof request.roomId).toBe("string");
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("createRequest accepts every canonical category and urgency with five valid attachments", async () => {
     const requestTypes = [
       "maintenance", "plumbing", "electrical", "aircon", "elevator",
