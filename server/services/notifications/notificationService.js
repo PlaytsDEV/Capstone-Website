@@ -16,8 +16,22 @@ import logger from "../../middleware/logger.js";
 import { sendMobilePushBill, sendMobilePushToRecipients } from "./mobilePushService.js";
 import { emitToUser } from "../../utils/socket.js";
 
+async function resolveRoleAtCreation(userId, options = {}) {
+  const explicit = String(options.roleAtCreation || options.role_at_creation || "").trim();
+  if (explicit) return explicit;
+  try {
+    const user = await User.findById(userId).select("role").lean();
+    return String(user?.role || "").trim();
+  } catch {
+    // Notification delivery remains available if the denormalized role
+    // snapshot cannot be resolved. The mobile bridge has safe legacy inference.
+    return "";
+  }
+}
+
 async function createNotification(userId, type, title, message, options = {}) {
   try {
+    const roleAtCreation = await resolveRoleAtCreation(userId, options);
     const notification = new Notification({
       userId,
       type,
@@ -26,6 +40,7 @@ async function createNotification(userId, type, title, message, options = {}) {
       actionUrl: options.actionUrl || null,
       entityType: options.entityType || "",
       entityId: options.entityId || null,
+      roleAtCreation,
     });
     await notification.save();
     if (options.emitRealtime !== false) {
@@ -59,6 +74,7 @@ async function createNotification(userId, type, title, message, options = {}) {
 // window here that this doesn't.
 async function createNotificationOnce(userId, type, title, message, dedupeKey, options = {}) {
   try {
+    const roleAtCreation = await resolveRoleAtCreation(userId, options);
     const notification = new Notification({
       userId,
       type,
@@ -67,6 +83,7 @@ async function createNotificationOnce(userId, type, title, message, dedupeKey, o
       actionUrl: options.actionUrl || null,
       entityType: options.entityType || "",
       entityId: options.entityId || null,
+      roleAtCreation,
       dedupeKey,
     });
     await notification.save();

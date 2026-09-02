@@ -889,11 +889,19 @@ async function changePassword(req, res) {
       return res.status(500).json({ detail: 'Firebase API key not configured' });
     }
 
+    let verifiedFirebaseUid = '';
     try {
-      await axios.post(
+      const verificationResponse = await axios.post(
         signInWithPasswordUrl(apiKey),
         { email: userEmail, password: current_password, returnSecureToken: false },
       );
+      verifiedFirebaseUid = String(verificationResponse?.data?.localId || '').trim();
+      if (!verifiedFirebaseUid) {
+        return res.status(502).json({
+          code: 'CURRENT_PASSWORD_VERIFICATION_UNAVAILABLE',
+          detail: 'The password provider returned an incomplete verification response. Please try again.',
+        });
+      }
     } catch (fbErr) {
       const msg = firebasePasswordError(fbErr);
       if (msg.includes('TOO_MANY_ATTEMPTS')) {
@@ -909,11 +917,54 @@ async function changePassword(req, res) {
     }
 
     // ── Update password in Firebase ───────────────────────────────────────
-    const uid = req.user.firebase_uid;
-    if (!uid) {
-      return res.status(400).json({ detail: 'No Firebase account linked. Cannot change password.' });
-    }
     const db = getDb();
+    const uid = verifiedFirebaseUid;
+    const users = db.collection('users');
+    const uidOwner = await users.findOne({
+      $or: [{ firebase_uid: uid }, { firebaseUid: uid }],
+    });
+    const storedUid = String(req.user.firebase_uid || req.user.firebaseUid || '').trim();
+    const hasUidConflict =
+      (storedUid && storedUid !== uid) ||
+      (uidOwner && String(uidOwner.user_id) !== String(userId));
+
+    if (hasUidConflict) {
+      await logAttempt(db, userEmail, false, 'firebase_uid_conflict', req);
+      return res.status(409).json({
+        code: 'FIREBASE_UID_CONFLICT',
+        detail: 'Your account identity could not be reconciled safely. Please contact the administrator.',
+      });
+    }
+
+    if (!storedUid) {
+      try {
+        const linkResult = await users.updateOne(
+          {
+            user_id: userId,
+            $or: [
+              { firebase_uid: { $exists: false } },
+              { firebase_uid: null },
+              { firebase_uid: '' },
+              { firebase_uid: uid },
+            ],
+          },
+          { $set: { firebase_uid: uid } },
+        );
+        if (!linkResult?.matchedCount) {
+          return res.status(409).json({
+            code: 'FIREBASE_UID_CONFLICT',
+            detail: 'Your account identity changed while the password was being verified. Please try again.',
+          });
+        }
+      } catch (linkError) {
+        console.error('[ChangePassword] Firebase UID backfill failed:', linkError?.code || linkError?.message);
+        return res.status(linkError?.code === 11000 ? 409 : 500).json({
+          code: linkError?.code === 11000 ? 'FIREBASE_UID_CONFLICT' : 'IDENTITY_LINK_UPDATE_FAILED',
+          detail: 'Your account identity could not be updated safely. Your password was not changed.',
+        });
+      }
+    }
+
     try {
       await admin.auth().updateUser(uid, { password: new_password });
     } catch (providerError) {
@@ -923,7 +974,12 @@ async function changePassword(req, res) {
 
     let sessionCleanupComplete = true;
     try {
-      const invalidation = await invalidateMobileIdentity(db, req.user, 'password_changed', req);
+      const invalidation = await invalidateMobileIdentity(
+        db,
+        { ...req.user, firebase_uid: uid },
+        'password_changed',
+        req,
+      );
       sessionCleanupComplete = !invalidation.failures.length;
     } catch (sessionError) {
       sessionCleanupComplete = false;

@@ -30,6 +30,14 @@ const resolveCurrentStayForTenant = jest.fn();
 const resolveAuthoritativeCurrentContract = jest.fn();
 const roomTransferLifecycleOnce = jest.fn(async () => null);
 const notifyBranchAdmins = jest.fn(async () => []);
+const serializeScheduledRoomTransfer = jest.fn(async (record) => ({
+  status: record.status === "executed" ? "completed" : record.status === "cancelled" ? "cancelled" : "scheduled",
+  transferBalance: { hasBill: false, paymentState: "none", amountDue: 0, amountPaid: 0, remaining: 0, billId: null },
+  actionRequiredReason: null,
+  actionRequiredMessage: null,
+  utilitiesNote: "Utilities remain backend-authoritative.",
+  addendum: null,
+}));
 
 jest.unstable_mockModule("../models/MoveOutClearance.js", () => ({ default: MoveOutClearance }));
 jest.unstable_mockModule("../models/Reservation.js", () => ({ default: Reservation }));
@@ -58,6 +66,7 @@ jest.unstable_mockModule("./notifications/notificationService.js", () => ({
   notify: { roomTransferLifecycleOnce },
   notifyBranchAdmins,
 }));
+jest.unstable_mockModule("./scheduledRoomTransferView.js", () => ({ serializeScheduledRoomTransfer }));
 
 const service = await import("./tenantTransferRequestService.js");
 
@@ -105,9 +114,9 @@ beforeEach(() => {
 
 describe("tenant room transfer request boundary", () => {
   test("one canonical label vocabulary drives Web and Mobile", () => {
-    expect(["pending", "scheduled", "completed", "declined", "cancelled"].map((status) => (
+    expect(["pending", "scheduled", "ready_for_transfer", "awaiting_settlement", "action_required", "completed", "declined", "cancelled"].map((status) => (
       service.tenantTransferStatusLabel(status)
-    ))).toEqual(["Pending Review", "Scheduled", "Completed", "Declined", "Cancelled"]);
+    ))).toEqual(["Pending Review", "Scheduled", "Ready for Transfer", "Settlement Required", "Action Required", "Completed", "Declined", "Cancelled"]);
   });
 
   test("submission code cannot create holds, schedules, bills, addenda, utilities, or occupancy mutations", () => {
@@ -383,6 +392,22 @@ describe("tenant room transfer request boundary", () => {
     expect(lifecycle).toMatchObject({ status: "scheduled", statusLabel: "Scheduled", request: null });
     expect(lifecycle.scheduledRoomTransfer).not.toHaveProperty("internalReadinessSnapshot");
     expect(lifecycle.scheduledRoomTransfer).not.toHaveProperty("estimatedTransferBalance");
+
+    serializeScheduledRoomTransfer.mockResolvedValueOnce({
+      status: "awaiting_settlement",
+      transferBalance: { hasBill: true, paymentState: "partial", amountDue: 1000, amountPaid: 400, remaining: 600, billId: "bill-1" },
+      actionRequiredReason: "TRANSFER_BALANCE_UNPAID",
+      actionRequiredMessage: null,
+      utilitiesNote: "Utilities remain backend-authoritative.",
+      addendum: null,
+    });
+    ScheduledRoomTransfer.find.mockReturnValueOnce(chain([schedule]));
+    const settlementLifecycle = await service.getTenantTransferLifecycle(tenantId);
+    expect(settlementLifecycle).toMatchObject({ status: "awaiting_settlement", statusLabel: "Settlement Required" });
+    expect(settlementLifecycle.scheduledRoomTransfer).toMatchObject({
+      settlement: { required: true, status: "partial", remaining: 600, billId: "bill-1" },
+      tenantGuidance: expect.stringContaining("Open Billing"),
+    });
 
     TenantTransferRequest.findOneAndUpdate.mockResolvedValue({ _id: objectId(), tenantId, reservationId, status: "scheduled" });
     await service.syncRequestFromScheduledTransfer({ ...schedule, scheduleHistory: [{ changedAt: new Date() }] }, { event: "rescheduled" });

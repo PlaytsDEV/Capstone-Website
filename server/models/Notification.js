@@ -116,6 +116,16 @@ const notificationSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Snapshot of the recipient lifecycle when the event was created. The
+    // same account survives applicant -> tenant promotion, so current-role
+    // filtering cannot safely infer historical visibility from userId alone.
+    roleAtCreation: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
     // --- Idempotency ---
     // Deterministic key (e.g. "contract_document_ready:<contractId>:<variant>:<version>")
     // for notification events that can legitimately be triggered more than

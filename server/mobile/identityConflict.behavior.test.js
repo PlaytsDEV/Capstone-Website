@@ -35,7 +35,10 @@ function conflictDb() {
       if (q.email) return state.users.find((u) => matchesEmail(u.email, q.email) && !q.role?.$nin?.includes(u.role)) || null;
       if (q.google_email) return null;
       if (q.firebase_uid) return state.users.find((u) => u.firebase_uid === q.firebase_uid && !q.role?.$nin?.includes(u.role)) || null;
-      if (q.$or) return state.users.find((u) => q.$or.some((part) => u.firebase_uid === part.firebase_uid || u.firebaseUid === part.firebaseUid)) || null;
+      if (q.$or) return state.users.find((u) => q.$or.some((part) => (
+        (Object.prototype.hasOwnProperty.call(part, 'firebase_uid') && u.firebase_uid === part.firebase_uid)
+        || (Object.prototype.hasOwnProperty.call(part, 'firebaseUid') && u.firebaseUid === part.firebaseUid)
+      ))) || null;
       if (q.user_id) return state.users.find((u) => u.user_id === q.user_id) || null;
       return null;
     },
@@ -45,7 +48,12 @@ function conflictDb() {
       if (user && update.$set) Object.assign(user, update.$set);
       return user;
     },
-    async updateOne(q, update) { state.userUpdates.push({ q, update }); return { modifiedCount: 1 }; },
+    async updateOne(q, update) {
+      state.userUpdates.push({ q, update });
+      const user = state.users.find((entry) => entry.user_id === q.user_id);
+      if (user && update.$set) Object.assign(user, update.$set);
+      return { matchedCount: user ? 1 : 0, modifiedCount: user ? 1 : 0 };
+    },
   };
   const db = { collection(name) {
     if (name === 'users') return users;
@@ -129,5 +137,49 @@ describe('mobile Firebase UID identity conflicts', () => {
     }, res);
     expect(mockAxiosPost.mock.calls[0][1].password).toBe(currentPassword);
     expect(res.statusCode).toBe(200);
+  });
+
+  test('change password safely backfills a missing Firebase UID from verified localId', async () => {
+    const fixture = conflictDb();
+    delete fixture.state.users[1].firebase_uid;
+    mockGetDb.mockReturnValue(fixture.db);
+    mockAxiosPost.mockResolvedValue({ data: { localId: 'uid-b' } });
+    mockUpdateUser.mockResolvedValue({});
+
+    const res = response();
+    await controller.changePassword({
+      body: { current_password: 'Legacy Pass1!', new_password: 'ModernPass2!' },
+      user: fixture.state.users[1],
+      headers: {},
+      ip: '127.0.0.1',
+    }, res);
+
+    expect(fixture.state.userUpdates).toContainEqual(expect.objectContaining({
+      q: expect.objectContaining({ user_id: 'B' }),
+      update: { $set: { firebase_uid: 'uid-b' } },
+    }));
+    expect(mockUpdateUser).toHaveBeenCalledWith('uid-b', { password: 'ModernPass2!' });
+    expect(res.statusCode).toBe(200);
+  });
+
+  test.each([
+    ['UID owned by another user', 'uid-a'],
+    ['verified UID differs from stored UID', 'uid-unowned'],
+  ])('change password rejects %s before provider mutation', async (_label, verifiedUid) => {
+    const fixture = conflictDb();
+    mockGetDb.mockReturnValue(fixture.db);
+    mockAxiosPost.mockResolvedValue({ data: { localId: verifiedUid } });
+
+    const res = response();
+    await controller.changePassword({
+      body: { current_password: 'Legacy Pass1!', new_password: 'ModernPass2!' },
+      user: fixture.state.users[1],
+      headers: {},
+      ip: '127.0.0.1',
+    }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual(expect.objectContaining({ code: 'FIREBASE_UID_CONFLICT' }));
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 });
