@@ -70,7 +70,18 @@ const transferStayWorkflow = (input) => transferWithCanonicalUtilityFixture(rawT
 const { generateContractNumber } = await import("../services/contractService.js");
 const { applyBillPayment } = await import("../services/billing/paymentLedger.js");
 const { ensureCurrentCycleRentBill } = await import("../services/billing/rentGenerator.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, TenantCredit } =
+const {
+  Contract,
+  Reservation,
+  Room,
+  User,
+  Stay,
+  BedHistory,
+  Bill,
+  BusinessSettings,
+  TenantCredit,
+  UtilityPeriod,
+} =
   await import("../models/index.js");
 
 jest.setTimeout(180_000);
@@ -89,8 +100,16 @@ describe("room-transfer financial settlement", () => {
   let mongo;
 
   beforeAll(async () => {
-    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(mongo.getUri(), { dbName: "transfer_financial" });
+    mongo = await MongoMemoryReplSet.create({
+      replSet: { count: 1, args: ["--wiredTigerCacheSizeGB", "0.5"] },
+    });
+    await mongoose.connect(mongo.getUri(), {
+      dbName: "transfer_financial",
+      autoIndex: false,
+    });
+    for (const model of [Contract, Stay, UtilityPeriod]) {
+      await model.syncIndexes();
+    }
   }, 120_000);
   afterAll(async () => {
     await mongoose.disconnect();

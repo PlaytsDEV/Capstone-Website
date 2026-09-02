@@ -71,7 +71,17 @@ const { transferStayWorkflow: rawTransferStayWorkflow } = await import("./tenant
 const { transferWithCanonicalUtilityFixture } = await import("../tests/canonicalUtilityLifecycleFixture.js");
 const transferStayWorkflow = (input) => transferWithCanonicalUtilityFixture(rawTransferStayWorkflow, input);
 const { generateContractNumber } = await import("../services/contractService.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings } = await import("../models/index.js");
+const {
+  Contract,
+  Reservation,
+  Room,
+  User,
+  Stay,
+  BedHistory,
+  Bill,
+  BusinessSettings,
+  UtilityPeriod,
+} = await import("../models/index.js");
 
 jest.setTimeout(180_000);
 
@@ -94,8 +104,16 @@ describe("transferStayWorkflow — cross-room-type transfers", () => {
   let mongo;
 
   beforeAll(async () => {
-    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(mongo.getUri(), { dbName: "transfer_cross_type" });
+    mongo = await MongoMemoryReplSet.create({
+      replSet: { count: 1, args: ["--wiredTigerCacheSizeGB", "0.5"] },
+    });
+    await mongoose.connect(mongo.getUri(), {
+      dbName: "transfer_cross_type",
+      autoIndex: false,
+    });
+    for (const model of [Contract, Stay, UtilityPeriod]) {
+      await model.syncIndexes();
+    }
   }, 120_000);
 
   afterAll(async () => {
