@@ -22,7 +22,10 @@ import {
   User,
   Stay,
   Bill,
+  UtilityPeriod,
+  UtilityReading,
 } from "../models/index.js";
+import { createOpenUtilityPeriodWithBoundary } from "./billing/utilityPeriodLifecycleService.js";
 
 jest.setTimeout(120_000);
 
@@ -32,6 +35,7 @@ describe("moveOutClearanceService", () => {
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "move_out_clearance" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
 
   afterAll(async () => {
@@ -47,6 +51,8 @@ describe("moveOutClearanceService", () => {
       Stay.deleteMany({}),
       Bill.deleteMany({}),
       MoveOutClearance.deleteMany({}),
+      UtilityPeriod.deleteMany({}),
+      UtilityReading.deleteMany({}),
     ]);
   });
 
@@ -93,6 +99,14 @@ describe("moveOutClearanceService", () => {
       status: "active",
       createdBy: actorId,
       updatedBy: actorId,
+    });
+    await createOpenUtilityPeriodWithBoundary({
+      utilityType: "electricity",
+      room,
+      startDate: new Date("2026-01-01T00:00:00.000Z"),
+      startReading: 0,
+      ratePerUnit: 16,
+      actorId,
     });
     return { actorId, tenant, room, reservation, stay };
   }

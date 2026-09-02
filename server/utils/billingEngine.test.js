@@ -95,7 +95,7 @@ describe("computeBilling - strict segmented mode", () => {
     expect(result.overheadSegments[0].reason).toBe("ZERO_OCCUPANCY_WITH_CONSUMPTION");
   });
 
-  test("gracefully attributes vacant/gap segment consumption to active period occupants", () => {
+  test("routes a vacant segment before move-in to overhead", () => {
     const utilityPeriod = {
       startDate: new Date("2026-06-15T00:00:00.000Z"),
       endDate: new Date("2026-07-15T00:00:00.000Z"),
@@ -141,8 +141,106 @@ describe("computeBilling - strict segmented mode", () => {
 
     expect(result.strategy).toBe("segment-based-strict");
     expect(result.tenantSummaries).toHaveLength(1);
-    expect(result.tenantSummaries[0].totalUsage).toBe(350);
-    expect(result.tenantSummaries[0].billAmount).toBe(5600);
+    expect(result.tenantSummaries[0].totalUsage).toBe(300);
+    expect(result.tenantSummaries[0].billAmount).toBe(4800);
+    expect(result.overheadSegments).toEqual([
+      expect.objectContaining({ kwhConsumed: 50, cost: 800 }),
+    ]);
+    expect(result.verified).toBe(true);
+  });
+
+  test("routes a vacancy between outgoing and incoming tenants to overhead", () => {
+    const utilityPeriod = {
+      startDate: new Date("2026-09-01T00:00:00.000Z"),
+      endDate: new Date("2026-10-01T00:00:00.000Z"),
+      startReading: 1000,
+      endReading: 1250,
+      ratePerUnit: 16,
+    };
+    const readings = [
+      { reading: 1000, date: new Date("2026-09-01T00:00:00.000Z"), eventType: "periodStart" },
+      { reading: 1100, date: new Date("2026-09-10T00:00:00.000Z"), eventType: "moveOut" },
+      { reading: 1150, date: new Date("2026-09-20T00:00:00.000Z"), eventType: "moveIn" },
+      { reading: 1250, date: new Date("2026-10-01T00:00:00.000Z"), eventType: "periodEnd" },
+    ];
+    const tenantEvents = [
+      { tenantId: "tenant-a", tenantName: "Tenant A", moveInReading: 1000, moveOutReading: 1100 },
+      { tenantId: "tenant-b", tenantName: "Tenant B", moveInReading: 1150, moveOutReading: null },
+    ];
+
+    const result = computeBilling({ utilityPeriod, readings, tenantEvents, forceSegmented: true });
+
+    expect(result.tenantSummaries.find((row) => row.tenantId === "tenant-a")?.totalUsage).toBe(100);
+    expect(result.tenantSummaries.find((row) => row.tenantId === "tenant-b")?.totalUsage).toBe(100);
+    expect(result.overheadSegments).toEqual([
+      expect.objectContaining({ readingFrom: 1100, readingTo: 1150, kwhConsumed: 50, cost: 800 }),
+    ]);
+    expect(result.computedTotalUsage).toBe(250);
+    expect(result.computedTotalCost).toBe(4000);
+    expect(result.verified).toBe(true);
+  });
+
+  test.each(["double-sharing", "quadruple-sharing"])(
+    "%s incoming tenant receives no usage before its move-in boundary",
+    (roomType) => {
+      const utilityPeriod = {
+        startDate: new Date("2026-09-01T00:00:00.000Z"),
+        endDate: new Date("2026-10-01T00:00:00.000Z"),
+        startReading: 1000,
+        endReading: 1200,
+        ratePerUnit: 16,
+      };
+      const readings = [
+        { reading: 1000, date: utilityPeriod.startDate, eventType: "periodStart" },
+        { reading: 1100, date: new Date("2026-09-15T00:00:00.000Z"), eventType: "moveIn" },
+        { reading: 1200, date: utilityPeriod.endDate, eventType: "periodEnd" },
+      ];
+      const tenantEvents = [
+        { tenantId: "existing", tenantName: "Existing", moveInReading: 1000, moveOutReading: null },
+        { tenantId: "incoming", tenantName: "Incoming", moveInReading: 1100, moveOutReading: null },
+      ];
+
+      const result = computeBilling({
+        utilityPeriod,
+        readings,
+        tenantEvents,
+        forceSegmented: true,
+        roomType,
+      });
+
+      expect(result.tenantSummaries.find((row) => row.tenantId === "existing")?.totalUsage).toBe(150);
+      expect(result.tenantSummaries.find((row) => row.tenantId === "incoming")?.totalUsage).toBe(50);
+      expect(result.computedTotalUsage).toBe(200);
+      expect(result.verified).toBe(true);
+    },
+  );
+
+  test("routes all usage after the final tenant moves out to vacancy overhead", () => {
+    const utilityPeriod = {
+      startDate: new Date("2026-09-01T00:00:00.000Z"),
+      endDate: new Date("2026-10-01T00:00:00.000Z"),
+      startReading: 1000,
+      endReading: 1150,
+      ratePerUnit: 16,
+    };
+    const readings = [
+      { reading: 1000, date: utilityPeriod.startDate, eventType: "periodStart" },
+      { reading: 1100, date: new Date("2026-09-15T00:00:00.000Z"), eventType: "moveOut" },
+      { reading: 1150, date: utilityPeriod.endDate, eventType: "periodEnd" },
+    ];
+    const tenantEvents = [
+      { tenantId: "last-tenant", tenantName: "Last Tenant", moveInReading: 1000, moveOutReading: 1100 },
+    ];
+
+    const result = computeBilling({ utilityPeriod, readings, tenantEvents, forceSegmented: true });
+
+    expect(result.tenantSummaries[0].totalUsage).toBe(100);
+    expect(result.overheadSegments).toEqual([
+      expect.objectContaining({ readingFrom: 1100, readingTo: 1150, kwhConsumed: 50, cost: 800 }),
+    ]);
+    expect(result.computedTotalUsage).toBe(150);
+    expect(result.computedTotalCost).toBe(2400);
+    expect(result.verified).toBe(true);
   });
 
   test("removes zero-consumption boundary segments and keeps consuming segments", () => {

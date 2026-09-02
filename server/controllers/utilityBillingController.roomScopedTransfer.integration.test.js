@@ -65,6 +65,7 @@ await jest.unstable_mockModule("../services/contractService.js", () => ({
 }));
 
 const { transferStayWorkflow } = await import("../utils/tenantActionService.js");
+const { seedCanonicalElectricityRoom } = await import("../tests/canonicalUtilityLifecycleFixture.js");
 const { generateContractNumber } = await import("../services/contractService.js");
 const { resolveRoomScopedReservationsForPeriod } = await import("./utilityBillingController.js");
 const {
@@ -72,7 +73,7 @@ const {
   buildTenantEventsForPeriod,
 } = await import("../utils/utilityFlowRules.js");
 const { computeBilling } = await import("../utils/billingEngine.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, UtilityReading } =
+const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, UtilityReading, UtilityPeriod } =
   await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -98,6 +99,7 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "phase4_electricity" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
   afterAll(async () => {
     await mongoose.disconnect();
@@ -109,6 +111,7 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
       Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       Contract.deleteMany({}), Stay.deleteMany({}), BedHistory.deleteMany({}),
       Bill.deleteMany({}), BusinessSettings.deleteMany({}), UtilityReading.deleteMany({}),
+      UtilityPeriod.deleteMany({}),
     ]);
     await BusinessSettings.create({
       key: "global",
@@ -169,15 +172,29 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
       statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
       createdBy: actorId, updatedBy: actorId,
     });
+    if (branch === "gil-puyat") {
+      await seedCanonicalElectricityRoom({
+        room, actorId, eventAt: TRANSFER_DATE,
+        tenantId: tenant._id, reservationId: reservation._id, moveInAt: MOVE_IN,
+        maximumOpeningReading: SRC_PERIOD_START_READING,
+      });
+    }
     return { tenant, room, reservation, stay, actorId };
   }
 
   async function emptyRoom(roomType, roomNumber, branch = "gil-puyat") {
-    return Room.create({
+    const room = await Room.create({
       name: `Room ${roomNumber}`, roomNumber, branch,
       type: roomType, capacity: CAP[roomType], currentOccupancy: 0, price: RATE[roomType],
       beds: bedsFor(roomType, `r${roomNumber}`),
     });
+    if (branch === "gil-puyat") {
+      await seedCanonicalElectricityRoom({
+        room, actorId: new mongoose.Types.ObjectId(), eventAt: CYCLE_START,
+        maximumOpeningReading: DST_PERIOD_START_READING,
+      });
+    }
+    return room;
   }
 
   async function runTransfer({ reservation, targetRoom, actorId, transferDate = TRANSFER_DATE, sourceReading, targetReading }) {
@@ -296,13 +313,8 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
     const roomB = await emptyRoom("double-sharing", "402");
     const roomC = await emptyRoom("private", "503");
 
-    await UtilityReading.create({
-      utilityType: "electricity", roomId: roomA._id, branch: roomA.branch,
-      reading: 100, date: CYCLE_START, eventType: "periodStart", recordedBy: actorId, activeTenantIds: [],
-    });
-
     // A -> B on Aug 10
-    await runTransfer({ reservation, targetRoom: roomB, actorId, transferDate: "2026-08-10T00:00:00.000Z", sourceReading: 180, targetReading: 900 });
+    await runTransfer({ reservation, targetRoom: roomB, actorId, transferDate: "2026-08-10T00:00:00.000Z", sourceReading: 1080, targetReading: 5090 });
     // wet-sign the T#1 contract so T#2's predecessor check passes
     const c1 = await Contract.findOne({ reservationId: reservation._id, isCurrent: true });
     await Contract.updateOne({ _id: c1._id }, { $set: { status: "active" } });
@@ -313,7 +325,7 @@ describe("Phase 4 — electricity follows the tenant's actual room across a tran
       }
     }
     // B -> C on Aug 20
-    await runTransfer({ reservation, targetRoom: roomC, actorId, transferDate: "2026-08-20T00:00:00.000Z", sourceReading: 1200, targetReading: 3000 });
+    await runTransfer({ reservation, targetRoom: roomC, actorId, transferDate: "2026-08-20T00:00:00.000Z", sourceReading: 5200, targetReading: 6000 });
 
     // BedHistory: A transferred (Aug 10 end), B transferred (Aug 20 end), C active (Aug 20 start).
     // The workflow normalizes transfer dates to LOCAL start-of-day, so compare

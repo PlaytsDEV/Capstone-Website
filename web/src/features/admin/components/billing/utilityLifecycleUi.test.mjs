@@ -6,6 +6,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, import.meta.ur
 
 const historicalModal = read("./NewBillingPeriodModal.jsx");
 const openModal = read("./OpenCurrentPeriodModal.jsx");
+const closeModal = read("./CloseCurrentPeriodModal.jsx");
 const billingTab = read("./UtilityBillingTab.jsx");
 const overview = read("./utility/UtilityCycleOverviewCard.jsx");
 const transferCard = read("../tenants/details/ScheduledRoomTransferCard.jsx");
@@ -14,7 +15,7 @@ const utilityHooks = read("../../../../shared/hooks/queries/useUtility.js");
 
 test("current-period opening and historical generation are separate admin commands", () => {
   assert.match(openModal, /useOpenUtilityPeriod/);
-  assert.match(openModal, /Open Current Period/);
+  assert.match(openModal, /Recovery \/ Manual Initialization/);
   assert.match(historicalModal, /useGenerateHistoricalUtilityPeriod/);
   assert.match(historicalModal, /Generate Historical/);
   assert.doesNotMatch(historicalModal, /useCloseUtilityPeriod|useDeleteUtilityPeriod/);
@@ -28,10 +29,34 @@ test("historical generation never deletes or replaces an active period", () => {
 
 test("overview exposes lifecycle-aware actions and a distinct manual-review state", () => {
   assert.match(overview, /!currentPeriod && !manualReviewPeriod/);
-  assert.match(overview, /Open Current Period/);
+  assert.match(overview, /Recovery \/ Manual Initialization/);
+  assert.match(overview, /Close Current Period/);
   assert.match(overview, /Generate Historical Cycle/);
   assert.match(overview, /Billing Period Requires Review/);
   assert.match(billingTab, /periodList\.find\(\(p\) => p\.status === "manual_review_required"\)/);
+});
+
+test("normal close explains the occupied-versus-vacant continuation rule", () => {
+  assert.match(closeModal, /useCloseUtilityPeriod/);
+  assert.match(closeModal, /Close Current Period/);
+  assert.match(closeModal, /Occupied rooms continue from this reading/);
+  assert.match(closeModal, /vacant rooms remain without an active period/);
+  assert.match(closeModal, /Close Period/);
+  assert.doesNotMatch(closeModal, /Close &amp; Open Next/);
+  assert.match(billingTab, /CloseCurrentPeriodModal/);
+});
+
+test("a vacant room without an active period is presented as a normal state", () => {
+  assert.match(overview, /No Active Period — Room Currently Vacant/);
+  assert.match(overview, /next move-in or transfer will initialize the period/);
+  assert.match(overview, /activeTenantCount/);
+});
+
+test("move-in and transfer mutations invalidate utility lifecycle queries", () => {
+  const reservationHooks = read("../../../../shared/hooks/queries/useReservations.js");
+  const scheduledTransfer = read("../tenants/details/ScheduledRoomTransferCard.jsx");
+  assert.match(reservationHooks, /queryKey: \["utilities"\]/);
+  assert.match(scheduledTransfer, /queryKey: \["utilities"\]/);
 });
 
 test("opening readings accept zero but reject blank, negative, NaN, and Infinity", () => {

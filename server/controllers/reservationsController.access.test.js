@@ -43,6 +43,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Payment: {},
   AuditLog: { create: jest.fn() },
   UtilityReading: { findOne: utilityReadingFindOne },
+  UtilityPeriod: {},
   BedHistory: {},
   Stay: { exists: jest.fn().mockResolvedValue(false) },
   Contract: {},

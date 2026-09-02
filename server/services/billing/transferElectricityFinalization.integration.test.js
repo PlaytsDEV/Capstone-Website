@@ -197,6 +197,7 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "xfer_elec_final" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
   afterAll(async () => {
     await mongoose.disconnect();
@@ -367,17 +368,9 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
     })).rejects.toMatchObject({ code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_OUTSIDE_CUTOVER" });
   });
 
-  test("a billing-period 409 is mutation-free and the transfer succeeds after the destination period is fixed", async () => {
+  test("a never-initialized destination is initialized inside the transfer transaction", async () => {
     const { roomA, roomB, reservations, stays, contracts, actorId } = await seedQuadRoom();
     await UtilityPeriod.deleteMany({ roomId: roomB._id, utilityType: "electricity" });
-    const before = {
-      sourceOccupancy: roomA.currentOccupancy,
-      destinationOccupancy: roomB.currentOccupancy,
-      readingCount: await UtilityReading.countDocuments(),
-      historyCount: await BedHistory.countDocuments(),
-      finalizationCount: await UtilityFinalization.countDocuments(),
-      billCount: await Bill.countDocuments(),
-    };
     const payload = {
       confirm: true, targetRoomId: roomB._id, targetBedId: "dst-b1",
       effectiveTransferDate: "2026-08-16T00:00:00.000Z",
@@ -385,33 +378,165 @@ describe("Transfer-day electricity finalization + reconciliation invariant", () 
       __scheduledTransferId: new mongoose.Types.ObjectId(),
     };
 
-    await expect(transferStayWorkflow({ reservationId: reservations.D._id, payload, actorId }))
-      .rejects.toMatchObject({ statusCode: 409, code: "ROOM_TRANSFER_DESTINATION_ELECTRICITY_PERIOD_MISSING" });
-
-    const [reservationAfterFailure, stayAfterFailure, contractAfterFailure, sourceAfterFailure, destinationAfterFailure] = await Promise.all([
-      Reservation.findById(reservations.D._id).lean(),
-      Stay.findById(stays.D._id).lean(),
-      Contract.findById(contracts.D._id).lean(),
-      Room.findById(roomA._id).lean(),
-      Room.findById(roomB._id).lean(),
-    ]);
-    expect(String(reservationAfterFailure.roomId)).toBe(String(roomA._id));
-    expect(String(stayAfterFailure.roomId)).toBe(String(roomA._id));
-    expect(String(contractAfterFailure.roomId)).toBe(String(roomA._id));
-    expect(sourceAfterFailure.currentOccupancy).toBe(before.sourceOccupancy);
-    expect(destinationAfterFailure.currentOccupancy).toBe(before.destinationOccupancy);
-    expect(await UtilityReading.countDocuments()).toBe(before.readingCount);
-    expect(await BedHistory.countDocuments()).toBe(before.historyCount);
-    expect(await UtilityFinalization.countDocuments()).toBe(before.finalizationCount);
-    expect(await Bill.countDocuments()).toBe(before.billCount);
-
-    await UtilityPeriod.create({
-      utilityType: "electricity", roomId: roomB._id, branch: roomB.branch,
-      startDate: MOVE_IN, startReading: 500, ratePerUnit: RATE_PER_KWH, status: "open",
-    });
     const result = await transferStayWorkflow({ reservationId: reservations.D._id, payload, actorId });
     expect(result.cutoverAt).toBeInstanceOf(Date);
     expect(String((await Reservation.findById(reservations.D._id).lean()).roomId)).toBe(String(roomB._id));
+    const destinationPeriod = await UtilityPeriod.findOne({
+      roomId: roomB._id,
+      utilityType: "electricity",
+      status: "open",
+    }).lean();
+    expect(destinationPeriod.startReading).toBe(500);
+    expect(destinationPeriod.startDate.getTime()).toBe(result.cutoverAt.getTime());
+    const destinationBoundaries = await UtilityReading.find({
+      utilityPeriodId: destinationPeriod._id,
+    }).lean();
+    expect(destinationBoundaries.map((entry) => entry.eventType).sort()).toEqual(["moveIn", "periodStart"]);
+    expect(destinationBoundaries.every((entry) => entry.reading === 500)).toBe(true);
+  });
+
+  test.each([
+    ["closed", "ROOM_TRANSFER_SOURCE_ELECTRICITY_PERIOD_CLOSED_ONLY"],
+    ["manual_review_required", "ROOM_TRANSFER_SOURCE_ELECTRICITY_PERIOD_REVIEW_REQUIRED"],
+  ])("source %s state remains a hard transfer blocker", async (status, code) => {
+    const { roomA, reservations, users } = await seedQuadRoom();
+    const sourcePeriod = await UtilityPeriod.findOne({
+      roomId: roomA._id,
+      utilityType: "electricity",
+    });
+    sourcePeriod.status = status;
+    if (status === "closed") {
+      sourcePeriod.endDate = new Date();
+      sourcePeriod.endReading = 1080;
+    } else {
+      sourcePeriod.manualReviewReason = "test source review";
+    }
+    await sourcePeriod.save();
+
+    await expect(computeTransfereeSourceElectricityLiability({
+      reservation: { _id: reservations.D._id, userId: users.D._id },
+      sourceRoom: roomA,
+      cutoverDate: new Date(),
+      freshSourceClosingReading: 1080,
+    })).rejects.toMatchObject({ code, manualReviewRequired: true });
+    expect(await UtilityPeriod.countDocuments({ roomId: roomA._id, status: "open" })).toBe(0);
+  });
+
+  test("a clean closed-only vacant destination opens at the transfer reading and records vacancy overhead", async () => {
+    const { roomB, reservations, actorId } = await seedQuadRoom();
+    const closedAt = new Date(Date.now() - 3 * 86_400_000);
+    const destinationHistory = await UtilityPeriod.findOne({
+      roomId: roomB._id,
+      utilityType: "electricity",
+    });
+    destinationHistory.status = "closed";
+    destinationHistory.endDate = closedAt;
+    destinationHistory.endReading = 1000;
+    destinationHistory.closedAt = closedAt;
+    destinationHistory.closedBy = actorId;
+    await destinationHistory.save();
+    await UtilityReading.create({
+      utilityType: "electricity",
+      roomId: roomB._id,
+      branch: roomB.branch,
+      reading: 1000,
+      date: closedAt,
+      eventType: "periodEnd",
+      readingStatus: "locked",
+      recordedBy: actorId,
+      utilityPeriodId: destinationHistory._id,
+    });
+
+    const result = await transferStayWorkflow({
+      reservationId: reservations.D._id,
+      payload: {
+        confirm: true,
+        targetRoomId: roomB._id,
+        targetBedId: "dst-b1",
+        effectiveTransferDate: new Date().toISOString(),
+        sourceRoomMeterReading: 1080,
+        targetRoomMeterReading: 1020,
+        reason: "closed vacant destination",
+      },
+      actorId,
+    });
+
+    const opened = await UtilityPeriod.findOne({
+      roomId: roomB._id,
+      utilityType: "electricity",
+      status: "open",
+    }).lean();
+    expect(opened.startDate.getTime()).toBe(result.cutoverAt.getTime());
+    expect(opened.startReading).toBe(1020);
+    expect(opened.overheadSegments).toEqual([
+      expect.objectContaining({
+        readingFrom: 1000,
+        readingTo: 1020,
+        kwhConsumed: 20,
+        cost: 320,
+        reason: "VACANT_GAP_BEFORE_PERIOD",
+      }),
+    ]);
+    const moveIn = await UtilityReading.findOne({
+      utilityPeriodId: opened._id,
+      eventType: "moveIn",
+      tenantId: reservations.D.userId,
+    }).lean();
+    expect(moveIn.reading).toBe(1020);
+  });
+
+  test("failed destination initialization rolls back the entire transfer", async () => {
+    const { roomA, roomB, reservations, users, actorId } = await seedQuadRoom();
+    await UtilityPeriod.deleteMany({ roomId: roomB._id, utilityType: "electricity" });
+    const before = {
+      sourceOccupancy: roomA.currentOccupancy,
+      destinationOccupancy: roomB.currentOccupancy,
+    };
+    const originalCreate = UtilityReading.create.bind(UtilityReading);
+    const readingSpy = jest
+      .spyOn(UtilityReading, "create")
+      .mockImplementationOnce((...args) => originalCreate(...args))
+      .mockImplementationOnce((...args) => originalCreate(...args))
+      .mockRejectedValueOnce(new Error("simulated destination move-in boundary failure"));
+
+    try {
+      await expect(transferStayWorkflow({
+        reservationId: reservations.D._id,
+        payload: {
+          confirm: true,
+          targetRoomId: roomB._id,
+          targetBedId: "dst-b1",
+          effectiveTransferDate: "2026-08-16T00:00:00.000Z",
+          sourceRoomMeterReading: 1080,
+          targetRoomMeterReading: 500,
+          reason: "rollback test",
+          __scheduledTransferId: new mongoose.Types.ObjectId(),
+        },
+        actorId,
+      })).rejects.toThrow("simulated destination move-in boundary failure");
+    } finally {
+      readingSpy.mockRestore();
+    }
+
+    const [reservation, source, destination] = await Promise.all([
+      Reservation.findById(reservations.D._id).lean(),
+      Room.findById(roomA._id).lean(),
+      Room.findById(roomB._id).lean(),
+    ]);
+    expect(String(reservation.roomId)).toBe(String(roomA._id));
+    expect(source.currentOccupancy).toBe(before.sourceOccupancy);
+    expect(destination.currentOccupancy).toBe(before.destinationOccupancy);
+    expect(await UtilityPeriod.countDocuments({ roomId: roomB._id })).toBe(0);
+    expect(await UtilityReading.countDocuments({
+      roomId: roomB._id,
+      utilityType: "electricity",
+    })).toBe(0);
+    expect(await UtilityReading.countDocuments({
+      roomId: roomA._id,
+      utilityType: "electricity",
+      tenantId: users.D._id,
+      eventType: "moveOut",
+    })).toBe(0);
   });
 
   test("direct negative transfer readings fail before physical-domain mutation", async () => {

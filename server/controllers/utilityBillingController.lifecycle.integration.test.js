@@ -1,8 +1,12 @@
 import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
-import { Bill, Reservation, Room, User, UtilityPeriod, UtilityReading } from "../models/index.js";
-import { closeUtilityPeriod, generateHistoricalUtilityPeriod } from "./utilityBillingController.js";
+import { BedHistory, Bill, Reservation, Room, User, UtilityPeriod, UtilityReading } from "../models/index.js";
+import {
+  closeUtilityPeriod,
+  generateHistoricalUtilityPeriod,
+  recordUtilityReading,
+} from "./utilityBillingController.js";
 import {
   createOpenUtilityPeriodWithBoundary,
   UTILITY_PERIOD_START_MODE,
@@ -20,6 +24,7 @@ describe("utility billing lifecycle controller commands", () => {
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "utility_lifecycle_controller" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
 
   afterAll(async () => {
@@ -29,7 +34,7 @@ describe("utility billing lifecycle controller commands", () => {
 
   beforeEach(async () => {
     await Promise.all([
-      Bill.deleteMany({}), Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
+      BedHistory.deleteMany({}), Bill.deleteMany({}), Reservation.deleteMany({}), Room.deleteMany({}), User.deleteMany({}),
       UtilityPeriod.deleteMany({}), UtilityReading.deleteMany({}),
     ]);
     admin = await User.create({
@@ -86,6 +91,23 @@ describe("utility billing lifecycle controller commands", () => {
     const res = { json(value) { payload = value; return res; } };
     await closeUtilityPeriod(req, res, (error) => { forwardedError = error; });
     return { payload, error: forwardedError };
+  }
+
+  async function invokeReading(body) {
+    let statusCode = 200;
+    let payload;
+    let forwardedError;
+    const req = {
+      params: { utilityType: "electricity" },
+      body,
+      user: { uid: admin.firebaseUid },
+    };
+    const res = {
+      status(code) { statusCode = code; return res; },
+      json(value) { payload = value; return res; },
+    };
+    await recordUtilityReading(req, res, (error) => { forwardedError = error; });
+    return { statusCode, payload, error: forwardedError };
   }
 
   test("historical generation is one atomic closed-cycle command and creates its expected draft", async () => {
@@ -151,5 +173,145 @@ describe("utility billing lifecycle controller commands", () => {
     expect(closed.startDate).toEqual(observedAt);
     expect(closed.computedTotalUsage).toBe(10);
     expect(closed.computedTotalCost).toBe(100);
+    const next = await UtilityPeriod.findOne({
+      roomId: room._id,
+      status: "open",
+    }).lean();
+    expect(next).toBeTruthy();
+    expect(next.startDate).toEqual(closed.endDate);
+    expect(next.startReading).toBe(closed.endReading);
+    expect(response.payload.result.nextPeriodId).toBeTruthy();
+
+    const retry = await invokeClose(period._id, {
+      endDate: "2026-09-02",
+      endReading: 110,
+    });
+    expect(retry.error).toBeUndefined();
+    expect(retry.payload.result.idempotent).toBe(true);
+    expect(await UtilityPeriod.countDocuments({ roomId: room._id })).toBe(2);
+    expect(await UtilityReading.countDocuments({
+      roomId: room._id,
+      eventType: "periodEnd",
+    })).toBe(1);
+  });
+
+  test("closing a vacant room stops at CLOSED and retry remains idempotent", async () => {
+    await reservation.deleteOne();
+    room.currentOccupancy = 0;
+    await room.save();
+    const period = await createOpenUtilityPeriodWithBoundary({
+      utilityType: "electricity",
+      room,
+      startDate: new Date("2026-09-01T00:00:00.000+08:00"),
+      startReading: 100,
+      ratePerUnit: 10,
+      actorId: admin._id,
+    });
+    period.overheadSegments = [{
+      segmentIndex: -1,
+      periodLabel: "Vacant gap before current period",
+      startDate: new Date("2026-08-31T00:00:00.000+08:00"),
+      endDate: period.startDate,
+      readingFrom: 90,
+      readingTo: 100,
+      kwhConsumed: 10,
+      cost: 100,
+      reason: "VACANT_GAP_BEFORE_PERIOD",
+    }];
+    await period.save();
+
+    const response = await invokeClose(period._id, {
+      endDate: "2026-09-02",
+      endReading: 110,
+    });
+
+    expect(response.error).toBeUndefined();
+    expect(response.payload.result).toMatchObject({
+      nextPeriodId: null,
+      occupancyContinued: false,
+      continuingOccupantCount: 0,
+    });
+    const closed = await UtilityPeriod.findById(period._id).lean();
+    expect(closed.status).toBe("closed");
+    expect(closed.overheadSegments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: "VACANT_GAP_BEFORE_PERIOD", kwhConsumed: 10 }),
+      expect.objectContaining({ reason: "ZERO_OCCUPANCY_WITH_CONSUMPTION", kwhConsumed: 10 }),
+    ]));
+    expect(await UtilityPeriod.countDocuments({ roomId: room._id, status: "open" })).toBe(0);
+
+    const retry = await invokeClose(period._id, {
+      endDate: "2026-09-02",
+      endReading: 110,
+    });
+    expect(retry.error).toBeUndefined();
+    expect(retry.payload.result).toMatchObject({ idempotent: true, nextPeriodId: null });
+    expect(await UtilityReading.countDocuments({ roomId: room._id, eventType: "periodEnd" })).toBe(1);
+  });
+
+  test("next-period creation failure rolls back the close and draft changes", async () => {
+    const start = new Date("2026-09-01T00:00:00.000+08:00");
+    const end = new Date("2026-09-02T00:00:00.000+08:00");
+    const period = await createOpenUtilityPeriodWithBoundary({
+      utilityType: "electricity",
+      room,
+      startDate: start,
+      startReading: 100,
+      ratePerUnit: 10,
+      actorId: admin._id,
+    });
+    await UtilityPeriod.create({
+      utilityType: "electricity",
+      roomId: room._id,
+      branch: room.branch,
+      startDate: end,
+      endDate: new Date("2026-09-03T00:00:00.000+08:00"),
+      startReading: 110,
+      endReading: 120,
+      ratePerUnit: 10,
+      status: "closed",
+    });
+
+    const response = await invokeClose(period._id, {
+      endDate: "2026-09-02",
+      endReading: 110,
+    });
+
+    expect(response.error).toBeTruthy();
+    expect((await UtilityPeriod.findById(period._id).lean()).status).toBe("open");
+    expect(await UtilityReading.countDocuments({
+      utilityPeriodId: period._id,
+      eventType: "periodEnd",
+    })).toBe(0);
+    expect(await Bill.countDocuments()).toBe(0);
+  });
+
+  test("generic reading creation cannot bypass manual-review lifecycle authority", async () => {
+    const period = await createOpenUtilityPeriodWithBoundary({
+      utilityType: "electricity",
+      room,
+      startDate: new Date("2026-09-01T00:00:00.000Z"),
+      startReading: 100,
+      ratePerUnit: 10,
+      actorId: admin._id,
+    });
+    period.status = "manual_review_required";
+    period.manualReviewReason = "test conflict";
+    await period.save();
+
+    const response = await invokeReading({
+      roomId: String(room._id),
+      reading: 110,
+      date: "2026-09-02",
+      eventType: "moveIn",
+      tenantId: String(tenant._id),
+    });
+
+    expect(response.error).toMatchObject({
+      code: "ROOM_UTILITY_BOUNDARY_MANUAL_REVIEW_REQUIRED",
+    });
+    expect(await UtilityReading.countDocuments({
+      roomId: room._id,
+      eventType: "moveIn",
+    })).toBe(0);
   });
 });

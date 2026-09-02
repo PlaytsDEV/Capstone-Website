@@ -54,7 +54,12 @@ await jest.unstable_mockModule("../contractService.js", () => ({
   })),
 }));
 
-const { transferStayWorkflow } = await import("../../utils/tenantActionService.js");
+const { transferStayWorkflow: rawTransferStayWorkflow } = await import("../../utils/tenantActionService.js");
+const {
+  seedCanonicalElectricityRoom,
+  transferWithCanonicalUtilityFixture,
+} = await import("../../tests/canonicalUtilityLifecycleFixture.js");
+const transferStayWorkflow = (input) => transferWithCanonicalUtilityFixture(rawTransferStayWorkflow, input);
 const { generateContractNumber } = await import("../contractService.js");
 const { computeBilling } = await import("./billingEngine.js");
 const { resolveRoomScopedReservationsForUtilityPeriod } =
@@ -82,6 +87,7 @@ describe("Transfer — water (no early finalization) + office-hours completion g
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "xfer_water_office" });
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
   afterAll(async () => {
     await mongoose.disconnect();
@@ -191,23 +197,23 @@ describe("Transfer — water (no early finalization) + office-hours completion g
       statusHistory: [{ status: "active", changedBy: actorId, reason: "s" }],
       createdBy: actorId, updatedBy: actorId,
     });
-    // Open electricity period so a finalization COULD be attempted.
-    await UtilityPeriod.create({
-      utilityType: "electricity", roomId: roomA._id, branch, startDate: MOVE_IN,
-      startReading: 100, ratePerUnit: 5, status: "open",
-    });
-    await UtilityReading.create({
-      utilityType: "electricity", roomId: roomA._id, branch, reading: 100, date: MOVE_IN,
-      eventType: "periodStart", readingStatus: "locked", recordedBy: actorId,
+    await seedCanonicalElectricityRoom({
+      room: roomA,
+      actorId,
+      eventAt: "2026-08-16T00:00:00.000Z",
+      tenantId: tenant._id,
+      reservationId: res._id,
+      moveInAt: MOVE_IN,
+      maximumOpeningReading: 100,
     });
     return { res, roomA, roomB, actorId, tenant };
   }
 
   test("transferStayWorkflow proceeds regardless of the time of day (no office-hours gate)", async () => {
     await seedBusinessSettings();
-    const { res, roomA, roomB, actorId } = await seedSimple();
+    const { res, roomA, roomB, actorId, tenant } = await seedSimple();
 
-    const result = await transferStayWorkflow({
+    const result = await transferWithCanonicalUtilityFixture(rawTransferStayWorkflow, {
       reservationId: res._id,
       payload: {
         confirm: true, targetRoomId: roomB._id, targetBedId: "rb-b1",
@@ -215,7 +221,7 @@ describe("Transfer — water (no early finalization) + office-hours completion g
         sourceRoomMeterReading: 160, targetRoomMeterReading: 50, reason: "ok",
       },
       actorId,
-    });
+    }, { destinationState: "never_initialized" });
     expect(result.cutoverAt).toBeInstanceOf(Date);
     const stay = await Stay.findOne({ reservationId: res._id }).lean();
     expect(String(stay.roomId)).toBe(String(roomB._id));
@@ -223,17 +229,21 @@ describe("Transfer — water (no early finalization) + office-hours completion g
     const bill = await Bill.findById(result.billingSnapshot.transferBillId).lean();
     expect(bill.charges.water).toBe(0);
     expect(Number(bill.charges.electricity)).toBeGreaterThan(0); // 60 kWh, sole occupant
+    const destinationPeriods = await UtilityPeriod.find({ roomId: roomB._id, utilityType: "electricity", status: "open", isArchived: false });
+    const destinationStart = await UtilityReading.findOne({ roomId: roomB._id, utilityType: "electricity", eventType: "periodStart", readingStatus: "locked" });
+    const destinationMoveIn = await UtilityReading.findOne({ roomId: roomB._id, utilityType: "electricity", eventType: "moveIn", tenantId: tenant._id });
+    expect(destinationPeriods).toHaveLength(1);
+    expect(destinationStart).toMatchObject({ reading: 50 });
+    expect(String(destinationStart.utilityPeriodId)).toBe(String(destinationPeriods[0]._id));
+    expect(destinationMoveIn).toMatchObject({ reading: 50 });
+    expect(String(destinationMoveIn.utilityPeriodId)).toBe(String(destinationPeriods[0]._id));
   });
 
-  test("two same-day transfers retain the zero-length audit row but exclude it from WATER participants", async () => {
+  test("two same-day transfers retain the zero-length audit row but exclude it from utility participants", async () => {
     await seedBusinessSettings();
     const { res, roomB, actorId, tenant } = await seedSimple();
-    // This audit isolates Room Transfer-created occupancy boundaries. Remove
-    // electricity periods/readings so electricity does not affect the case.
-    await Promise.all([
-      UtilityPeriod.deleteMany({}),
-      UtilityReading.deleteMany({}),
-    ]);
+    // Keep explicit canonical electricity periods in place; this test isolates
+    // water allocation through its assertions rather than corrupting utility state.
     const roomC = await Room.create({
       name: "R-3", roomNumber: "R3", branch: "gil-puyat",
       type: "double-sharing", capacity: 2, currentOccupancy: 0, price: 8100,
@@ -308,7 +318,7 @@ describe("Transfer — water (no early finalization) + office-hours completion g
     expect(
       electricityParticipants.some((participant) =>
         String(participant.userId?._id || participant.userId) === String(tenant._id)),
-    ).toBe(true);
+    ).toBe(false);
 
     // The resolver filter is billing-only; transfer history remains available
     // for audit and still records the exact zero-length boundary.

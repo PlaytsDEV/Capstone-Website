@@ -65,6 +65,10 @@ const { default: Room } = await import("../../models/Room.js");
 const { default: User } = await import("../../models/User.js");
 const { default: Contract } = await import("../../models/Contract.js");
 const { default: BusinessSettings } = await import("../../models/BusinessSettings.js");
+const { default: UtilityPeriod } = await import("../../models/UtilityPeriod.js");
+const { default: UtilityReading } = await import("../../models/UtilityReading.js");
+const { default: Stay } = await import("../../models/Stay.js");
+const { default: BedHistory } = await import("../../models/BedHistory.js");
 
 const response = () => ({
   statusCode: 200,
@@ -93,6 +97,7 @@ describe("moveIn transition — draft Contract repair backstop", () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "movein_contract_repair" });
     await Contract.syncIndexes();
+    await UtilityPeriod.syncIndexes();
   }, 120_000);
 
   afterAll(async () => {
@@ -107,6 +112,10 @@ describe("moveIn transition — draft Contract repair backstop", () => {
       User.deleteMany({}),
       Contract.deleteMany({}),
       BusinessSettings.deleteMany({}),
+      UtilityPeriod.deleteMany({}),
+      UtilityReading.deleteMany({}),
+      Stay.deleteMany({}),
+      BedHistory.deleteMany({}),
     ]);
     await BusinessSettings.create({
       key: "global", quadrupleDiscountPercent: 10, isDiscountEnabled: true, longTermLeaseMinMonths: 6,
@@ -156,6 +165,19 @@ describe("moveIn transition — draft Contract repair backstop", () => {
     expect(contracts).toHaveLength(1);
     expect(contracts[0].status).toBe("draft");
     expect(String(contracts[0].tenantId)).toBe(String(tenant._id));
+    const period = await UtilityPeriod.findOne({ roomId: reservation.roomId }).lean();
+    expect(period).toMatchObject({ status: "open", startReading: 100 });
+    const boundaries = await UtilityReading.find({ utilityPeriodId: period._id }).lean();
+    expect(boundaries.map((entry) => entry.eventType).sort()).toEqual(["moveIn", "periodStart"]);
+    expect(boundaries.every((entry) => entry.reading === 100)).toBe(true);
+    const stay = await Stay.findOne({ reservationId: reservation._id, status: "active" }).lean();
+    expect(stay).toBeTruthy();
+    expect(await BedHistory.countDocuments({
+      reservationId: reservation._id,
+      stayId: stay._id,
+      status: "active",
+    })).toBe(1);
+    expect(String(contracts[0].stayId)).toBe(String(stay._id));
   }, 20_000); // moveIn now also attempts a real (non-fatal) Firebase claims sync
 
   test("moveIn does not create a second Contract when settlement already created one", async () => {
@@ -170,5 +192,79 @@ describe("moveIn transition — draft Contract repair backstop", () => {
     const contracts = await Contract.find({ reservationId: reservation._id });
     expect(contracts).toHaveLength(1);
     expect(String(contracts[0]._id)).toBe(String(existing._id));
+  }, 20_000);
+
+  test("ordinary move-in initializes a clean closed-only vacant room from the actual reading", async () => {
+    const { reservation, room } = await seedReservedReservation();
+    const closedAt = new Date("2026-08-31T00:00:00.000Z");
+    const closed = await UtilityPeriod.create({
+      utilityType: "electricity",
+      roomId: room._id,
+      branch: room.branch,
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      endDate: closedAt,
+      startReading: 900,
+      endReading: 1000,
+      ratePerUnit: 10,
+      status: "closed",
+      closedAt,
+      closedBy: new mongoose.Types.ObjectId(),
+    });
+    await UtilityReading.create({
+      utilityType: "electricity",
+      roomId: room._id,
+      branch: room.branch,
+      reading: 1000,
+      date: closedAt,
+      eventType: "periodEnd",
+      readingStatus: "locked",
+      recordedBy: new mongoose.Types.ObjectId(),
+      utilityPeriodId: closed._id,
+    });
+
+    const req = requestFor(String(reservation._id), {
+      status: "moveIn",
+      meterReading: 1020,
+      actualMoveInDate: "2026-09-01",
+    });
+    const res = response();
+    await updateReservation(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    const opened = await UtilityPeriod.findOne({ roomId: room._id, status: "open" }).lean();
+    expect(opened.startReading).toBe(1020);
+    expect(opened.overheadSegments).toEqual([
+      expect.objectContaining({
+        readingFrom: 1000,
+        readingTo: 1020,
+        kwhConsumed: 20,
+        reason: "VACANT_GAP_BEFORE_PERIOD",
+      }),
+    ]);
+    const boundaries = await UtilityReading.find({ utilityPeriodId: opened._id }).lean();
+    expect(boundaries.map((entry) => entry.eventType).sort()).toEqual(["moveIn", "periodStart"]);
+    expect(boundaries.every((entry) => entry.reading === 1020)).toBe(true);
+  }, 20_000);
+
+  test("a failed move-in boundary write rolls back reservation, period, reading, and Stay", async () => {
+    const { reservation } = await seedReservedReservation();
+    const originalCreate = UtilityReading.create.bind(UtilityReading);
+    const readingSpy = jest
+      .spyOn(UtilityReading, "create")
+      .mockImplementationOnce((...args) => originalCreate(...args))
+      .mockRejectedValueOnce(new Error("simulated move-in boundary failure"));
+
+    const req = requestFor(String(reservation._id), { status: "moveIn", meterReading: 100 });
+    const res = response();
+    await updateReservation(req, res, jest.fn());
+    readingSpy.mockRestore();
+
+    expect(res.statusCode).toBe(500);
+    expect((await Reservation.findById(reservation._id).lean()).status).toBe("reserved");
+    expect(await UtilityPeriod.countDocuments({ roomId: reservation.roomId })).toBe(0);
+    expect(await UtilityReading.countDocuments({ roomId: reservation.roomId })).toBe(0);
+    expect(await Stay.countDocuments({ reservationId: reservation._id })).toBe(0);
+    expect(await BedHistory.countDocuments({ reservationId: reservation._id })).toBe(0);
+    expect(await Contract.countDocuments({ reservationId: reservation._id })).toBe(0);
   }, 20_000);
 });

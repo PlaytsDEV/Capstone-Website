@@ -22,8 +22,8 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeReading(reading, date, eventType = "regularBilling", tenantId = null) {
-  return { reading, date: new Date(date), eventType, tenantId };
+function makeReading(reading, date, eventType = "regularBilling", tenantId = null, meterReset = null) {
+  return { reading, date: new Date(date), eventType, tenantId, meterReset };
 }
 
 function makeTenantEvent(tenantId, moveInReading, moveOutReading = null, tenantName = "Tenant") {
@@ -79,32 +79,43 @@ describe("buildSegments — negative delta", () => {
     expect(() => buildSegments(readings, [])).toThrow(/NEGATIVE_DELTA/);
   });
 
-  it("skips segment silently when start is meterReplacement (no NEGATIVE_DELTA throw)", () => {
-    // Old meter final reading: 9800. New meter first reading: 50.
-    // The meterReplacement event is recorded at 9800 — the segment from 9800→50 is skipped.
+  it("preserves consumption before and after a meter replacement", () => {
+    // Old meter final reading: 9800. New meter opening reading: 10.
     const readings = [
       makeReading(9000, "2026-01-01", "periodStart"),
-      makeReading(9800, "2026-01-15", "meterReplacement"), // old meter swapped out here
-      makeReading(50,   "2026-01-31", "periodEnd"),       // new meter first reading
+      makeReading(10, "2026-01-15", "meterReplacement", null, { oldMeterFinalReading: 9800 }),
+      makeReading(50, "2026-01-31", "periodEnd"),
     ];
-    // Should NOT throw. The 9800→50 segment (spanning the boundary) is skipped.
+    // Both physical sides are retained without treating the reset as consumption.
     expect(() => buildSegments(readings, [])).not.toThrow();
     const segments = buildSegments(readings, []);
-    // Only segment 9000→9800 survives; the boundary segment is skipped
-    expect(segments).toHaveLength(1);
+    expect(segments).toHaveLength(2);
     expect(segments[0].unitsConsumed).toBe(800);
+    expect(segments[1].unitsConsumed).toBe(40);
   });
 
-  it("skips segment silently when start is meterRollover", () => {
+  it("preserves consumption before and after a meter rollover", () => {
     const readings = [
       makeReading(9900, "2026-01-01", "periodStart"),
-      makeReading(9999, "2026-01-15", "meterRollover"), // analog meter rolled over here
-      makeReading(100,  "2026-01-31", "periodEnd"),
+      makeReading(0, "2026-01-15", "meterRollover", null, { oldMeterFinalReading: 9999 }),
+      makeReading(100, "2026-01-31", "periodEnd"),
     ];
     expect(() => buildSegments(readings, [])).not.toThrow();
     const segments = buildSegments(readings, []);
-    expect(segments).toHaveLength(1);
+    expect(segments).toHaveLength(2);
+    expect(segments[1].unitsConsumed).toBe(100);
     expect(segments[0].unitsConsumed).toBe(99); // 9900 → 9999
+  });
+
+  it("blocks an incomplete meter reset instead of dropping consumption", () => {
+    const readings = [
+      makeReading(9000, "2026-01-01", "periodStart"),
+      makeReading(10, "2026-01-15", "meterReplacement"),
+      makeReading(50, "2026-01-31", "periodEnd"),
+    ];
+    expect(() => buildSegments(readings, [])).toThrow(
+      /METER_RESET_BOUNDARY_INCOMPLETE/,
+    );
   });
 
   it("throws DUPLICATE_TIMESTAMP on duplicate readings", () => {

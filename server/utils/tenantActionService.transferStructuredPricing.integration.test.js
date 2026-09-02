@@ -13,12 +13,15 @@ import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, jest } from "@jest/globals";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
-import { transferStayWorkflow } from "./tenantActionService.js";
+import { transferStayWorkflow as rawTransferStayWorkflow } from "./tenantActionService.js";
+import { transferWithCanonicalUtilityFixture } from "../tests/canonicalUtilityLifecycleFixture.js";
 import { generateContractNumber } from "../services/contractService.js";
 import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
 import { resolveAuthoritativeLeasePricing } from "../services/contractPricingResolver.js";
 import { getBusinessSettings } from "./businessSettings.js";
 import { Contract, Reservation, Room, User, Stay, BedHistory, Bill } from "../models/index.js";
+
+const transferStayWorkflow = (input) => transferWithCanonicalUtilityFixture(rawTransferStayWorkflow, input);
 
 jest.setTimeout(120_000);
 
