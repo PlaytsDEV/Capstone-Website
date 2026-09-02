@@ -8,6 +8,7 @@
 
 import { AppError, sendSuccess } from "../../middleware/errorHandler.js";
 import { User } from "../../models/index.js";
+import { MAX_MAINTENANCE_ATTACHMENTS } from "../../config/maintenance.js";
 import {
   USER_SELECT_FIELDS,
   buildActorSnapshot,
@@ -215,6 +216,13 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
       req.body?.attachments !== undefined
         ? req.body.attachments
         : req.body?.work_log_attachments;
+    if (Array.isArray(rawAttachments) && rawAttachments.length > MAX_MAINTENANCE_ATTACHMENTS) {
+      throw new AppError(
+        `You can upload a maximum of ${MAX_MAINTENANCE_ATTACHMENTS} resolution proof photos.`,
+        400,
+        "MAX_ATTACHMENTS_EXCEEDED",
+      );
+    }
     const attachmentErrors = validateIncomingWorkLogAttachments(rawAttachments);
     const attachments = normalizeAttachments(rawAttachments, {
       context: "maintenance_resolution_proof",
@@ -239,14 +247,6 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
         "Please upload a proof attachment before saving.",
         400,
         "PROOF_ATTACHMENT_REQUIRED",
-      );
-    }
-
-    if (attachments.length > 5) {
-      throw new AppError(
-        "You can upload a maximum of 5 resolution proof photos.",
-        400,
-        "MAX_ATTACHMENTS_EXCEEDED",
       );
     }
 

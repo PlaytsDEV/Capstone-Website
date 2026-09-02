@@ -6,6 +6,7 @@ import {
   dismissNotification,
   clearNotifications,
   buildNotificationKey,
+  filterNotificationsForTenantLifecycle,
 } from "./mobileNotificationBridge.js";
 
 function fakeDb({
@@ -85,6 +86,34 @@ function fakeDb({
 }
 
 describe("mobileNotificationBridge", () => {
+  test("applicant-to-tenant transition hides applicant-only notifications without deleting history", async () => {
+    const notifications = [
+      { notification_id: "applicant-stamped", roleAtCreation: "applicant", type: "application_submitted", title: "Application received" },
+      { notification_id: "tenant-stamped", roleAtCreation: "tenant", type: "bill_generated", title: "Reservation balance bill" },
+      { notification_id: "legacy-applicant", type: "visit_approved", entityType: "reservation", entityId: "res-1", title: "Visit approved" },
+      { notification_id: "legacy-billing", type: "bill_generated", reservation_id: "res-1", billing_id: "bill-1", title: "Bill ready" },
+    ];
+
+    expect(filterNotificationsForTenantLifecycle("applicant", notifications)).toHaveLength(4);
+    expect(filterNotificationsForTenantLifecycle("tenant", notifications).map((item) => item.notification_id))
+      .toEqual(["tenant-stamped", "legacy-billing"]);
+
+    const db = fakeDb({ notifications });
+    const result = await listUserNotifications(db, "tenant-a", null, "tenant");
+    expect(result.map((item) => item.notification_id).sort())
+      .toEqual(["legacy-billing", "tenant-stamped"]);
+  });
+
+  test("tenant-stamped notifications remain visible even when their text mentions a reservation", () => {
+    const notification = {
+      notification_id: "tenant-transfer-bill",
+      roleAtCreation: "tenant",
+      type: "bill_generated",
+      title: "Room transfer reservation settlement",
+    };
+    expect(filterNotificationsForTenantLifecycle("tenant", [notification])).toEqual([notification]);
+  });
+
   test("listUserNotifications merges stored notifications and visible announcements, newest first", async () => {
     const db = fakeDb({
       notifications: [{ notification_id: "n1", title: "Bill ready", created_at: new Date("2026-01-01") }],

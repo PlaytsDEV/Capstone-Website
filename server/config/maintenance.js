@@ -17,11 +17,11 @@ export const MAINTENANCE_REQUEST_TYPES = Object.freeze([
 ]);
 
 export const MAINTENANCE_URGENCY_LEVELS = Object.freeze([
+  "low",
   "normal",
+  "high",
   "urgent",
   "emergency",
-  "low",
-  "high",
 ]);
 
 export const MIN_MAINTENANCE_DESCRIPTION_LENGTH = 10;
@@ -73,6 +73,30 @@ export const REOPENABLE_MAINTENANCE_STATUSES = Object.freeze([
   "resolved",
   "completed",
 ]);
+
+// Tenant actions are canonical server policy. Clients consume the serialized
+// `tenantActions` capabilities instead of maintaining independent matrices.
+export const TENANT_EDITABLE_MAINTENANCE_STATUSES = Object.freeze([
+  "pending",
+  "pending_review",
+  "viewed",
+  "reviewed",
+]);
+
+export const TENANT_CANCELLABLE_MAINTENANCE_STATUSES = Object.freeze([
+  ...TENANT_EDITABLE_MAINTENANCE_STATUSES,
+]);
+
+export const TENANT_RESCHEDULABLE_MAINTENANCE_STATUSES = Object.freeze([
+  "provider_assigned",
+  "scheduled",
+  "in_progress",
+  "waiting_tenant",
+  "reopened",
+]);
+
+export const MAX_MAINTENANCE_ATTACHMENTS = 5;
+export const MAX_MAINTENANCE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 export const MAINTENANCE_REQUEST_TYPE_LABELS = Object.freeze({
   maintenance: "Maintenance",

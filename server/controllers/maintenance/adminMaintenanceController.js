@@ -29,6 +29,7 @@ import {
   MAINTENANCE_LIMIT_MAX,
   buildActorSnapshot,
   findAccessibleRequest,
+  getAuthenticatedDbUser,
   getDbUser,
   ensureAdminAccess,
   serializeTenantSummary,
@@ -502,7 +503,7 @@ export const getAdminAll = async (req, res, next) => {
  */
 export const getRequestById = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const isAdminViewer = dbUser.role === "owner" || dbUser.role === "branch_admin";
     const request = await findAccessibleRequest(req.params.requestId, {
       includeArchived: isAdminViewer,

@@ -16,6 +16,7 @@ import { notify, notifyBranchAdmins } from "./notifications/notificationService.
 import { getManilaToday, toManilaStartOfDay } from "../utils/dateUtils.js";
 import { hasReservationStatus } from "../utils/lifecycleNaming.js";
 import { isValidTransferPredecessor } from "../utils/tenantActionService.js";
+import { serializeScheduledRoomTransfer } from "./scheduledRoomTransferView.js";
 
 const ROOM_TYPES = new Set(["private", "double-sharing", "quadruple-sharing"]);
 const OPEN_REQUEST_STATUSES = ["pending", "scheduling", "scheduled"];
@@ -258,6 +259,9 @@ export function tenantTransferStatusLabel(status) {
   return {
     pending: "Pending Review",
     scheduled: "Scheduled",
+    ready_for_transfer: "Ready for Transfer",
+    awaiting_settlement: "Settlement Required",
+    action_required: "Action Required",
     completed: "Completed",
     declined: "Declined",
     cancelled: "Cancelled",
@@ -274,7 +278,8 @@ export async function serializeTenantScheduledTransfer(scheduledTransfer) {
     : doc.destinationRoomId
       ? await Room.findById(doc.destinationRoomId).select("name roomNumber type branch").lean()
       : null;
-  const status = deriveTenantTransferStatus(null, doc);
+  const canonical = await serializeScheduledRoomTransfer(doc);
+  const status = canonical.status;
   const minutes = Number.isFinite(Number(doc.effectiveTransferTimeMinutes))
     ? Number(doc.effectiveTransferTimeMinutes)
     : 9 * 60;
@@ -288,6 +293,30 @@ export async function serializeTenantScheduledTransfer(scheduledTransfer) {
     effectiveTransferTimeMinutes: minutes,
     effectiveTransferTimeLabel: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`,
     destinationRoom: safeRoom(destinationRoom),
+    settlement: {
+      required: canonical.transferBalance?.hasBill === true,
+      status: canonical.transferBalance?.paymentState || "none",
+      amountDue: Number(canonical.transferBalance?.amountDue || 0),
+      amountPaid: Number(canonical.transferBalance?.amountPaid || 0),
+      remaining: Number(canonical.transferBalance?.remaining || 0),
+      billId: canonical.transferBalance?.billId || null,
+    },
+    actionRequiredReason: canonical.actionRequiredReason || null,
+    tenantGuidance: status === "awaiting_settlement"
+      ? "A room-transfer settlement is still due. Open Billing to review and settle the balance before the transfer can complete."
+      : status === "ready_for_transfer"
+        ? "Your transfer is ready. Lilycrest Administration will complete the room change."
+        : status === "action_required"
+          ? (canonical.actionRequiredMessage || "Lilycrest Administration needs to review this transfer before it can complete.")
+          : status === "scheduled"
+            ? "Your current room remains active until Lilycrest completes the scheduled transfer."
+            : status === "completed"
+              ? "The room transfer has been completed."
+              : status === "cancelled"
+                ? "This scheduled room transfer was cancelled."
+                : "",
+    utilitiesNote: canonical.utilitiesNote,
+    addendum: canonical.addendum,
     scheduledAt: doc.scheduledAt || doc.createdAt || null,
     completedAt: doc.executedAt || null,
     cancelledAt: doc.cancelledAt || null,
@@ -380,7 +409,8 @@ export async function getTenantTransferLifecycle(tenantId) {
     return { status: null, statusLabel: "", request: null, scheduledRoomTransfer: null };
   }
 
-  const status = deriveTenantTransferStatus(request, scheduledTransfer);
+  const tenantScheduledTransfer = await serializeTenantScheduledTransfer(scheduledTransfer);
+  const status = tenantScheduledTransfer?.status || deriveTenantTransferStatus(request, scheduledTransfer);
   const linkedLifecycleSchedule = request && scheduledTransfer &&
     id(request.reservationId) === id(scheduledTransfer.reservationId)
     ? scheduledTransfer
@@ -391,7 +421,7 @@ export async function getTenantTransferLifecycle(tenantId) {
     request: request
       ? await serializeTenantTransferRequest(request, { scheduledTransfer: linkedLifecycleSchedule })
       : null,
-    scheduledRoomTransfer: await serializeTenantScheduledTransfer(scheduledTransfer),
+    scheduledRoomTransfer: tenantScheduledTransfer,
   };
 }
 

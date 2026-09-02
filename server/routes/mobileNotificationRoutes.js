@@ -49,7 +49,12 @@ const asyncRoute = (handler) => (req, res, next) =>
 // opposed to the legacy user_id-string shape — see mobileNotificationBridge.js.
 router.get("/notifications", mobileTenantAuth, asyncRoute(async (req, res) => {
   const db = mongoose.connection.db;
-  const notifications = await listUserNotifications(db, req.mobileTenant.user_id, req.mobileTenant._id);
+  const notifications = await listUserNotifications(
+    db,
+    req.mobileTenant.user_id,
+    req.mobileTenant._id,
+    req.mobileTenant.role,
+  );
   res.json(notifications);
 }));
 

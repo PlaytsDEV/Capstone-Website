@@ -19,6 +19,7 @@ const BRIDGE_FILES = [
   "mobileBillingRoutes.js",
   "mobilePaymongoRoutes.js",
   "mobileDocumentRoutes.js",
+  "mobileMaintenanceRoutes.js",
 ];
 
 describe("every canonical mobile bridge authenticates through the one shared mobileTenantAuth", () => {
