@@ -46,6 +46,8 @@ const overheadSegmentSchema = new mongoose.Schema(
     periodLabel: { type: String },
     startDate: { type: Date },
     endDate: { type: Date },
+    readingFrom: { type: Number },
+    readingTo: { type: Number },
     kwhConsumed: { type: Number },
     cost: { type: Number },
     reason: { type: String, default: "ZERO_OCCUPANCY_WITH_CONSUMPTION" },

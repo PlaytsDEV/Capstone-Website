@@ -317,6 +317,7 @@ export const deriveRoomOccupancyState = (room, reservations = [], scheduledHolds
 export const updateOccupancyOnReservationChange = async (
   reservation,
   oldData,
+  { session: externalSession = null } = {},
 ) => {
   const oldStatus = oldData?.status;
   const newStatus = normalizeReservationStatus(reservation.status);
@@ -326,11 +327,12 @@ export const updateOccupancyOnReservationChange = async (
     return Room.findById(reservation.roomId);
   }
 
-  const session = await mongoose.startSession();
+  const ownedSession = externalSession ? null : await mongoose.startSession();
+  const session = externalSession || ownedSession;
   let finalRoom = null;
 
   try {
-    await session.withTransaction(async () => {
+    const execute = async () => {
       const room = await Room.findById(reservation.roomId).session(session);
       if (!room) return;
 
@@ -539,9 +541,11 @@ export const updateOccupancyOnReservationChange = async (
       }
 
       finalRoom = await Room.findById(room._id).session(session);
-    });
+    };
+    if (externalSession) await execute();
+    else await session.withTransaction(execute);
 
-    if (finalRoom) {
+    if (finalRoom && !externalSession) {
       emitRoomUpdate(finalRoom._id, {
         currentOccupancy: finalRoom.currentOccupancy,
         available: finalRoom.available,
@@ -557,7 +561,7 @@ export const updateOccupancyOnReservationChange = async (
     );
     throw error;
   } finally {
-    session.endSession();
+    if (ownedSession) await ownedSession.endSession();
   }
 };
 

@@ -337,26 +337,29 @@ export function buildSegments(sortedReadings, tenantEvents) {
     );
   }
 
-  const METER_BOUNDARY_EVENTS = new Set(["meterReplacement", "meterRollover"]);
-
   const segments = [];
   for (let i = 0; i < sortedReadings.length - 1; i++) {
     const startReading = sortedReadings[i];
     const endReading = sortedReadings[i + 1];
 
     const readingFrom = startReading.reading;
-    const readingTo = endReading.reading;
+    const readingTo = ["meterReplacement", "meterRollover"].includes(
+      endReading.eventType,
+    )
+      ? endReading?.meterReset?.oldMeterFinalReading
+      : endReading.reading;
+    if (
+      !Number.isFinite(Number(readingFrom)) ||
+      !Number.isFinite(Number(readingTo))
+    ) {
+      throw new Error(
+        "METER_RESET_BOUNDARY_INCOMPLETE: Meter replacement/rollover requires both the old final reading and new opening reading.",
+      );
+    }
     const unitsConsumed = readingTo - readingFrom;
 
-    // Plan 1 — Meter Boundary Skip:
-    // If the START of this segment is a meterReplacement or meterRollover event, the
-    // reading gap between the old meter's final value and the new meter's first value
-    // is physically meaningless. Skip this segment entirely — no consumption or cost
-    // is assigned across a meter boundary transition.
-    if (METER_BOUNDARY_EVENTS.has(startReading.eventType)) {
-      continue;
-    }
-
+    // Reset events contain both physical sides: the previous segment closes
+    // on the old meter and the following segment starts on the new meter.
     if (unitsConsumed < 0) {
       throw new Error(
         `NEGATIVE_DELTA: Invalid reading sequence: reading ${readingTo} is lower than ${readingFrom} (segment ${i + 1}). Possible meter reset — flag for admin review.`,
@@ -533,8 +536,8 @@ export function computeBilling({
     });
   }
 
-  const totalUnits = endReading - startReading;
-  const totalCost = truncate4(totalUnits * ratePerUnit);
+  let totalUnits = endReading - startReading;
+  let totalCost = truncate4(totalUnits * ratePerUnit);
 
   const intermediateReadings = readings.filter(
     (r) =>
@@ -552,49 +555,25 @@ export function computeBilling({
       );
     }
 
-    const allPeriodTenantIds = tenantEvents.map((t) => t.tenantId);
+    // A reset-aware cycle is the sum of the physically meaningful segments,
+    // not the simple difference between readings from two different meters.
+    totalUnits = truncate4(
+      rawSegments.reduce((sum, segment) => sum + segment.unitsConsumed, 0),
+    );
+    totalCost = truncate4(totalUnits * ratePerUnit);
     const segmentExceptions = [];
     // Plan 1 (D1): Segments with consumption but zero occupants across the entire
     // billing period are routed to branch overhead — no tenant is billed for them.
     const overheadSegments = [];
 
     const computedSegments = rawSegments.map((seg) => {
-      let activeTenantIds = seg.activeTenantIds;
-      let activeTenantCount = seg.activeTenantCount;
-      let coveredTenantNames = seg.coveredTenantNames;
+      const activeTenantIds = seg.activeTenantIds;
+      const activeTenantCount = seg.activeTenantCount;
+      const coveredTenantNames = seg.coveredTenantNames;
 
-      // Fallback for gap segments: if a segment has consumption but 0 native active
-      // tenants, attribute it to all tenants present in the period (e.g., tenant moved
-      // in between two readings without a dedicated move-in reading event).
-      //
-      // EXCEPTION (room transfer): a tenant carrying an explicit room-scoped
-      // occupancy boundary must not be pulled into a segment OUTSIDE that
-      // boundary — a segment before they transferred INTO this room, or after
-      // they transferred OUT. `roomScopedFromReading` / `roomScopedToReading`
-      // are set by buildTenantEventsForPeriod only for such tenants; they are
-      // null for everyone else, so the classic gap-fallback is unchanged for
-      // non-transfer billing.
-      const eligibleForGapFallback = tenantEvents.filter((t) => {
-        if (t.roomScopedFromReading != null && seg.readingFrom < t.roomScopedFromReading) {
-          return false; // consumption before they transferred in
-        }
-        if (t.roomScopedToReading != null && seg.readingFrom >= t.roomScopedToReading) {
-          return false; // consumption after they transferred out
-        }
-        return true;
-      });
-      if (
-        seg.unitsConsumed > 0 &&
-        activeTenantCount === 0 &&
-        eligibleForGapFallback.length > 0
-      ) {
-        activeTenantIds = eligibleForGapFallback.map((t) => t.tenantId);
-        activeTenantCount = eligibleForGapFallback.length;
-        coveredTenantNames = eligibleForGapFallback.map((t) => t.tenantName);
-      }
-
-      // Plan 1 (D1): Truly vacant segment — no tenants in this segment OR anywhere
-      // in the period. Route cost to branch overhead; exclude from tenant billing.
+      // Segment-local occupancy is authoritative. A consuming segment with no
+      // active occupant is vacancy overhead; previous/future tenants are never
+      // pulled into it through a period-wide fallback.
       if (seg.unitsConsumed > 0 && activeTenantCount === 0) {
         const overheadCost = truncate4(seg.unitsConsumed * ratePerUnit);
         overheadSegments.push({
@@ -602,6 +581,8 @@ export function computeBilling({
           periodLabel: seg.periodLabel,
           startDate: seg.startDate,
           endDate: seg.endDate,
+          readingFrom: seg.readingFrom,
+          readingTo: seg.readingTo,
           kwhConsumed: seg.unitsConsumed,
           cost: overheadCost,
           reason: "ZERO_OCCUPANCY_WITH_CONSUMPTION",
@@ -693,11 +674,19 @@ export function computeBilling({
       (sum, t) => sum + t.totalUsage,
       0,
     );
+    const overheadKwh = overheadSegments.reduce(
+      (sum, segment) => sum + Number(segment.kwhConsumed || 0),
+      0,
+    );
     // Phase 1: Strict cent-level reconciliation (not ±0.01 float tolerance)
     const totalCostCents = toCents(totalCost);
     const sumTenantCents = tenantSummaries.reduce((sum, t) => sum + toCents(t.billAmount), 0);
+    const overheadCents = overheadSegments.reduce(
+      (sum, segment) => sum + toCents(segment.cost),
+      0,
+    );
     const reconciliation = verifyReconciliation(
-      tenantSummaries.map((t) => toCents(t.billAmount)),
+      [...tenantSummaries.map((t) => toCents(t.billAmount)), overheadCents],
       totalCostCents,
     );
 
@@ -707,7 +696,9 @@ export function computeBilling({
       tenantSummaries,
       computedTotalUsage: totalUnits,
       computedTotalCost: totalCost,
-      verified: reconciliation.valid && Math.abs(sumTenantKwh - totalUnits) <= 0.01,
+      verified:
+        reconciliation.valid &&
+        Math.abs(sumTenantKwh + overheadKwh - totalUnits) <= 0.01,
       reconciliationDeltaCents: reconciliation.delta,
       exceptions: segmentExceptions,
       // Plan 1 (D1): Segments routed to branch overhead due to zero occupancy

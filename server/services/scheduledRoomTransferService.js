@@ -1293,6 +1293,8 @@ export async function completeRoomTransfer({ reservationId, payload = {}, actorI
       destinationRoom: destRoomForMeter,
       cutoverDate: actualCutoverDay,
       freshDestinationOpeningReading: Number(targetMeterReading),
+      allowNeverInitialized: true,
+      incomingReservationId: reservation._id,
     });
   }
 
