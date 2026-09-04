@@ -18,13 +18,7 @@ export function Navigation({ type } = {}) {
   const [activeSection, setActiveSection] = useState("");
   const [hoveredSection, setHoveredSection] = useState(null);
   const { user, isAuthenticated, loading } = useAuth();
-  const { theme } = useTheme();
-
-  const resolvedTheme =
-    theme === "system"
-      ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : theme;
-  const isDark = resolvedTheme === "dark";
+  const { isDark } = useTheme();
 
   // Scroll listener — compact navbar after 20px (rAF debounced to prevent forced reflow)
   useEffect(() => {

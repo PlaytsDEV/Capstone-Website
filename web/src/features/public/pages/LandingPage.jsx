@@ -4,7 +4,6 @@ import { HeroSection } from "../components/HeroSection";
 import { JourneyHighlightsSection } from "../components/JourneyHighlightsSection";
 import { BenefitsSection } from "../components/BenefitsSection";
 import { RoomInventory } from "../components/RoomInventory";
-import ScrollReveal from "../../../shared/components/ScrollReveal";
 import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import RouteErrorBoundary from "../../../shared/components/RouteErrorBoundary";
@@ -172,10 +171,10 @@ const LILYCREST_STRUCTURED_DATA = {
 };
 
 function LandingPageContent() {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   return (
-    <div className="landing-page" data-theme={theme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
+    <div className="landing-page" data-theme={resolvedTheme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
       <SEOHead
         title="Home"
         description="Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Book a visit today."
@@ -220,127 +219,119 @@ function LandingPageContent() {
       <Navbar type="landing" currentPage="home" />
 
       {/* Main content target for skip link */}
-      <main id="main-content">
+      <main id="main-content" className="relative w-full">
 
-      {/* 1. HOOK — First impression */}
-      <RouteErrorBoundary name="HeroSection" fallback={<SectionFallback name="Hero" />}>
-        <HeroSection />
-      </RouteErrorBoundary>
-
-      {/* 2. FEATURES — Why choose us */}
-      <RouteErrorBoundary
-        name="JourneyHighlightsSection"
-        fallback={<SectionFallback name="Journey" />}
-      >
-        <JourneyHighlightsSection />
-      </RouteErrorBoundary>
-
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="BenefitsSection" fallback={<SectionFallback name="Benefits" />}>
-            <BenefitsSection />
+        {/* 1. HOOK — Pinned Sticky Hero with Parallax Unveil */}
+        <div className="sticky top-0 z-0 h-[100dvh] w-full overflow-hidden">
+          <RouteErrorBoundary name="HeroSection" fallback={<SectionFallback name="Hero" />}>
+            <HeroSection />
           </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
+        </div>
 
-      {/* 3. PRODUCT — What we offer */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up" delay={0.1}>
-          <RouteErrorBoundary name="RoomInventory" fallback={<SectionFallback name="Rooms" />}>
-            <RoomInventory />
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
+        {/* Sliding Elevated Content Layer — Overlaps over the pinned Hero */}
+        <div
+          className="relative z-10 w-full rounded-t-[24px] lg:rounded-t-[36px] border-t border-[var(--lp-border)] shadow-[0_-12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_-16px_50px_rgba(0,0,0,0.5)]"
+          style={{
+            backgroundColor: "var(--lp-bg)",
+            transform: "translate3d(0, 0, 0)",
+            willChange: "transform",
+          }}
+        >
+          {/* 2. FEATURES — Why choose us */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary
+              name="JourneyHighlightsSection"
+              fallback={<SectionFallback name="Journey" />}
+            >
+              <JourneyHighlightsSection />
+            </RouteErrorBoundary>
+          </div>
 
-      {/* 4. FACILITIES — Shared spaces */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="FacilitiesSection" fallback={<SectionFallback name="Facilities" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
-              <FacilitiesSection />
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="BenefitsSection" fallback={<SectionFallback name="Benefits" />}>
+              <BenefitsSection />
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 3. PRODUCT — What we offer */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="RoomInventory" fallback={<SectionFallback name="Rooms" />}>
+              <RoomInventory />
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 4. FACILITIES — Shared spaces */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="FacilitiesSection" fallback={<SectionFallback name="Facilities" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
+                <FacilitiesSection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 5. CONVENIENCE — Where we are */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="LocationSection" fallback={<SectionFallback name="Location" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
+                <LocationSection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 7. STORY — Brand identity */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="StorytellingSection" fallback={<SectionFallback name="About" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+                <StorytellingSection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 8. TRANSPARENCY — House rules */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="RulesSection" fallback={<SectionFallback name="Rules" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+                <RulesSection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 9. FAQ — Instant answers & knowledge base */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="FAQSection" fallback={<SectionFallback name="FAQs" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+                <FAQSection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 10. ACTION — Convert the visitor */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="InquiryForm" fallback={<SectionFallback name="Inquiry Form" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
+                <InquiryForm />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* 10. FINAL CTA */}
+          <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+            <RouteErrorBoundary name="CTASection" fallback={<SectionFallback name="CTA" />}>
+              <Suspense fallback={<div className="py-12" style={{ minHeight: '200px' }} />}>
+                <CTASection />
+              </Suspense>
+            </RouteErrorBoundary>
+          </div>
+
+          {/* FOOTER */}
+          <RouteErrorBoundary name="ContactFooter" fallback={<SectionFallback name="Footer" />}>
+            <Suspense fallback={<div className="py-8" style={{ minHeight: '200px' }} />}>
+              <ContactFooter />
             </Suspense>
           </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
 
-      {/* 5. CONVENIENCE — Where we are */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="LocationSection" fallback={<SectionFallback name="Location" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '350px' }} />}>
-              <LocationSection />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
-
-
-      {/* 7. STORY — Brand identity */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-left">
-          <RouteErrorBoundary name="StorytellingSection" fallback={<SectionFallback name="About" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
-              <StorytellingSection />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
-      {/* 8. TRANSPARENCY — House rules */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade">
-          <RouteErrorBoundary name="RulesSection" fallback={<SectionFallback name="Rules" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
-              <RulesSection />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
-      {/* 9. FAQ — Instant answers & knowledge base */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="FAQSection" fallback={<SectionFallback name="FAQs" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
-              <FAQSection />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
-      {/* 10. ACTION — Convert the visitor */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="InquiryForm" fallback={<SectionFallback name="Inquiry Form" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '300px' }} />}>
-              <InquiryForm />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
-      {/* 10. FINAL CTA */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="zoom">
-          <RouteErrorBoundary name="CTASection" fallback={<SectionFallback name="CTA" />}>
-            <Suspense fallback={<div className="py-12" style={{ minHeight: '200px' }} />}>
-              <CTASection />
-            </Suspense>
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
-
+        </div>
       </main>
-
-      {/* FOOTER */}
-      <ScrollReveal variant="fade">
-        <RouteErrorBoundary name="ContactFooter" fallback={<SectionFallback name="Footer" />}>
-          <Suspense fallback={<div className="py-8" style={{ minHeight: '200px' }} />}>
-            <ContactFooter />
-          </Suspense>
-        </RouteErrorBoundary>
-      </ScrollReveal>
 
       <ScrollToTopButton />
     </div>

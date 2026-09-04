@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { Send, CheckCircle, Loader2, ChevronDown } from 'lucide-react';
+import { Send, CheckCircle, Loader2, ChevronDown, AlertCircle } from 'lucide-react';
+import { ScrollReveal } from '../../../shared/components/ScrollReveal';
 import { inquiryApi } from '../../../shared/api/apiClient';
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -325,175 +326,179 @@ export function InquiryForm() {
     <section className="py-20 lg:py-24" style={{ backgroundColor: 'var(--lp-bg)' }} id="inquiry">
       <div className="max-w-3xl mx-auto px-8 lg:px-12">
         {/* Header */}
-        <div className="text-center mb-10">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
-            Get Started
-          </p>
-          <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
-            Reserve Your Slot Today
-          </h2>
-          <p className="max-w-2xl mx-auto font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
-            Fill out the form below and our team will reach out within 24 hours to schedule a viewing or answer your questions.
-          </p>
-        </div>
-
-        {submitted ? (
-          <div className="rounded-2xl p-10 lg:p-14 text-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
-            <div className="mx-auto mb-5 flex items-center justify-center">
-              <CheckCircle className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h3 className="text-2xl font-semibold mb-3 tracking-tight text-slate-900 dark:text-slate-100">
-              Thank you for your inquiry!
-            </h3>
-            <p className="font-normal mb-8 leading-relaxed text-slate-600 dark:text-slate-400 max-w-md mx-auto">
-              We'll contact you within our 24-hour target turnaround time to schedule a viewing or answer your questions.
+        <ScrollReveal variant="fade-up">
+          <div className="text-center mb-10">
+            <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent-text)' }}>
+              Get Started
             </p>
-            <button
-              onClick={() => {
-                setSubmitted(false);
-                setFormData({ name: '', email: '', phoneDigits: '', branch: '', roomType: '', inquiryType: '', message: '' });
-                setErrors({});
-                setTouched({});
-              }}
-              className="text-sm font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
-            >
-              Send Another Inquiry
-            </button>
+            <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
+              Reserve Your Slot Today
+            </h2>
+            <p className="max-w-2xl mx-auto font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
+              Fill out the form below and our team will reach out within 24 hours to schedule a viewing or answer your questions.
+            </p>
           </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            noValidate
-            className="rounded-2xl p-8 lg:p-10 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
-          >
-            {apiError && (
-              <div
-                role="alert"
-                className="mb-6 p-4 rounded-xl text-sm font-medium flex items-center gap-3 border border-slate-200 dark:border-slate-700 bg-rose-50/60 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400"
-              >
-                <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
-                <span>{apiError}</span>
+        </ScrollReveal>
+
+        <ScrollReveal variant="fade-up" duration={0.8} delay={0.1}>
+          {submitted ? (
+            <div className="rounded-2xl p-10 lg:p-14 text-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+              <div className="mx-auto mb-5 flex items-center justify-center">
+                <CheckCircle className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
               </div>
-            )}
-
-            {/* ── Section 1: Personal Info ── */}
-            <div className="grid md:grid-cols-2 gap-x-5 gap-y-4">
-              <FormInput
-                label="Full Name *"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                onBlur={() => handleBlur('name')}
-                error={touched.name ? errors.name : null}
-                placeholder="Juan Dela Cruz"
-                autoComplete="name"
-                maxLength={NAME_MAX}
-              />
-              <FormInput
-                label="Email Address *"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                onBlur={() => handleBlur('email')}
-                error={touched.email ? errors.email : null}
-                placeholder="juan@email.com"
-                autoComplete="email"
-              />
-              {/* Phone with locked +63 prefix */}
-              <FormInput
-                label="Phone Number *"
-                name="phoneDisplay"
-                type="tel"
-                value={formatPhoneDisplay(formData.phoneDigits)}
-                onChange={handlePhoneChange}
-                onBlur={() => handleBlur('phone')}
-                error={touched.phone ? errors.phone : null}
-                placeholder="917 123 4567"
-                inputMode="numeric"
-                autoComplete="tel"
-                prefix="+63"
-              />
-              <FormSelect
-                label="Preferred Branch *"
-                name="branch"
-                value={formData.branch}
-                onChange={handleSelectChange}
-                error={touched.branch ? errors.branch : null}
-                options={[
-                  { value: 'gil-puyat', label: 'Gil Puyat' },
-                  { value: 'guadalupe', label: 'Guadalupe' },
-                ]}
-              />
+              <h3 className="text-2xl font-semibold mb-3 tracking-tight text-slate-900 dark:text-slate-100">
+                Thank you for your inquiry!
+              </h3>
+              <p className="font-normal mb-8 leading-relaxed text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                We'll contact you within our 24-hour target turnaround time to schedule a viewing or answer your questions.
+              </p>
+              <button
+                onClick={() => {
+                  setSubmitted(false);
+                  setFormData({ name: '', email: '', phoneDigits: '', branch: '', roomType: '', inquiryType: '', message: '' });
+                  setErrors({});
+                  setTouched({});
+                }}
+                className="text-sm font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                Send Another Inquiry
+              </button>
             </div>
-
-            {/* ── Divider ── */}
-            <div className="my-6 border-t border-slate-200 dark:border-slate-700" />
-
-            {/* ── Section 2: Inquiry Details ── */}
-            <div className="grid md:grid-cols-2 gap-x-5 gap-y-4 mb-5">
-              <FormSelect
-                label="Inquiry Type *"
-                name="inquiryType"
-                value={formData.inquiryType}
-                onChange={handleSelectChange}
-                error={touched.inquiryType ? errors.inquiryType : null}
-                options={[
-                  { value: 'room-inquiry', label: 'Room Inquiry' },
-                  { value: 'pricing', label: 'Pricing' },
-                  { value: 'availability', label: 'Availability' },
-                  { value: 'amenities', label: 'Amenities' },
-                  { value: 'location', label: 'Location' },
-                  { value: 'booking', label: 'Booking' },
-                  { value: 'general', label: 'General Question' },
-                ]}
-              />
-              <FormSelect
-                label="Room Type *"
-                name="roomType"
-                value={formData.roomType}
-                onChange={handleSelectChange}
-                error={touched.roomType ? errors.roomType : null}
-                options={[
-                  { value: 'private', label: 'Private Room' },
-                  { value: 'double', label: 'Double Occupancy' },
-                  { value: 'quadruple-sharing', label: 'Quadruple Sharing' },
-                ]}
-              />
-            </div>
-
-            {/* ── Message (required) ── */}
-            <div className="mb-8">
-              <FormTextarea
-                label="Your Message *"
-                name="message"
-                value={formData.message}
-                onChange={handleChange}
-                onBlur={() => handleBlur('message')}
-                error={touched.message ? errors.message : null}
-                rows={3}
-                maxLength={MSG_MAX}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              title={submitting ? "Submitting inquiry..." : "Click to submit your inquiry"}
-              className="w-full bg-[#0A1628] hover:bg-[#13243D] text-white py-3.5 px-6 rounded-xl font-medium text-base flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
+          ) : (
+            <form
+              onSubmit={handleSubmit}
+              noValidate
+              className="rounded-2xl p-8 lg:p-10 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
             >
-              {submitting ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting Inquiry...</span></>
-              ) : (
-                <><span>Submit Inquiry</span><Send className="w-4 h-4" /></>
+              {apiError && (
+                <div
+                  role="alert"
+                  className="mb-6 p-4 rounded-xl text-sm font-medium flex items-center gap-3 border border-slate-200 dark:border-slate-700 bg-rose-50/60 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400"
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
+                  <span>{apiError}</span>
+                </div>
               )}
-            </button>
 
-            <p className="text-xs text-center mt-5 font-light text-slate-500">
-              By submitting this form, you agree to our privacy policy. We will never share your information with third parties.
-            </p>
-          </form>
-        )}
+              {/* ── Section 1: Personal Info ── */}
+              <div className="grid md:grid-cols-2 gap-x-5 gap-y-4">
+                <FormInput
+                  label="Full Name *"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('name')}
+                  error={touched.name ? errors.name : null}
+                  placeholder="Juan Dela Cruz"
+                  autoComplete="name"
+                  maxLength={NAME_MAX}
+                />
+                <FormInput
+                  label="Email Address *"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('email')}
+                  error={touched.email ? errors.email : null}
+                  placeholder="juan@email.com"
+                  autoComplete="email"
+                />
+                {/* Phone with locked +63 prefix */}
+                <FormInput
+                  label="Phone Number *"
+                  name="phoneDisplay"
+                  type="tel"
+                  value={formatPhoneDisplay(formData.phoneDigits)}
+                  onChange={handlePhoneChange}
+                  onBlur={() => handleBlur('phone')}
+                  error={touched.phone ? errors.phone : null}
+                  placeholder="917 123 4567"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  prefix="+63"
+                />
+                <FormSelect
+                  label="Preferred Branch *"
+                  name="branch"
+                  value={formData.branch}
+                  onChange={handleSelectChange}
+                  error={touched.branch ? errors.branch : null}
+                  options={[
+                    { value: 'gil-puyat', label: 'Gil Puyat' },
+                    { value: 'guadalupe', label: 'Guadalupe' },
+                  ]}
+                />
+              </div>
+
+              {/* ── Divider ── */}
+              <div className="my-6 border-t border-slate-200 dark:border-slate-700" />
+
+              {/* ── Section 2: Inquiry Details ── */}
+              <div className="grid md:grid-cols-2 gap-x-5 gap-y-4 mb-5">
+                <FormSelect
+                  label="Inquiry Type *"
+                  name="inquiryType"
+                  value={formData.inquiryType}
+                  onChange={handleSelectChange}
+                  error={touched.inquiryType ? errors.inquiryType : null}
+                  options={[
+                    { value: 'room-inquiry', label: 'Room Inquiry' },
+                    { value: 'pricing', label: 'Pricing' },
+                    { value: 'availability', label: 'Availability' },
+                    { value: 'amenities', label: 'Amenities' },
+                    { value: 'location', label: 'Location' },
+                    { value: 'booking', label: 'Booking' },
+                    { value: 'general', label: 'General Question' },
+                  ]}
+                />
+                <FormSelect
+                  label="Room Type *"
+                  name="roomType"
+                  value={formData.roomType}
+                  onChange={handleSelectChange}
+                  error={touched.roomType ? errors.roomType : null}
+                  options={[
+                    { value: 'private', label: 'Private Room' },
+                    { value: 'double', label: 'Double Occupancy' },
+                    { value: 'quadruple-sharing', label: 'Quadruple Sharing' },
+                  ]}
+                />
+              </div>
+
+              {/* ── Message (required) ── */}
+              <div className="mb-8">
+                <FormTextarea
+                  label="Your Message *"
+                  name="message"
+                  value={formData.message}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('message')}
+                  error={touched.message ? errors.message : null}
+                  rows={3}
+                  maxLength={MSG_MAX}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                title={submitting ? "Submitting inquiry..." : "Click to submit your inquiry"}
+                className="w-full bg-[#0A1628] hover:bg-[#13243D] text-white py-3.5 px-6 rounded-xl font-medium text-base flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
+              >
+                {submitting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting Inquiry...</span></>
+                ) : (
+                  <><span>Submit Inquiry</span><Send className="w-4 h-4" /></>
+                )}
+              </button>
+
+              <p className="text-xs text-center mt-5 font-light text-slate-500">
+                By submitting this form, you agree to our privacy policy. We will never share your information with third parties.
+              </p>
+            </form>
+          )}
+        </ScrollReveal>
       </div>
     </section>
   );

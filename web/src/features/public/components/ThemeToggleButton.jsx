@@ -11,9 +11,8 @@ import { useTheme } from "../context/ThemeContext";
  *   - mobile:   row item for the hamburger menu
  */
 export default function ThemeToggleButton({ variant = "hero" }) {
-  const { theme, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [isGlowing, setIsGlowing] = useState(false);
-  const isDark = theme === "dark";
 
   const handleClick = useCallback(() => {
     setIsGlowing(false);

@@ -4,11 +4,7 @@ import SEOHead from "../../../shared/components/SEOHead";
 import { useTheme } from "../context/ThemeContext";
 
 export function PrivacyPolicyPage() {
-  const { theme } = useTheme();
-  const resolvedTheme =
-    theme === "system"
-      ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : theme;
+  const { resolvedTheme } = useTheme();
   const headerBackgroundColor = resolvedTheme === "dark" ? "#0A1628" : "#D4AF37";
 
   return (

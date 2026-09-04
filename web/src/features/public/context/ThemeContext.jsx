@@ -16,13 +16,22 @@ export function ThemeProvider({ children }) {
     }
   });
 
-  // Resolve system preference
-  const getResolved = (t) => {
-    if (t !== "system") return t;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  };
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setSystemPrefersDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const resolvedTheme =
+    theme === "system" ? (systemPrefersDark ? "dark" : "light") : theme;
+  const isDark = resolvedTheme === "dark";
 
   const updateDOMTheme = (resolved) => {
     const root = document.documentElement;
@@ -37,6 +46,7 @@ export function ThemeProvider({ children }) {
 
     const prefersReducedMotion =
       typeof window !== "undefined" &&
+      window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (
@@ -53,37 +63,30 @@ export function ThemeProvider({ children }) {
   };
 
   useEffect(() => {
-    // Persist
-    try { localStorage.setItem("lp-theme", theme); } catch {}
+    try {
+      localStorage.setItem("lp-theme", theme);
+    } catch {}
 
-    const resolved = getResolved(theme);
     const root = document.documentElement;
-
-    // Initial sync without transition flicker on page load
     if (!root.hasAttribute("data-theme")) {
-      updateDOMTheme(resolved);
+      updateDOMTheme(resolvedTheme);
     } else {
-      applyThemeWithTransition(resolved);
+      applyThemeWithTransition(resolvedTheme);
     }
+  }, [theme, resolvedTheme]);
 
-    // If system, watch for media changes while this mode is active
-    if (theme === "system") {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      const handler = (e) => {
-        const newResolved = e.matches ? "dark" : "light";
-        applyThemeWithTransition(newResolved);
-      };
-      mq.addEventListener("change", handler);
-      return () => mq.removeEventListener("change", handler);
-    }
-  }, [theme]);
-
-  // Kept for backward-compat; new code should use setTheme directly
-  const toggleTheme = () =>
-    setTheme((t) => (t === "light" ? "dark" : "light"));
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const currentResolved =
+        prev === "system" ? (systemPrefersDark ? "dark" : "light") : prev;
+      return currentResolved === "dark" ? "light" : "dark";
+    });
+  };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider
+      value={{ theme, resolvedTheme, isDark, setTheme, toggleTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );
@@ -91,7 +94,15 @@ export function ThemeProvider({ children }) {
 
 export function useTheme() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) return { theme: "light", setTheme: () => {}, toggleTheme: () => {} };
+  if (!ctx) {
+    return {
+      theme: "light",
+      resolvedTheme: "light",
+      isDark: false,
+      setTheme: () => {},
+      toggleTheme: () => {},
+    };
+  }
   return ctx;
 }
 

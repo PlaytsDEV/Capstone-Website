@@ -11,6 +11,11 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import {
+  ScrollReveal,
+  ScrollRevealStagger,
+  ScrollRevealItem,
+} from "../../../shared/components/ScrollReveal";
 import gfSeatingArea from "../../../assets/images/facilities/G_F seating area.webp";
 import gfElevatorLobby from "../../../assets/images/facilities/G_F elevator lobby.webp";
 import rdLoungeArea from "../../../assets/images/facilities/RD Lounge Area.webp";
@@ -130,147 +135,155 @@ export function FacilitiesSection() {
     >
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: "var(--lp-accent-text)" }}>
-            Shared Spaces
-          </p>
-          <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: "var(--lp-text)" }}>
-            Facilities &amp; Amenities
-          </h2>
-          <p className="max-w-2xl mx-auto font-normal leading-relaxed" style={{ color: "var(--lp-text-secondary)" }}>
-            A quick look at the actual shared spaces available in our building.
-          </p>
-        </div>
+        <ScrollReveal variant="fade-up">
+          <div className="text-center mb-12">
+            <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: "var(--lp-accent-text)" }}>
+              Shared Spaces
+            </p>
+            <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: "var(--lp-text)" }}>
+              Facilities &amp; Amenities
+            </h2>
+            <p className="max-w-2xl mx-auto font-normal leading-relaxed" style={{ color: "var(--lp-text-secondary)" }}>
+              A quick look at the actual shared spaces available in our building.
+            </p>
+          </div>
+        </ScrollReveal>
 
-        {/* Slideshow Container */}
-        <div
-          className="relative rounded-3xl overflow-hidden mb-6 sm:mb-8 w-full max-w-5xl mx-auto aspect-[4/5] sm:aspect-[16/9]"
-          style={{
-            maxHeight: "500px",
-            backgroundColor: "var(--lp-bg-card)",
-            border: "1px solid var(--lp-border)",
-          }}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          {/* Slides */}
-          {facilities.map((facility, index) => {
-            const isActive = index === currentIndex;
-            return (
-              <div
-                key={index}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  opacity: isActive ? 1 : 0,
-                  transition: "opacity 0.8s ease-in-out",
-                  pointerEvents: isActive ? "auto" : "none",
-                }}
-              >
-                {/* Background Image */}
-                <ImageWithFallback
-                  src={facility.image}
-                  alt={facility.title}
-                  className="w-full h-full object-cover"
-                  style={{ objectPosition: facility.imagePosition || "center center" }}
-                />
-                {/* Dark Overlay */}
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background: "linear-gradient(to top, rgba(10, 22, 40, 0.8) 0%, rgba(10, 22, 40, 0.4) 50%, transparent 100%)",
-                  }}
-                />
-
-                {/* Content - Bottom Left */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-8 lg:p-12 z-10">
-                  <div className="flex items-end gap-4 max-w-2xl">
-                    {/* Icon Badge */}
+        {/* Slideshow Container & Navigation */}
+        <ScrollRevealStagger staggerDelay={0.12}>
+          <ScrollRevealItem className="h-full">
+            <div
+              className="relative rounded-3xl overflow-hidden mb-6 sm:mb-8 w-full max-w-5xl mx-auto aspect-[4/5] sm:aspect-[16/9]"
+              style={{
+                maxHeight: "500px",
+                backgroundColor: "var(--lp-bg-card)",
+                border: "1px solid var(--lp-border)",
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Slides */}
+              {facilities.map((facility, index) => {
+                const isActive = index === currentIndex;
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: isActive ? 1 : 0,
+                      transition: "opacity 0.8s ease-in-out",
+                      pointerEvents: isActive ? "auto" : "none",
+                    }}
+                  >
+                    {/* Background Image */}
+                    <ImageWithFallback
+                      src={facility.image}
+                      alt={facility.title}
+                      className="w-full h-full object-cover"
+                      style={{ objectPosition: facility.imagePosition || "center center" }}
+                    />
+                    {/* Dark Overlay */}
                     <div
-                      className="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 hidden sm:flex"
-                      style={{ backgroundColor: "rgba(212, 175, 55, 0.9)" }}
-                    >
-                      <Icon className="w-8 h-8 text-white" />
-                    </div>
+                      className="absolute inset-0"
+                      style={{
+                        background: "linear-gradient(to top, rgba(10, 22, 40, 0.8) 0%, rgba(10, 22, 40, 0.4) 50%, transparent 100%)",
+                      }}
+                    />
 
-                    {/* Text */}
-                    <div>
-                      <h3 className="text-xl sm:text-2xl lg:text-3xl font-medium mb-1.5 sm:mb-2 text-white tracking-tight">
-                        {facility.title}
-                      </h3>
-                      <p className="text-white/80 text-xs sm:text-sm lg:text-base font-light max-w-xl leading-relaxed">
-                        {facility.description}
-                      </p>
+                    {/* Content - Bottom Left */}
+                    <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-8 lg:p-12 z-10">
+                      <div className="flex items-end gap-4 max-w-2xl">
+                        {/* Icon Badge */}
+                        <div
+                          className="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 hidden sm:flex"
+                          style={{ backgroundColor: "rgba(212, 175, 55, 0.9)" }}
+                        >
+                          <Icon className="w-8 h-8 text-white" />
+                        </div>
+
+                        {/* Text */}
+                        <div>
+                          <h3 className="text-xl sm:text-2xl lg:text-3xl font-medium mb-1.5 sm:mb-2 text-white tracking-tight">
+                            {facility.title}
+                          </h3>
+                          <p className="text-white/80 text-xs sm:text-sm lg:text-base font-light max-w-xl leading-relaxed">
+                            {facility.description}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
 
-          {/* Navigation Arrows */}
-          <button
-            onClick={prevSlide}
-            aria-label="Previous facility"
-            className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
-            style={{
-              width: "44px",
-              height: "44px",
-              minWidth: "44px",
-              minHeight: "44px",
-              backgroundColor: "rgba(255, 255, 255, 0.25)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255, 255, 255, 0.4)",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
-          >
-            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-          </button>
-
-          <button
-            onClick={nextSlide}
-            aria-label="Next facility"
-            className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
-            style={{
-              width: "44px",
-              height: "44px",
-              minWidth: "44px",
-              minHeight: "44px",
-              backgroundColor: "rgba(255, 255, 255, 0.25)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255, 255, 255, 0.4)",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
-          >
-            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-          </button>
-        </div>
-
-        {/* Navigation Indicators */}
-        <div className="flex justify-center items-center gap-1 sm:gap-1.5">
-          {facilities.map((_, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={() => goToSlide(index)}
-              className="flex items-center justify-center p-2 bg-transparent border-none cursor-pointer focus:outline-none"
-              style={{ minWidth: "32px", minHeight: "32px" }}
-              aria-label={`Go to facility ${index + 1}`}
-            >
-              <span
-                className="transition-all duration-300 block"
+              {/* Navigation Arrows */}
+              <button
+                onClick={prevSlide}
+                aria-label="Previous facility"
+                className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
                 style={{
-                  width: index === currentIndex ? "24px" : "8px",
-                  height: "8px",
-                  borderRadius: "5px",
-                  backgroundColor: index === currentIndex ? "var(--lp-accent)" : "var(--lp-border)",
+                  width: "44px",
+                  height: "44px",
+                  minWidth: "44px",
+                  minHeight: "44px",
+                  backgroundColor: "rgba(255, 255, 255, 0.25)",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(255, 255, 255, 0.4)",
                 }}
-              />
-            </button>
-          ))}
-        </div>
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
+              >
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </button>
+
+              <button
+                onClick={nextSlide}
+                aria-label="Next facility"
+                className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 z-20 p-2 sm:p-2.5 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110"
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  minWidth: "44px",
+                  minHeight: "44px",
+                  backgroundColor: "rgba(255, 255, 255, 0.25)",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(255, 255, 255, 0.4)",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(212, 175, 55, 0.9)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.25)")}
+              >
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </button>
+            </div>
+          </ScrollRevealItem>
+
+          {/* Navigation Indicators */}
+          <ScrollRevealItem>
+            <div className="flex justify-center items-center gap-1 sm:gap-1.5">
+              {facilities.map((_, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => goToSlide(index)}
+                  className="flex items-center justify-center p-2 bg-transparent border-none cursor-pointer focus:outline-none"
+                  style={{ minWidth: "32px", minHeight: "32px" }}
+                  aria-label={`Go to facility ${index + 1}`}
+                >
+                  <span
+                    className="transition-all duration-300 block"
+                    style={{
+                      width: index === currentIndex ? "24px" : "8px",
+                      height: "8px",
+                      borderRadius: "5px",
+                      backgroundColor: index === currentIndex ? "var(--lp-accent)" : "var(--lp-border)",
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          </ScrollRevealItem>
+        </ScrollRevealStagger>
       </div>
     </section>
   );

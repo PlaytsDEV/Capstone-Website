@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from "react";
 import { ChevronDown, Bot, ArrowRight, Sparkles } from "lucide-react";
 import FAQCategoryTabs, { FAQ_CATEGORIES } from "./FAQCategoryTabs";
+import {
+  ScrollReveal,
+  ScrollRevealStagger,
+  ScrollRevealItem,
+} from "../../../../shared/components/ScrollReveal";
 
 const FAQ_DATA = [
   {
@@ -425,162 +430,168 @@ export function FAQSection() {
       style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}
     >
       <div className="max-w-screen-2xl mx-auto px-6 sm:px-8 lg:px-12">
-        {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
-          <p
-            className="text-xs mb-3 tracking-widest uppercase font-semibold select-none"
-            style={{ color: "var(--lp-accent-text, #8C6200)" }}
-          >
-            Instant Answers
-          </p>
-          <h2
-            className="text-3xl lg:text-4xl font-bold mb-4 tracking-tight"
-            style={{ color: "var(--lp-text, #162f53)" }}
-          >
-            Frequently Asked Questions
-          </h2>
-          <p
-            className="text-sm sm:text-base font-normal leading-relaxed"
-            style={{ color: "var(--lp-text-secondary, #475569)" }}
-          >
-            Find clear, verified information regarding accommodation rates, security deposits, house policies, and our 5-step digital reservation workflow.
-          </p>
-        </div>
+        {/* Section Header & Category Filter Tabs */}
+        <ScrollReveal variant="fade-up">
+          {/* Section Header */}
+          <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
+            <p
+              className="text-xs mb-3 tracking-widest uppercase font-semibold select-none"
+              style={{ color: "var(--lp-accent-text, #8C6200)" }}
+            >
+              Instant Answers
+            </p>
+            <h2
+              className="text-3xl lg:text-4xl font-bold mb-4 tracking-tight"
+              style={{ color: "var(--lp-text, #162f53)" }}
+            >
+              Frequently Asked Questions
+            </h2>
+            <p
+              className="text-sm sm:text-base font-normal leading-relaxed"
+              style={{ color: "var(--lp-text-secondary, #475569)" }}
+            >
+              Find clear, verified information regarding accommodation rates, security deposits, house policies, and our 5-step digital reservation workflow.
+            </p>
+          </div>
 
-        {/* Category Filter Tabs */}
-        <div className="max-w-4xl mx-auto mb-8 sm:mb-10 flex justify-center">
-          <FAQCategoryTabs
-            activeCategory={activeCategory}
-            onSelectCategory={handleSelectCategory}
-            counts={categoryCounts}
-          />
-        </div>
+          {/* Category Filter Tabs */}
+          <div className="max-w-4xl mx-auto mb-8 sm:mb-10 flex justify-center">
+            <FAQCategoryTabs
+              activeCategory={activeCategory}
+              onSelectCategory={handleSelectCategory}
+              counts={categoryCounts}
+            />
+          </div>
+        </ScrollReveal>
 
         {/* Accordion FAQ List */}
-        <div className="max-w-3xl mx-auto space-y-3">
+        <ScrollRevealStagger className="space-y-4 max-w-4xl mx-auto" staggerDelay={0.12}>
           {filteredFaqs.map((faq) => {
             const isExpanded = expandedId === faq.id;
 
             return (
-              <div
-                key={faq.id}
-                className="rounded-2xl transition-all duration-200 overflow-hidden"
-                style={{
-                  backgroundColor: "var(--lp-bg-card, #ffffff)",
-                  border: isExpanded
-                    ? "1px solid var(--lp-accent, #D4AF37)"
-                    : "1px solid var(--lp-border, #E6D9B2)",
-                  boxShadow: isExpanded
-                    ? "0 4px 14px rgba(10, 22, 40, 0.06)"
-                    : "var(--lp-card-shadow, 0 1px 3px rgba(0,0,0,0.04))",
-                }}
-              >
-                <h3 className="m-0 p-0 font-normal">
-                  <button
-                    id={`faq-question-${faq.id}`}
-                    type="button"
-                    onClick={() => toggleItem(faq.id)}
-                    aria-expanded={isExpanded}
-                    aria-controls={`faq-answer-${faq.id}`}
-                    className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
-                  >
-                    <span
-                      className="text-sm sm:text-base font-semibold tracking-tight leading-snug"
-                      style={{ color: "var(--lp-text, #162f53)" }}
-                    >
-                      {faq.question}
-                    </span>
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
-                      style={{
-                        backgroundColor: isExpanded
-                          ? "var(--lp-navy, #0A1628)"
-                          : "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
-                        color: isExpanded ? "#ffffff" : "var(--lp-accent-text, #8C6200)",
-                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                      }}
-                    >
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
-                  </button>
-                </h3>
-
-                {/* Collapsible Content */}
+              <ScrollRevealItem key={faq.id}>
                 <div
-                  id={`faq-answer-${faq.id}`}
-                  role="region"
-                  aria-labelledby={`faq-question-${faq.id}`}
-                  className={`transition-all duration-200 ease-in-out ${
-                    isExpanded
-                      ? "max-h-[800px] opacity-100 py-4 sm:py-5 px-5 sm:px-6 border-t"
-                      : "max-h-0 opacity-0 overflow-hidden p-0"
-                  }`}
+                  className="rounded-2xl transition-all duration-200 overflow-hidden"
                   style={{
-                    borderColor: "var(--lp-border, #E6D9B2)",
-                    backgroundColor: "var(--lp-bg-alt, #ffffff)",
+                    backgroundColor: "var(--lp-bg-card, #ffffff)",
+                    border: isExpanded
+                      ? "1px solid var(--lp-accent, #D4AF37)"
+                      : "1px solid var(--lp-border, #E6D9B2)",
+                    boxShadow: isExpanded
+                      ? "0 4px 14px rgba(10, 22, 40, 0.06)"
+                      : "var(--lp-card-shadow, 0 1px 3px rgba(0,0,0,0.04))",
                   }}
                 >
-                  <FAQItemContent item={faq} />
+                  <h3 className="m-0 p-0 font-normal">
+                    <button
+                      id={`faq-question-${faq.id}`}
+                      type="button"
+                      onClick={() => toggleItem(faq.id)}
+                      aria-expanded={isExpanded}
+                      aria-controls={`faq-answer-${faq.id}`}
+                      className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
+                    >
+                      <span
+                        className="text-sm sm:text-base font-semibold tracking-tight leading-snug"
+                        style={{ color: "var(--lp-text, #162f53)" }}
+                      >
+                        {faq.question}
+                      </span>
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
+                        style={{
+                          backgroundColor: isExpanded
+                            ? "var(--lp-navy, #0A1628)"
+                            : "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
+                          color: isExpanded ? "#ffffff" : "var(--lp-accent-text, #8C6200)",
+                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                        }}
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </button>
+                  </h3>
+
+                  {/* Collapsible Content */}
+                  <div
+                    id={`faq-answer-${faq.id}`}
+                    role="region"
+                    aria-labelledby={`faq-question-${faq.id}`}
+                    className={`transition-all duration-200 ease-in-out ${
+                      isExpanded
+                        ? "max-h-[800px] opacity-100 py-4 sm:py-5 px-5 sm:px-6 border-t"
+                        : "max-h-0 opacity-0 overflow-hidden p-0"
+                    }`}
+                    style={{
+                      borderColor: "var(--lp-border, #E6D9B2)",
+                      backgroundColor: "var(--lp-bg-alt, #ffffff)",
+                    }}
+                  >
+                    <FAQItemContent item={faq} />
+                  </div>
                 </div>
-              </div>
+              </ScrollRevealItem>
             );
           })}
-        </div>
+        </ScrollRevealStagger>
 
         {/* Bottom Helper Strip: Chatbot CTA */}
-        <div
-          className="mt-12 max-w-3xl mx-auto p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-sm"
-          style={{
-            backgroundColor: "var(--lp-bg-card, #ffffff)",
-            border: "1px solid var(--lp-border, #E6D9B2)",
-          }}
-        >
-          <div className="flex items-center gap-3.5">
-            <div
-              className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{
-                backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.14))",
-                border: "1px solid var(--lp-accent, #D4AF37)",
-              }}
-            >
-              <Bot className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-            </div>
-            <div>
-              <h4
-                className="text-sm sm:text-base font-bold"
-                style={{ color: "var(--lp-text, #162f53)" }}
-              >
-                Still have unanswered questions?
-              </h4>
-              <p
-                className="text-xs"
-                style={{ color: "var(--lp-text-secondary, #475569)" }}
-              >
-                Our 24/7 Lilycrest AI Chatbot is ready to help you in real time.
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => handleOpenChatbot()}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 py-2.5 px-5 rounded-full text-xs font-bold text-white transition-all cursor-pointer shadow-sm focus:outline-none flex-shrink-0"
+        <ScrollReveal variant="fade-up" delay={0.15}>
+          <div
+            className="mt-12 max-w-3xl mx-auto p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-sm"
             style={{
-              backgroundColor: "var(--lp-accent, #D4AF37)",
-              border: "1px solid var(--lp-accent, #D4AF37)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
+              backgroundColor: "var(--lp-bg-card, #ffffff)",
+              border: "1px solid var(--lp-border, #E6D9B2)",
             }}
           >
-            <Bot className="w-4 h-4 text-white" />
-            <span>Ask Lilycrest AI Chatbot</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            <div className="flex items-center gap-3.5">
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{
+                  backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.14))",
+                  border: "1px solid var(--lp-accent, #D4AF37)",
+                }}
+              >
+                <Bot className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+              </div>
+              <div>
+                <h4
+                  className="text-sm sm:text-base font-bold"
+                  style={{ color: "var(--lp-text, #162f53)" }}
+                >
+                  Still have unanswered questions?
+                </h4>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--lp-text-secondary, #475569)" }}
+                >
+                  Our 24/7 Lilycrest AI Chatbot is ready to help you in real time.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleOpenChatbot()}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 py-2.5 px-5 rounded-full text-xs font-bold text-white transition-all cursor-pointer shadow-sm focus:outline-none flex-shrink-0"
+              style={{
+                backgroundColor: "var(--lp-accent, #D4AF37)",
+                border: "1px solid var(--lp-accent, #D4AF37)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <Bot className="w-4 h-4 text-white" />
+              <span>Ask Lilycrest AI Chatbot</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </ScrollReveal>
       </div>
     </section>
   );

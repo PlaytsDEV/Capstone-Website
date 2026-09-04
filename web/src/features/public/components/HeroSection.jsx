@@ -1,7 +1,7 @@
 import { Sparkles, Users, MapPin, ThumbsUp, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion, useInView } from "framer-motion";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useTheme } from "../context/ThemeContext";
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
@@ -10,6 +10,7 @@ import hero1Mobile from "../../../assets/images/hero1-mobile.webp";
 import hero2Mobile from "../../../assets/images/hero2-mobile.webp";
 import hero3Mobile from "../../../assets/images/hero3-mobile.webp";
 import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
+import { ScrollReveal } from "../../../shared/components/ScrollReveal";
 
 
 const fadeUp = (delay = 0) => ({
@@ -64,50 +65,78 @@ const heroMobileImages = [
   hero3Mobile,
 ];
 
+const SLIDE_DURATION = 6000;
+
 export function HeroSection() {
-  const { theme } = useTheme();
+  const { isDark } = useTheme();
   const statRef = useRef(null);
   const isInView = useInView(statRef, { margin: "-50px" });
   const [currentImage, setCurrentImage] = useState(0);
-  const [readyToZoom, setReadyToZoom] = useState(() =>
-    heroImages.map((_, i) => i === 0 ? false : true)
-  );
+  const [zoomingImages, setZoomingImages] = useState({ 0: true });
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const timerRef = useRef(null);
 
+  // Detect prefers-reduced-motion preference
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImage((prev) => (prev + 1) % heroImages.length);
-    }, 6000);
-    return () => clearInterval(interval);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mediaQuery.matches);
+    const handler = (e) => setReducedMotion(e.matches);
+    mediaQuery.addEventListener?.("change", handler);
+    return () => mediaQuery.removeEventListener?.("change", handler);
   }, []);
 
-  // When currentImage changes: start zoom on active, delay-reset others
+  // rAF-debounced scroll listener for smooth 60fps parallax depth
   useEffect(() => {
-    // Active image starts zooming (readyToZoom false = scale(1))
-    setReadyToZoom((prev) => {
-      const next = [...prev];
-      next[currentImage] = false;
-      return next;
-    });
+    if (reducedMotion) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const vh = window.innerHeight || 800;
+          const currentScroll = window.scrollY || window.pageYOffset || 0;
+          const progress = Math.min(Math.max(currentScroll / vh, 0), 1);
+          setScrollProgress(progress);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [reducedMotion]);
 
-    // After fade-out completes (1.5s + buffer), silently reset inactive images
+  const resetTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCurrentImage((prev) => (prev + 1) % heroImages.length);
+    }, SLIDE_DURATION);
+  }, []);
+
+  useEffect(() => {
+    resetTimer();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [resetTimer]);
+
+  // When currentImage changes: start zoom on new image, clean up old after 1.5s crossfade
+  useEffect(() => {
+    setZoomingImages((prev) => ({ ...prev, [currentImage]: true }));
+
     const timeout = setTimeout(() => {
-      setReadyToZoom((prev) => {
-        const next = [...prev];
-        for (let i = 0; i < next.length; i++) {
-          if (i !== currentImage) next[i] = true;
-        }
-        return next;
-      });
-    }, 2000);
+      setZoomingImages({ [currentImage]: true });
+    }, 1800);
 
     return () => clearTimeout(timeout);
   }, [currentImage]);
 
-  const resolvedTheme =
-    theme === "system"
-      ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : theme;
-  const isDark = resolvedTheme === "dark";
+  const handleSlideSelect = (index) => {
+    if (index === currentImage) return;
+    setCurrentImage(index);
+    resetTimer();
+  };
 
   const heroOverlay = isDark
     ? "linear-gradient(to right, rgba(8, 17, 31, 0.93) 0%, rgba(8, 17, 31, 0.82) 45%, rgba(8, 17, 31, 0.58) 75%, rgba(8, 17, 31, 0.45) 100%)"
@@ -117,45 +146,57 @@ export function HeroSection() {
   const heroTextSecondary = isDark ? "#F8FAFC" : "#111111";
   const heroTextMuted = isDark ? "#E2E8F0" : "#1e293b";
 
+  const contentTranslateY = reducedMotion ? 0 : scrollProgress * -40;
+  const contentOpacity = reducedMotion ? 1 : Math.max(1 - scrollProgress * 1.15, 0);
+  const bgTranslateY = reducedMotion ? 0 : scrollProgress * 40;
+
   return (
     <>
       {/* Full-bleed Hero */}
       <section className="relative min-h-[100dvh] h-[100dvh] overflow-hidden flex items-center">
         {/* Background Slideshow with Responsive Picture Tag */}
-        {heroImages.map((src, i) => (
-          <div
-            key={i}
-            className="absolute inset-0"
-            style={{
-              opacity: currentImage === i ? 1 : 0,
-              transition: "opacity 1.5s ease-in-out",
-            }}
-          >
-            <picture>
-              <source
-                media="(max-width: 768px)"
-                srcSet={heroMobileImages[i]}
-                type="image/webp"
-              />
-              <img
-                src={src}
-                alt={`Lilycrest Dormitory ${i + 1}`}
-                width="1920"
-                height="1080"
-                className="w-full h-full object-cover"
-                loading={i === 0 ? "eager" : "lazy"}
-                fetchpriority={i === 0 ? "high" : "low"}
-                fetchPriority={i === 0 ? "high" : "low"}
-                decoding="async"
-                style={{
-                  objectPosition: "center 68%",
-                  transform: readyToZoom[i] ? "scale(1.08)" : "scale(1)",
-                  transition: readyToZoom[i] ? "none" : "transform 7s ease-out",
-                }}
-              />
-            </picture>
-          </div>
-        ))}
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `translate3d(0, ${bgTranslateY}px, 0)`,
+            willChange: "transform",
+          }}
+        >
+          {heroImages.map((src, i) => (
+            <div
+              key={i}
+              className="absolute inset-0"
+              style={{
+                opacity: currentImage === i ? 1 : 0,
+                transition: "opacity 1.5s ease-in-out",
+              }}
+            >
+              <picture>
+                <source
+                  media="(max-width: 768px)"
+                  srcSet={heroMobileImages[i]}
+                  type="image/webp"
+                />
+                <img
+                  src={src}
+                  alt={`Lilycrest Dormitory ${i + 1}`}
+                  width="1920"
+                  height="1080"
+                  className={`w-full h-full object-cover ${
+                    zoomingImages[i] ? "animate-ken-burns" : ""
+                  }`}
+                  loading={i === 0 ? "eager" : "lazy"}
+                  fetchpriority={i === 0 ? "high" : "low"}
+                  fetchPriority={i === 0 ? "high" : "low"}
+                  decoding="async"
+                  style={{
+                    objectPosition: "center 68%",
+                  }}
+                />
+              </picture>
+            </div>
+          ))}
+        </div>
 
         {/* Dark overlay for text readability */}
         <div
@@ -165,146 +206,172 @@ export function HeroSection() {
           }}
         />
 
-        {/* Content */}
-        <div className="relative z-10 max-w-screen-2xl mx-auto px-5 sm:px-8 lg:px-12 w-full">
+        {/* Content with GPU Parallax Depth & Opacity */}
+        <div
+          className="relative z-10 max-w-screen-2xl mx-auto px-5 sm:px-8 lg:px-12 w-full"
+          style={{
+            transform: `translate3d(0, ${contentTranslateY}px, 0)`,
+            opacity: contentOpacity,
+            willChange: "transform, opacity",
+          }}
+        >
           <div className="max-w-2xl pt-12 lg:pt-15">
             {/* Badge */}
-            <div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6 transition-transform duration-500 will-change-transform"
-              style={{
-                backgroundColor: isDark ? "rgba(10, 22, 40, 0.75)" : "rgba(255, 255, 255, 0.9)",
-                border: isDark ? "1px solid rgba(212, 175, 55, 0.35)" : "1px solid rgba(212, 175, 55, 0.35)",
-                boxShadow: isDark
-                  ? "0 2px 12px rgba(0, 0, 0, 0.35)"
-                  : "0 2px 14px rgba(212, 175, 55, 0.12), 0 1px 3px rgba(10, 22, 40, 0.03)",
-              }}
-            >
-              <Sparkles className="w-4 h-4 flex-shrink-0" style={{ color: "var(--lp-accent)" }} />
-              <span
-                className="text-xs font-semibold tracking-[0.18em] uppercase"
-                style={{ color: isDark ? "#F8FAFC" : "var(--lp-navy)" }}
+            <ScrollReveal variant="fade-up" duration={0.9} delay={0.08}>
+              <div
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6 animate-hero-fade-up"
+                style={{
+                  backgroundColor: isDark ? "rgba(10, 22, 40, 0.75)" : "rgba(255, 255, 255, 0.9)",
+                  border: isDark ? "1px solid rgba(212, 175, 55, 0.35)" : "1px solid rgba(212, 175, 55, 0.35)",
+                  boxShadow: isDark
+                    ? "0 2px 12px rgba(0, 0, 0, 0.35)"
+                    : "0 2px 14px rgba(212, 175, 55, 0.12), 0 1px 3px rgba(10, 22, 40, 0.03)",
+                }}
               >
-                Quality Urban Living
-              </span>
-            </div>
+                <Sparkles className="w-4 h-4 flex-shrink-0" style={{ color: "var(--lp-accent)" }} />
+                <span
+                  className="text-xs font-semibold tracking-[0.18em] uppercase"
+                  style={{ color: isDark ? "#F8FAFC" : "var(--lp-navy)" }}
+                >
+                  Quality Urban Living
+                </span>
+              </div>
+            </ScrollReveal>
 
             {/* Headline */}
-            <h1
-              className="text-3xl sm:text-5xl lg:text-7xl font-medium leading-[1.12] mb-4 sm:mb-6 tracking-tight transition-opacity duration-700"
-              style={{ color: heroTextPrimary }}
-            >
-              Affordable, Safe,{" "}
-              <span className="block">and Comfortable</span>
-              <span style={{ color: "var(--lp-accent-text)" }}>Dormitory</span>
-            </h1>
+            <ScrollReveal variant="fade-up" duration={1.0} delay={0.22}>
+              <h1
+                className="text-3xl sm:text-5xl lg:text-7xl font-medium leading-[1.12] mb-4 sm:mb-6 tracking-tight animate-hero-fade-up"
+                style={{
+                  color: heroTextPrimary,
+                }}
+              >
+                Affordable, Safe,{" "}
+                <span className="block">and Comfortable</span>
+                <span style={{ color: "var(--lp-accent-text)" }}>Dormitory</span>
+              </h1>
+            </ScrollReveal>
 
             {/* Subheadline */}
-            <p
-              className="text-base sm:text-lg mb-6 sm:mb-10 leading-relaxed font-light max-w-lg transition-opacity duration-700"
-              style={{ color: heroTextSecondary }}
-            >
-              Browse available rooms, create your account, and find your perfect
-              home away from home.
-            </p>
+            <ScrollReveal variant="fade-up" duration={1.0} delay={0.38}>
+              <p
+                className="text-base sm:text-lg mb-6 sm:mb-10 leading-relaxed font-light max-w-lg animate-hero-fade-up"
+                style={{
+                  color: heroTextSecondary,
+                }}
+              >
+                Browse available rooms, create your account, and find your perfect
+                home away from home.
+              </p>
+            </ScrollReveal>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6">
-              <Link
-                to="/applicant/check-availability"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 no-underline cursor-pointer"
-                style={{
-                  minHeight: "48px",
-                  color: isDark ? "white" : "var(--lp-navy)",
-                  backgroundColor: "var(--lp-accent)",
-                  boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    "0 6px 30px rgba(212, 175, 55, 0.4)";
-                  e.currentTarget.style.transform =
-                    "translateY(-2px) scale(1.02)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 20px rgba(212, 175, 55, 0.25)";
-                  e.currentTarget.style.transform = "translateY(0) scale(1)";
-                }}
+            <ScrollReveal variant="fade-up" duration={1.0} delay={0.54}>
+              <div
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 animate-hero-fade-up"
               >
-                Browse Available Rooms
-                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
-              </Link>
-              <a
-                href="#inquiry"
-                onClick={(e) => {
-                  e.preventDefault();
-                  smoothScrollTo("inquiry", 80);
-                }}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 cursor-pointer"
-                style={{
-                  minHeight: "48px",
-                  border: isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)",
-                  color: heroTextPrimary,
-                  backgroundColor: "transparent",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.85)";
-                  e.currentTarget.style.borderColor = "var(--lp-accent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.borderColor = isDark ? "rgba(255,255,255,0.25)" : "rgba(10,22,40,0.2)";
-                }}
-              >
-                Contact Us
-              </a>
-            </div>
+                <Link
+                  to="/applicant/check-availability"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 no-underline cursor-pointer"
+                  style={{
+                    minHeight: "48px",
+                    color: isDark ? "white" : "var(--lp-navy)",
+                    backgroundColor: "var(--lp-accent)",
+                    boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      "0 6px 30px rgba(212, 175, 55, 0.4)";
+                    e.currentTarget.style.transform =
+                      "translateY(-2px) scale(1.02)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      "0 4px 20px rgba(212, 175, 55, 0.25)";
+                    e.currentTarget.style.transform = "translateY(0) scale(1)";
+                  }}
+                >
+                  Browse Available Rooms
+                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                </Link>
+                <a
+                  href="#inquiry"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    smoothScrollTo("inquiry", 80);
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 cursor-pointer"
+                  style={{
+                    minHeight: "48px",
+                    border: isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)",
+                    color: heroTextPrimary,
+                    backgroundColor: "transparent",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.85)";
+                    e.currentTarget.style.borderColor = "var(--lp-accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.borderColor = isDark ? "rgba(255,255,255,0.25)" : "rgba(10,22,40,0.2)";
+                  }}
+                >
+                  Contact Us
+                </a>
+              </div>
+            </ScrollReveal>
 
             {/* Reassurance */}
-            <p
-              className="text-xs sm:text-sm font-normal mb-6"
-              style={{ color: heroTextMuted }}
-            >
-              ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
-            </p>
+            <ScrollReveal variant="fade-up" duration={1.0} delay={0.68}>
+              <p
+                className="text-xs sm:text-sm font-normal mb-6 animate-hero-fade-up"
+                style={{
+                  color: heroTextMuted,
+                }}
+              >
+                ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
+              </p>
+            </ScrollReveal>
 
             {/* Stats — enhanced glassmorphism strip */}
-            <motion.div
-              {...fadeUp(1.1)}
-              ref={statRef}
-              className="inline-flex items-center gap-2 sm:gap-0 flex-wrap p-2 sm:p-2.5 sm:px-5 rounded-[50px]"
-              style={{
-                background: isDark ? "rgba(10, 22, 40, 0.65)" : "rgba(255, 255, 255, 0.75)",
-                backdropFilter: "blur(12px)",
-                border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(212, 175, 55, 0.22)",
-                boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(212, 175, 55, 0.08)",
-              }}
-            >
-              {stats.map((stat, i) => {
-                const Icon = stat.icon;
-                return (
-                  <div key={i} className="flex items-center">
-                    {i > 0 && (
-                      <div
-                        className="mx-2 sm:mx-4 hidden sm:block"
-                        style={{
-                          width: '1px',
-                          height: '24px',
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(10,22,40,0.18)',
-                        }}
+            <ScrollReveal variant="fade-up" duration={1.0} delay={0.82}>
+              <div
+                ref={statRef}
+                className="inline-flex items-center gap-2 sm:gap-0 flex-wrap p-2 sm:p-2.5 sm:px-5 rounded-[50px] animate-hero-fade-up"
+                style={{
+                  background: isDark ? "rgba(10, 22, 40, 0.65)" : "rgba(255, 255, 255, 0.75)",
+                  backdropFilter: "blur(12px)",
+                  border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(212, 175, 55, 0.22)",
+                  boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(212, 175, 55, 0.08)",
+                }}
+              >
+                {stats.map((stat, i) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={i} className="flex items-center">
+                      {i > 0 && (
+                        <div
+                          className="mx-2 sm:mx-4 hidden sm:block"
+                          style={{
+                            width: '1px',
+                            height: '24px',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(10,22,40,0.18)',
+                          }}
+                        />
+                      )}
+                      <StatItem
+                        icon={Icon}
+                        target={stat.value}
+                        suffix={stat.suffix}
+                        label={stat.label}
+                        isInView={isInView}
+                        delay={i * 0.15}
                       />
-                    )}
-                    <StatItem
-                      icon={Icon}
-                      target={stat.value}
-                      suffix={stat.suffix}
-                      label={stat.label}
-                      isInView={isInView}
-                      delay={i * 0.15}
-                    />
-                  </div>
-                );
-              })}
-            </motion.div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollReveal>
           </div>
         </div>
 
@@ -317,7 +384,7 @@ export function HeroSection() {
             <button
               key={i}
               type="button"
-              onClick={() => setCurrentImage(i)}
+              onClick={() => handleSlideSelect(i)}
               aria-label={`Go to slide ${i + 1}`}
               className="flex items-center justify-center p-2 bg-transparent border-none cursor-pointer focus:outline-none"
               style={{ minWidth: "32px", minHeight: "32px" }}
@@ -343,14 +410,8 @@ export function HeroSection() {
 }
 
 function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
-  const { theme } = useTheme();
+  const { isDark } = useTheme();
   const { count, done } = useCounter(target, 2, isInView);
-
-  const resolvedTheme =
-    theme === "system"
-      ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : theme;
-  const isDark = resolvedTheme === "dark";
 
   return (
     <motion.div

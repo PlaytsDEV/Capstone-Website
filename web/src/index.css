@@ -348,6 +348,9 @@ section[id] {
 
 :root[data-theme="dark"],
 html.dark,
+html[data-theme="dark"],
+html.dark .landing-page,
+[data-theme="dark"] .landing-page,
 .landing-page[data-theme="dark"] {
   --lp-bg: #08111F;
   --lp-bg-alt: #0B1628;
@@ -843,4 +846,96 @@ html[data-theme="dark"] .border-gray-100 {
   animation: lcBotFloat 2.2s ease-in-out infinite !important;
   will-change: transform;
 }
+
+/* =============================================================================
+   PAGE LOAD ENTRANCE ANIMATION (FURNISURE-INSPIRED FADE-UP)
+   ============================================================================= */
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px);
+  }
+}
+
+.fade-up {
+  opacity: 0;
+  transform: translateY(20px);
+  animation-name: fadeUp;
+  animation-duration: 0.8s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-fill-mode: both;
+  will-change: opacity, transform;
+}
+
+/* =============================================================================
+   HERO IMAGE VIEWPORT — GPU-ACCELERATED KEN BURNS ZOOM ANIMATION
+   Smooth, continuous subtle zoom-in from 1.00 to 1.07 over 6s slide duration.
+   ============================================================================= */
+@keyframes kenBurnsZoom {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.07);
+  }
+}
+
+.animate-ken-burns {
+  animation: kenBurnsZoom 6s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ken-burns {
+    animation: none !important;
+    transform: scale(1) !important;
+  }
+}
+
+/* =============================================================================
+   HERO SECTION — HIGH-PERFORMANCE STAGGERED TEXT ENTRANCE ANIMATION
+   GPU-composited fade-up without JS runtime overhead for instant LCP painting.
+   ============================================================================= */
+@keyframes heroFadeUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-hero-fade-up {
+  opacity: 0;
+  transform: translate3d(0, 26px, 0);
+  animation: heroFadeUp 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+/* =============================================================================
+   HARDWARE-ACCELERATED SCROLL REVEAL SYSTEM & ACCESSIBILITY
+   ============================================================================= */
+.reveal {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+/* Reduced motion accessibility — only disable intense continuous animations */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ken-burns {
+    animation: none !important;
+  }
+}
+
+
+
+
 

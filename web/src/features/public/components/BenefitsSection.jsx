@@ -1,4 +1,9 @@
 import { ShieldCheck, Sparkles, DollarSign, Leaf, MapPin, Sofa } from 'lucide-react';
+import {
+  ScrollReveal,
+  ScrollRevealStagger,
+  ScrollRevealItem,
+} from '../../../shared/components/ScrollReveal';
 
 const benefits = [
   {
@@ -38,72 +43,75 @@ export function BenefitsSection() {
     <section className="py-16 lg:py-20" style={{ backgroundColor: 'var(--lp-bg)' }}>
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <p
-            className="text-xs mb-3 tracking-widest uppercase font-medium"
-            style={{ color: 'var(--lp-accent-text)' }}
-          >
-            Why Choose Us
-          </p>
-          <h2
-            className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight"
-            style={{ color: 'var(--lp-text)' }}
-          >
-            Your Perfect Living Solution
-          </h2>
-          <p
-            className="max-w-2xl mx-auto font-light leading-relaxed text-sm"
-            style={{ color: 'var(--lp-text-secondary)' }}
-          >
-            Discover why thousands of tenants choose Lilycrest for their
-            dormitory living experience.
-          </p>
-        </div>
+        <ScrollReveal variant="fade-up">
+          <div className="text-center mb-12">
+            <p
+              className="text-xs mb-3 tracking-widest uppercase font-medium"
+              style={{ color: 'var(--lp-accent-text)' }}
+            >
+              Why Choose Us
+            </p>
+            <h2
+              className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight"
+              style={{ color: 'var(--lp-text)' }}
+            >
+              Your Perfect Living Solution
+            </h2>
+            <p
+              className="max-w-2xl mx-auto font-light leading-relaxed text-sm"
+              style={{ color: 'var(--lp-text-secondary)' }}
+            >
+              Discover why thousands of tenants choose Lilycrest for their
+              dormitory living experience.
+            </p>
+          </div>
+        </ScrollReveal>
 
         {/* Benefits Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <ScrollRevealStagger className="grid md:grid-cols-2 lg:grid-cols-3 gap-6" staggerDelay={0.12}>
           {benefits.map((benefit, index) => {
             const Icon = benefit.icon;
             return (
-              <div
-                key={index}
-                className="group p-8 rounded-2xl transition-all duration-300"
-                style={{
-                  backgroundColor: 'var(--lp-bg-card)',
-                  border: '1px solid var(--lp-border)',
-                  boxShadow: 'var(--lp-card-shadow)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--lp-card-shadow-hover)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--lp-card-shadow)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
+              <ScrollRevealItem key={index} className="h-full">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110"
-                  style={{ backgroundColor: 'var(--lp-icon-bg)' }}
+                  className="group p-8 rounded-2xl transition-all duration-300 h-full flex flex-col"
+                  style={{
+                    backgroundColor: 'var(--lp-bg-card)',
+                    border: '1px solid var(--lp-border)',
+                    boxShadow: 'var(--lp-card-shadow)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = 'var(--lp-card-shadow-hover)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = 'var(--lp-card-shadow)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
                 >
-                  <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent-text, #8C6200)' }} />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110"
+                    style={{ backgroundColor: 'var(--lp-icon-bg)' }}
+                  >
+                    <Icon className="w-5 h-5" style={{ color: 'var(--lp-accent-text, #8C6200)' }} />
+                  </div>
+                  <h3
+                    className="text-lg font-medium mb-2 tracking-tight"
+                    style={{ color: 'var(--lp-text)' }}
+                  >
+                    {benefit.title}
+                  </h3>
+                  <p
+                    className="text-sm leading-relaxed font-light"
+                    style={{ color: 'var(--lp-text-secondary)' }}
+                  >
+                    {benefit.description}
+                  </p>
                 </div>
-                <h3
-                  className="text-lg font-medium mb-2 tracking-tight"
-                  style={{ color: 'var(--lp-text)' }}
-                >
-                  {benefit.title}
-                </h3>
-                <p
-                  className="text-sm leading-relaxed font-light"
-                  style={{ color: 'var(--lp-text-secondary)' }}
-                >
-                  {benefit.description}
-                </p>
-              </div>
+              </ScrollRevealItem>
             );
           })}
-        </div>
+        </ScrollRevealStagger>
       </div>
     </section>
   );

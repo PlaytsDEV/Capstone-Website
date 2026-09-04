@@ -1,6 +1,11 @@
 import { Mail, Phone, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { smoothScrollTo } from '../../../shared/utils/smoothScroll';
+import {
+  ScrollReveal,
+  ScrollRevealStagger,
+  ScrollRevealItem,
+} from '../../../shared/components/ScrollReveal';
 
 // Simple inline SVG social icons (no extra dependency)
 function FacebookIcon() {
@@ -45,196 +50,206 @@ export function ContactFooter() {
       <div className="max-w-screen-2xl mx-auto px-6 sm:px-8 lg:px-12">
         <h2 className="sr-only">Contact and Site Navigation</h2>
         {/* Main content */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6">
+        <ScrollRevealStagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-6" staggerDelay={0.12}>
           {/* Brand + Social */}
-          <div>
-            <h3
-              className="text-xl font-medium mb-2 tracking-tight"
-              style={{ color: 'var(--lp-text)' }}
-            >
-              Lilycrest
-            </h3>
-            <p className="text-xs font-light leading-relaxed mb-4" style={{ color: 'var(--lp-text-secondary)' }}>
-              Premium living spaces designed for comfort, convenience, and
-              community.
-            </p>
-            {/* Social Media Links */}
-            <div className="flex items-center gap-3">
-              {socialLinks.map((social) => {
-                const Icon = social.icon;
-                return (
-                  <a
-                    key={social.label}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Visit Lilycrest on ${social.label}`}
-                    className="flex items-center justify-center transition-all duration-200"
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
-                      backgroundColor: 'var(--lp-icon-bg)',
-                      border: '1px solid var(--lp-border)',
-                      color: 'var(--lp-text-secondary)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--lp-accent-text)';
-                      e.currentTarget.style.borderColor = 'var(--lp-accent)';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--lp-text-secondary)';
-                      e.currentTarget.style.borderColor = 'var(--lp-border)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <Icon className="w-4 h-4" />
-                  </a>
-                );
-              })}
+          <ScrollRevealItem>
+            <div>
+              <h3
+                className="text-xl font-medium mb-2 tracking-tight"
+                style={{ color: 'var(--lp-text)' }}
+              >
+                Lilycrest
+              </h3>
+              <p className="text-xs font-light leading-relaxed mb-4" style={{ color: 'var(--lp-text-secondary)' }}>
+                Premium living spaces designed for comfort, convenience, and
+                community.
+              </p>
+              {/* Social Media Links */}
+              <div className="flex items-center gap-3">
+                {socialLinks.map((social) => {
+                  const Icon = social.icon;
+                  return (
+                    <a
+                      key={social.label}
+                      href={social.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Visit Lilycrest on ${social.label}`}
+                      className="flex items-center justify-center transition-all duration-200"
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--lp-icon-bg)',
+                        border: '1px solid var(--lp-border)',
+                        color: 'var(--lp-text-secondary)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--lp-accent-text)';
+                        e.currentTarget.style.borderColor = 'var(--lp-accent)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--lp-text-secondary)';
+                        e.currentTarget.style.borderColor = 'var(--lp-border)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </a>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          </ScrollRevealItem>
 
           {/* Quick Links */}
-          <div>
-            <h3
-              className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-secondary)' }}
-            >
-              Navigation
-            </h3>
-            <ul className="space-y-2">
-              {[
-                { label: 'Browse Rooms', href: '#rooms', id: 'rooms' },
-                { label: 'Our Branches', href: '#location', id: 'location' },
-                { label: 'Amenities', href: '#facilities', id: 'facilities' },
-                { label: 'Contact Us', href: '#inquiry', id: 'inquiry' },
-              ].map((link) => (
-                <li key={link.label}>
+          <ScrollRevealItem>
+            <div>
+              <h3
+                className="text-xs tracking-widest uppercase mb-3 font-medium"
+                style={{ color: 'var(--lp-text-secondary)' }}
+              >
+                Navigation
+              </h3>
+              <ul className="space-y-2">
+                {[
+                  { label: 'Browse Rooms', href: '#rooms', id: 'rooms' },
+                  { label: 'Our Branches', href: '#location', id: 'location' },
+                  { label: 'Amenities', href: '#facilities', id: 'facilities' },
+                  { label: 'Contact Us', href: '#inquiry', id: 'inquiry' },
+                ].map((link) => (
+                  <li key={link.label}>
+                    <a
+                      href={link.href}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        smoothScrollTo(link.id, 80);
+                      }}
+                      className="inline-block py-1 text-sm font-light transition-colors cursor-pointer"
+                      style={{ color: 'var(--lp-text-secondary)' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </ScrollRevealItem>
+
+          {/* Branches */}
+          <ScrollRevealItem>
+            <div>
+              <h3
+                className="text-xs tracking-widest uppercase mb-3 font-medium"
+                style={{ color: 'var(--lp-text-secondary)' }}
+              >
+                Locations
+              </h3>
+              <ul className="space-y-2.5">
+                <li>
+                  <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
+                    Gil Puyat
+                  </p>
+                  <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
+                    Lilycrest Gil Puyat, Sen. Gil J. Puyat Ave, Makati City, Metro Manila
+                  </p>
+                </li>
+                <li>
+                  <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
+                    Guadalupe
+                  </p>
+                  <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
+                    1212, 9431 Magallanes, Makati, 1212 Kalakhang Maynila
+                  </p>
+                </li>
+              </ul>
+            </div>
+          </ScrollRevealItem>
+
+          {/* Contact */}
+          <ScrollRevealItem>
+            <div>
+              <h3
+                className="text-xs tracking-widest uppercase mb-3 font-medium"
+                style={{ color: 'var(--lp-text-secondary)' }}
+              >
+                Get in Touch
+              </h3>
+              <ul className="space-y-2">
+                <li className="flex items-center gap-2.5 min-h-[32px]">
+                  <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
                   <a
-                    href={link.href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      smoothScrollTo(link.id, 80);
-                    }}
-                    className="inline-block py-1 text-sm font-light transition-colors cursor-pointer"
+                    href="mailto:lilycrestadmin@gmail.com"
+                    className="text-sm font-light transition-colors"
                     style={{ color: 'var(--lp-text-secondary)' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
                   >
-                    {link.label}
+                    lilycrestadmin@gmail.com
                   </a>
                 </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Branches */}
-          <div>
-            <h3
-              className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-secondary)' }}
-            >
-              Locations
-            </h3>
-            <ul className="space-y-2.5">
-              <li>
-                <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
-                  Gil Puyat
-                </p>
-                <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
-                  Lilycrest Gil Puyat, Sen. Gil J. Puyat Ave, Makati City, Metro Manila
-                </p>
-              </li>
-              <li>
-                <p className="text-sm mb-0.5 font-medium" style={{ color: 'var(--lp-text)' }}>
-                  Guadalupe
-                </p>
-                <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
-                  1212, 9431 Magallanes, Makati, 1212 Kalakhang Maynila
-                </p>
-              </li>
-            </ul>
-          </div>
-
-          {/* Contact */}
-          <div>
-            <h3
-              className="text-xs tracking-widest uppercase mb-3 font-medium"
-              style={{ color: 'var(--lp-text-secondary)' }}
-            >
-              Get in Touch
-            </h3>
-            <ul className="space-y-2">
-              <li className="flex items-center gap-2.5 min-h-[32px]">
-                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
-                <a
-                  href="mailto:lilycrestadmin@gmail.com"
-                  className="text-sm font-light transition-colors"
-                  style={{ color: 'var(--lp-text-secondary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
-                >
-                  lilycrestadmin@gmail.com
-                </a>
-              </li>
-              <li className="flex items-center gap-2.5 min-h-[32px]">
-                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
-                <a
-                  href="tel:+639123456789"
-                  className="text-sm font-light transition-colors"
-                  style={{ color: 'var(--lp-text-secondary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
-                >
-                  +63 912 345 6789
-                </a>
-              </li>
-              <li className="flex items-center gap-2.5 min-h-[32px]">
-                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
-                <span className="text-sm font-light" style={{ color: 'var(--lp-text-secondary)' }}>
-                  Manila, Philippines
-                </span>
-              </li>
-            </ul>
-          </div>
-        </div>
+                <li className="flex items-center gap-2.5 min-h-[32px]">
+                  <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
+                  <a
+                    href="tel:+639123456789"
+                    className="text-sm font-light transition-colors"
+                    style={{ color: 'var(--lp-text-secondary)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
+                  >
+                    +63 912 345 6789
+                  </a>
+                </li>
+                <li className="flex items-center gap-2.5 min-h-[32px]">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--lp-accent-text)' }} />
+                  <span className="text-sm font-light" style={{ color: 'var(--lp-text-secondary)' }}>
+                    Manila, Philippines
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </ScrollRevealItem>
+        </ScrollRevealStagger>
 
         {/* Bottom */}
-        <div
-          className="pt-4"
-          style={{
-            borderTop: '1px solid var(--lp-border)',
-            paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
-          }}
-        >
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-light text-center sm:text-left" style={{ color: 'var(--lp-text-secondary)' }}>
-              © {new Date().getFullYear()} Lilycrest. All rights reserved.
-            </p>
-            <div className="flex gap-6">
-              <Link
-                to="/privacy-policy"
-                className="text-xs font-light transition-colors py-1"
-                style={{ color: 'var(--lp-text-secondary)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
-              >
-                Privacy Policy
-              </Link>
-              <Link
-                to="/terms-of-service"
-                className="text-xs font-light transition-colors py-1"
-                style={{ color: 'var(--lp-text-secondary)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
-              >
-                Terms of Service
-              </Link>
+        <ScrollReveal variant="fade" delay={0.2}>
+          <div
+            className="pt-4"
+            style={{
+              borderTop: '1px solid var(--lp-border)',
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <p className="text-xs font-light text-center sm:text-left" style={{ color: 'var(--lp-text-secondary)' }}>
+                © {new Date().getFullYear()} Lilycrest. All rights reserved.
+              </p>
+              <div className="flex gap-6">
+                <Link
+                  to="/privacy-policy"
+                  className="text-xs font-light transition-colors py-1"
+                  style={{ color: 'var(--lp-text-secondary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
+                >
+                  Privacy Policy
+                </Link>
+                <Link
+                  to="/terms-of-service"
+                  className="text-xs font-light transition-colors py-1"
+                  style={{ color: 'var(--lp-text-secondary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent-text)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
+                >
+                  Terms of Service
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
+        </ScrollReveal>
       </div>
     </footer>
   );

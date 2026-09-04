@@ -1538,6 +1538,10 @@ export const buildReservationPricing = async ({
   const applianceFeeAmountPerUnit = roundMoney(
     Number(branchSettings?.applianceFeeAmountPerUnit ?? 200),
   );
+  const totalApplianceQuantity = validatedSelectedAppliances.reduce(
+    (total, appliance) => total + (Number(appliance.quantity) || 0),
+    0,
+  );
   const applianceFees =
     branchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled
       ? roundMoney(

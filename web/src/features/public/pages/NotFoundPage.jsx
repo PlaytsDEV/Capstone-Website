@@ -5,12 +5,7 @@ import { useTheme } from "../context/ThemeContext";
 import logo from "../../../assets/images/LOGO.svg";
 
 export default function NotFoundPage() {
-  const { theme } = useTheme();
-  const resolvedTheme =
-    theme === "system"
-      ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : theme;
-  const isDark = resolvedTheme === "dark";
+  const { isDark } = useTheme();
 
   const pageBackground = isDark ? "#0B1120" : "#F9FAFB";
   const headingColor = isDark ? "#FFFFFF" : "#0A1628";
