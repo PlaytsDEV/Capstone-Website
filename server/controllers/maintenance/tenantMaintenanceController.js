@@ -12,6 +12,9 @@ import {
   MIN_MAINTENANCE_DESCRIPTION_LENGTH,
   MAINTENANCE_REQUEST_TYPES,
   MAINTENANCE_URGENCY_LEVELS,
+  TENANT_CANCELLABLE_MAINTENANCE_STATUSES,
+  TENANT_EDITABLE_MAINTENANCE_STATUSES,
+  TENANT_RESCHEDULABLE_MAINTENANCE_STATUSES,
   REOPENABLE_MAINTENANCE_STATUSES,
   OPEN_MAINTENANCE_STATUSES,
   normalizeMaintenanceStatus,
@@ -20,12 +23,12 @@ import {
   validateMaintenanceSlot,
 } from "../../config/maintenance.js";
 import { AppError, sendSuccess } from "../../middleware/errorHandler.js";
-import { MaintenanceRequest, Reservation, Room, User } from "../../models/index.js";
+import { MaintenanceRequest, Reservation, Room } from "../../models/index.js";
 import {
   buildActorSnapshot,
   buildMaintenanceRequestId,
   findAccessibleRequest,
-  getDbUser,
+  getAuthenticatedDbUser,
   ensureTenantAccess,
   serializeTenantSummary,
   serializeMaintenanceRequest,
@@ -58,6 +61,7 @@ const emitMaintenanceUpdated = async (request, extra = {}) => {
 };
 
 const DUPLICATE_REQUEST_WINDOW_HOURS = 12;
+const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 const ensureMinimumDescriptionLength = (description) =>
   String(description || "").trim().length >= MIN_MAINTENANCE_DESCRIPTION_LENGTH;
@@ -68,6 +72,7 @@ const buildMaintenanceDocument = ({
   reservationId = null,
   roomId = null,
   requestId = null,
+  clientRequestId = null,
   requestType,
   description,
   urgency,
@@ -76,6 +81,7 @@ const buildMaintenanceDocument = ({
 }) =>
   new MaintenanceRequest({
     request_id: requestId,
+    client_request_id: clientRequestId,
     user_id: dbUser.user_id,
     userId: dbUser._id,
     branch,
@@ -104,7 +110,7 @@ const buildMaintenanceDocument = ({
  */
 export const getMyRequests = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const status = normalizeMaintenanceStatus(req.query.status);
     const limit = parseLimit(req.query.limit, 100);
 
@@ -143,13 +149,7 @@ export const getMyRequests = async (req, res, next) => {
  */
 export const createRequest = async (req, res, next) => {
   try {
-    const dbUser = await User.findOne({ firebaseUid: req.user.uid })
-      .select("_id user_id role branch firstName lastName email phone")
-      .lean();
-
-    if (!dbUser) {
-      throw new AppError("User not found", 404, "USER_NOT_FOUND");
-    }
+    const dbUser = await getAuthenticatedDbUser(req);
 
     const requestType = normalizeMaintenanceType(req.body.request_type);
     const description = toOptionalText(req.body.description);
@@ -170,6 +170,48 @@ export const createRequest = async (req, res, next) => {
     }
     if (!MAINTENANCE_URGENCY_LEVELS.includes(urgency)) {
       throw new AppError("Invalid maintenance urgency", 400, "INVALID_URGENCY");
+    }
+
+    const attachmentErrors = validateIncomingAttachments(req.body.attachments, {
+      fieldPrefix: "attachments",
+      noun: "Attachments",
+    });
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        "Some attachments are invalid.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    const clientRequestId = typeof req.body?.client_request_id === "string"
+      ? req.body.client_request_id.trim()
+      : "";
+    if (clientRequestId && !CLIENT_REQUEST_ID_PATTERN.test(clientRequestId)) {
+      throw new AppError(
+        "Invalid client request identifier.",
+        400,
+        "INVALID_CLIENT_REQUEST_ID",
+        [{ field: "client_request_id", message: "Use 1-128 letters, numbers, underscores, or hyphens." }],
+      );
+    }
+
+    if (clientRequestId) {
+      const idempotentRequest = await MaintenanceRequest.findOne({
+        user_id: dbUser.user_id,
+        client_request_id: clientRequestId,
+      }).lean();
+      if (idempotentRequest) {
+        return sendSuccess(res, {
+          request: serializeMaintenanceRequest(
+            idempotentRequest,
+            serializeTenantSummary(dbUser, idempotentRequest),
+            { includeInternal: false },
+          ),
+          idempotentReplay: true,
+        });
+      }
     }
 
     const duplicateCutoff = new Date(
@@ -255,6 +297,7 @@ export const createRequest = async (req, res, next) => {
       reservationId: branchResolution.reservationId || null,
       roomId: branchResolution.roomId || null,
       requestId,
+      clientRequestId: clientRequestId || null,
       requestType,
       description,
       urgency,
@@ -263,7 +306,27 @@ export const createRequest = async (req, res, next) => {
     });
     request.deduplicationHash = deduplicationHash;
 
-    await request.save();
+    try {
+      await request.save();
+    } catch (error) {
+      if (clientRequestId && error?.code === 11000) {
+        const winner = await MaintenanceRequest.findOne({
+          user_id: dbUser.user_id,
+          client_request_id: clientRequestId,
+        }).lean();
+        if (winner) {
+          return sendSuccess(res, {
+            request: serializeMaintenanceRequest(
+              winner,
+              serializeTenantSummary(dbUser, winner),
+              { includeInternal: false },
+            ),
+            idempotentReplay: true,
+          });
+        }
+      }
+      throw error;
+    }
 
     await auditLogger.logModification(
       req,
@@ -324,11 +387,11 @@ export const createRequestCompat = async (req, res, next) => {
  */
 export const updateMyRequest = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
-    if (request.status !== "pending") {
+    if (!TENANT_EDITABLE_MAINTENANCE_STATUSES.includes(request.status)) {
       throw new AppError(
         "Only pending maintenance requests can be edited",
         409,
@@ -371,6 +434,18 @@ export const updateMyRequest = async (req, res, next) => {
     request.urgency = urgency;
 
     if (req.body.attachments !== undefined) {
+      const attachmentErrors = validateIncomingAttachments(req.body.attachments, {
+        fieldPrefix: "attachments",
+        noun: "Attachments",
+      });
+      if (attachmentErrors.length > 0) {
+        throw new AppError(
+          "Some attachments are invalid.",
+          400,
+          "VALIDATION_ERROR",
+          attachmentErrors,
+        );
+      }
       request.attachments = normalizeAttachments(req.body.attachments, {
         context: "maintenance_request",
         visibility: "tenant_admin",
@@ -402,45 +477,72 @@ export const updateMyRequest = async (req, res, next) => {
  */
 export const cancelMyRequest = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
-    if (request.status !== "pending") {
+    if (!TENANT_CANCELLABLE_MAINTENANCE_STATUSES.includes(request.status)) {
       throw new AppError(
-        "Only pending maintenance requests can be cancelled",
+        "Only unassigned maintenance requests can be cancelled.",
         409,
         "REQUEST_NOT_CANCELLABLE",
       );
     }
 
-    request.status = "cancelled";
-    request.cancelled_at = new Date();
-    appendStatusHistory(request, {
+    const cancelledAt = new Date();
+    const statusEvent = {
       event: "cancelled",
       status: "cancelled",
       ...buildActorSnapshot(dbUser),
       note: null,
-      timestamp: request.cancelled_at,
-    });
-    await request.save();
+      timestamp: cancelledAt,
+    };
+
+    // Compare-and-set: ownership and cancellable state are part of the write
+    // predicate, so a concurrent admin assignment/status transition wins
+    // cleanly instead of being overwritten by a stale tenant read.
+    const updatedRequest = await MaintenanceRequest.findOneAndUpdate(
+      {
+        _id: request._id,
+        user_id: dbUser.user_id,
+        status: { $in: TENANT_CANCELLABLE_MAINTENANCE_STATUSES },
+      },
+      {
+        $set: {
+          status: "cancelled",
+          cancelled_at: cancelledAt,
+          updated_at: cancelledAt,
+        },
+        $push: { statusHistory: statusEvent },
+        $inc: { __v: 1 },
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedRequest) {
+      throw new AppError(
+        "This maintenance request can no longer be cancelled.",
+        409,
+        "REQUEST_NOT_CANCELLABLE",
+      );
+    }
 
     await auditLogger.logModification(
       req,
       "maintenance",
-      request._id,
-      { status: "pending" },
+      updatedRequest._id,
+      { status: request.status },
       { status: "cancelled" },
       "Cancelled Maintenance Request",
-      `Tenant cancelled maintenance request #${request.request_id || request._id}`,
+      `Tenant cancelled maintenance request #${updatedRequest.request_id || updatedRequest._id}`,
     );
 
-    emitMaintenanceUpdated(request);
+    emitMaintenanceUpdated(updatedRequest);
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(dbUser, request),
+        updatedRequest.toObject(),
+        serializeTenantSummary(dbUser, updatedRequest),
         { includeInternal: false },
       ),
     });
@@ -454,7 +556,7 @@ export const cancelMyRequest = async (req, res, next) => {
  */
 export const reopenMyRequest = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
@@ -569,7 +671,7 @@ export const reopenMyRequest = async (req, res, next) => {
  */
 export const confirmResolution = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
@@ -723,15 +825,23 @@ export const confirmMaintenanceResolved = confirmResolution;
  */
 export const requestMaintenanceReschedule = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
-    if (["cancelled", "closed", "completed"].includes(normalizeMaintenanceStatus(request.status))) {
+    if (!TENANT_RESCHEDULABLE_MAINTENANCE_STATUSES.includes(normalizeMaintenanceStatus(request.status))) {
       throw new AppError(
-        "Closed or completed maintenance requests cannot be rescheduled.",
+        "This maintenance request cannot be rescheduled in its current state.",
         409,
-        "REQUEST_CLOSED",
+        "REQUEST_NOT_RESCHEDULABLE",
+      );
+    }
+
+    if (request.rescheduleRequest?.status === "pending") {
+      throw new AppError(
+        "A reschedule request is already pending.",
+        409,
+        "RESCHEDULE_ALREADY_PENDING",
       );
     }
 
@@ -802,7 +912,7 @@ export const requestMaintenanceReschedule = async (req, res, next) => {
  */
 export const sendTenantReply = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 
@@ -948,7 +1058,7 @@ export const sendTenantReply = async (req, res, next) => {
  */
 export const broadcastTenantMaintenanceTyping = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
     const isTyping = req.body?.isTyping !== false;
@@ -984,7 +1094,7 @@ export const broadcastTenantMaintenanceTyping = async (req, res, next) => {
  */
 export const markTenantMaintenanceRead = async (req, res, next) => {
   try {
-    const dbUser = await getDbUser(req.user.uid);
+    const dbUser = await getAuthenticatedDbUser(req);
     const request = await findAccessibleRequest(req.params.requestId);
     ensureTenantAccess(request, dbUser);
 

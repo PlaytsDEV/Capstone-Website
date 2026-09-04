@@ -48,6 +48,63 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const TENANT_NOTIFICATION_ROLES = new Set(["tenant", "resident"]);
+const APPLICANT_NOTIFICATION_ROLES = new Set([
+  "applicant",
+  "prospect",
+  "reservation_applicant",
+  "pending_tenant",
+]);
+
+export function isApplicantLifecycleNotification(notification = {}) {
+  const roleAtCreation = normalizeString(
+    notification.role_at_creation || notification.roleAtCreation || "",
+  ).toLowerCase();
+  if (TENANT_NOTIFICATION_ROLES.has(roleAtCreation)) return false;
+  if (APPLICANT_NOTIFICATION_ROLES.has(roleAtCreation)) return true;
+
+  // Legacy records predate role stamping. Infer only from strong lifecycle
+  // signals so tenant billing/payment records are never hidden due to copy.
+  const data = notification.data && typeof notification.data === "object"
+    ? notification.data
+    : {};
+  const lifecycleRoute = [
+    notification.type,
+    notification.category,
+    notification.source,
+    notification.url,
+    notification.actionUrl,
+    notification.entityType,
+    data.type,
+    data.category,
+    data.screen,
+    data.url,
+  ].map((value) => normalizeString(value).toLowerCase()).join(" ");
+  if (/(^|[\s_./-])(applicant|application|reservation|visit)(?=$|[\s_./-])/.test(lifecycleRoute)) {
+    return true;
+  }
+
+  const reservationId = normalizeString(
+    notification.reservation_id || notification.reservationId
+      || data.reservation_id || data.reservationId
+      || (normalizeString(notification.entityType).toLowerCase() === "reservation"
+        ? String(notification.entityId || "")
+        : ""),
+  );
+  const billingId = normalizeString(
+    notification.billing_id || notification.billingId || notification.bill_id
+      || data.billing_id || data.billingId || data.bill_id || "",
+  );
+  return Boolean(reservationId && !billingId);
+}
+
+export function filterNotificationsForTenantLifecycle(currentRole, notifications = []) {
+  if (!TENANT_NOTIFICATION_ROLES.has(normalizeString(currentRole).toLowerCase())) {
+    return [...notifications];
+  }
+  return notifications.filter((notification) => !isApplicantLifecycleNotification(notification));
+}
+
 function normalizePriority(value) {
   const raw = normalizeString(value).toLowerCase();
   if (raw === "high" || raw === "urgent" || raw === "critical") return "high";
@@ -238,6 +295,7 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     message_id: chatMessageId,
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
     reservation_id: normalizeString(doc.reservation_id || doc.data?.reservation_id || ""),
+    role_at_creation: normalizeString(doc.role_at_creation || doc.roleAtCreation || ""),
     // Canonical Notification documents use `dedupeKey` (models/Notification.js).
     // Older mobile writers used event_key/eventKey. Preserve all three shapes,
     // but expose one stable event key to the read/dismissal pipeline.
@@ -441,7 +499,7 @@ async function loadAuthorizedSources(db, userId, userMongoId, { storedLimit = 20
  * Both are matched so a notification is found regardless of which writer
  * created it.
  */
-async function listUserNotifications(db, userId, userMongoId) {
+async function listUserNotifications(db, userId, userMongoId, currentRole = "") {
   const { storedNotifications, announcements } = await loadAuthorizedSources(
     db,
     userId,
@@ -451,7 +509,11 @@ async function listUserNotifications(db, userId, userMongoId) {
 
   // Collect all author/publishedBy/createdBy ObjectId references to resolve admin names
   const authorIds = new Set();
-  [...storedNotifications, ...announcements].forEach((doc) => {
+  const lifecycleVisibleNotifications = filterNotificationsForTenantLifecycle(
+    currentRole,
+    storedNotifications,
+  );
+  [...lifecycleVisibleNotifications, ...announcements].forEach((doc) => {
     [doc.author_name, doc.authorName, doc.publishedBy, doc.postedBy, doc.createdBy, doc.source_label].forEach((val) => {
       if (!val) return;
       if (typeof val === "object" && (["ObjectId", "ObjectID"].includes(val._bsontype) || val.constructor?.name === "ObjectId")) {
@@ -511,7 +573,7 @@ async function listUserNotifications(db, userId, userMongoId) {
 
   const mergedByKey = new Map();
   sortNotifications([
-    ...storedNotifications.map((doc) => sanitizeStoredNotification(doc, authorNameMap)),
+    ...lifecycleVisibleNotifications.map((doc) => sanitizeStoredNotification(doc, authorNameMap)),
     ...announcements.map((doc) => normalizeAnnouncementNotification(doc, authorNameMap)),
   ]).forEach((notification) => {
     const key = buildNotificationKey(notification);

@@ -95,6 +95,13 @@ jest.unstable_mockModule("../controllers/chatController.js", () => ({
   confirmTenantResolution: jest.fn(), reopenTenantConversation: jest.fn(), closeTenantConversation: jest.fn(),
   broadcastTyping: jest.fn(),
 }));
+jest.unstable_mockModule("../controllers/maintenanceController.js", () => ({
+  getMyRequests: jest.fn(), createRequest: jest.fn(), getRequestById: jest.fn(),
+  updateMyRequest: jest.fn(), cancelMyRequest: jest.fn(), reopenMyRequest: jest.fn(),
+  confirmResolution: jest.fn(), requestMaintenanceReschedule: jest.fn(),
+  sendTenantReply: jest.fn(), markTenantMaintenanceRead: jest.fn(),
+  broadcastTenantMaintenanceTyping: jest.fn(),
+}));
 jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
   ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type.",
   isAllowedAttachmentFile: jest.fn(() => true),
@@ -112,6 +119,7 @@ const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
 const { default: mobileNotificationRoutes } = await import("./mobileNotificationRoutes.js");
 const { default: mobileUploadRoutes } = await import("./mobileUploadRoutes.js");
 const { default: mobileChatRoutes } = await import("./mobileChatRoutes.js");
+const { default: mobileMaintenanceRoutes } = await import("./mobileMaintenanceRoutes.js");
 
 let server;
 let baseUrl;
@@ -128,6 +136,7 @@ async function startApp() {
   app.use("/api/m", mobileNotificationRoutes);
   app.use("/api/m", mobileUploadRoutes);
   app.use("/api/m", mobileChatRoutes);
+  app.use("/api/m", mobileMaintenanceRoutes);
 
   // Stand-in for the vendored router's OTHER domains (server/mobile), which
   // this test does not load for real (that requires a live Mongo/Firebase
@@ -156,7 +165,6 @@ describe("full /api/m mount order — no bridge shadows a vendored-only domain",
   test.each([
     ["POST", "/api/m/auth/login", "vendored-auth-login"],
     ["GET", "/api/m/rooms", "vendored-rooms"],
-    ["GET", "/api/m/maintenance/me", "vendored-maintenance-me"],
     ["GET", "/api/m/dashboard/me", "vendored-dashboard-me"],
     ["GET", "/api/m/announcements", "vendored-announcements"],
     ["POST", "/api/m/chatbot/message", "vendored-chatbot-message"],
@@ -179,6 +187,7 @@ describe("full /api/m mount order — no bridge shadows a vendored-only domain",
     ["GET", "/api/m/notifications"],
     ["POST", "/api/m/upload/firebase-storage"],
     ["GET", "/api/m/chat/me"],
+    ["GET", "/api/m/maintenance/me"],
   ])("unauthenticated %s %s is correctly rejected by its own bridge's session auth (sanity check)", async (method, path) => {
     await startApp();
     const res = await fetch(`${baseUrl}${path}`, { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? "{}" : undefined });

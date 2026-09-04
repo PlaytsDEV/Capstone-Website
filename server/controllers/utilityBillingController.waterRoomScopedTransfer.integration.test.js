@@ -81,7 +81,7 @@ const { filterBillableReservationsForPeriod, isWaterBillableRoom } =
   await import("../utils/utilityFlowRules.js");
 const { computeBilling } = await import("../utils/billingEngine.js");
 const { branchSupportsSeparateUtilityBilling } = await import("../config/branches.js");
-const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings } =
+const { Contract, Reservation, Room, User, Stay, BedHistory, Bill, BusinessSettings, UtilityPeriod } =
   await import("../models/index.js");
 
 jest.setTimeout(240_000);
@@ -105,8 +105,16 @@ function bedsFor(type, prefix) {
 describe("Phase 5 — water follows the tenant's actual room + existing water rules", () => {
   let mongo;
   beforeAll(async () => {
-    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(mongo.getUri(), { dbName: "phase5_water" });
+    mongo = await MongoMemoryReplSet.create({
+      replSet: { count: 1, args: ["--wiredTigerCacheSizeGB", "0.5"] },
+    });
+    await mongoose.connect(mongo.getUri(), {
+      dbName: "phase5_water",
+      autoIndex: false,
+    });
+    for (const model of [Contract, Stay, UtilityPeriod]) {
+      await model.syncIndexes();
+    }
   }, 120_000);
   afterAll(async () => {
     await mongoose.disconnect();

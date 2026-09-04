@@ -11,11 +11,16 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import {
   ADMIN_MAINTENANCE_STATUSES,
+  MAX_MAINTENANCE_ATTACHMENTS,
+  MAX_MAINTENANCE_ATTACHMENT_BYTES,
   MAINTENANCE_REQUEST_TYPES,
   MAINTENANCE_URGENCY_LEVELS,
   MIN_MAINTENANCE_DESCRIPTION_LENGTH,
   OPEN_MAINTENANCE_STATUSES,
   REOPENABLE_MAINTENANCE_STATUSES,
+  TENANT_CANCELLABLE_MAINTENANCE_STATUSES,
+  TENANT_EDITABLE_MAINTENANCE_STATUSES,
+  TENANT_RESCHEDULABLE_MAINTENANCE_STATUSES,
   canAdminTransitionMaintenanceStatus,
   formatMaintenanceTypeLabel,
   formatMaintenanceStatusLabel,
@@ -102,6 +107,102 @@ export const toOptionalText = (value) => {
 };
 
 export const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
+
+const toSafeLocationScalar = (value) => {
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (value instanceof mongoose.Types.ObjectId) return value.toString();
+  return null;
+};
+
+const firstSafeLocationScalar = (...values) => {
+  for (const value of values) {
+    const scalar = toSafeLocationScalar(value);
+    if (scalar) return scalar;
+  }
+  return null;
+};
+
+export const getMaintenanceRoomId = (room) => {
+  const scalar = toSafeLocationScalar(room);
+  if (scalar) return scalar;
+  if (!room || typeof room !== "object" || Array.isArray(room)) return null;
+  return firstSafeLocationScalar(
+    room._id,
+    room.id,
+    room.roomId,
+    room.room_id,
+  );
+};
+
+const getMaintenanceBranchLabel = (branch) => {
+  const scalar = toSafeLocationScalar(branch);
+  if (scalar) return scalar;
+  if (!branch || typeof branch !== "object" || Array.isArray(branch)) return null;
+  return firstSafeLocationScalar(
+    branch.branchName,
+    branch.branch_name,
+    branch.name,
+    branch.label,
+    branch.code,
+    branch.slug,
+    branch._id,
+    branch.id,
+  );
+};
+
+const getMaintenanceFloorLabel = (floor) => {
+  const scalar = toSafeLocationScalar(floor);
+  if (scalar) return scalar;
+  if (!floor || typeof floor !== "object" || Array.isArray(floor)) return null;
+  return firstSafeLocationScalar(
+    floor.floorNumber,
+    floor.floor_number,
+    floor.number,
+    floor.name,
+    floor.label,
+    floor._id,
+    floor.id,
+  );
+};
+
+/**
+ * Tenant DTOs expose a populated room only through the `room` field. The
+ * parallel `roomId` field is always scalar so mobile/web selectors and React
+ * children cannot accidentally receive a Mongoose document.
+ */
+export const serializeMaintenanceRoom = (room) => {
+  if (!room || typeof room !== "object" || Array.isArray(room)) return null;
+  if (room instanceof mongoose.Types.ObjectId) return null;
+
+  const id = getMaintenanceRoomId(room);
+  const name = firstSafeLocationScalar(room.name);
+  const roomNumber = firstSafeLocationScalar(
+    room.roomNumber,
+    room.room_number,
+    room.unitNumber,
+    room.unit_number,
+  );
+  const floor = getMaintenanceFloorLabel(room.floor);
+  const branch = getMaintenanceBranchLabel(room.branch);
+  const hasRoomDetails = Boolean(id || name || roomNumber || floor || branch);
+  if (!hasRoomDetails) return null;
+
+  return {
+    _id: id,
+    id,
+    name,
+    roomNumber,
+    floor,
+    branch,
+    isFull: typeof room.isFull === "boolean" ? room.isFull : null,
+    availableSlots: room.availableSlots !== null
+      && room.availableSlots !== undefined
+      && Number.isFinite(Number(room.availableSlots))
+      ? Number(room.availableSlots)
+      : null,
+  };
+};
 
 export const parseOptionalAmount = (value, field) => {
   if (value === undefined || value === null || value === "") return null;
@@ -618,6 +719,12 @@ export const validateIncomingAttachments = (
   }
 
   const errors = [];
+  if (rawAttachments.length > MAX_MAINTENANCE_ATTACHMENTS) {
+    errors.push({
+      field: fieldPrefix,
+      message: `A maximum of ${MAX_MAINTENANCE_ATTACHMENTS} ${noun.toLowerCase()} is allowed.`,
+    });
+  }
   rawAttachments.forEach((entry, index) => {
     const uri = getAttachmentUri(entry);
     const normalized = normalizeAttachmentEntry(entry, index);
@@ -633,6 +740,14 @@ export const validateIncomingAttachments = (
       errors.push({
         field: `${fieldPrefix}.${index}.type`,
         message: "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.",
+      });
+    }
+
+    const size = getAttachmentSize(entry);
+    if (size > MAX_MAINTENANCE_ATTACHMENT_BYTES) {
+      errors.push({
+        field: `${fieldPrefix}.${index}.size`,
+        message: "Each attachment must be 5 MB or smaller.",
       });
     }
   });
@@ -786,6 +901,17 @@ export const getDbUser = async (firebaseUid) => {
   return user;
 };
 
+export const getAuthenticatedDbUser = async (req) => {
+  if (req?.mobileTenant?._id) {
+    const mobileUser = await User.findById(req.mobileTenant._id)
+      .select(USER_SELECT_FIELDS)
+      .lean();
+    if (mobileUser) return mobileUser;
+  }
+
+  return getDbUser(req?.user?.uid);
+};
+
 export const ensureTenantAccess = (request, dbUser) => {
   if (request.user_id !== dbUser.user_id) {
     throw new AppError("Access denied", 403, "FORBIDDEN");
@@ -837,13 +963,21 @@ export const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal 
   Array.isArray(statusHistory)
     ? statusHistory
         .filter((entry) => includeInternal || !INTERNAL_STATUS_EVENTS.has(entry?.event))
-        .map((entry) => ({
-        ...entry,
-        note:
-          includeInternal || ["tenant", "applicant"].includes(entry?.actor_role)
-            ? entry?.note ?? null
-            : null,
-      }))
+        .map((entry) => includeInternal
+          ? { ...entry }
+          : {
+              event: entry?.event || null,
+              status: entry?.status || entry?.status_to || null,
+              status_from: entry?.status_from || null,
+              status_to: entry?.status_to || null,
+              timestamp: entry?.timestamp || entry?.created_at || entry?.createdAt || null,
+              actor_role: ["tenant", "applicant"].includes(entry?.actor_role)
+                ? "tenant"
+                : "management",
+              note: ["tenant", "applicant"].includes(entry?.actor_role)
+                ? entry?.note ?? null
+                : null,
+            })
     : [];
 
 export const serializeMaintenanceRequest = (
@@ -917,6 +1051,13 @@ export const serializeMaintenanceRequest = (
 
   const tenantActiveRes = tenant?.activeReservation || null;
   const tenantActiveRoom = tenant?.activeRoom || null;
+  const requestRoomId = getMaintenanceRoomId(request.roomId);
+  const activeRoomId = getMaintenanceRoomId(tenantActiveRoom);
+  const requestRoom = serializeMaintenanceRoom(request.roomId);
+  const activeRoom = (!requestRoomId || requestRoomId === activeRoomId)
+    ? serializeMaintenanceRoom(tenantActiveRoom)
+    : null;
+  const tenantRoom = requestRoom || activeRoom;
 
   const occupancyContext = {
     unitNumber:
@@ -1052,6 +1193,19 @@ export const serializeMaintenanceRequest = (
           action: "rejected_back_to_in_progress",
         }
       : null;
+  const normalizedStatus = String(request.status || "").toLowerCase();
+  const tenantActions = {
+    canEdit: TENANT_EDITABLE_MAINTENANCE_STATUSES.includes(normalizedStatus),
+    canCancel: TENANT_CANCELLABLE_MAINTENANCE_STATUSES.includes(normalizedStatus),
+    canReopen: REOPENABLE_MAINTENANCE_STATUSES.includes(normalizedStatus),
+    canConfirmResolution:
+      normalizedStatus === "resolved" && !request.resolutionConfirmation?.confirmedAt,
+    canRequestReschedule:
+      TENANT_RESCHEDULABLE_MAINTENANCE_STATUSES.includes(normalizedStatus) &&
+      request.rescheduleRequest?.status !== "pending",
+    canReply: !["cancelled", "closed"].includes(normalizedStatus),
+    canSubmitSimilar: true,
+  };
   const lastAdminReadTime = request.lastAdminReadAt ? new Date(request.lastAdminReadAt).getTime() : 0;
   const isNewForAdmin = !request.lastAdminReadAt && ["pending", "pending_review", "viewed"].includes(request.status);
   
@@ -1110,6 +1264,8 @@ export const serializeMaintenanceRequest = (
     description: request.description,
     urgency: request.urgency,
     status: request.status,
+    tenantActions,
+    tenant_actions: tenantActions,
     providerDetails,
     provider_details: providerDetails,
     isReopened: Boolean(request.isReopened),
@@ -1145,9 +1301,7 @@ export const serializeMaintenanceRequest = (
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
     reopen_note: request.reopen_note ?? null,
     reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
-    statusHistory: includeInternal
-      ? sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal })
-      : [],
+    statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
     slaState: getSlaState(request),
     assignment: {
       assignedTo: includeInternal ? request.assigned_to ?? null : null,
@@ -1225,12 +1379,9 @@ export const serializeMaintenanceRequest = (
       billId: request.costBreakdown?.billId ? String(request.costBreakdown.billId) : null,
     },
     tenant,
-    branch: request.branch || null,
-    room:
-      request.roomId && typeof request.roomId === "object"
-        ? request.roomId
-        : tenantActiveRoom || null,
-    roomId: request.roomId || tenantActiveRoom?._id || null,
+    branch: getMaintenanceBranchLabel(request.branch || tenantRoom?.branch),
+    room: tenantRoom,
+    roomId: requestRoomId || activeRoomId || null,
     reservationId: request.reservationId || tenantActiveRes?._id || null,
     isArchived: Boolean(request.isArchived),
     archivedAt: request.archivedAt ?? null,

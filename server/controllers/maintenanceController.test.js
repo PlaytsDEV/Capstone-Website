@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const maintenanceFind = jest.fn();
 const maintenanceFindOne = jest.fn();
+const maintenanceFindOneAndUpdate = jest.fn();
 const maintenanceSave = jest.fn();
 const userFind = jest.fn();
 const userFindOne = jest.fn();
+const userFindById = jest.fn();
 const reservationFind = jest.fn();
 const reservationFindOne = jest.fn();
 const roomFindById = jest.fn();
@@ -40,6 +42,10 @@ class MockMaintenanceRequest {
   static findOne(...args) {
     return maintenanceFindOne(...args);
   }
+
+  static findOneAndUpdate(...args) {
+    return maintenanceFindOneAndUpdate(...args);
+  }
 }
 
 await jest.unstable_mockModule("../models/index.js", () => ({
@@ -68,6 +74,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   User: {
     find: userFind,
     findOne: userFindOne,
+    findById: userFindById,
   },
 }));
 await jest.unstable_mockModule("../utils/sanitize.js", () => ({
@@ -126,6 +133,7 @@ const {
   scheduleAdminMaintenance,
   finalizeAdminMaintenanceReport,
   confirmResolution,
+  cancelMyRequest,
   requestMaintenanceReschedule,
   respondToMaintenanceReschedule,
   reopenAdminMaintenanceRequest,
@@ -321,10 +329,12 @@ describe("maintenanceController", () => {
   beforeEach(() => {
     maintenanceFind.mockReset();
     maintenanceFindOne.mockReset();
+    maintenanceFindOneAndUpdate.mockReset();
     maintenanceSave.mockReset();
     maintenanceSave.mockResolvedValue(undefined);
     userFind.mockReset();
     userFindOne.mockReset();
+    userFindById.mockReset();
     reservationFind.mockReset();
     reservationFind.mockReturnValue(buildListQuery([]));
     reservationFindOne.mockReset();
@@ -345,6 +355,94 @@ describe("maintenanceController", () => {
     maintenanceScheduled.mockResolvedValue({});
     maintenanceReportFinalized.mockResolvedValue({});
     lastCreatedMaintenanceRequest = null;
+  });
+
+  test("cancelMyRequest atomically compares ownership and cancellable status", async () => {
+    const requestDoc = buildRequestDoc({ status: "pending_review" });
+    const updatedDoc = buildRequestDoc({ status: "cancelled", cancelled_at: new Date() });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    maintenanceFindOneAndUpdate.mockResolvedValue(updatedDoc);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await cancelMyRequest({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+    }, {}, next);
+
+    expect(maintenanceFindOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: requestDoc._id,
+        user_id: requestDoc.user_id,
+        status: { $in: ["pending", "pending_review", "viewed", "reviewed"] },
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: "cancelled" }),
+        $push: expect.objectContaining({
+          statusHistory: expect.objectContaining({ event: "cancelled", status: "cancelled" }),
+        }),
+        $inc: { __v: 1 },
+      }),
+      { new: true, runValidators: true },
+    );
+    expect(sendSuccess).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ request: expect.objectContaining({ status: "cancelled" }) }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("cancelMyRequest returns 409 when a concurrent admin transition wins", async () => {
+    const requestDoc = buildRequestDoc({ status: "reviewed" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    maintenanceFindOneAndUpdate.mockResolvedValue(null);
+    mockTenantOwner();
+
+    const next = jest.fn();
+    await cancelMyRequest({
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 409,
+      code: "REQUEST_NOT_CANCELLABLE",
+    }));
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("a tenant cancellation that wins cannot be overwritten by a stale admin save", async () => {
+    const staleAdminDoc = buildRequestDoc({ status: "pending_review" });
+    staleAdminDoc.save = jest.fn().mockRejectedValue(Object.assign(new Error("stale"), { name: "VersionError" }));
+    const cancelledDoc = buildRequestDoc({ status: "cancelled", cancelled_at: new Date() });
+    maintenanceFindOne
+      .mockResolvedValueOnce(staleAdminDoc)
+      .mockResolvedValueOnce(cancelledDoc);
+    userFindOne.mockReturnValue(buildLeanQuery({
+      _id: "admin_user_1",
+      user_id: "admin_1",
+      firstName: "Branch",
+      lastName: "Admin",
+      branch: "gil-puyat",
+      role: "branch_admin",
+    }));
+
+    const next = jest.fn();
+    await updateAdminRequestStatus({
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: staleAdminDoc.request_id },
+      body: { status: "provider_assigned", assigned_to: "Facilities Team" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 409,
+      code: "INVALID_STATUS_TRANSITION",
+    }));
+    expect(cancelledDoc.status).toBe("cancelled");
+    expect(cancelledDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
   });
 
   test("getAdminAll applies branch and contract filters", async () => {
@@ -948,7 +1046,13 @@ describe("maintenanceController", () => {
     expect(request.workLog).toEqual([]);
     expect(request.resolutionNote).toBeNull();
     expect(request.completionNote).toBeNull();
-    expect(request.statusHistory).toEqual([]);
+    expect(request.statusHistory).toEqual([expect.objectContaining({
+      event: "note_updated",
+      status: "pending",
+      actor_role: "management",
+      note: null,
+    })]);
+    expect(request.statusHistory[0]).not.toHaveProperty("actor_name");
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -1210,6 +1314,115 @@ describe("maintenanceController", () => {
     expect(maintenanceSave).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getMyRequests keeps roomId scalar when the room is populated", async () => {
+    const storedRequest = buildRequestDoc({
+      roomId: {
+        _id: "room_object_id",
+        id: "room_object_id",
+        name: "Room 101",
+        roomNumber: "101",
+        floor: { number: 1 },
+        branch: { name: "Gil Puyat" },
+        isFull: false,
+        availableSlots: 2,
+      },
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    mockTenantOwner();
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.roomId).toBe("room_object_id");
+    expect(request.room).toEqual({
+      _id: "room_object_id",
+      id: "room_object_id",
+      name: "Room 101",
+      roomNumber: "101",
+      floor: "1",
+      branch: "Gil Puyat",
+      isFull: false,
+      availableSlots: 2,
+    });
+    expect(typeof request.roomId).toBe("string");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createRequest accepts every canonical category and urgency with five valid attachments", async () => {
+    const requestTypes = [
+      "maintenance", "plumbing", "electrical", "aircon", "elevator",
+      "furniture", "internet", "cleaning", "pest", "other",
+    ];
+    const urgencies = ["low", "normal", "high", "urgent", "emergency"];
+    maintenanceFindOne.mockReturnValue(buildSortedLeanQuery(null));
+    stayFindOne.mockReturnValue(buildSortSelectLeanQuery(null));
+    reservationFindOne.mockReturnValue(buildSortPopulateSelectLeanQuery(null));
+    bedHistoryFindOne.mockReturnValue(buildSortSelectLeanQuery(null));
+    mockTenantOwner();
+
+    for (const requestType of requestTypes) {
+      for (const urgency of urgencies) {
+        const next = jest.fn();
+        const attachments = Array.from({ length: 5 }, (_, index) => ({
+          name: `${requestType}-${urgency}-${index}.jpg`,
+          uri: `https://storage.example.com/maintenance/${requestType}-${urgency}-${index}.jpg`,
+          type: "image/jpeg",
+          size: 1024,
+        }));
+
+        await createRequest({
+          user: { uid: "firebase-tenant-1" },
+          body: {
+            request_type: requestType,
+            description: `Canonical ${requestType} ${urgency} maintenance request.`,
+            urgency,
+            attachments,
+          },
+        }, {}, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(lastCreatedMaintenanceRequest).toEqual(expect.objectContaining({
+          request_type: requestType,
+          urgency,
+        }));
+        expect(lastCreatedMaintenanceRequest.attachments).toHaveLength(5);
+      }
+    }
+  });
+
+  test("createRequest rejects a sixth attachment before persistence", async () => {
+    mockTenantOwner();
+    const next = jest.fn();
+
+    await createRequest({
+      user: { uid: "firebase-tenant-1" },
+      body: {
+        request_type: "internet",
+        description: "Internet connection is unavailable in the assigned room.",
+        urgency: "high",
+        attachments: Array.from({ length: 6 }, (_, index) => ({
+          name: `network-${index}.jpg`,
+          uri: `https://storage.example.com/maintenance/network-${index}.jpg`,
+          type: "image/jpeg",
+          size: 1024,
+        })),
+      },
+    }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 400,
+      code: "VALIDATION_ERROR",
+    }));
+    expect(maintenanceSave).not.toHaveBeenCalled();
   });
 
   test("createRequest returns a friendly branch error when branch cannot be resolved", async () => {
