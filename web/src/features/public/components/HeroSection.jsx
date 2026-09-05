@@ -2,7 +2,6 @@ import { Sparkles, Users, MapPin, ThumbsUp, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion, useInView } from "framer-motion";
 import { useRef, useEffect, useState, useCallback } from "react";
-import { useTheme } from "../context/ThemeContext";
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
 import hero3 from "../../../assets/images/hero3.webp";
@@ -68,7 +67,6 @@ const heroMobileImages = [
 const SLIDE_DURATION = 6000;
 
 export function HeroSection() {
-  const { isDark } = useTheme();
   const statRef = useRef(null);
   const isInView = useInView(statRef, { margin: "-50px" });
   const [currentImage, setCurrentImage] = useState(0);
@@ -138,13 +136,10 @@ export function HeroSection() {
     resetTimer();
   };
 
-  const heroOverlay = isDark
-    ? "linear-gradient(to right, rgba(8, 17, 31, 0.93) 0%, rgba(8, 17, 31, 0.82) 45%, rgba(8, 17, 31, 0.58) 75%, rgba(8, 17, 31, 0.45) 100%)"
-    : "linear-gradient(to right, rgba(255, 255, 255, 0.9) 0%, rgba(243, 230, 184, 0.82) 45%, rgba(232, 211, 146, 0.52) 75%, rgba(212, 175, 55, 0.28) 100%)";
-
-  const heroTextPrimary = isDark ? "white" : "var(--lp-navy)";
-  const heroTextSecondary = isDark ? "#F8FAFC" : "#111111";
-  const heroTextMuted = isDark ? "#E2E8F0" : "#1e293b";
+  const heroOverlay = "var(--lp-hero-overlay)";
+  const heroTextPrimary = "var(--lp-text)";
+  const heroTextSecondary = "var(--lp-text-secondary)";
+  const heroTextMuted = "var(--lp-text-muted)";
 
   const contentTranslateY = reducedMotion ? 0 : scrollProgress * -40;
   const contentOpacity = reducedMotion ? 1 : Math.max(1 - scrollProgress * 1.15, 0);
@@ -221,17 +216,15 @@ export function HeroSection() {
               <div
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6 animate-hero-fade-up"
                 style={{
-                  backgroundColor: isDark ? "rgba(10, 22, 40, 0.75)" : "rgba(255, 255, 255, 0.9)",
-                  border: isDark ? "1px solid rgba(212, 175, 55, 0.35)" : "1px solid rgba(212, 175, 55, 0.35)",
-                  boxShadow: isDark
-                    ? "0 2px 12px rgba(0, 0, 0, 0.35)"
-                    : "0 2px 14px rgba(212, 175, 55, 0.12), 0 1px 3px rgba(10, 22, 40, 0.03)",
+                  backgroundColor: "var(--lp-badge-bg)",
+                  border: "1px solid var(--lp-badge-border)",
+                  boxShadow: "var(--lp-card-shadow)",
                 }}
               >
                 <Sparkles className="w-4 h-4 flex-shrink-0" style={{ color: "var(--lp-accent)" }} />
                 <span
                   className="text-xs font-semibold tracking-[0.18em] uppercase"
-                  style={{ color: isDark ? "#F8FAFC" : "var(--lp-navy)" }}
+                  style={{ color: heroTextPrimary }}
                 >
                   Quality Urban Living
                 </span>
@@ -275,7 +268,7 @@ export function HeroSection() {
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 no-underline cursor-pointer"
                   style={{
                     minHeight: "48px",
-                    color: isDark ? "white" : "var(--lp-navy)",
+                    color: "var(--lp-navy)",
                     backgroundColor: "var(--lp-accent)",
                     boxShadow: "0 4px 20px rgba(212, 175, 55, 0.25)",
                   }}
@@ -300,20 +293,20 @@ export function HeroSection() {
                     e.preventDefault();
                     smoothScrollTo("inquiry", 80);
                   }}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-medium text-sm sm:text-base transition-all duration-300 cursor-pointer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 cursor-pointer"
                   style={{
                     minHeight: "48px",
-                    border: isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)",
+                    border: "1.5px solid var(--lp-hero-btn-border, var(--lp-border))",
                     color: heroTextPrimary,
                     backgroundColor: "transparent",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.85)";
+                    e.currentTarget.style.backgroundColor = "var(--lp-icon-bg)";
                     e.currentTarget.style.borderColor = "var(--lp-accent)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.borderColor = isDark ? "rgba(255,255,255,0.25)" : "rgba(10,22,40,0.2)";
+                    e.currentTarget.style.borderColor = "var(--lp-hero-btn-border, var(--lp-border))";
                   }}
                 >
                   Contact Us
@@ -339,10 +332,10 @@ export function HeroSection() {
                 ref={statRef}
                 className="inline-flex items-center gap-2 sm:gap-0 flex-wrap p-2 sm:p-2.5 sm:px-5 rounded-[50px] animate-hero-fade-up"
                 style={{
-                  background: isDark ? "rgba(10, 22, 40, 0.65)" : "rgba(255, 255, 255, 0.75)",
+                  background: "var(--lp-stats-bg)",
                   backdropFilter: "blur(12px)",
-                  border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(212, 175, 55, 0.22)",
-                  boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(212, 175, 55, 0.08)",
+                  border: "1px solid var(--lp-stats-border)",
+                  boxShadow: "var(--lp-card-shadow)",
                 }}
               >
                 {stats.map((stat, i) => {
@@ -355,7 +348,7 @@ export function HeroSection() {
                           style={{
                             width: '1px',
                             height: '24px',
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(10,22,40,0.18)',
+                            backgroundColor: 'var(--lp-border)',
                           }}
                         />
                       )}
@@ -396,8 +389,8 @@ export function HeroSection() {
                   height: currentImage === i ? "32px" : "20px",
                   borderRadius: "1px",
                   backgroundColor: currentImage === i
-                    ? (isDark ? "white" : "var(--lp-navy)")
-                    : (isDark ? "rgba(255,255,255,0.35)" : "rgba(10,22,40,0.35)"),
+                    ? "var(--lp-text)"
+                    : "var(--lp-border)",
                   transition: "all 0.4s ease",
                 }}
               />
@@ -410,7 +403,6 @@ export function HeroSection() {
 }
 
 function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
-  const { isDark } = useTheme();
   const { count, done } = useCounter(target, 2, isInView);
 
   return (
@@ -425,11 +417,11 @@ function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
         animate={done ? { scale: [1, 1.15, 1] } : {}}
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="text-base sm:text-lg font-medium inline-block"
-        style={{ color: done ? 'var(--lp-accent-text)' : (isDark ? 'white' : 'var(--lp-navy)'), transition: 'color 0.5s ease' }}
+        style={{ color: done ? 'var(--lp-accent-text)' : 'var(--lp-text)' }}
       >
         {count}{suffix}
       </motion.span>
-      <span className="text-xs sm:text-sm font-light whitespace-nowrap" style={{ color: isDark ? '#E2E8F0' : '#1e293b' }}>{label}</span>
+      <span className="text-xs sm:text-sm font-light whitespace-nowrap" style={{ color: 'var(--lp-text-muted)' }}>{label}</span>
     </motion.div>
   );
 }

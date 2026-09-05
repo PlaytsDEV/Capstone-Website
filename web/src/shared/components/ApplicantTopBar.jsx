@@ -66,13 +66,20 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
       <div className="flex items-center gap-2 sm:gap-3">
         <button
           type="button"
-          onClick={toggleTheme}
+          onClick={(e) => toggleTheme(e)}
           aria-label="Toggle dark mode"
           title="Toggle dark mode"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors hover:bg-[var(--bg-hover)]"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors hover:bg-[var(--bg-hover)] cursor-pointer"
           style={{ color: "var(--text-primary)" }}
         >
-          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          <span className="theme-toggle-icon-wrapper" style={{ width: 20, height: 20 }}>
+            <Sun
+              className={`theme-toggle-icon h-5 w-5 ${isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
+            />
+            <Moon
+              className={`theme-toggle-icon h-5 w-5 ${!isDark ? "theme-toggle-icon--active" : "theme-toggle-icon--inactive"}`}
+            />
+          </span>
         </button>
 
         <div className="shrink-0">

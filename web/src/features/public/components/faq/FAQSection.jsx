@@ -279,7 +279,7 @@ function FAQItemContent({ item }) {
                 style={{
                   backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.15))",
                   color: "var(--lp-accent, #D4AF37)",
-                  border: "1px solid var(--lp-border, #E6D9B2)",
+                  border: "1px solid var(--lp-border, #cbd5e1)",
                 }}
               >
                 {step.step}
@@ -343,7 +343,7 @@ function FAQItemContent({ item }) {
           className="mt-3 p-3 sm:p-3.5 rounded-xl text-xs leading-relaxed flex items-start gap-2.5"
           style={{
             backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.08))",
-            border: "1px solid var(--lp-border, #E6D9B2)",
+            border: "1px solid var(--lp-border, #cbd5e1)",
           }}
         >
           <span
@@ -477,7 +477,7 @@ export function FAQSection() {
                     backgroundColor: "var(--lp-bg-card, #ffffff)",
                     border: isExpanded
                       ? "1px solid var(--lp-accent, #D4AF37)"
-                      : "1px solid var(--lp-border, #E6D9B2)",
+                      : "1px solid var(--lp-border, #cbd5e1)",
                     boxShadow: isExpanded
                       ? "0 4px 14px rgba(10, 22, 40, 0.06)"
                       : "var(--lp-card-shadow, 0 1px 3px rgba(0,0,0,0.04))",
@@ -524,7 +524,7 @@ export function FAQSection() {
                         : "max-h-0 opacity-0 overflow-hidden p-0"
                     }`}
                     style={{
-                      borderColor: "var(--lp-border, #E6D9B2)",
+                      borderColor: "var(--lp-border, #cbd5e1)",
                       backgroundColor: "var(--lp-bg-alt, #ffffff)",
                     }}
                   >
@@ -542,7 +542,7 @@ export function FAQSection() {
             className="mt-12 max-w-3xl mx-auto p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-sm"
             style={{
               backgroundColor: "var(--lp-bg-card, #ffffff)",
-              border: "1px solid var(--lp-border, #E6D9B2)",
+              border: "1px solid var(--lp-border, #cbd5e1)",
             }}
           >
             <div className="flex items-center gap-3.5">

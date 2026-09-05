@@ -42,7 +42,7 @@ export function ChatMessageList({
       className="flex-1 overflow-y-auto px-3 py-3 space-y-2 overscroll-contain"
       style={{
         scrollbarWidth: "thin",
-        scrollbarColor: "var(--lp-border, #E6D9B2) transparent",
+        scrollbarColor: "var(--lp-border, #cbd5e1) transparent",
       }}
     >
       {/* Date Divider */}
@@ -52,7 +52,7 @@ export function ChatMessageList({
           style={{
             backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
             color: "var(--lp-text-muted, #64748B)",
-            border: "1px solid var(--lp-border, #E6D9B2)",
+            border: "1px solid var(--lp-border, #cbd5e1)",
           }}
         >
           Today
@@ -77,7 +77,7 @@ export function ChatMessageList({
 
       {/* Quick Prompts below initial messages — Auto-hides once conversation begins */}
       {showQuickPrompts && !hasUserMessages && !isTyping && (
-        <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+        <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--lp-border, #cbd5e1)" }}>
           <ChatQuickPrompts onSelectPrompt={onSelectPrompt} disabled={isTyping} />
         </div>
       )}

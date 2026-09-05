@@ -12,14 +12,9 @@ import { useTheme } from "../context/ThemeContext";
  */
 export default function ThemeToggleButton({ variant = "hero" }) {
   const { isDark, toggleTheme } = useTheme();
-  const [isGlowing, setIsGlowing] = useState(false);
 
-  const handleClick = useCallback(() => {
-    setIsGlowing(false);
-    requestAnimationFrame(() => {
-      setIsGlowing(true);
-    });
-    toggleTheme();
+  const handleClick = useCallback((e) => {
+    toggleTheme(e);
   }, [toggleTheme]);
 
   const accessibleLabel = isDark ? "Switch to light mode" : "Switch to dark mode";
@@ -29,8 +24,7 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     return (
       <button
         onClick={handleClick}
-        onAnimationEnd={() => setIsGlowing(false)}
-        className={`theme-toggle-btn theme-toggle-mobile ${isGlowing ? "theme-toggle--glow" : ""}`}
+        className="theme-toggle-btn theme-toggle-mobile"
         aria-label={accessibleLabel}
         title={accessibleLabel}
         style={{
@@ -66,24 +60,10 @@ export default function ThemeToggleButton({ variant = "hero" }) {
   }
 
   /* ── Desktop variants: hero & scrolled ── */
-  const isScrolled = variant === "scrolled";
-
-  // Neutral ghost borders matching Sign In / profile buttons in Navbar
-  const borderRest = isScrolled
-    ? (isDark ? "1px solid rgba(255, 255, 255, 0.20)" : "1px solid rgba(15, 23, 42, 0.18)")
-    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.30)" : "1.5px solid rgba(10, 22, 40, 0.22)");
-
-  const borderHover = isScrolled
-    ? (isDark ? "1px solid rgba(255, 255, 255, 0.65)" : "1px solid var(--lp-navy)")
-    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.75)" : "1.5px solid var(--lp-navy)");
-
-  // Deep Navy (#0A1628) in light mode matches Sign In typography (14:1+ AAA contrast), crisp white in dark mode
-  const iconColorRest = isDark ? "#ffffff" : "var(--lp-navy, #0A1628)";
-  const iconColorHover = isDark ? "#ffffff" : "var(--lp-navy, #0A1628)";
-
-  const shadowHover = isDark
-    ? "0 3px 10px rgba(0, 0, 0, 0.35)"
-    : "0 2px 8px rgba(10, 22, 40, 0.08)";
+  const borderRest = "1px solid var(--lp-border)";
+  const borderHover = "1px solid var(--lp-accent)";
+  const iconColor = "var(--lp-text)";
+  const shadowHover = "var(--lp-card-shadow)";
 
   const btnStyles = {
     position: "relative",
@@ -94,13 +74,13 @@ export default function ThemeToggleButton({ variant = "hero" }) {
     borderRadius: "50%",
     backgroundColor: "transparent",
     border: borderRest,
-    color: iconColorRest,
+    color: iconColor,
     cursor: "pointer",
     padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
     boxShadow: "none",
     transform: "translateY(0)",
   };
@@ -108,22 +88,21 @@ export default function ThemeToggleButton({ variant = "hero" }) {
   return (
     <button
       onClick={handleClick}
-      onAnimationEnd={() => setIsGlowing(false)}
-      className={`theme-toggle-btn hidden lg:flex items-center justify-center ${isGlowing ? "theme-toggle--glow" : ""}`}
+      className="theme-toggle-btn hidden lg:flex items-center justify-center cursor-pointer"
       aria-label={accessibleLabel}
       title={accessibleLabel}
       style={btnStyles}
       onMouseEnter={(e) => {
         e.currentTarget.style.backgroundColor = "transparent";
         e.currentTarget.style.border = borderHover;
-        e.currentTarget.style.color = iconColorHover;
+        e.currentTarget.style.color = iconColor;
         e.currentTarget.style.transform = "translateY(-1px)";
         e.currentTarget.style.boxShadow = shadowHover;
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = "transparent";
         e.currentTarget.style.border = borderRest;
-        e.currentTarget.style.color = iconColorRest;
+        e.currentTarget.style.color = iconColor;
         e.currentTarget.style.transform = "translateY(0)";
         e.currentTarget.style.boxShadow = "none";
       }}

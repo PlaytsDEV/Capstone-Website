@@ -551,20 +551,20 @@ export function PublicChatbotModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="chatbot-header-title"
-        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-[#08111F] border border-[#E6D9B2] dark:border-[#27334A]"
+        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-[#08111F] border border-slate-300 dark:border-slate-700"
         style={{
           backgroundColor: "var(--lp-bg, #ffffff)",
-          borderColor: "var(--lp-border, #E6D9B2)",
+          borderColor: "var(--lp-border, #cbd5e1)",
           animation: "modalPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards",
           transformOrigin: "bottom right",
         }}
       >
         {/* Header */}
         <div
-          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 select-none bg-white dark:bg-[#08111F] border-b border-[#E6D9B2] dark:border-[#27334A]"
+          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 select-none bg-white dark:bg-[#08111F] border-b border-slate-300 dark:border-slate-700"
           style={{
             backgroundColor: "var(--lp-bg, #ffffff)",
-            borderBottomColor: "var(--lp-border, #E6D9B2)",
+            borderBottomColor: "var(--lp-border, #cbd5e1)",
           }}
         >
           {/* Left: Avatar + Title */}

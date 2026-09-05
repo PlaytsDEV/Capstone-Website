@@ -271,6 +271,65 @@ section[id] {
   backface-visibility: hidden;
 }
 
+/* ── View Transitions API: Hardware-Accelerated Solid-Overlap Crossfade (120 FPS) ── */
+::view-transition-group(root) {
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-image-pair(root) {
+  isolation: isolate;
+}
+
+::view-transition-old(root) {
+  animation: none !important;
+  opacity: 1 !important;
+  z-index: 1 !important;
+}
+
+::view-transition-new(root) {
+  animation: theme-solid-fade-in 500ms cubic-bezier(0.4, 0, 0.2, 1) both !important;
+  z-index: 2 !important;
+  mix-blend-mode: normal !important;
+}
+
+@keyframes theme-solid-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Isolate Theme Toggle Button into its own GPU composite layer for 120fps vector icon spin */
+.theme-toggle-btn {
+  view-transition-name: theme-toggle;
+}
+
+::view-transition-group(theme-toggle) {
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Landing Page Below-the-Fold Render Optimization ── */
+/* Prevents off-screen sections from forcing massive style recalculations and GPU raster bloat during view transitions */
+.landing-page #main-content > div:nth-child(2) > div {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 800px;
+}
+
+/* ── Fallback Smooth Transitions for Non-View-Transition Environments ── */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 500ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 500ms cubic-bezier(0.4, 0, 0.2, 1),
+              color 500ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition-delay: 0s !important;
+}
+
 /* ── Theme Toggle Animations ─────────────────────────────── */
 
 /* Icon wrapper — stacks Sun & Moon on top of each other */
@@ -283,21 +342,23 @@ section[id] {
   height: 18px;
 }
 
-/* Each icon is absolutely positioned; active/inactive animates */
+/* Each icon is absolutely positioned; active/inactive animates with synchronized spin + fade */
 .theme-toggle-icon {
   position: absolute;
-  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 420ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
+  transform-origin: center center;
 }
 
 .theme-toggle-icon--active {
   opacity: 1;
-  transform: rotate(0deg);
+  transform: rotate(0deg) scale(1);
 }
 
 .theme-toggle-icon--inactive {
   opacity: 0;
-  transform: rotate(180deg);
+  transform: rotate(90deg) scale(0.4);
 }
 
 /* Glow ring pulse on click */
@@ -319,7 +380,9 @@ section[id] {
   --lp-text: #162f53;
   --lp-text-secondary: #111111;
   --lp-text-muted: #1f2937;
-  --lp-border: #E6D9B2;
+  --lp-border: rgba(10, 22, 40, 0.16);
+  --lp-border-subtle: rgba(10, 22, 40, 0.08);
+  --lp-hero-btn-border: rgba(10, 22, 40, 0.28);
   --lp-accent: #D4AF37;
   --lp-accent-text: #8C6200;
   --lp-navy: #0A1628;
@@ -328,23 +391,16 @@ section[id] {
   --lp-card-shadow-hover: 0 10px 25px rgba(10, 22, 40, 0.08);
   --lp-nav-shadow: 0 1px 3px rgba(10, 22, 40, 0.08), 0 4px 12px rgba(10, 22, 40, 0.05);
   --lp-icon-bg: rgba(212, 175, 55, 0.10);
+  --lp-hero-overlay: linear-gradient(to right, rgba(255, 255, 255, 0.9) 0%, rgba(243, 230, 184, 0.82) 45%, rgba(232, 211, 146, 0.52) 75%, rgba(212, 175, 55, 0.28) 100%);
+  --lp-badge-bg: rgba(255, 255, 255, 0.9);
+  --lp-badge-border: rgba(212, 175, 55, 0.35);
+  --lp-stats-bg: rgba(255, 255, 255, 0.75);
+  --lp-stats-border: rgba(212, 175, 55, 0.22);
   --surface-input: #f8fafc;
   --surface-card: #ffffff;
   --surface-card-subtle: #f8fafc;
 }
 
-/* Smooth theme transition — scoped to layout containers and interactive elements */
-.landing-page,
-.landing-page section,
-.landing-page nav,
-.landing-page footer,
-.landing-page header,
-.landing-page [style*="--lp-"],
-.landing-page .lp-section-card {
-  transition: background-color 180ms ease-in-out,
-              color 180ms ease-in-out,
-              border-color 180ms ease-in-out;
-}
 
 :root[data-theme="dark"],
 html.dark,
@@ -358,7 +414,9 @@ html.dark .landing-page,
   --lp-text: #F8FAFC;
   --lp-text-secondary: #D0D7E2;
   --lp-text-muted: #A8B3C3;
-  --lp-border: #27334A;
+  --lp-border: rgba(255, 255, 255, 0.14);
+  --lp-border-subtle: rgba(255, 255, 255, 0.07);
+  --lp-hero-btn-border: rgba(255, 255, 255, 0.28);
   --lp-accent: #D4AF37;
   --lp-accent-text: #D4AF37;
   --lp-navy: #08111F;
@@ -367,6 +425,11 @@ html.dark .landing-page,
   --lp-card-shadow-hover: 0 10px 25px rgba(0, 0, 0, 0.42);
   --lp-nav-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 4px 16px rgba(0, 0, 0, 0.42);
   --lp-icon-bg: rgba(212, 175, 55, 0.14);
+  --lp-hero-overlay: linear-gradient(to right, rgba(8, 17, 31, 0.93) 0%, rgba(8, 17, 31, 0.82) 45%, rgba(8, 17, 31, 0.58) 75%, rgba(8, 17, 31, 0.45) 100%);
+  --lp-badge-bg: rgba(10, 22, 40, 0.75);
+  --lp-badge-border: rgba(212, 175, 55, 0.35);
+  --lp-stats-bg: rgba(10, 22, 40, 0.65);
+  --lp-stats-border: rgba(255, 255, 255, 0.12);
   --surface-input: #0B1628;
   --surface-card: #111C31;
   --surface-card-subtle: #162238;
@@ -395,6 +458,10 @@ html.dark .landing-page,
 
 /* ── Dark Mode Global Overrides ───────────────────────────── */
 /* Section backgrounds */
+:is(html.dark, [data-theme="dark"]) .landing-page section.bg-white,
+:is(html.dark, [data-theme="dark"]) .landing-page section[class*="bg-white"],
+:is(html.dark, [data-theme="dark"]) .landing-page footer.bg-white,
+:is(html.dark, [data-theme="dark"]) .landing-page footer[class*="bg-white"],
 .landing-page[data-theme="dark"] section.bg-white,
 .landing-page[data-theme="dark"] section[class*="bg-white"],
 .landing-page[data-theme="dark"] footer.bg-white,
@@ -403,6 +470,9 @@ html.dark .landing-page,
 }
 
 /* Alt backgrounds (gray-50) */
+:is(html.dark, [data-theme="dark"]) .landing-page section.bg-gray-50,
+:is(html.dark, [data-theme="dark"]) .landing-page section[class*="bg-gray-50"],
+:is(html.dark, [data-theme="dark"]) .landing-page .bg-gray-50,
 .landing-page[data-theme="dark"] section.bg-gray-50,
 .landing-page[data-theme="dark"] section[class*="bg-gray-50"],
 .landing-page[data-theme="dark"] .bg-gray-50 {
@@ -410,17 +480,23 @@ html.dark .landing-page,
 }
 
 /* Cards and containers */
+:is(html.dark, [data-theme="dark"]) .landing-page .bg-white,
 .landing-page[data-theme="dark"] .bg-white {
   background-color: var(--lp-bg-card) !important;
 }
 
 /* Dark navy sections → deeper dark in dark mode */
+:is(html.dark, [data-theme="dark"]) .landing-page section[style*="183153"],
+:is(html.dark, [data-theme="dark"]) .landing-page div[style*="0f2240"],
 .landing-page[data-theme="dark"] section[style*="183153"],
 .landing-page[data-theme="dark"] div[style*="0f2240"] {
   background-color: var(--lp-navy-deep) !important;
 }
 
 /* Text colors — navy headings */
+:is(html.dark, [data-theme="dark"]) .landing-page [style*="color: rgb(24, 49, 83)"],
+:is(html.dark, [data-theme="dark"]) .landing-page [style*="color: #183153"],
+:is(html.dark, [data-theme="dark"]) .landing-page [style*='color: "#183153"'],
 .landing-page[data-theme="dark"] [style*="color: rgb(24, 49, 83)"],
 .landing-page[data-theme="dark"] [style*="color: #183153"],
 .landing-page[data-theme="dark"] [style*='color: "#183153"'] {
@@ -428,30 +504,41 @@ html.dark .landing-page,
 }
 
 /* Gray text */
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-500,
 .landing-page[data-theme="dark"] .text-gray-500 {
   color: var(--lp-text-secondary) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-400,
 .landing-page[data-theme="dark"] .text-gray-400 {
   color: var(--lp-text-muted) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-600,
 .landing-page[data-theme="dark"] .text-gray-600 {
   color: var(--lp-text-secondary) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-700,
 .landing-page[data-theme="dark"] .text-gray-700 {
   color: var(--lp-text) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-800,
+:is(html.dark, [data-theme="dark"]) .landing-page .text-gray-900,
 .landing-page[data-theme="dark"] .text-gray-800,
 .landing-page[data-theme="dark"] .text-gray-900 {
   color: var(--lp-text) !important;
 }
 
 /* Borders */
+:is(html.dark, [data-theme="dark"]) .landing-page .border-gray-100,
+:is(html.dark, [data-theme="dark"]) .landing-page .border-gray-200,
 .landing-page[data-theme="dark"] .border-gray-100,
 .landing-page[data-theme="dark"] .border-gray-200 {
   border-color: var(--lp-border) !important;
 }
 
 /* Form inputs */
+:is(html.dark, [data-theme="dark"]) .landing-page input,
+:is(html.dark, [data-theme="dark"]) .landing-page textarea,
+:is(html.dark, [data-theme="dark"]) .landing-page select,
 .landing-page[data-theme="dark"] input,
 .landing-page[data-theme="dark"] textarea,
 .landing-page[data-theme="dark"] select {
@@ -461,27 +548,33 @@ html.dark .landing-page,
 }
 
 /* Gradient backgrounds (from-gray-50 to-white) */
+:is(html.dark, [data-theme="dark"]) .landing-page .from-gray-50,
 .landing-page[data-theme="dark"] .from-gray-50 {
   --tw-gradient-from: var(--lp-bg-alt) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .to-white,
 .landing-page[data-theme="dark"] .to-white {
   --tw-gradient-to: var(--lp-bg) !important;
 }
+:is(html.dark, [data-theme="dark"]) .landing-page .from-white,
 .landing-page[data-theme="dark"] .from-white {
   --tw-gradient-from: var(--lp-bg) !important;
 }
 
 /* Gradient info boxes */
+:is(html.dark, [data-theme="dark"]) .landing-page .bg-gradient-to-br.from-gray-50,
 .landing-page[data-theme="dark"] .bg-gradient-to-br.from-gray-50 {
   background: var(--lp-bg-alt) !important;
 }
 
 /* Navbar scrolled state */
+:is(html.dark, [data-theme="dark"]) .landing-page nav[style*="183153"],
 .landing-page[data-theme="dark"] nav[style*="183153"] {
   background-color: #020617 !important;
 }
 
 /* Footer border */
+:is(html.dark, [data-theme="dark"]) .landing-page .border-t.border-gray-100,
 .landing-page[data-theme="dark"] .border-t.border-gray-100 {
   border-color: var(--lp-border) !important;
 }
@@ -611,52 +704,6 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
-/* ── Hardware-Accelerated View Transitions (Modern Browsers) ── */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 200ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-::view-transition-old(root) {
-  animation-name: vt-fade-out;
-}
-
-::view-transition-new(root) {
-  animation-name: vt-fade-in;
-}
-
-@keyframes vt-fade-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-
-@keyframes vt-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* ── Fallback Smooth Theme Transition (Legacy Browsers) ──────── */
-html,
-body,
-#root,
-header,
-nav,
-aside,
-main,
-footer,
-section,
-.landing-page,
-.admin-layout,
-.tenant-layout,
-.sidebar,
-.topbar,
-.admin-topbar,
-.card {
-  transition: background-color 180ms ease-in-out,
-              color 180ms ease-in-out,
-              border-color 180ms ease-in-out;
-}
 
 body {
   background-color: var(--surface-page);

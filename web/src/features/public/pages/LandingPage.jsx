@@ -1,11 +1,11 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import { HeroSection } from "../components/HeroSection";
 import { JourneyHighlightsSection } from "../components/JourneyHighlightsSection";
 import { BenefitsSection } from "../components/BenefitsSection";
 import { RoomInventory } from "../components/RoomInventory";
 import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
-import { ThemeProvider, useTheme } from "../context/ThemeContext";
+import { ThemeProvider } from "../context/ThemeContext";
 import RouteErrorBoundary from "../../../shared/components/RouteErrorBoundary";
 
 // Code-split below-the-fold sections to minimize initial main-thread execution time
@@ -171,10 +171,18 @@ const LILYCREST_STRUCTURED_DATA = {
 };
 
 function LandingPageContent() {
-  const { resolvedTheme } = useTheme();
+  useEffect(() => {
+    const rootTheme =
+      document.documentElement.getAttribute("data-theme") ||
+      (document.documentElement.classList.contains("dark") ? "dark" : "light");
+    const landing = document.querySelector(".landing-page");
+    if (landing && !landing.getAttribute("data-theme")) {
+      landing.setAttribute("data-theme", rootTheme);
+    }
+  }, []);
 
   return (
-    <div className="landing-page" data-theme={resolvedTheme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
+    <div className="landing-page" style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
       <SEOHead
         title="Home"
         description="Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Book a visit today."

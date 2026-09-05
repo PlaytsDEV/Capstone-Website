@@ -363,7 +363,7 @@ export function ChatMessageBubble({
                 ? undefined
                 : isError
                 ? undefined
-                : "var(--lp-border, #E6D9B2)",
+                : "var(--lp-border, #cbd5e1)",
               color: isUser
                 ? undefined
                 : isError

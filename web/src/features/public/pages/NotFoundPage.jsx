@@ -1,19 +1,16 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import SEOHead from "../../../shared/components/SEOHead";
-import { useTheme } from "../context/ThemeContext";
 import logo from "../../../assets/images/LOGO.svg";
 
 export default function NotFoundPage() {
-  const { isDark } = useTheme();
-
-  const pageBackground = isDark ? "#0B1120" : "#F9FAFB";
-  const headingColor = isDark ? "#FFFFFF" : "#0A1628";
-  const descriptionColor = isDark ? "rgba(255,255,255,0.5)" : "#4B5563";
-  const brandColor = isDark ? "rgba(255,255,255,0.2)" : "#9CA3AF";
-  const accentColor = "#D4AF37";
-  const ctaShadow = isDark ? "0 4px 20px rgba(212, 175, 55, 0.35)" : "0 4px 20px rgba(184, 138, 26, 0.28)";
-  const ctaHoverShadow = isDark ? "0 8px 28px rgba(212, 175, 55, 0.5)" : "0 8px 28px rgba(184, 138, 26, 0.42)";
+  const pageBackground = "var(--lp-bg)";
+  const headingColor = "var(--lp-text)";
+  const descriptionColor = "var(--lp-text-secondary)";
+  const brandColor = "var(--lp-text-muted)";
+  const accentColor = "var(--lp-accent)";
+  const ctaShadow = "0 4px 20px rgba(212, 175, 55, 0.35)";
+  const ctaHoverShadow = "0 8px 28px rgba(212, 175, 55, 0.5)";
 
   return (
     <div

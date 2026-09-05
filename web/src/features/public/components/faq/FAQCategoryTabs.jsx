@@ -43,7 +43,7 @@ export function FAQCategoryTabs({
                 : "var(--lp-bg-card, #ffffff)",
               border: isActive
                 ? "1px solid var(--lp-accent, #D4AF37)"
-                : "1px solid var(--lp-border, #E6D9B2)",
+                : "1px solid var(--lp-border, #cbd5e1)",
               color: isActive ? "#ffffff" : "var(--lp-text, #162f53)",
               boxShadow: isActive ? "0 2px 8px rgba(10, 22, 40, 0.15)" : "none",
             }}

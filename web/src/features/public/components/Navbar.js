@@ -6,7 +6,6 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import ThemeToggleButton from "./ThemeToggleButton";
-import { useTheme } from "../context/ThemeContext";
 import logo from "../../../assets/images/LOGO.svg";
 import { formatDisplayName } from "../../../shared/utils/formatDate";
 import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
@@ -18,7 +17,6 @@ export function Navigation({ type } = {}) {
   const [activeSection, setActiveSection] = useState("");
   const [hoveredSection, setHoveredSection] = useState(null);
   const { user, isAuthenticated, loading } = useAuth();
-  const { isDark } = useTheme();
 
   // Scroll listener — compact navbar after 20px (rAF debounced to prevent forced reflow)
   useEffect(() => {
@@ -101,8 +99,12 @@ export function Navigation({ type } = {}) {
 
   const handleNavClick = (e, targetId) => {
     e.preventDefault();
-    smoothScrollTo(targetId, 80);
-    setActiveSection(targetId);
+    if (window.location.pathname === "/") {
+      smoothScrollTo(targetId, 80);
+      setActiveSection(targetId);
+    } else {
+      window.location.href = `/#${targetId}`;
+    }
   };
 
   const handleLogoClick = (e) => {
@@ -113,39 +115,27 @@ export function Navigation({ type } = {}) {
     }
   };
 
-  // Colors adapt: transparent hero = always white text; scrolled = theme-aware
-  const textColor = isScrolled ? "var(--lp-text)" : (isDark ? "rgba(255,255,255,0.9)" : "var(--lp-navy)");
+  // Colors adapt: driven by CSS variables for instantaneous 0ms theme changes
+  const textColor = "var(--lp-text)";
 
   // Ghost button styles for Sign In (clean transparent ghost pill with crisp border & micro-lift on hover)
-  const ghostBorderRest = isScrolled
-    ? (isDark ? "1px solid rgba(255, 255, 255, 0.20)" : "1px solid rgba(15, 23, 42, 0.18)")
-    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.30)" : "1.5px solid rgba(10, 22, 40, 0.22)");
-
-  const ghostBorderHover = isScrolled
-    ? (isDark ? "1px solid rgba(255, 255, 255, 0.65)" : "1px solid var(--lp-navy)")
-    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.75)" : "1.5px solid var(--lp-navy)");
-
+  const ghostBorderRest = "1px solid var(--lp-border)";
+  const ghostBorderHover = "1px solid var(--lp-accent)";
   const ghostBgHover = "transparent";
-
-  const ghostTextHover = isDark ? "#ffffff" : "var(--lp-navy)";
-
-  const ghostShadowHover = isDark
-    ? "0 3px 10px rgba(0, 0, 0, 0.35)"
-    : "0 2px 8px rgba(10, 22, 40, 0.08)";
+  const ghostTextHover = "var(--lp-text)";
+  const ghostShadowHover = "var(--lp-card-shadow)";
 
   const ghostBtnStyle = {
-    color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-    fontSize: "14px",
+    color: "var(--lp-text)",
     fontWeight: "500",
-    padding: "8px 22px",
     borderRadius: "9999px",
     border: ghostBorderRest,
     backgroundColor: "transparent",
-    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
     textDecoration: "none",
     letterSpacing: "0.2px",
     boxShadow: "none",
     transform: "translateY(0)",
+    whiteSpace: "nowrap",
   };
 
   return (
@@ -167,40 +157,38 @@ export function Navigation({ type } = {}) {
         }}
       >
         <div
-          className="max-w-screen-2xl mx-auto px-4 sm:px-8 lg:px-12"
+          className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-6 xl:px-10 2xl:px-12"
           style={{
-            paddingTop: "16px",
-            paddingBottom: "16px",
+            paddingTop: "14px",
+            paddingBottom: "14px",
           }}
         >
-          <div className="flex items-center justify-between lg:grid lg:grid-cols-[1fr_auto_1fr]">
+          <div className="flex items-center justify-between lg:grid lg:grid-cols-[auto_1fr_auto] lg:gap-4 xl:gap-8">
             {/* 1. Left Column: Brand Logo */}
-            <div className="flex items-center justify-start">
+            <div className="flex items-center justify-start flex-shrink-0">
               <Link
                 to="/"
                 onClick={handleLogoClick}
-                className="font-semibold tracking-wide no-underline inline-flex items-center gap-2.5 cursor-pointer"
+                className="font-semibold tracking-wide no-underline inline-flex items-center gap-2 cursor-pointer text-[18px] sm:text-[20px] flex-shrink-0"
                 style={{
-                  color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
-                  fontSize: "20px",
+                  color: "var(--lp-text)",
                   letterSpacing: "0.5px",
-                  transition: "color 0.2s ease",
                 }}
               >
                 <img
                   src={logo}
                   alt="Lilycrest logo"
                   style={{
-                    width: "26px",
-                    height: "26px",
+                    width: "24px",
+                    height: "24px",
                   }}
                 />
                 Lilycrest
               </Link>
             </div>
 
-            {/* 2. Center Column: Desktop Navigation Links */}
-            <div className="hidden lg:flex items-center justify-center gap-1 xl:gap-2">
+            {/* 2. Center Column: Desktop Navigation Links (fluidly centered) */}
+            <div className="hidden lg:flex items-center justify-center gap-1 xl:gap-2 2xl:gap-3 px-2">
               {navLinks.map((link) => {
                 const isActive = activeSection === link.id;
                 const isHovered = hoveredSection === link.id;
@@ -211,19 +199,13 @@ export function Navigation({ type } = {}) {
                     key={link.href}
                     href={link.href}
                     onClick={(e) => handleNavClick(e, link.id)}
-                    className="no-underline cursor-pointer"
+                    className="no-underline cursor-pointer text-[13.5px] xl:text-[15px] px-2.5 py-1.5 xl:px-3.5 xl:py-2 rounded-md whitespace-nowrap transition-colors duration-200"
                     aria-current={isActive ? "page" : undefined}
                     style={{
-                      color: isScrolled
-                        ? "var(--lp-text)"
-                        : (isDark ? "white" : "var(--lp-navy)"),
-                      fontSize: "15px",
+                      color: "var(--lp-text)",
                       fontWeight: isHighlighted ? "500" : "400",
-                      padding: "8px 16px",
-                      borderRadius: "6px",
                       position: "relative",
                       backgroundColor: "transparent",
-                      transition: "color 0.2s ease, font-weight 0.2s ease",
                     }}
                     onMouseEnter={() => setHoveredSection(link.id)}
                     onMouseLeave={() => setHoveredSection(null)}
@@ -237,7 +219,7 @@ export function Navigation({ type } = {}) {
                         bottom: "2px",
                         left: "50%",
                         transform: `translateX(-50%) scaleX(${isHighlighted ? 1 : 0})`,
-                        width: "24px",
+                        width: "20px",
                         height: "2px",
                         backgroundColor: "var(--lp-accent)",
                         borderRadius: "2px",
@@ -252,7 +234,7 @@ export function Navigation({ type } = {}) {
             </div>
 
             {/* 3. Right Column: Controls & Actions (Theme Toggle + Sign In / Profile + Book Now + Mobile Hamburger) */}
-            <div className="flex items-center justify-end gap-2.5 sm:gap-3">
+            <div className="flex items-center justify-end gap-2 sm:gap-2.5 xl:gap-3.5 flex-shrink-0">
               {/* Theme Toggle — desktop only */}
               {type === "landing" && (
                 <div className="hidden lg:flex items-center">
@@ -265,15 +247,15 @@ export function Navigation({ type } = {}) {
                   {isAuthenticated ? (
                     <Link
                       to={profileUrl}
-                      className="flex items-center justify-center no-underline cursor-pointer"
+                      className="flex items-center justify-center no-underline cursor-pointer flex-shrink-0"
                       aria-label={`Open profile for ${displayName}`}
                       style={{
-                        width: "38px",
-                        height: "38px",
+                        width: "36px",
+                        height: "36px",
                         borderRadius: "50%",
                         backgroundColor: "transparent",
                         border: ghostBorderRest,
-                        color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                        color: "var(--lp-text)",
                         fontSize: "14px",
                         fontWeight: "500",
                         letterSpacing: "0.3px",
@@ -291,7 +273,7 @@ export function Navigation({ type } = {}) {
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = "transparent";
                         e.currentTarget.style.border = ghostBorderRest;
-                        e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                        e.currentTarget.style.color = "var(--lp-text)";
                         e.currentTarget.style.transform = "translateY(0)";
                         e.currentTarget.style.boxShadow = "none";
                       }}
@@ -299,10 +281,10 @@ export function Navigation({ type } = {}) {
                       {displayName.charAt(0).toUpperCase()}
                     </Link>
                   ) : (
-                    /* Not logged in: ghost-button Sign In visible on mobile & desktop */
+                    /* Not logged in: ghost-button Sign In visible on mobile & desktop with fluid responsive sizing */
                     <Link
                       to="/signin"
-                      className="inline-flex items-center justify-center no-underline cursor-pointer text-xs sm:text-sm px-3.5 py-1.5 sm:px-4 sm:py-2 lg:px-5 lg:py-2"
+                      className="inline-flex items-center justify-center no-underline cursor-pointer text-xs sm:text-sm lg:text-[13px] xl:text-[14px] px-3 py-1.5 sm:px-4 sm:py-2 lg:px-3.5 lg:py-1.5 xl:px-5 xl:py-2"
                       style={ghostBtnStyle}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = ghostBgHover;
@@ -314,7 +296,7 @@ export function Navigation({ type } = {}) {
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = "transparent";
                         e.currentTarget.style.border = ghostBorderRest;
-                        e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                        e.currentTarget.style.color = "var(--lp-text)";
                         e.currentTarget.style.transform = "translateY(0)";
                         e.currentTarget.style.boxShadow = "none";
                       }}
@@ -331,13 +313,10 @@ export function Navigation({ type } = {}) {
 
               <Link
                 to="/applicant/check-availability"
-                className="hidden lg:inline-flex items-center justify-center rounded-full no-underline cursor-pointer"
+                className="hidden lg:inline-flex items-center justify-center rounded-full no-underline cursor-pointer text-[13px] xl:text-[15px] px-3.5 py-1.5 xl:px-6 xl:py-2.5 font-medium whitespace-nowrap"
                 style={{
                   color: "white",
                   backgroundColor: "var(--lp-accent)",
-                  fontSize: "15px",
-                  fontWeight: "500",
-                  padding: "10px 26px",
                   transition:
                     "box-shadow 0.2s ease, transform 0.2s ease",
                 }}
@@ -358,7 +337,7 @@ export function Navigation({ type } = {}) {
               <button
                 className="lg:hidden bg-transparent border-none cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-lg"
                 style={{
-                  color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
+                  color: "var(--lp-text)",
                   minWidth: "44px",
                   minHeight: "44px",
                 }}
@@ -410,14 +389,10 @@ export function Navigation({ type } = {}) {
                 width: "100%",
                 maxWidth: "340px",
                 height: "100dvh",
-                backgroundColor: isDark ? "var(--lp-bg-card, #111C31)" : "#ffffff",
-                color: isDark ? "#F8FAFC" : "var(--lp-navy, #0A1628)",
-                borderLeft: isDark
-                  ? "1px solid var(--lp-border, #27334A)"
-                  : "1px solid rgba(10,22,40,0.12)",
-                boxShadow: isDark
-                  ? "-8px 0 32px rgba(0, 0, 0, 0.6)"
-                  : "-8px 0 32px rgba(10, 22, 40, 0.15)",
+                backgroundColor: "var(--lp-bg-card)",
+                color: "var(--lp-text)",
+                borderLeft: "1px solid var(--lp-border)",
+                boxShadow: "var(--lp-card-shadow)",
                 transform: isMenuOpen ? "translateX(0)" : "translateX(100%)",
                 padding: "24px",
                 paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
@@ -430,23 +405,21 @@ export function Navigation({ type } = {}) {
               <div
                 className="flex items-center justify-between pb-4 mb-2 flex-shrink-0"
                 style={{
-                  borderBottom: isDark
-                    ? "1px solid var(--lp-border, #27334A)"
-                    : "1px solid rgba(10,22,40,0.1)",
+                  borderBottom: "1px solid var(--lp-border)",
                 }}
               >
                 <div className="flex items-center gap-2.5">
                   <img src={logo} alt="Lilycrest logo" style={{ width: "26px", height: "26px" }} />
                   <span
                     className="font-semibold tracking-wide text-lg"
-                    style={{ color: isDark ? "white" : "var(--lp-navy)" }}
+                    style={{ color: "var(--lp-text)" }}
                   >
                     Lilycrest
                   </span>
                 </div>
                 <button
                   className="bg-transparent border-none cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-full transition-colors"
-                  style={{ color: isDark ? "white" : "var(--lp-navy)" }}
+                  style={{ color: "var(--lp-text)" }}
                   onClick={() => setIsMenuOpen(false)}
                   aria-label="Close navigation menu"
                 >
@@ -470,12 +443,10 @@ export function Navigation({ type } = {}) {
                       style={{
                         minHeight: "48px",
                         color: isActive
-                          ? (isDark ? "var(--lp-accent, #D4AF37)" : "var(--lp-accent-text, #8C6200)")
-                          : (isDark ? "#F8FAFC" : "var(--lp-navy, #0A1628)"),
+                          ? "var(--lp-accent-text)"
+                          : "var(--lp-text)",
                         backgroundColor: isActive
-                          ? (isDark
-                              ? "rgba(212, 175, 55, 0.14)"
-                              : "rgba(212, 175, 55, 0.10)")
+                          ? "var(--lp-icon-bg)"
                           : "transparent",
                         fontWeight: isActive ? "600" : "400",
                         fontSize: "15px",
@@ -492,9 +463,7 @@ export function Navigation({ type } = {}) {
               <div
                 className="pt-4 flex flex-col gap-3 flex-shrink-0"
                 style={{
-                  borderTop: isDark
-                    ? "1px solid var(--lp-border, #27334A)"
-                    : "1px solid rgba(10,22,40,0.1)",
+                  borderTop: "1px solid var(--lp-border)",
                 }}
               >
                 {type === "landing" && (
@@ -513,7 +482,7 @@ export function Navigation({ type } = {}) {
                         style={{
                           minHeight: "48px",
                           padding: "12px 16px",
-                          color: isDark ? "white" : "var(--lp-navy)",
+                          color: "var(--lp-text)",
                           fontWeight: "500",
                           fontSize: "15px",
                           border: ghostBorderRest,
@@ -531,7 +500,7 @@ export function Navigation({ type } = {}) {
                         style={{
                           minHeight: "48px",
                           padding: "12px 16px",
-                          color: isDark ? "white" : "var(--lp-navy)",
+                          color: "var(--lp-text)",
                           fontSize: "15px",
                           fontWeight: "500",
                           border: ghostBorderRest,
